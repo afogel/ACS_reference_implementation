@@ -6,6 +6,8 @@
   "main": "src/map-verdict.ts",
   "types": "src/map-verdict.ts",
   "dependencies": {
-    "agt-bridge": "workspace:*"
+    "agt-bridge": "workspace:*",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

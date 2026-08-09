@@ -8,19 +8,15 @@
  * decisions, no intent. Those arrive in V6 via S3/S4/S5.
  */
 
-/** An ACS argument wrapper: `{value, provenance?}`. The provenance is
- * dropped here -- carrying it into lineage is V6's job, not this one's. */
-type AcsArgument = { value: unknown; provenance?: unknown };
-
-export type ToolCallRequestEnvelope = {
-  params: {
-    request_id: string;
-    payload: {
-      tool: { name: string };
-      arguments: Record<string, AcsArgument>;
-    };
-  };
-};
+/**
+ * The envelope type is validate-envelope.ts's (Task 5) -- re-exported here
+ * so existing imports of `ToolCallRequestEnvelope` from this module keep
+ * working. Task 4 had declared a local, narrower type as a temporary seam;
+ * this closes it so there's exactly one envelope shape, not two that could
+ * silently diverge.
+ */
+import type { ToolCallRequestEnvelope } from "./validate-envelope.ts";
+export type { ToolCallRequestEnvelope };
 
 export function assembleSnapshot(envelope: ToolCallRequestEnvelope): Record<string, unknown> {
   const { payload, request_id } = envelope.params;
