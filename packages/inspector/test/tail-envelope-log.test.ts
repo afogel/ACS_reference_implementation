@@ -218,4 +218,63 @@ describe("tailEnvelopeLog (N50)", () => {
       expect(malformed).toEqual(["{not json"]);
     });
   });
+
+  it("reassembles a line split across two writes when a poll lands on the partial write first", async () => {
+    await withTempDir(async (_dir, path) => {
+      const line = entryLine(1, "request");
+      const split = Math.floor(line.length / 2);
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      appendFileSync(path, line.slice(0, split));
+      // Start consuming now, while only the first chunk is on disk, so the
+      // (now lazily-started) timer is actually running and gets several
+      // ticks against a partial line before the second chunk lands. This is
+      // the case the test above this one no longer exercises: there,
+      // consumption doesn't begin until after both chunks are already
+      // written, so the first poll ever run sees the complete line in one
+      // shot.
+      const collecting = collect(tail, 1, controller);
+      await Bun.sleep(POLL_MS * 5);
+      appendFileSync(path, line.slice(split));
+
+      const entries = await collecting;
+      expect(entries.map((e) => e.seq)).toEqual([1]);
+    });
+  });
+
+  it("reassembles a line whose split lands mid-codepoint, without corrupting the multi-byte character", async () => {
+    await withTempDir(async (_dir, path) => {
+      const note = "🎉café";
+      const entry: TapEntry = {
+        seq: 7,
+        recorded_at: "2026-08-09T12:04:31.221Z",
+        direction: "request",
+        method: "steps/toolCallRequest",
+        rpc_id: 7,
+        envelope: { jsonrpc: "2.0", id: 7, note },
+      };
+      const line = `${JSON.stringify(entry)}\n`;
+      const bytes = Buffer.from(line, "utf8");
+      const emojiStart = bytes.indexOf(Buffer.from("🎉", "utf8"));
+      // Split mid-way through the emoji's 4-byte UTF-8 sequence, so neither
+      // chunk on its own is valid UTF-8 -- exactly what a buffer that
+      // decoded each poll's bytes to a string before concatenating would
+      // corrupt into a replacement character.
+      const splitAt = emojiStart + 2;
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      appendFileSync(path, bytes.subarray(0, splitAt));
+      const collecting = collect(tail, 1, controller);
+      await Bun.sleep(POLL_MS * 5);
+      appendFileSync(path, bytes.subarray(splitAt));
+
+      const entries = await collecting;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.envelope).toEqual({ jsonrpc: "2.0", id: 7, note });
+    });
+  });
 });
