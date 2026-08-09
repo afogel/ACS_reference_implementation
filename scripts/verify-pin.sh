@@ -24,13 +24,14 @@ if [ -z "$agt_repo" ] || [ -z "$agt_ref" ] || [ -z "$bundle_path" ]; then
   exit 1
 fi
 
+if ! command -v trash >/dev/null 2>&1; then
+  echo "verify-pin: 'trash' is required for scratch-dir cleanup (rm -rf is not permitted in this repo) — install it and re-run" >&2
+  exit 1
+fi
+
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/verify-pin.XXXXXX")"
 cleanup() {
-  if command -v trash >/dev/null 2>&1; then
-    trash "$tmp_dir" >/dev/null 2>&1 || true
-  else
-    rm -rf "$tmp_dir"
-  fi
+  trash "$tmp_dir"
 }
 trap cleanup EXIT
 
