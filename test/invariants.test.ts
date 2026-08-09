@@ -118,4 +118,42 @@ describe("architectural invariants", () => {
       "stdin",
     ]);
   });
+
+  /**
+   * R5.2 -- "an ACS-first reader can trace one action end to end without
+   * reading AGT source". The Inspector is that reader's tool, so the claim
+   * is only real if the tool itself knows nothing about AGT and nothing
+   * about any particular host: it renders ACS envelopes as data. Both term
+   * lists from the two gates above apply to it at once.
+   */
+  it("the Envelope Inspector's source contains zero AGT vocabulary and zero host vocabulary", () => {
+    assertNoVocabulary("packages/inspector/src", [
+      "agt",
+      "AgentControl",
+      "rego",
+      "opa",
+      "intervention_point",
+      "verdict",
+      "claude",
+      "opencode",
+      "hookSpecificOutput",
+      "permissionDecision",
+      "stdin",
+    ]);
+  });
+
+  /**
+   * R5.1 -- envelopes are inspectable *on the wire*. If the Inspector
+   * imported the Guardian's types, "inspectable" would be a claim about our
+   * own type graph instead: any third-party reader of S6 has only the file.
+   * So does this one.
+   */
+  it("the Envelope Inspector imports nothing from the Guardian or the AGT bridge", () => {
+    for (const { file, code } of readSourceFiles("packages/inspector/src")) {
+      for (const spec of ["guardian", "agt-bridge"]) {
+        const found = new RegExp(`from\\s+["'][^"']*${spec}[^"']*["']`).test(code);
+        expect({ file, spec, found }).toEqual({ file, spec, found: false });
+      }
+    }
+  });
 });
