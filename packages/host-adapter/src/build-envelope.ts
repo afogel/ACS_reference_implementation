@@ -267,7 +267,6 @@ function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
   }
 }
 
-/** Loads and parses a hookmap YAML file (e.g. this deployment's claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
  * assertRenderableDecisions. */
