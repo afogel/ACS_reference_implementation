@@ -121,11 +121,37 @@ describe("renderEntry (U20)", () => {
     expect(rendered.split("\n")[0]).toBe("── #3  12:04:31.221  ← RESPONSE  (no method)  (unpaired)");
   });
 
-  it("keeps the envelope verbatim -- pretty-printing only reshapes whitespace", () => {
+  // Retitled by the whole-branch review (finding 2) -- the assertions are
+  // unchanged. What this has always checked is that the JSON *value* round
+  // trips: nothing stripped, nothing reordered, only whitespace reshaped.
+  // "Verbatim" claimed more than that, since S6 stores the value the
+  // Guardian parsed rather than the bytes the host sent.
+  it("changes nothing but whitespace -- the envelope value round trips through the renderer", () => {
     const envelope = { jsonrpc: "2.0", id: 1, result: { decision: "allow", nested: { deep: [1, 2] } } };
     const rendered = renderEntry(entry({ envelope }));
     const jsonStart = rendered.indexOf("{");
 
     expect(JSON.parse(rendered.slice(jsonStart))).toEqual(envelope);
+  });
+
+  // Whole-branch review, finding 8. `isTapEntryShape` deliberately does not
+  // constrain `envelope`, so a hand-written or truncated S6 line reaches the
+  // renderer with the key missing entirely. `JSON.stringify(undefined)`
+  // returns `undefined`, which `join` would coerce into a blank line
+  // indistinguishable from a real empty body.
+  it("marks an entry whose envelope key is absent, instead of emitting a blank body", () => {
+    const withoutEnvelope = {
+      seq: 3,
+      recorded_at: "2026-08-09T12:04:31.221Z",
+      direction: "response",
+      method: "steps/toolCallRequest",
+      rpc_id: 1,
+    } as unknown as TapEntry;
+
+    const lines = renderEntry(withoutEnvelope).split("\n");
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe("── #3  12:04:31.221  ← RESPONSE  steps/toolCallRequest  id=1");
+    expect(lines[1]).toBe("(no envelope recorded)");
   });
 });

@@ -45,7 +45,7 @@ The shaping doc is authoritative for requirements, shapes, and the breadboard. T
 git clone --recurse-submodules https://github.com/afogel/ACS_reference_implementation
 ```
 
-## Quickstart (R7.1 — one command on a laptop)
+## Quickstart (R7.1 — starts with one command on a laptop)
 
 Requires [`bun`](https://bun.sh) and the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI (`claude`) on your `PATH`.
 
@@ -88,7 +88,7 @@ Every ACS envelope crossing the Guardian's wire is printed here as it happens �
 ● DENY  reason_codes=[destructive_shell_command_blocked]  policy_references=[agt_stock#destructive_shell_command_blocked]
 ```
 
-`bun run inspector -- --from-start` replays a session already recorded. **`.acs/envelopes.jsonl` records the wire verbatim, so it carries raw tool arguments** — it is gitignored for that reason and never committed. Full walkthrough, with the real captured output for a deny, an allow, and a schema-invalid envelope: [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md).
+`bun run inspector -- --from-start` replays a session already recorded. **`.acs/envelopes.jsonl` records each envelope the Guardian parsed, unmodified: nothing stripped, nothing redacted. So it carries raw tool arguments** — it is gitignored for that reason and never committed. Full walkthrough, with the real captured output for a deny, an allow, and a schema-invalid envelope: [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md).
 
 **4. Wire the hook into Claude Code.**
 
@@ -124,7 +124,7 @@ Second, through the real `claude` CLI with `.claude/settings.json` installed —
 ### Verify
 
 ```bash
-bun test          # 112 tests across 16 files (111 pass, 1 skip), including the R3.2/R3.3
+bun test          # 121 tests across 16 files (120 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors

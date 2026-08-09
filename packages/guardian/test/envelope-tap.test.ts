@@ -46,7 +46,11 @@ describe("createEnvelopeTap (N26) -- S6's JSONL format", () => {
     });
   });
 
-  it("records the envelope verbatim -- constraint 11, no reformatting or stripping", () => {
+  // Retitled by the whole-branch review (finding 2); the assertion is
+  // unchanged. It has always checked that the JSON value reaches S6
+  // unmodified -- nothing stripped, nothing reordered. "Verbatim" claimed
+  // byte identity, which the tap never had: it is handed `await req.json()`.
+  it("records the envelope unmodified -- constraint 11, no reformatting or stripping", () => {
     withTempDir((dir) => {
       const path = join(dir, "envelopes.jsonl");
       createEnvelopeTap({ path }).write("request", REQUEST, "steps/toolCallRequest");

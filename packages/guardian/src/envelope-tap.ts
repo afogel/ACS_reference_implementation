@@ -1,9 +1,21 @@
 /**
  * writeEnvelopeTap (N26) writes S6: a JSONL record of every ACS envelope
- * that crosses this Guardian's wire, in both directions, exactly as it
- * crossed (global constraint 11). The Envelope Inspector (P4) reads this
- * file and nothing else -- see packages/inspector, which deliberately
- * imports nothing from here.
+ * that crosses this Guardian's wire, in both directions. The Envelope
+ * Inspector (P4) reads this file and nothing else -- see packages/inspector,
+ * which deliberately imports nothing from here.
+ *
+ * What "records the envelope" means here, precisely (global constraint 11,
+ * as corrected by the whole-branch review's finding 2): the tap is handed
+ * the JSON *value* the Guardian parsed, and writes it unmodified -- no field
+ * stripping, no redaction, no reordering of anything we control. It is not a
+ * byte-for-byte copy of the request body, and V2's documentation claimed it
+ * was. The parse happens upstream in server.ts (`await req.json()`) and has
+ * already collapsed duplicate keys, canonicalised number literals, and
+ * hoisted integer-like object keys -- and `arguments` keys are
+ * host-controlled, so `{"0": ...}` is a real shape, not a hypothetical.
+ * Recording raw bytes instead would make `envelope` a string rather than a
+ * JSON value, costing the Inspector its pretty-printing and the round-trip
+ * contract test; the accurate sentence is the better trade.
  *
  * Total by construction (global constraint 8). Every write is wrapped: a
  * failure disables the tap for the process lifetime, reports once, and is
@@ -19,12 +31,12 @@ import { dirname } from "node:path";
 export type TapDirection = "request" | "response";
 
 /**
- * One line of S6. `envelope` is the JSON-RPC object verbatim -- request or
- * response -- and every other field is Guardian-side context the wire does
- * not carry: a sequence number so a reader can detect gaps, a timestamp, the
- * direction, the ACS method (JSON-RPC responses carry none, so the Guardian
- * supplies the one it dispatched), and the JSON-RPC id that pairs the two
- * directions.
+ * One line of S6. `envelope` is the JSON-RPC object as parsed, unmodified --
+ * request or response -- and every other field is Guardian-side context the
+ * wire does not carry: a sequence number so a reader can detect gaps, a
+ * timestamp, the direction, the ACS method (JSON-RPC responses carry none,
+ * so the Guardian supplies the one it dispatched), and the JSON-RPC id that
+ * pairs the two directions.
  */
 export type TapEntry = {
   seq: number;

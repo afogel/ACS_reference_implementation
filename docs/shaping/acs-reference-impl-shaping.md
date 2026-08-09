@@ -291,7 +291,7 @@ All resolved — see `spike-agt-integration.md`.
 | S3 | P3 | `sessionContext` | Hash-chained entries per `session_id` |
 | S4 | P3 | `intent` | Immutable Intent baseline per session |
 | S5 | P3 | `provenance` | `origin` / `derived_from` lineage, carrying AGT `result_labels` between steps |
-| S6 | P3 | `envelope log` | JSONL of every request and response, verbatim, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
+| S6 | P3 | `envelope log` | JSONL of every request and response as parsed, unmodified, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
 | S7 | P3.1 | `manifest.yaml` | Binds the `rego` policy to `data.agt.defaults.verdict`; declares intervention points, tools, approval |
 | S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored |
 | S9 | P3.1 | AGT stock bundle | `policy/lib/*.rego` at the pinned ref. Requires the `opa` CLI on PATH |

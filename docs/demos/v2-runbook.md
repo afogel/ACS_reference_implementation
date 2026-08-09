@@ -11,8 +11,10 @@ This runbook is written from a real run against this tree. Every block below mar
 
 1. A third terminal, beside the Guardian and the agent host, prints every ACS envelope
    as it crosses the wire — request and response, both directions, one entry each.
-2. The rendered JSON is the *same bytes that crossed the wire*, only re-indented. The
-   tap does no reformatting, no field stripping, no redaction, no reordering.
+2. The rendered JSON is the envelope the Guardian parsed, printed unmodified and
+   re-indented. The tap strips no field, redacts nothing, and reorders nothing it
+   controls. It is not a byte-for-byte replay — see *S6 carries raw tool arguments*
+   below for what the JSON parse normalises before the tap ever sees it.
 3. The decision badge makes the outcome legible without reading the JSON: `● DENY`,
    `○ ALLOW`, or `✖ ERROR`, with `reason_codes` and `policy_references` beside it.
 4. Nothing in the Inspector knows what produced the decision. It imports nothing from
@@ -299,12 +301,23 @@ rather than continuing the run above:
 `(no method)` and `(unpaired)` are what the renderer prints for `method: null` and
 `rpc_id: null`. Both are real states on this wire, so both are shown.
 
-## S6 carries raw tool arguments verbatim
+## S6 carries raw tool arguments
 
-`.acs/envelopes.jsonl` is the wire, recorded exactly: no reformatting, no field
-stripping, no redaction, no reordering. Pretty-printing happens at render time only. An
-inspector that showed something other than what was sent would be worse than no
-inspector at all.
+`.acs/envelopes.jsonl` records the JSON value the Guardian parsed, unmodified: no field
+stripping, no redaction, no reordering of anything we control. Pretty-printing happens at
+render time only. An inspector that showed something other than what was sent would be
+worse than no inspector at all.
+
+**One honest qualifier, added by the whole-branch review.** "Unmodified" is a claim about
+what *we* do, not a claim of byte identity. The tap is handed `await req.json()`, so a
+JSON parse has already happened: duplicate keys are collapsed to the last one, number
+literals are canonicalised (`1.0` renders as `1`, `1e2` as `100`), and integer-like
+object keys are hoisted ahead of the rest and sorted. Tool argument names come from the
+host, so an `arguments` object containing both `"0"` and `"a"` is a real possibility
+rather than a contrived one — and it would render with `"0"` first regardless of send
+order. If you need the literal bytes a host sent, capture them at the transport; S6 is
+the parsed envelope. What S6 does guarantee is that nothing between the parse and the
+file removed, rewrote, or hid any part of it.
 
 The consequence is direct: **the log contains whatever your tool calls contained** —
 file paths, command lines, and anything else that rode along in `arguments`. That is why

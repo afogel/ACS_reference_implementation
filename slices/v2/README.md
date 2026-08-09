@@ -52,9 +52,19 @@ Three properties make this worth more than a log viewer:
   slices doc; `: > .acs/envelopes.jsonl` truncates it safely mid-run because the tail
   resets on truncation.
 
-`.acs/envelopes.jsonl` records the wire verbatim — no reformatting, stripping,
-redaction, or reordering — so it carries raw tool arguments. It is gitignored for that
-reason and is never committed.
+`.acs/envelopes.jsonl` records the JSON value the Guardian parsed, unmodified — no field
+stripping, no redaction, no reordering of anything we control — so it carries raw tool
+arguments. It is gitignored for that reason and is never committed.
+
+The precision matters, and V2 first shipped this claim too strongly. The tap is handed
+`await req.json()`, so it stores a JSON *value*, not the request's bytes: the parse has
+already collapsed duplicate keys, canonicalised number literals (`1.0` → `1`), and
+hoisted integer-like object keys ahead of the rest — and `arguments` keys are
+host-controlled, so `{"0": …, "a": …}` is a shape a real host can send. Storing raw bytes
+would make the entry's `envelope` field a string rather than a JSON value, which costs
+the Inspector its pretty-printing and costs the round-trip contract test its subject. The
+accurate sentence is the better trade, and the whole-branch review is what caught the
+inaccurate one.
 
 The implementation plan this slice followed, task by task, is
 [`docs/superpowers/plans/2026-08-09-v2-envelope-inspector.md`](../../docs/superpowers/plans/2026-08-09-v2-envelope-inspector.md).

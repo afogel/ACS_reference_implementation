@@ -25,7 +25,11 @@
 8. **The tap is total.** `writeEnvelopeTap` must never throw, and a tap failure must never change, delay, or suppress a decision. Observability degrades; governance does not. V1 shipped three separate fail-opens before they were caught — the tap is new code on the decision path and gets this constraint explicitly.
 9. **The Inspector contains zero AGT vocabulary and zero host vocabulary.** It reads ACS envelopes as data and knows nothing about AGT or about Claude Code. That is R5.2 stated as a property of the code, and Task 6 enforces it by grep.
 10. **The Inspector imports nothing from `guardian` or `agt-bridge`.** It reads the log file. A compile-time dependency would make "inspectable on the wire" (R5.1) a claim about our own type graph rather than about the wire.
-11. **S6 records exactly what crossed the wire** — no reformatting, no field stripping, no redaction, no reordering. Pretty-printing happens at render time only. An inspector that shows something other than what was sent is worse than no inspector.
+11. **S6 records the JSON value the Guardian parsed, unmodified** — no field stripping, no redaction, no reordering of anything we control. Pretty-printing happens at render time only. An inspector that shows something other than what was sent is worse than no inspector.
+
+    > **Amended after V2's whole-branch review (finding 2).** This constraint originally read "S6 records exactly what crossed the wire", and that was never true of the design it governed: the tap is handed `await req.json()`, so it stores a JSON *value*, not the request's bytes. The parse collapses duplicate keys, canonicalises number literals (`1.0` → `1`, `1e2` → `100`), and hoists integer-like object keys ahead of the rest — and tool argument names are host-controlled, so an `arguments` object carrying `"0"` alongside `"a"` is a real shape, not a hypothetical.
+    >
+    > The over-promise propagated verbatim out of this line into `packages/inspector/src/render.ts`, `docs/demos/v2-runbook.md`, `slices/v2/README.md`, the shaping doc's S6 affordance row, the slices doc's V2 watch-for, and two test titles — every one of them corrected in the same wave, in wording rather than in code. Storing raw bytes would make the entry's `envelope` field a string rather than a JSON value, which breaks the Inspector's pretty-printing and the round-trip contract test: a worse trade than an accurate sentence. The code snippets embedded further down this plan still show the original wording; they are the historical record of what was planned, and this note is what corrects them.
 12. **No new runtime dependencies.** Bun and TypeScript `strict` + `noUncheckedIndexedAccess` only, as in V1.
 
 ---
@@ -650,6 +654,8 @@ export async function startGuardian({
 ```
 
 Replace `handleAcsRequest` with the three-phase version, and move V1's body into `dispatch` unchanged:
+
+> **Corrected after V2's whole-branch review (findings 1 and 4).** The comment below miscounted, and the code inherited the miscount verbatim: `dispatch` leaves by **six** routes, not four — five `return`s plus the rethrow of any non-`EnvelopeValidationError` — so V3's N27 adds a seventh. Worse, the rethrow was the route the "structure guarantees totality" argument did not cover: nothing caught it, so `Bun.serve` answered with a `text/html` 500 that S6 never recorded and `res.json()` could not parse. Shipped code wraps the `dispatch` call in a try/catch that turns any escape into a well-formed JSON-RPC error (still not a decision — N27 stays V3), so every route out of `dispatch` now produces a response object and every response object gets tapped.
 
 ```ts
 /**
