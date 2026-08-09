@@ -120,6 +120,42 @@ describe("createEnvelopeTap (N26) -- S6's JSONL format", () => {
     });
   });
 
+  it("never throws when onError itself throws at construction time", () => {
+    withTempDir((dir) => {
+      const blocker = join(dir, "envelopes.jsonl");
+      writeFileSync(blocker, "");
+      const path = join(blocker, "nested", "envelopes.jsonl");
+
+      expect(() => {
+        createEnvelopeTap({
+          path,
+          onError: () => {
+            throw new Error("onError threw");
+          },
+        });
+      }).not.toThrow();
+    });
+  });
+
+  it("never throws when onError itself throws at write time, and disables the tap", () => {
+    withTempDir((dir) => {
+      const path = join(dir, "envelopes.jsonl");
+      const blocker = join(dir, "envelopes.jsonl");
+      writeFileSync(blocker, "");
+
+      const tap = createEnvelopeTap({
+        path: join(blocker, "nested", "envelopes.jsonl"),
+        onError: () => {
+          throw new Error("onError threw");
+        },
+      });
+
+      expect(() => tap.write("request", REQUEST, "steps/toolCallRequest")).not.toThrow();
+      // Tap should be disabled, so second write is a silent no-op
+      expect(() => tap.write("response", RESPONSE, "steps/toolCallRequest")).not.toThrow();
+    });
+  });
+
   it("NULL_TAP writes nothing and never throws", () => {
     expect(() => NULL_TAP.write("request", REQUEST, "steps/toolCallRequest")).not.toThrow();
     expect(NULL_TAP.path).toBeNull();

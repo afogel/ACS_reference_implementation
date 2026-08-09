@@ -72,12 +72,17 @@ export function createEnvelopeTap({ path, now = () => new Date(), onError }: Cre
 
   const fail = (error: unknown): void => {
     disabled = true;
-    if (onError) {
-      onError(error);
-      return;
+    try {
+      if (onError) {
+        onError(error);
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`envelope tap disabled after failure (${path}): ${message}`);
+    } catch {
+      // Silently swallow any error from the callback or console.error
+      // to maintain the total-by-construction guarantee
     }
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`envelope tap disabled after failure (${path}): ${message}`);
   };
 
   try {
