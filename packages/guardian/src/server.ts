@@ -48,6 +48,7 @@ import {
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
+import { createEnvelopeTap, NULL_TAP, type EnvelopeTap } from "./envelope-tap.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
@@ -113,6 +114,11 @@ export type StartGuardianOptions = {
    * handleAcsRequest against a real bridge, without touching the mapping
    * every other consumer reads. Not meant for production use. */
   mappingPath?: string;
+  /** Path to S6, the JSONL envelope log (N26). Omitted means no tap: every
+   * V1 test constructs Guardians freely and a default-on tap would scatter
+   * files through the working tree. `packages/guardian/src/main.ts` -- the
+   * demo path -- passes it. See the plan's decision P3. */
+  envelopeLogPath?: string;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
@@ -121,10 +127,12 @@ export async function startGuardian({
   hostname,
   manifestPath,
   mappingPath,
+  envelopeLogPath,
 }: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
+  const tap = envelopeLogPath ? createEnvelopeTap({ path: envelopeLogPath }) : NULL_TAP;
 
   const server = Bun.serve({
     hostname: hostname ?? LOOPBACK_ONLY,
@@ -134,7 +142,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping);
+      const response = await handleAcsRequest(req, bridge, mapping, tap);
       return Response.json(response);
     },
   });
@@ -147,6 +155,16 @@ export async function startGuardian({
   };
 }
 
+/**
+ * Three phases, in order: parse, tap the request, dispatch, tap the
+ * response. The tap calls live here and only here -- `dispatch` below has
+ * four return sites and V3 adds a fifth (N27), so tapping inside it would
+ * make totality something a future task has to remember rather than
+ * something the structure guarantees.
+ *
+ * The tap itself is total (see envelope-tap.ts): these two calls cannot
+ * throw, so they cannot turn a governed tool call into an ungoverned one.
+ */
 async function handleAcsRequest(
   req: Request,
   // The role, not `ReturnType<typeof createBridge>`: this handler depends on
@@ -154,14 +172,35 @@ async function handleAcsRequest(
   // factory happens to return.
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
+  tap: EnvelopeTap,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
-    return errorResponse(null, -32700, "Parse error");
+    // Nothing parseable arrived, so there is no request envelope to tap --
+    // the response is deliberately recorded unpaired, which is what the
+    // Inspector renders when a host sends a malformed body.
+    const parseError = errorResponse(null, -32700, "Parse error");
+    tap.write("response", parseError, null);
+    return parseError;
   }
 
+  // Decision P5: before validation, so an envelope that fails the schema is
+  // visible to the Inspector rather than invisible.
+  const method = extractMethod(raw);
+  tap.write("request", raw, method);
+
+  const response = await dispatch(raw, bridge, mapping);
+  tap.write("response", response, method);
+  return response;
+}
+
+async function dispatch(
+  raw: unknown,
+  bridge: ReturnType<typeof createBridge>,
+  mapping: Mapping,
+): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
   let envelope: AcsRequestEnvelope;
@@ -243,6 +282,18 @@ function extractId(raw: unknown): string | number | null {
     const id = (raw as { id: unknown }).id;
     if (typeof id === "string" || typeof id === "number") {
       return id;
+    }
+  }
+  return null;
+}
+
+/** Best-effort method name for tap labelling only. Never used to dispatch --
+ * `dispatch` reads the schema-validated envelope's own `method`. */
+function extractMethod(raw: unknown): string | null {
+  if (typeof raw === "object" && raw !== null && "method" in raw) {
+    const method = (raw as { method: unknown }).method;
+    if (typeof method === "string") {
+      return method;
     }
   }
   return null;

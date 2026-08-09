@@ -10,3 +10,7 @@ __pycache__/
 
 # Subagent-driven-development scratch workspace (ledger, briefs, review packages)
 .superpowers/
+
+# S6, the ACS envelope log (N26). Local demo artifact; carries raw tool
+# arguments verbatim, so it is never committed.
+.acs/

@@ -22,10 +22,13 @@ import { startGuardian } from "./server.ts";
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_MANIFEST_PATH = "policy/manifest.yaml";
+const DEFAULT_ENVELOPE_LOG = ".acs/envelopes.jsonl";
 
 const port = Number(process.env.ACS_GUARDIAN_PORT ?? DEFAULT_PORT);
 const hostname = process.env.ACS_GUARDIAN_HOST;
 const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
+const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 
-const guardian = await startGuardian({ port, hostname, manifestPath });
+const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
 console.log(`Guardian listening at ${guardian.url}`);
+console.log(`Envelope log (S6): ${envelopeLogPath}`);
