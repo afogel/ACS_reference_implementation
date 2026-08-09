@@ -102,6 +102,8 @@ Every slice ends in something demo-able.
 
 **Two failure domains, kept separate.** AGT fails closed on *evaluation* — bad policy output, invalid transform, missing paths — and that produces a `deny` **verdict**, which §6.4 says the host MUST honor regardless of posture. N27 exists so Guardian-side failures also arrive as decisions rather than bare errors, keeping them in that honored path. `on_decision_failure` only governs *delivery*: Guardian silent, transport dead, error with no decision. Conflating the two would either break AGT's invariant or halt production on a network blip.
 
+**⚠️ Blocker discovered in V1 — S13 has no home across processes.** V1 built `S13` as an in-process store, but the Claude Code shim is a **fresh subprocess per hook invocation**, so an in-memory negotiated session config can never survive to the next hook. `handshake()` is also not called on the real path in V1 at all. `N6 applyFailurePosture()` reads S13, so V3 cannot work until this is resolved: either persist the negotiated config (a session-keyed file), or have the shim talk to a session-scoped daemon. The choice ripples — V5's second host is in-process and would not share the constraint, and V6's session chain sits on the same seam. Decide this before V3 starts.
+
 **Rest of the slice is data, not structure.** Disposition coverage lives in S1 (every ACS decision → `permissionDecision` / `updatedInput`) and S8 (stock rules configured to actually fire allow, deny, escalate, transform, and drift-warn). Once the adapter is generic, coverage is configuration.
 
 Wire N21's error branch to N27, and N4's return through N7 here.
@@ -184,6 +186,8 @@ Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
 | N47 | P5 | conformance | `renderMatrix()` | call | → U30 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
+
+**⚠️ Gap discovered in V1 — the Guardian's outbound envelopes are validated by nothing.** Inbound requests get Ajv against all 43 v0.1.0 schemas (N21), but responses are hand-built objects checked by no schema. The conformance harness would therefore measure a wire format that was never itself contract-checked — which quietly weakens exactly the claim C2 exists to prove. Add response validation before the matrix is published. Related: V1 found that `response-envelope.json`'s `result` unconditionally `$ref`s `AcsResult`, which requires `decision` — a ServerHello has no such field, so a handshake response cannot satisfy it. That looks like a genuine v0.1.0 spec gap (no discriminated union for non-decision methods) and is worth an upstream ACS issue, not just a red cell.
 
 **Expect two cells to be honestly red.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target — see D4. Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` in v0.2.
 
