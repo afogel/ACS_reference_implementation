@@ -92,7 +92,8 @@ which is exactly the JSON Claude Code's own hook protocol sends and expects back
 ### Verify
 
 ```bash
-bun test          # 64 tests across 11 files, including the R3.2/R3.3 architectural gates below
+bun test          # 66 tests across 11 files (65 pass, 1 skip), including the R3.2/R3.3 gates below
+                  # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
 ```
 
