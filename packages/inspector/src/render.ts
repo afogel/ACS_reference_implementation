@@ -1,0 +1,114 @@
+/**
+ * U20 (envelope stream) and U21 (decision badge).
+ *
+ * Both functions are pure: no clock, no env, no process. The CLI decides
+ * whether the terminal wants ANSI and passes `color`; tests assert exact
+ * plain strings. Nothing here knows what produced a decision -- the badge
+ * reads ACS's own `decision`, `reason_codes`, and `policy_references`
+ * fields and nothing else (global constraint 9).
+ */
+import type { TapEntry } from "./tail-envelope-log.ts";
+
+export type RenderOptions = { color?: boolean; indent?: number };
+
+const RESET = "\u001b[0m";
+const RED = "\u001b[31m";
+const GREEN = "\u001b[32m";
+const YELLOW = "\u001b[33m";
+const CYAN = "\u001b[36m";
+const DIM = "\u001b[2m";
+
+type PolicyReference = { policy_id?: string; policy_version?: string; rule_id?: string };
+type DecisionResult = {
+  decision?: unknown;
+  reason_codes?: unknown;
+  policy_references?: unknown;
+};
+type ResponseEnvelope = { result?: DecisionResult; error?: { code?: unknown; message?: unknown } };
+
+function paint(text: string, color: string, enabled: boolean): string {
+  return enabled ? `${color}${text}${RESET}` : text;
+}
+
+/** `2026-08-09T12:04:31.221Z` -> `12:04:31.221`. Sliced, not parsed: UTC and
+ * locale-independent, so rendered output is the same everywhere. */
+function clockOf(recordedAt: string): string {
+  const time = recordedAt.slice(11, 23);
+  return time.length === 12 ? time : recordedAt;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function referenceList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is PolicyReference => typeof item === "object" && item !== null)
+    .map((ref) => (ref.rule_id ? `${ref.policy_id ?? "?"}#${ref.rule_id}` : `${ref.policy_id ?? "?"}`));
+}
+
+/** U21. Null when this entry carries no decision and no error: a request, or
+ * a response such as a ServerHello. */
+export function renderDecisionBadge(entry: TapEntry, options: RenderOptions = {}): string | null {
+  if (entry.direction !== "response") {
+    return null;
+  }
+  const color = options.color ?? false;
+  const envelope = (typeof entry.envelope === "object" && entry.envelope !== null ? entry.envelope : {}) as ResponseEnvelope;
+
+  if (envelope.error) {
+    const code = typeof envelope.error.code === "number" ? envelope.error.code : "?";
+    const message = typeof envelope.error.message === "string" ? envelope.error.message : "";
+    return paint(`✖ ERROR ${code}${message ? `  ${message}` : ""}`, RED, color);
+  }
+
+  const result = envelope.result;
+  if (!result || typeof result.decision !== "string") {
+    return null;
+  }
+
+  const reasonCodes = stringList(result.reason_codes);
+  const references = referenceList(result.policy_references);
+
+  let head: string;
+  if (result.decision === "deny") {
+    head = paint("● DENY", RED, color);
+  } else if (result.decision === "allow" && references.length > 0) {
+    // ACS has no `warn`; a policy that fired but let the action proceed
+    // arrives as `allow` with a non-empty policy_references. Rendering it
+    // identically to a clean allow is exactly what this badge exists to
+    // prevent (slices doc, section V2).
+    head = paint('◐ ALLOW (policy fired — ACS "warn")', YELLOW, color);
+  } else if (result.decision === "allow") {
+    head = paint("○ ALLOW", GREEN, color);
+  } else {
+    head = paint(`◆ ${result.decision.toUpperCase()}`, CYAN, color);
+  }
+
+  const parts = [head];
+  if (reasonCodes.length > 0) {
+    parts.push(`reason_codes=[${reasonCodes.join(", ")}]`);
+  }
+  if (references.length > 0) {
+    parts.push(`policy_references=[${references.join(", ")}]`);
+  }
+  return parts.join("  ");
+}
+
+/** U20. Header line, optional badge line, then the envelope as pretty JSON --
+ * the same bytes that crossed the wire, only re-indented. */
+export function renderEntry(entry: TapEntry, options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+  const arrow = entry.direction === "request" ? "→ REQUEST " : "← RESPONSE";
+  const method = entry.method ?? "(no method)";
+  const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
+
+  const header = paint(`── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${arrow}  ${method}  ${id}`, DIM, color);
+  const badge = renderDecisionBadge(entry, options);
+  const body = JSON.stringify(entry.envelope, null, options.indent ?? 2);
+
+  return [header, ...(badge === null ? [] : [badge]), body].join("\n");
+}
