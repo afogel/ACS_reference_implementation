@@ -16,7 +16,7 @@ describe("mapVerdict", () => {
     expect(d.decision).toBe("deny");
     expect(d.reasoning).toBe("matched pattern X");
     expect(d.reason_codes).toEqual(["destructive_shell_command_blocked"]);
-    expect(d.policy_references?.[0].rule_id).toBe("destructive_shell_command_blocked");
+    expect(d.policy_references?.[0]?.rule_id).toBe("destructive_shell_command_blocked");
   });
 
   // R1.2 — the whole warn round trip rests on this.
@@ -24,7 +24,7 @@ describe("mapVerdict", () => {
     const d = mapVerdict({ decision: "warn", reason: "drift_detected", message: "drift 0.8" }, m);
     expect(d.decision).toBe("allow");
     expect(d.policy_references?.length).toBeGreaterThan(0);
-    expect(d.policy_references?.[0].rule_id).toBe("drift_detected");
+    expect(d.policy_references?.[0]?.rule_id).toBe("drift_detected");
   });
 
   it("distinguishes warn-allow from clean allow by policy_references", () => {
@@ -39,7 +39,7 @@ describe("mapVerdict", () => {
   it("emits only lowercase decisions (C7)", () => {
     for (const dec of ["allow", "deny", "warn", "escalate", "transform"] as const) {
       const out = mapVerdict({ decision: dec, reason: "r" }, m).decision;
-      expect(out).toBe(out.toLowerCase());
+      expect(out.toLowerCase()).toBe(out);
     }
   });
 });

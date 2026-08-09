@@ -13,8 +13,14 @@ type VerdictRule = {
   require_policy_references?: boolean;
 };
 
-/** A leaf of field_synthesis: either copy a verdict field, or emit a fixed value. */
-type FieldSource = { source: string; wrap?: "array" };
+/** A leaf of field_synthesis that copies a verdict field verbatim. */
+type FieldSource = { source: string };
+/** A leaf of field_synthesis that wraps a scalar verdict field into a
+ * single-element array -- the only shape reason_codes' string verdict
+ * field (verdict.reason) can take to satisfy ACS's `string[]`. `wrap` is
+ * required here (not optional) precisely so there is no third case to
+ * handle: a string source is always wrapped, never cast unsound. */
+type WrappedFieldSource = { source: string; wrap: "array" };
 type FieldLiteral = { literal: string };
 
 export type Mapping = {
@@ -24,7 +30,7 @@ export type Mapping = {
   verdicts: Record<string, VerdictRule>;
   field_synthesis: {
     reasoning: FieldSource;
-    reason_codes: FieldSource;
+    reason_codes: WrappedFieldSource;
     policy_references: {
       rule_id: FieldSource;
       policy_id: FieldLiteral;
@@ -37,7 +43,7 @@ export function loadMapping(path: string): Mapping {
 }
 
 /** Resolves a field_synthesis `source: "verdict.<field>"` path against a verdict. */
-function readVerdictField(verdict: AgtVerdict, source: FieldSource): unknown {
+function readVerdictField(verdict: AgtVerdict, source: { source: string }): unknown {
   const field = source.source.slice("verdict.".length) as keyof AgtVerdict;
   return verdict[field];
 }
@@ -58,7 +64,7 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
 
   const reasonForCodes = readVerdictField(verdict, fs.reason_codes);
   if (typeof reasonForCodes === "string") {
-    out.reason_codes = fs.reason_codes.wrap === "array" ? [reasonForCodes] : (reasonForCodes as unknown as string[]);
+    out.reason_codes = [reasonForCodes];
   }
 
   const ruleId = readVerdictField(verdict, fs.policy_references.rule_id);

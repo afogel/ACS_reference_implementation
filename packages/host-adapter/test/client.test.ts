@@ -51,7 +51,16 @@ describe("guardianClient.post", () => {
       const response = await guardianClient.post(`http://localhost:${mock.port}/acs`, envelope);
 
       expect(capturedBody).toEqual(envelope as unknown as Record<string, unknown>);
-      expect(capturedContentType).toContain("application/json");
+      if (capturedContentType === null) {
+        throw new Error("mock server captured no content-type header");
+      }
+      // Rebind to a plain (non-closure-mutated) const: `capturedContentType`
+      // is reassigned inside the fetch handler above, and TS's generic
+      // inference for expect<T>() doesn't pick up the flow-narrowing on a
+      // variable a closure can still write to, even though the narrowing
+      // itself is sound here (the closure has already run by this point).
+      const contentType: string = capturedContentType;
+      expect(contentType).toContain("application/json");
       expect(response.result?.decision).toBe("allow");
     } finally {
       mock.stop(true);
