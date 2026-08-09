@@ -272,7 +272,9 @@ metadata:
 policies:
   agt_stock:
     type: rego
-    bundle: policy/lib
+    bundle: lib   # ⚠️ amended in execution: relative to THIS FILE's directory, not cwd.
+                  # `policy/lib` here resolves to policy/policy/lib and hard-fails
+                  # runtime_error:policy_invocation_failed. Still no leading `./` (C2).
     query: data.agt.defaults.verdict
 intervention_points:
   pre_tool_call:
