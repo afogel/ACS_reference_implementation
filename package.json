@@ -1,0 +1,13 @@
+{
+  "name": "acs-reference-implementation",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "bun test",
+    "verify:pin": "bash scripts/verify-pin.sh"
+  },
+  "dependencies": {
+    "agent-control-specification": "0.3.1-beta.0"
+  }
+}

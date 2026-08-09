@@ -7,3 +7,6 @@ build/
 *.log
 .venv/
 __pycache__/
+
+# Subagent-driven-development scratch workspace (ledger, briefs, review packages)
+.superpowers/

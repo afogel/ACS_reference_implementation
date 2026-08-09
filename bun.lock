@@ -1,0 +1,35 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "acs-reference-implementation",
+      "dependencies": {
+        "agent-control-specification": "0.3.1-beta.0",
+      },
+    },
+  },
+  "packages": {
+    "agent-control-specification": ["agent-control-specification@0.3.1-beta.0", "", { "optionalDependencies": { "agent-control-specification-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-darwin-x64": "0.3.1-beta.0", "agent-control-specification-linux-arm64-gnu": "0.3.1-beta.0", "agent-control-specification-linux-x64-gnu": "0.3.1-beta.0", "agent-control-specification-opa-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-opa-darwin-x64": "0.3.1-beta.0", "agent-control-specification-opa-linux-arm64": "0.3.1-beta.0", "agent-control-specification-opa-linux-x64": "0.3.1-beta.0", "agent-control-specification-opa-win32-x64": "0.3.1-beta.0", "agent-control-specification-win32-x64-msvc": "0.3.1-beta.0" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.100.0", "@langchain/core": ">=1.1.0", "@openai/agents": ">=0.11.0", "langchain": ">=1.0.0" }, "optionalPeers": ["@anthropic-ai/sdk", "@langchain/core", "@openai/agents", "langchain"] }, "sha512-vD1N169F2YhTCLbF4u7hEV5xfmAY1vziq4bHL2xhBa5QNOhdeEzrTdOIshWZw46fxxPJzEYDjQyjSmI2NnHCuQ=="],
+
+    "agent-control-specification-darwin-arm64": ["agent-control-specification-darwin-arm64@0.3.1-beta.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-6kr1DAeFOBf/8Q7eNFqLtUoUfRqIDTqZ2QvkIvSKxDYh3iY2/8cizn0bzbJJofuba02aDV1oLEd5vvgcYkbWAg=="],
+
+    "agent-control-specification-darwin-x64": ["agent-control-specification-darwin-x64@0.3.1-beta.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-yFLEv/u77ZnErjcfLPCExL+ZeNRlOQ1Gg7l1VZjuTH9VQyIrTBXDHVb5czH6T9WFyozHRtt/NPud1XANeKGk+g=="],
+
+    "agent-control-specification-linux-arm64-gnu": ["agent-control-specification-linux-arm64-gnu@0.3.1-beta.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-y1eKUzmkuPBr4HymQXdVImQA/opjuwv+I1nYkH1TTnkZf9Yvo9PWePbrhDTNH/ZFE/FvUtGLZfUIPU5PJceVEw=="],
+
+    "agent-control-specification-linux-x64-gnu": ["agent-control-specification-linux-x64-gnu@0.3.1-beta.0", "", { "os": "linux", "cpu": "x64" }, "sha512-AaC7jPQe2RX56nGdnrcqL2JmjLMw4bP+J6rJyrNTr8YGgZtAL5R+hcbHZdqNnsUssoD57mJLOjl8OdnOJ07+SA=="],
+
+    "agent-control-specification-opa-darwin-arm64": ["agent-control-specification-opa-darwin-arm64@0.3.1-beta.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Sdqgve222Y+aq20Rfa4yOWnD+u1SygeFWLD+N0dsrFzSKQCkW3aRg3EJkYBmgzGXvHi6qheL9zWRYkaxqaypww=="],
+
+    "agent-control-specification-opa-darwin-x64": ["agent-control-specification-opa-darwin-x64@0.3.1-beta.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-6hZCNloScj0RlwvkzOUNcnYEpkvObcy9P88a1tKZA7vztcKfTsKCwAjq1rPUWAvI48BG3bldOLdLaHXbyvutdw=="],
+
+    "agent-control-specification-opa-linux-arm64": ["agent-control-specification-opa-linux-arm64@0.3.1-beta.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-7n/0kqzuXVmX/eccpw6yEjD4n5aFd0aRqpXs0EtDZS5P1DhIORKR/w1flrr1FOvVv0UJoFDM7p78STwO8IdIHw=="],
+
+    "agent-control-specification-opa-linux-x64": ["agent-control-specification-opa-linux-x64@0.3.1-beta.0", "", { "os": "linux", "cpu": "x64" }, "sha512-UgvO8h8c3cEVht/Nkflx0BbA5vKFatX3B5Q1D/g6pD+tXidZzs4HmZaKcazaniPuuqzbrz70eAYF92yoyjP4OA=="],
+
+    "agent-control-specification-opa-win32-x64": ["agent-control-specification-opa-win32-x64@0.3.1-beta.0", "", { "os": "win32", "cpu": "x64" }, "sha512-hNHRXGxQ3pnagMdeowu3WgskHrF3QqX/gclesv3fesTq6xn0IKDW2/4iKdAq5lLYFk49f/fQYPV/ybtpaVwmow=="],
+
+    "agent-control-specification-win32-x64-msvc": ["agent-control-specification-win32-x64-msvc@0.3.1-beta.0", "", { "os": "win32", "cpu": "x64" }, "sha512-+9/DAvNb1bGPQwYOppaiVctxDs0i8RalbZnUuobJLxghqmR4GN9JpqGKBwdk4Du9EIRwRkP5C4/AjmPj5vr+RA=="],
+  }
+}
