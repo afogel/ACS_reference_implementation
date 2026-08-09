@@ -1,0 +1,219 @@
+---
+shaping: true
+---
+
+# ACS Reference Implementation over AGT — Slices
+
+Implementation plan for Shape C. Ground truth for slice definitions; the shaping doc (`acs-reference-impl-shaping.md`) remains ground truth for R, shapes, and the breadboard.
+
+Every slice ends in something demo-able.
+
+---
+
+## Slice Summary
+
+| # | Slice | Parts | Demo |
+|---|-------|-------|------|
+| V1 | One host, one hook, a real AGT decision | C1, C3, C4 | "Ask Claude Code for a destructive shell command. AGT's stock policy denies it, and the reason lands in the transcript." |
+| V2 | Envelope Inspector | C4 | "Watch the ACS request and response JSON stream live while you work." |
+| V3 | All five dispositions, and both failure postures | C3, C4 | "One bundle produces allow, deny, ask, defer, and a rewritten tool call. Kill the Guardian under `proceed` and the step proceeds with an audit event; under `deny` it blocks. Posture negotiated at handshake." |
+| V4 | Output redaction on Claude Code | C3 | "AGT's own package documents that Claude Code cannot redact tool output. Here it is, redacted, by AGT's stock `redact` policy." |
+| V5 | Second host, zero AGT changes | C3 | "Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT." |
+| V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried by ACS provenance." |
+| V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case." |
+| V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
+
+**Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but it can only be green once V1–V6 exist to be measured. V8 is what keeps V7 true after upstream moves.
+
+---
+
+## V1: One host, one hook, a real AGT decision
+
+**Demo:** In Claude Code, ask for a destructive shell command. AGT's stock policy denies it; the deny reason appears in the transcript.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U1 | P1 | claude-code | prompt input | type | → N1 | — |
+| U2 | P1 | claude-code | tool permission outcome in transcript | render | — | — |
+| N1 | P1 | acs-hook shim | generic hook entrypoint, reads hook JSON on stdin | call | → N2 | — |
+| N2 | P1 | `@acs/host-adapter` | `buildEnvelope(event, payload, hookmap)` | call | → N4 | — |
+| N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` | call | → U2 | — |
+| N4 | P1 | `@acs/host-adapter` | `guardianClient.post()` JSON-RPC over HTTP | call | → N20 | → N3 |
+| N5 | P1 | `@acs/host-adapter` | `handshake()` — negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
+| N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
+| N28 | P3 | guardian | `handshakeResponder()` — ServerHello | call | — | → N5 |
+| S13 | P1 | store | `negotiated session config` | — | — | → N6 (V3) |
+| N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N23 | — |
+| N23 | P3 | guardian | `assembleSnapshot()` — envelope → AGT snapshot | call | → N30 | — |
+| N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision | call | — | → N4 |
+| N30 | P3.1 | agt-bridge | `evaluate_intervention_point(point, snapshot)` | call | — | → N24 |
+| N31 | P3.1 | agt-bridge | `AgentControl.from_path(manifest.yaml)` at boot | call | — | → N30 |
+| S1 | P1 | store | `claude-code.hookmap.yaml` | — | — | → N2, N3 |
+| S7 | P3.1 | store | `manifest.yaml`, binding `rego` → `data.agt.defaults.verdict` | — | — | → N31 |
+| S8 | P3.1 | store | `data.agt.defaults.config` | — | — | → N31 |
+| S9 | P3.1 | store | AGT stock bundle at pinned ref | — | — | → N31 |
+| S10 | shared | store | `mapping.yaml` | — | — | → N23, N24 |
+| S11 | shared | store | `agt.lock` | — | — | → N31 |
+
+**Scope note.** Only `pre_tool_call` is wired. No session state, no tap, no second host. `N23` assembles the snapshot from the envelope alone; it starts reading S3/S4/S5 in V6.
+
+**Setup cost this slice absorbs:** the `opa` CLI on PATH (S9 needs it), the pinned AGT checkout, and the first cut of `mapping.yaml`.
+
+---
+
+## V2: Envelope Inspector
+
+**Demo:** Watch the ACS request and response JSON stream live while you work in Claude Code.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U20 | P4 | inspector | envelope stream, request/response JSON pairs | render | — | — |
+| U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
+| N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
+| N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
+| S6 | P3 | store | `envelope log`, JSONL | — | — | → N50 |
+
+**Why this early.** R5.1 and R5.2 are must-haves, and an ACS-first reader needs to see envelopes before anything more elaborate is worth showing. U21 is also how `warn` becomes visible: a `warn` arrives as `allow` with a non-empty `policy_references`, and the badge is what makes that legible rather than buried.
+
+---
+
+## V3: All five dispositions, and both failure postures
+
+**Demo:** One bundle produces allow, deny, ask, defer, and a rewritten tool call. Then kill the Guardian mid-flight twice — once under `on_decision_failure: proceed`, where the step proceeds and an audit event appears; once under `deny`, where it blocks. Same adapter, same policy, posture negotiated at handshake.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U23 | P4 | inspector | posture badge: negotiated `on_decision_failure` + count of audited fail-open proceeds | render | — | — |
+| N6 | P1 | `@acs/host-adapter` | `applyFailurePosture()` — no decision within timeout → negotiated posture (default `proceed`); audits every fail-open proceed | call | → S14, → N3 | — |
+| N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults | call | → N3, → N6 | — |
+| N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error | call | → N26 | → N4 |
+| N51 | P4 | inspector | `tailAuditSinks()` | observe | → U23 | — |
+| S14 | P1 | store | `audit sink` — every fail-open proceed, per §6.4's MUST | — | — | → N51 |
+
+**Two failure domains, kept separate.** AGT fails closed on *evaluation* — bad policy output, invalid transform, missing paths — and that produces a `deny` **verdict**, which §6.4 says the host MUST honor regardless of posture. N27 exists so Guardian-side failures also arrive as decisions rather than bare errors, keeping them in that honored path. `on_decision_failure` only governs *delivery*: Guardian silent, transport dead, error with no decision. Conflating the two would either break AGT's invariant or halt production on a network blip.
+
+**Rest of the slice is data, not structure.** Disposition coverage lives in S1 (every ACS decision → `permissionDecision` / `updatedInput`) and S8 (stock rules configured to actually fire allow, deny, escalate, transform, and drift-warn). Once the adapter is generic, coverage is configuration.
+
+Wire N21's error branch to N27, and N4's return through N7 here.
+
+---
+
+## V4: Output redaction on Claude Code
+
+**Demo:** AGT's own Claude Code package documents that it cannot redact tool output. Here is a tool result redacted by AGT's stock `redact` policy, delivered through `updatedToolOutput`.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U3 | P1 | claude-code | rewritten tool output in transcript | render | — | — |
+
+New entries in S1 for `PostToolUse` → `steps/toolCallResult`, and in S8 for the `redact` rules.
+
+**Blocked on follow-up F1** — confirm by hand that `PostToolUse.updatedToolOutput` rewrites tool results as the current docs describe. If it does not, this slice drops and R3.8 moves to another capability; nothing downstream depends on it.
+
+**Framing discipline (R4.3).** The claim is that per-host modules freeze capability at the moment they are written, while one contract picks up new host capability for every runtime at once. It is not that AGT got something wrong. Their README was accurate when written.
+
+---
+
+## V5: Second host, zero AGT changes
+
+**Demo:** Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U10 | P2 | opencode | prompt input | type | → N10 | — |
+| U11 | P2 | opencode | tool decision surface | render | — | — |
+| U12 | P2 | opencode | redacted tool output | render | — | — |
+| N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
+| N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — same module as N2 | call | → N13 | — |
+| N12 | P2 | `@acs/host-adapter` | `renderDecision()` — same module as N3 | call | → U11, → U12 | — |
+| N13 | P2 | `@acs/host-adapter` | `guardianClient.post()` — same module as N4 | call | → N20 | → N16 |
+| N14 | P2 | `@acs/host-adapter` | `handshake()` — same module as N5 | call | → N28 | → S15 |
+| N15 | P2 | `@acs/host-adapter` | `applyFailurePosture()` — same module as N6 | call | → S16, → N12 | — |
+| N16 | P2 | `@acs/host-adapter` | `validateDecision()` — same module as N7 | call | → N12, → N15 | — |
+| S2 | P2 | store | `opencode.hookmap.yaml` | — | — | → N11, N12 |
+| S15 | P2 | store | `negotiated session config` | — | — | → N15 |
+| S16 | P2 | store | `audit sink` | — | — | → N51 |
+
+**This is the slice the whole project exists for.** The demo is the diff, not the feature. Two new artifacts — a shim and a hookmap — against zero changes anywhere else.
+
+**Blocked on follow-up F2** — confirm an OpenCode plugin can express deny and modify through `tool.execute.before` / `.after`. AGT's own OpenCode package does both, so the mechanism is evidenced; this is confirmation, not discovery.
+
+---
+
+## V6: Session state and provenance carriage
+
+**Demo:** The SessionContext chain grows per step. AGT emits `result_labels` at one step and receives them back as `input.ifc.source_labels` at the next, carried by ACS provenance.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U22 | P4 | inspector | session chain view: SessionContext entries and lineage | render | — | — |
+| N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
+| N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
+| S3 | P3 | store | `sessionContext`, hash-chained per `session_id` | — | — | → N23 |
+| S4 | P3 | store | `intent`, immutable baseline per session | — | — | → N23 |
+| S5 | P3 | store | `provenance` — `origin` / `derived_from`, carrying `result_labels` | — | — | → N23 |
+
+**This is R8.1 made concrete.** AGT's `verdict.schema.json` says the core "stores and propagates nothing" and requires the host to persist labels and re-supply them. This slice is the Guardian doing exactly that job — the one AGT's spec asks a host to do and declines to standardize. Nothing here criticizes AGT; it fills a role AGT explicitly delegates.
+
+Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
+
+---
+
+## V7: Conformance matrix
+
+**Demo:** Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 verdicts | render | — | — |
+| U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
+| N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
+| N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
+| N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
+| N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
+| N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
+| N47 | P5 | conformance | `renderMatrix()` | call | → U30 | — |
+| N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
+
+**Expect two cells to be honestly red.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target — see D4. Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` in v0.2.
+
+R5.3 lands here: the matrix *is* the profile declaration.
+
+---
+
+## V8: Upstream drift watch
+
+**Demo:** Point the harness at AGT `main`. A changed enum value turns a cell red and names the field.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| U31 | P5 | conformance | drift detail: changed point, verdict, or schema field | render | — | — |
+| N45 | P5 | conformance | `fetchUpstreamSurfaces()` — AGT wire schemas and enums at `main` | call | → S12 | — |
+| N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N47 |
+| S12 | P5 | store | upstream AGT surfaces | — | — | → N46 |
+
+Surfaces watched, and nothing else (R2.4): `manifest.schema.json`, `policy-input.schema.json`, `verdict.schema.json`, `snapshot.schema.json`, the intervention-point enum, the verdict enum, `reserved-reasons.json`, and the stock bundle's `data.agt.defaults.config` keys.
+
+Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes between minor versions, so this is the slice that decides whether the reference implementation is still true six months after the meeting.
+
+---
+
+## Risks and dependencies
+
+| # | Risk | Slice | Handling |
+|---|------|-------|----------|
+| 1 | `updatedToolOutput` does not behave as documented | V4 | Confirm early (F1). V4 drops cleanly if it fails |
+| 2 | OpenCode plugin cannot express modify | V5 | Confirm early (F2). Falls back to deny-only, weakening but not breaking V5 |
+| 3 | `opa` CLI dependency raises setup friction | V1 | Cedar is the built-in fallback with a parity library — that is D7 |
+| 4 | Two model-call cells cannot go green on v0.1.0 | V7 | Ship red with a stated reason; drive `steps/modelCall` into v0.2 |
+| 5 | Upstream AGT breaks the contract mid-project | all | V8 exists for this, but lands late — consider pulling N45/N46 forward if upstream churn shows up during V1 |
+
+## Open decisions carried from shaping
+
+| # | Decision | Blocks |
+|---|----------|--------|
+| D1 | Confirm OpenCode as host #2 | V5 |
+| D3 | Hook coverage beyond AGT's eight | V7 scope |
+| D4 | Spec `steps/modelCall` for v0.2 as part of this work | V7 red cells |
+| D5 | Determinism of the demo | V1 onward |
+| D7 | Rego versus Cedar for the demo bundle | V1 |
