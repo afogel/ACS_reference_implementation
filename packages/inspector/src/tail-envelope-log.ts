@@ -145,28 +145,43 @@ export function tailEnvelopeLog({
         offset = size;
 
         let added = false;
-        let newline = pending.indexOf(NEWLINE);
-        while (newline !== -1) {
-          const line = pending.subarray(0, newline).toString("utf8");
-          pending = pending.subarray(newline + 1);
-          newline = pending.indexOf(NEWLINE);
+        try {
+          let newline = pending.indexOf(NEWLINE);
+          while (newline !== -1) {
+            const line = pending.subarray(0, newline).toString("utf8");
+            pending = pending.subarray(newline + 1);
+            newline = pending.indexOf(NEWLINE);
 
-          if (line.trim() === "") {
-            continue;
-          }
-          try {
-            const parsed: unknown = JSON.parse(line);
-            if (!isTapEntryShape(parsed)) {
-              throw new Error("line parsed as JSON but does not match the TapEntry shape");
+            if (line.trim() === "") {
+              continue;
             }
-            ready.push(parsed);
-            added = true;
-          } catch (error) {
-            onMalformedLine(line, error);
+            try {
+              const parsed: unknown = JSON.parse(line);
+              if (!isTapEntryShape(parsed)) {
+                throw new Error("line parsed as JSON but does not match the TapEntry shape");
+              }
+              ready.push(parsed);
+              added = true;
+            } catch (error) {
+              // `onMalformedLine` is caller-supplied and may throw. Guarded
+              // here rather than left to poll()'s outer catch, which would
+              // abandon the rest of this batch: `offset` is already at
+              // `size`, so any complete line still sitting in `pending`
+              // would never be re-scanned -- no later tick has anything new
+              // to read. Reporting one bad line must not cost the good ones
+              // behind it (whole-branch review, finding 5).
+              reportMalformedLine(onMalformedLine, line, error);
+            }
           }
-        }
-        if (added) {
-          wake?.();
+        } finally {
+          // In the `finally`, not after the loop: an entry already pushed to
+          // `ready` must reach the consumer even if the scan above left by a
+          // throw. It used to sit undelivered until some unrelated write --
+          // or the abort -- happened to fire `wake` (whole-branch review,
+          // finding 5).
+          if (added) {
+            wake?.();
+          }
         }
       }
     } catch (error) {
@@ -177,6 +192,12 @@ export function tailEnvelopeLog({
       // the whole process down. Skip this tick instead: the next one's
       // sizeOf() sees the gap (or the file's return) and resyncs on its
       // own.
+      //
+      // The only route here is a failed read: a caller-supplied
+      // `onMalformedLine` is guarded at its own call site (finding 5), so it
+      // no longer reaches this catch and no longer abandons the rest of a
+      // batch. The tail-envelope-log tests cover this branch through a
+      // deterministic EISDIR rather than through a lost race.
       warnPollError(error);
     }
   }
@@ -247,6 +268,22 @@ function readRange(path: string, offset: number, length: number): Buffer {
     return buffer.subarray(0, read);
   } finally {
     closeSync(fd);
+  }
+}
+
+/** Calls the caller's malformed-line reporter without letting it break the
+ * scan. A reporter that throws gets one warning of its own; the line it was
+ * reporting is still skipped, and the lines after it are still parsed. */
+function reportMalformedLine(
+  onMalformedLine: (line: string, error: unknown) => void,
+  line: string,
+  error: unknown,
+): void {
+  try {
+    onMalformedLine(line, error);
+  } catch (callbackError) {
+    const message = callbackError instanceof Error ? callbackError.message : String(callbackError);
+    console.error(`onMalformedLine threw while reporting an unparseable envelope-log line (${message})`);
   }
 }
 

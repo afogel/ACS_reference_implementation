@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { appendFileSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tailEnvelopeLog, type TapEntry } from "../src/tail-envelope-log.ts";
@@ -302,6 +302,104 @@ describe("tailEnvelopeLog (N50)", () => {
       const entries = await collect(tail, 1, controller);
       expect(entries.map((e) => e.seq)).toEqual([3]);
       expect(malformed).toEqual([badLine]);
+    });
+  });
+
+  // Whole-branch review, finding 5. `if (added) wake?.()` used to sit after
+  // `onMalformedLine(...)` inside the same `try`, so a reporter that threw
+  // skipped the wake-up entirely: an entry already pushed to `ready` sat
+  // undelivered until some later write -- or the abort -- happened to fire
+  // `wake` for an unrelated reason. Reproduced at 300ms of silence before the
+  // fix. The good line here is written BEFORE the bad one so that `added` is
+  // already true when the throw happens.
+  it("delivers an entry parsed before a throwing onMalformedLine, without waiting for another write", async () => {
+    await withTempDir(async (_dir, path) => {
+      let calls = 0;
+      writeFileSync(path, entryLine(1, "request") + "{not json\n");
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: () => {
+          calls += 1;
+          throw new Error("reporter blew up");
+        },
+      });
+
+      // Raced against a timer rather than read through `collect`, because
+      // `collect`'s own deadline calls `controller.abort()` -- and `stop()`
+      // fires `wake?.()` on the way out, which is exactly the incidental
+      // rescue that made this bug look benign. No further appends and no
+      // abort inside the window: the only thing that can deliver entry #1
+      // is the wake-up the poll itself owes the drain loop.
+      const first = tail.next();
+      const outcome = await Promise.race([
+        first.then(({ value }) => (value === undefined ? "ended" : `seq:${value.seq}`)),
+        Bun.sleep(POLL_MS * 20).then(() => "stranded" as const),
+      ]);
+      controller.abort();
+      await first;
+
+      expect(outcome).toBe("seq:1");
+      expect(calls).toBe(1);
+    });
+  });
+
+  // The other half of finding 5: `offset` is already at `size` by the time a
+  // line is scanned, so a batch abandoned mid-scan strands every complete
+  // line still in `pending` -- no later tick has anything new to read, and
+  // they are never re-scanned. Guarding the reporter at its own call site is
+  // what keeps the scan going.
+  it("keeps parsing the lines behind a bad one when onMalformedLine throws", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, "{not json\n" + entryLine(2, "response") + entryLine(3, "request"));
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: () => {
+          throw new Error("reporter blew up");
+        },
+      });
+
+      const entries = await collect(tail, 2, controller, 1000);
+      expect(entries.map((e) => e.seq)).toEqual([2, 3]);
+    });
+  });
+
+  // `poll()`'s outer try/catch was carried through the task loop as "possibly
+  // unreachable, definitely untested". It is reachable, and it does not need
+  // a lost race to get there: pointing the tail at a directory makes
+  // `existsSync` true and `statSync().size` non-zero, so the read is
+  // attempted and `readSync` throws EISDIR every tick. Without the catch,
+  // that throw leaves a bare timer callback and takes the process down.
+  it("survives a read that throws every tick, and resyncs once the path becomes a real file", async () => {
+    await withTempDir(async (_dir, path) => {
+      const asDirectory = `${path}.d`;
+      mkdirSync(asDirectory);
+      // Non-zero st_size for a directory, so `size > offset` and the read is
+      // actually attempted rather than skipped.
+      writeFileSync(join(asDirectory, "child"), "x");
+
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({ path: asDirectory, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+      const collecting = collect(tail, 1, controller, 2000);
+
+      // Several ticks against the unreadable path. The process is still
+      // alive on the other side of this sleep, which is the assertion.
+      await Bun.sleep(POLL_MS * 5);
+
+      unlinkSync(join(asDirectory, "child"));
+      rmdirSync(asDirectory);
+      writeFileSync(asDirectory, entryLine(6, "response"));
+
+      const entries = await collecting;
+      expect(entries.map((e) => e.seq)).toEqual([6]);
+      unlinkSync(asDirectory);
     });
   });
 
