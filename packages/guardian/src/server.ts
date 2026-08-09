@@ -8,18 +8,28 @@
  * assemblePreToolCallSnapshot -> bridge.evaluate at the intervention point
  * resolveInterventionPoint picked -> mapVerdict -> response envelope.
  *
- * The middle three run inside a try/catch, and that catch is load-bearing.
- * Were a throw to escape this handler, Bun.serve would answer with its default
- * error page, which is HTML rather than JSON-RPC. The host's client calls
- * res.json() unconditionally, so an HTML body raises a SyntaxError there
- * instead of surfacing a JSON-RPC error; the hook's catch-all then exits 1
- * with nothing on stdout, which Claude Code reads as "the hook never fired"
- * and allows the tool call through ungoverned. That is a fail-open in a
- * governance tool, so the catch must stay.
+ * Every throw on this path is caught, in two places, because nothing may
+ * escape the fetch handler. Bun.serve would answer an unhandled rejection with
+ * its default error page, which is HTML rather than JSON-RPC. The host's
+ * client calls res.json() unconditionally, so an HTML body raises a
+ * SyntaxError there instead of surfacing a JSON-RPC error; the hook's
+ * catch-all then exits 1 with nothing on stdout, which Claude Code reads as
+ * "the hook never fired" and allows the tool call through ungoverned. That is
+ * a fail-open in a governance tool.
  *
- * What the catch guarantees is only that a well-formed JSON-RPC error reaches
- * the client. It deliberately does not turn the failure into an ACS `deny`:
- * which disposition an evaluation failure should carry is a separate question.
+ * The two catches are:
+ *   - Inside `dispatch`, around assemblePreToolCallSnapshot, bridge.evaluate
+ *     and mapVerdict: the evaluation itself.
+ *   - Around the whole `dispatch` call in `handleAcsRequest`, as the outer net.
+ *     `dispatch` rethrows anything that is not an EnvelopeValidationError, and
+ *     that rethrow is live: validateEnvelope builds its Ajv registry lazily, on
+ *     the first request rather than at boot, so a tree cloned without
+ *     `--recurse-submodules` starts cleanly and then turns every request into
+ *     an HTML 500. The outer net also puts the failure response back on the
+ *     tapped path, so the envelope log records it like any other response.
+ *
+ * Neither catch turns the failure into an ACS `deny` decision: which
+ * disposition a Guardian-side failure should carry is a separate question.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -87,9 +97,10 @@ const LOOPBACK_ONLY = "127.0.0.1";
  */
 const ENVELOPE_INVALID_CODE = -32010;
 const METHOD_NOT_DISPATCHED_CODE = -32011;
-/** A throw from assemblePreToolCallSnapshot, bridge.evaluate, or mapVerdict --
- * mapVerdict's own require_policy_references check, say, or any AGT runtime
- * error. The module header explains why this must never become dead code. */
+/** Any throw the Guardian did not turn into a response itself: mapVerdict's
+ * own require_policy_references check, an AGT runtime error, or -- through
+ * handleAcsRequest's outer net -- a failure to even build the schema registry.
+ * The module header explains why none of this may become dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
@@ -157,10 +168,17 @@ export async function startGuardian({
 
 /**
  * Three phases, in order: parse, tap the request, dispatch, tap the
- * response. The tap calls live here and only here -- `dispatch` below has
- * four return sites and V3 adds a fifth (N27), so tapping inside it would
- * make totality something a future task has to remember rather than
- * something the structure guarantees.
+ * response. The tap calls live here and only here -- `dispatch` below leaves
+ * by six routes (five `return`s and one rethrow) and V3's N27 adds a
+ * seventh, so tapping inside it would make totality something a future task
+ * has to remember rather than something the structure guarantees.
+ *
+ * That guarantee is only as good as its coverage of the throwing route, and
+ * the whole-branch review's finding 1 found it uncovered: `dispatch`'s
+ * rethrow used to leave this function without a response at all, so the
+ * client got a Bun.serve HTML 500 that S6 never recorded. The try/catch
+ * below closes it -- every route out of `dispatch` now produces a response
+ * object, and every response object gets tapped.
  *
  * The tap itself is total (see envelope-tap.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
@@ -191,7 +209,17 @@ async function handleAcsRequest(
   const method = extractMethod(raw);
   tap.write("request", raw, method);
 
-  const response = await dispatch(raw, bridge, mapping);
+  let response: JsonRpcSuccess | JsonRpcFailure;
+  try {
+    response = await dispatch(raw, bridge, mapping);
+  } catch (error) {
+    // The outer net (whole-branch review, finding 1). Deliberately a bare
+    // JSON-RPC error, not an ACS `deny`: N27 stays V3's call. What this
+    // buys is that the client can parse the answer at all, and that S6
+    // holds a response line paired with the request line above it.
+    const message = error instanceof Error ? error.message : String(error);
+    response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
+  }
   tap.write("response", response, method);
   return response;
 }

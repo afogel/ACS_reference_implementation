@@ -1,5 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { startGuardian } from "../src/index.ts";
@@ -181,6 +183,132 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
     } finally {
       await guardian.close();
     }
+  });
+});
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const GUARDIAN_PKG = join(REPO_ROOT, "packages", "guardian");
+
+/**
+ * Runs `body` against a Guardian whose `validate-envelope.ts` cannot find the
+ * ACS schemas -- the tree-cloned-without-`--recurse-submodules` case, which is
+ * what makes the whole-branch review's finding 1 reachable rather than
+ * theoretical.
+ *
+ * It is reproduced by *relocation*, not by mocking and not by touching
+ * `spec/`. `validate-envelope.ts` derives SCHEMA_ROOT from its own
+ * `import.meta.url` as `../../../spec/specification/...`, so an identical copy
+ * of `packages/guardian/src` placed one directory deeper resolves that path to
+ * `packages/spec/...`, which does not exist. Every line of Guardian code that
+ * then runs is the real, current source -- the files are copied at test time,
+ * so they cannot drift from `src/` -- and the failure it produces is a real
+ * ENOENT out of `readdirSync`, thrown at request time because `buildAjv()` is
+ * lazy. The copy also gets its own module instance, so it cannot poison the
+ * Ajv registry the rest of this suite shares.
+ *
+ * Deletions here are explicit per file (repo constraint: nothing recursive).
+ */
+async function withSchemalessGuardian(
+  body: (guardian: { url: string; logPath: string }) => Promise<void>,
+): Promise<void> {
+  const root = mkdtempSync(join(GUARDIAN_PKG, "tmp-schemaless-"));
+  const srcDir = join(root, "src");
+  const logPath = join(root, "envelopes.jsonl");
+  const copied = readdirSync(join(GUARDIAN_PKG, "src")).filter((f) => f.endsWith(".ts"));
+  let guardian: { close(): Promise<void> } | undefined;
+
+  // Everything after mkdtempSync is inside the try: a failure while copying,
+  // importing, or booting would otherwise leave a directory of stray .ts
+  // files sitting inside packages/guardian.
+  try {
+    mkdirSync(srcDir);
+    for (const file of copied) {
+      copyFileSync(join(GUARDIAN_PKG, "src", file), join(srcDir, file));
+    }
+
+    const relocated = (await import(join(srcDir, "index.ts"))) as typeof import("../src/index.ts");
+    const started = await relocated.startGuardian({
+      port: 0,
+      manifestPath: join(REPO_ROOT, "policy", "manifest.yaml"),
+      mappingPath: join(REPO_ROOT, "mapping.yaml"),
+      envelopeLogPath: logPath,
+    });
+    guardian = started;
+
+    await body({ url: started.url, logPath });
+  } finally {
+    await guardian?.close();
+    for (const path of [logPath, ...copied.map((file) => join(srcDir, file))]) {
+      try {
+        unlinkSync(path);
+      } catch {
+        // a run that failed early never created every one of these
+      }
+    }
+    for (const dir of [srcDir, root]) {
+      try {
+        rmdirSync(dir);
+      } catch {
+        // same
+      }
+    }
+  }
+}
+
+// Whole-branch review, finding 1 -- the fourth fail-open of V1's shape, and
+// the exit the tap's structural-totality claim did not cover. `dispatch`
+// rethrows any non-EnvelopeValidationError, and nothing used to catch it:
+// Bun.serve answers a rejecting fetch() handler with a `text/html` 500,
+// guardian-client's unconditional `res.json()` throws `JSON Parse error:
+// Unrecognized token '<'`, acs-hook.ts's catch-all exits 1 with empty stdout,
+// and Claude Code reads that as "the hook didn't fire" -- the tool call
+// proceeds ungoverned. S6 recorded the request and nothing else, so the
+// Inspector could not even show that a response had been sent.
+describe("startGuardian POST /acs -- the outer net around dispatch", () => {
+  it("answers a throw from validateEnvelope itself with parseable JSON-RPC in -32000..-32099, never an HTML 500", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(toolCallEnvelope("ls -la", { id: 5 })),
+      });
+
+      // Read as text first and parse by hand, so a regression reports the
+      // HTML body it actually got instead of an opaque SyntaxError from
+      // res.json() -- which is precisely what guardian-client would throw.
+      const text = await res.text();
+      expect(text.slice(0, 1)).toBe("{");
+      const response = JSON.parse(text) as JsonRpcResponse;
+
+      expect(response.jsonrpc).toBe("2.0");
+      expect(response.id).toBe(5);
+      expect(response.error).toBeDefined();
+      expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+      expect(response.error?.code).toBeLessThanOrEqual(-32000);
+    });
+  });
+
+  it("carries no decision -- N27 is V3, so a Guardian-side failure is an error, not a synthesized deny", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
+
+      expect(response.result).toBeUndefined();
+      expect((response as Record<string, unknown>).decision).toBeUndefined();
+      expect(JSON.stringify(response)).not.toContain("deny");
+    });
+  });
+
+  it("taps both the request and the response, so S6 has no untapped exit", async () => {
+    await withSchemalessGuardian(async ({ url, logPath }) => {
+      await postAcs(url, toolCallEnvelope("ls -la", { id: 11 }));
+
+      const lines = readFileSync(logPath, "utf8").trim().split("\n");
+      const entries = lines.map((line) => JSON.parse(line) as { direction: string; rpc_id: unknown });
+      expect(entries.map((e) => e.direction)).toEqual(["request", "response"]);
+      // Paired by JSON-RPC id (decision P4), which is what lets the Inspector
+      // show the failure beside the request that caused it.
+      expect(entries.map((e) => e.rpc_id)).toEqual([11, 11]);
+    });
   });
 });
 

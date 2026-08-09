@@ -12,5 +12,12 @@ __pycache__/
 .superpowers/
 
 # S6, the ACS envelope log (N26). Local demo artifact; carries raw tool
-# arguments verbatim, so it is never committed.
+# arguments unmodified, so it is never committed.
 .acs/
+
+# Scratch tree for packages/guardian/test/server.test.ts's outer-net test: an
+# identical copy of packages/guardian/src, placed one directory deeper so its
+# schema path resolves to nothing. The test removes it in a `finally`; this
+# line only covers a run killed mid-test, so a stray copy of the Guardian's
+# source can never be committed as if it were source.
+packages/guardian/tmp-schemaless-*/
