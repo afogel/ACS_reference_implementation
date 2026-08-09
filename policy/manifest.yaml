@@ -1,0 +1,27 @@
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: "acs-reference-implementation"
+policies:
+  agt_stock:
+    type: rego
+    # Relative to this manifest's own directory (policy/), NOT the process
+    # cwd — confirmed empirically by tracing the opa subprocess AGT spawns.
+    # "policy/lib" here would join to ".../policy/policy/lib" and every
+    # evaluation would hard-fail with runtime_error:policy_invocation_failed
+    # (opa: no such file or directory) instead of allow/deny. No leading
+    # "./" either — see C2: OPA's bundle loader mis-derives the data mount
+    # path from a literal "/./ " segment and silently drops data.json.
+    bundle: lib
+    query: data.agt.defaults.verdict
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args.command"
+    policy_target_kind: tool_args
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: agt_stock
+tools:
+  run_shell:
+    type: Tool
+    id: run_shell
+    security_labels: [shell]

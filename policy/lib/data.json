@@ -1,0 +1,15 @@
+{
+  "agt": {
+    "defaults": {
+      "config": {
+        "patterns": {
+          "patterns": [
+            "(?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$)",
+            "(?i)rm\\s+-[a-z]*f[a-z]*r[a-z]*\\s+/(?:\\s|$)"
+          ],
+          "reason": "destructive_shell_command_blocked"
+        }
+      }
+    }
+  }
+}
