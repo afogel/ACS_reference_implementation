@@ -22,11 +22,20 @@ function stripComments(src: string): string {
   return noBlockComments.replace(/(?<!:)\/\/.*$/gm, "");
 }
 
-/** Every non-test `.ts` file under `dir`, with comments stripped. */
+/**
+ * Every non-test `.ts` file under `dir`, with comments stripped.
+ *
+ * The emptiness check is what stops all four gates below from passing
+ * vacuously (whole-branch review, finding 7). A *renamed* directory already
+ * failed loudly -- `Glob.scanSync` throws ENOENT -- but a directory that
+ * still exists with no non-test `.ts` under it would sail through with zero
+ * assertions, and a gate that cannot fail is worse than no gate: it reads as
+ * enforcement in the README while enforcing nothing.
+ */
 function readSourceFiles(dir: string): { file: string; code: string }[] {
-  return [...new Glob("**/*.ts").scanSync(dir)]
-    .filter((f) => !f.includes("/test/"))
-    .map((f) => ({ file: f, code: stripComments(readFileSync(`${dir}/${f}`, "utf8")) }));
+  const files = [...new Glob("**/*.ts").scanSync(dir)].filter((f) => !f.includes("/test/"));
+  expect({ dir, sourceFiles: files.length > 0 }).toEqual({ dir, sourceFiles: true });
+  return files.map((f) => ({ file: f, code: stripComments(readFileSync(`${dir}/${f}`, "utf8")) }));
 }
 
 /**
@@ -151,9 +160,66 @@ describe("architectural invariants", () => {
   it("the Envelope Inspector imports nothing from the Guardian or the AGT bridge", () => {
     for (const { file, code } of readSourceFiles("packages/inspector/src")) {
       for (const spec of ["guardian", "agt-bridge"]) {
-        const found = new RegExp(`from\\s+["'][^"']*${spec}[^"']*["']`).test(code);
+        const found = importsSpecifier(code, spec);
         expect({ file, spec, found }).toEqual({ file, spec, found: false });
       }
     }
+  });
+});
+
+/**
+ * True when `code` names a module specifier containing `spec` in any position
+ * that actually creates a dependency on it.
+ *
+ * The original gate matched `from "…"` alone (whole-branch review, finding
+ * 6), which is the one form nobody reaching for a forbidden import by
+ * accident would use. Each alternative below is a real hole it left:
+ *
+ *   from "guardian"              the static named/default import
+ *   import "guardian"            the bare side-effect import, no `from`
+ *   import("guardian")           dynamic, and `await import("guardian")`
+ *   import("guardian").TapEntry  type position -- erased at build, still a
+ *                                compile-time dependency on the Guardian's
+ *                                type graph, which is exactly what R5.1
+ *                                forbids
+ *   require("guardian")          CJS interop
+ *
+ * `\(?` covers the parenthesised and unparenthesised forms in one pass, and
+ * the `i` flag closes the last hole: module resolution is case-insensitive on
+ * macOS, so `from "Guardian"` resolves here and the case-sensitive gate said
+ * nothing about it.
+ */
+function importsSpecifier(code: string, spec: string): boolean {
+  return new RegExp(`(?:from|import|require)\\s*\\(?\\s*["'][^"']*${spec}[^"']*["']`, "i").test(code);
+}
+
+describe("the import gate itself", () => {
+  /**
+   * A gate is only worth having if it bites. These are the exact forms the
+   * finding listed as blind spots, asserted directly against the matcher so
+   * a future simplification of the regex cannot quietly reopen one of them.
+   */
+  it("catches every import form, in any case", () => {
+    const caught = [
+      'import { TapEntry } from "guardian";',
+      'import "guardian";',
+      'const g = await import("guardian");',
+      'type E = import("guardian").TapEntry;',
+      'const g = require("guardian");',
+      'import { TapEntry } from "Guardian";',
+      'export { x } from "../../guardian/src/index.ts";',
+    ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
+
+    expect(caught).toEqual(caught.map(({ line }) => ({ line, found: true })));
+  });
+
+  it("stays quiet on code that merely mentions the word", () => {
+    const ignored = [
+      'const label = "guardian";',
+      "const guardian = startGuardian();",
+      'import { renderEntry } from "./render.ts";',
+    ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
+
+    expect(ignored).toEqual(ignored.map(({ line }) => ({ line, found: false })));
   });
 });
