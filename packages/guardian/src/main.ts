@@ -1,0 +1,26 @@
+/**
+ * The Guardian's standalone CLI entrypoint -- `bun run guardian`.
+ *
+ * Every earlier task's Guardian usage is in-process (`startGuardian` called
+ * directly by a test's `beforeAll`). Task 9's demo is the first thing that
+ * needs the Guardian as a long-running process a hook subprocess can reach
+ * over HTTP, so this file exists to make `docs/demos/v1-runbook.md`'s
+ * "start the Guardian" step a real command rather than an unstated gap.
+ * Not re-exported from `./index.ts`: this is a process entrypoint, not a
+ * library call.
+ *
+ * `ACS_GUARDIAN_PORT` defaults to 8787 -- the same default port
+ * `hosts/claude-code/acs-hook.ts` assumes for `ACS_GUARDIAN_URL` when that
+ * env var is unset, so the runbook and the shim agree without either
+ * hardcoding the other's value.
+ */
+import { startGuardian } from "./server.ts";
+
+const DEFAULT_PORT = 8787;
+const DEFAULT_MANIFEST_PATH = "policy/manifest.yaml";
+
+const port = Number(process.env.ACS_GUARDIAN_PORT ?? DEFAULT_PORT);
+const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
+
+const guardian = await startGuardian({ port, manifestPath });
+console.log(`Guardian listening at ${guardian.url}`);

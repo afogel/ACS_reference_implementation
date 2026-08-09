@@ -1,10 +1,11 @@
 {
-  "name": "host-adapter",
+  "name": "claude-code-host",
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "dependencies": {
+    "host-adapter": "workspace:*"
+  },
   "devDependencies": {
     "guardian": "workspace:*"
   }
