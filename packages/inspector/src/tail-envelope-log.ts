@@ -81,6 +81,32 @@ export type TailOptions = {
 
 const NEWLINE = 0x0a;
 
+/**
+ * S6 is a plain file on disk; anything can write a line to it that is valid
+ * JSON but not a valid TapEntry (a number where recorded_at should be a
+ * string, a missing direction, ...). `renderEntry`'s `clockOf` calls
+ * `.slice` on `recorded_at` unconditionally, so an unchecked cast here would
+ * let such a line reach the renderer and throw -- inside a `for await` loop,
+ * that kills the whole stream. Checked here instead, right after
+ * `JSON.parse`, using exactly the fields the renderer depends on.
+ * `envelope` is deliberately left unconstrained: it is `unknown` by design
+ * (R5.1 -- see the module doc above), not a shape this function's job to
+ * police.
+ */
+function isTapEntryShape(value: unknown): value is TapEntry {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.seq === "number" &&
+    typeof candidate.recorded_at === "string" &&
+    (candidate.direction === "request" || candidate.direction === "response") &&
+    (typeof candidate.method === "string" || candidate.method === null) &&
+    (typeof candidate.rpc_id === "string" || typeof candidate.rpc_id === "number" || candidate.rpc_id === null)
+  );
+}
+
 export function tailEnvelopeLog({
   path,
   fromStart = false,
@@ -129,7 +155,11 @@ export function tailEnvelopeLog({
             continue;
           }
           try {
-            ready.push(JSON.parse(line) as TapEntry);
+            const parsed: unknown = JSON.parse(line);
+            if (!isTapEntryShape(parsed)) {
+              throw new Error("line parsed as JSON but does not match the TapEntry shape");
+            }
+            ready.push(parsed);
             added = true;
           } catch (error) {
             onMalformedLine(line, error);

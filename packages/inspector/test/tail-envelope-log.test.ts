@@ -277,4 +277,57 @@ describe("tailEnvelopeLog (N50)", () => {
       expect(entries[0]?.envelope).toEqual({ jsonrpc: "2.0", id: 7, note });
     });
   });
+
+  it("reports a line that parses as JSON but has a non-string recorded_at, and keeps streaming", async () => {
+    await withTempDir(async (_dir, path) => {
+      const malformed: string[] = [];
+      const badLine = JSON.stringify({
+        seq: 1,
+        recorded_at: 12345,
+        direction: "request",
+        method: "steps/toolCallRequest",
+        rpc_id: 1,
+        envelope: { jsonrpc: "2.0", id: 1 },
+      });
+      writeFileSync(path, `${badLine}\n${entryLine(3, "request")}`);
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (line) => malformed.push(line),
+      });
+
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([3]);
+      expect(malformed).toEqual([badLine]);
+    });
+  });
+
+  it("reports a line that parses as JSON but is missing direction, and keeps streaming", async () => {
+    await withTempDir(async (_dir, path) => {
+      const malformed: string[] = [];
+      const badLine = JSON.stringify({
+        seq: 1,
+        recorded_at: "2026-08-09T12:04:31.221Z",
+        method: "steps/toolCallRequest",
+        rpc_id: 1,
+        envelope: { jsonrpc: "2.0", id: 1 },
+      });
+      writeFileSync(path, `${badLine}\n${entryLine(3, "request")}`);
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (line) => malformed.push(line),
+      });
+
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([3]);
+      expect(malformed).toEqual([badLine]);
+    });
+  });
 });
