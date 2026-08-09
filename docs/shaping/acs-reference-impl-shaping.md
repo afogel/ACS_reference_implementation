@@ -261,7 +261,7 @@ All resolved — see `spike-agt-integration.md`.
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope + session state → AGT snapshot | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references` | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
+| N26 | P3 | guardian | `writeEnvelopeTap()` — ⚠️ **total**: never throws, never alters a decision. Taps the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
@@ -291,7 +291,7 @@ All resolved — see `spike-agt-integration.md`.
 | S3 | P3 | `sessionContext` | Hash-chained entries per `session_id` |
 | S4 | P3 | `intent` | Immutable Intent baseline per session |
 | S5 | P3 | `provenance` | `origin` / `derived_from` lineage, carrying AGT `result_labels` between steps |
-| S6 | P3 | `envelope log` | JSONL of every request and response |
+| S6 | P3 | `envelope log` | JSONL of every request and response, verbatim, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
 | S7 | P3.1 | `manifest.yaml` | Binds the `rego` policy to `data.agt.defaults.verdict`; declares intervention points, tools, approval |
 | S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored |
 | S9 | P3.1 | AGT stock bundle | `policy/lib/*.rego` at the pinned ref. Requires the `opa` CLI on PATH |
@@ -527,3 +527,4 @@ flowchart TB
 | ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
 | D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open, leaning `proceed` | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly. V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6), so the decision is only needed by V3 |
 | D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |
+| D10 | 🔴 **New, from V2 planning.** R5.3 — does this implementation claim the ACS **Trace** pillar? | Open | `specification/v0.1.0/trace/otel-mapping.json` is normative: a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it maps `steps/toolCallRequest` → `gen_ai.tool.call` by name. `trace/ocsf-mapping.json` is its sibling. V2's envelope tap (S6) is a raw JSONL log, deliberately not an OTel or OCSF export, so today we claim neither pillar. R5.3 requires declaring that either way, which makes this V7's problem at the latest — either the conformance matrix records Trace as an explicit non-claim, or a slice picks it up |

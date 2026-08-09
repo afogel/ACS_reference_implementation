@@ -79,11 +79,33 @@ Every slice ends in something demo-able.
 |---|-------|-----------|------------|---------|-----------|------------|
 | U20 | P4 | inspector | envelope stream, request/response JSON pairs | render | — | — |
 | U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
+| N26 | P3 | guardian | `writeEnvelopeTap()` — **total**: never throws, never alters a decision | call | → S6 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
-| S6 | P3 | store | `envelope log`, JSONL | — | — | → N50 |
+| S6 | P3 | store | `envelope log`, JSONL at `.acs/envelopes.jsonl` (gitignored), one entry per direction | — | — | → N50 |
 
 **Why this early.** R5.1 and R5.2 are must-haves, and an ACS-first reader needs to see envelopes before anything more elaborate is worth showing. U21 is also how `warn` becomes visible: a `warn` arrives as `allow` with a non-empty `policy_references`, and the badge is what makes that legible rather than buried.
+
+**Decisions taken at planning.** §V2 left the Inspector's form open; these close it, and are recorded here rather than only in the plan.
+
+| # | Decision | Rationale |
+|---|---|---|
+| P1 | The Inspector is a **terminal process** — `bun run inspector`, a third terminal beside `bun run guardian` and `claude`. | Zero new dependencies, works over SSH, matches the repo's one-process-per-command shape. R7.1/R7.2 ask for a laptop and no paid dependency; a browser UI would add a server, a bundler and an asset pipeline without proving anything further about the wire. A browser view later reads the same S6 file. |
+| P2 | S6 is a **file** — `.acs/envelopes.jsonl`, overridable with `ACS_ENVELOPE_LOG`. | The file is the seam that lets the Inspector import nothing from the Guardian. `jq` works on it unchanged. An in-process bus or a socket would couple P4 to P3. |
+| P3 | The tap is **opt-in at the library level, on by default in the CLI**: `startGuardian` taps only when `envelopeLogPath` is passed; `packages/guardian/src/main.ts` passes it. | V1's tests construct Guardians constantly; a default-on tap would scatter files through the working tree. The demo path still gets the tap with nobody opting in. |
+| P4 | Request/response pairing is by **JSON-RPC `id`**, carried as `rpc_id` on every entry. | The only identifier present in both directions. `params.request_id` exists on requests only. Pairing by arrival order breaks the moment two hooks are in flight. |
+| P5 | The request is tapped **before validation**. | An envelope that fails the schema is the most useful thing an ACS-first reader can see, and it is exactly what disappears if the tap sits behind the validator. R5.1 says *every* hook firing. |
+
+**⚠️ Watch-for — the tap must be total.** `writeEnvelopeTap` sits on the decision path. V1 shipped three separate fail-opens before they were caught (the `./` bundle landmine, `tool_unknown` failing closed, and an unhandled Guardian throw reaching the shim as an empty stdout); an observability feature that can turn a governed tool call into an ungoverned one would be the fourth. Every write is wrapped: a failure disables the tap for the process lifetime, reports once, and never propagates. V2 asserts this end to end — `rm -rf /` is still denied when every tap write fails.
+
+**⚠️ Watch-for — S6 records the wire verbatim.** No reformatting, no field stripping, no redaction, no reordering; pretty-printing happens at render time only. An inspector that shows something other than what was sent is worse than none. The consequence is that S6 carries raw tool arguments, which is why `.acs/` is gitignored and why the runbook says so out loud.
+
+**⚠️ Watch-for — a schema failure appears as an error, not a decision.** In V2 an invalid envelope is tapped (P5) and then answered with a JSON-RPC error, so the Inspector renders `✖ ERROR -32010`, not a badge. `N27 denyOnInvalidEnvelope()` — the affordance that turns Guardian-side failures into honoured ACS `deny` **decisions** — is V3. The Inspector is where that change will become visible.
+
+**Unpaired responses are real.** A body that will not parse as JSON produces a response with no preceding request and `rpc_id: null`. The Inspector renders it as `(no method) (unpaired)` rather than hiding it.
+
+**Scope added at planning** (both amend this slice, both land in V2's PR):
+- An **invariant gate** on `packages/inspector/src`: zero AGT vocabulary, zero host vocabulary, and no import of `guardian` or `agt-bridge`. R5.2 is why this slice is early, and V1 established that this project turns architectural claims into grep gates rather than prose. Joins the R3.2/R3.3 gates in `test/invariants.test.ts`.
+- A **tap↔tail contract test** (`test/envelope-tap-roundtrip.test.ts`). The Inspector declares its own `TapEntry` instead of importing the Guardian's — that is what makes the gate above meaningful — and the duplication is only safe while something fails when the two drift.
 
 ---
 
@@ -224,6 +246,7 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | 6 | ⚠️ A `./`-prefixed `bundle:` path silently disables policy — every decision becomes `allow`, with no error | V1 | `createBridge` throws on `/./`; V1's deny test is the backstop. Worth reporting upstream: a fail-open in a governance tool |
 | 7 | ⚠️ `enforced_identity` bisection is unavailable over AGT's Python binding | V7 | Resolved by embedding the **Node** SDK, which serializes `input_identity` and `enforced_identity` distinctly. Had we stayed on Python, R1.4 would be unverifiable and N43 impossible |
 | 8 | ⚠️ AGT's verdict carries no `rule_id` / `reason_codes` / `reasoning` | V1, V7 | `mapVerdict` synthesizes them from `reason` / `message`, and `mapping.yaml` is where that synthesis is declared — so V7 measures it rather than assuming it |
+| 9 | ⚠️ S6 grows unbounded — no rotation and no size cap | V2 | Accepted. It is a gitignored local demo artifact; `: > .acs/envelopes.jsonl` truncates it safely mid-run because `tailEnvelopeLog` resets on truncation. Rotation is not built, and the runbook says so |
 
 ## Open decisions carried from shaping
 
@@ -235,5 +258,8 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | D5 | Determinism of the demo | V1 onward |
 | ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
 | D8 | 🟡 Which `on_decision_failure` ships as default — V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6). Leaning to the spec default `proceed`, paired with U23's audit count | V3 |
+| D10 | 🔴 **The ACS Trace pillar is unclaimed by any slice.** `specification/v0.1.0/trace/otel-mapping.json` and `trace/ocsf-mapping.json` are *normative* — the OTel mapping states that a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it names `steps/toolCallRequest` → `gen_ai.tool.call` explicitly. V2's S6 is deliberately a raw envelope log, **not** an OTel or OCSF export, so this implementation currently claims neither. R5.3 says we declare what we claim and what we do not — so either V7 measures the Trace pillar as an explicit non-claim, or a slice picks it up. Surfaced during V2 planning; nothing depends on it yet | V7 scope |
 
 **Correction log.** V1 planning verified the AGT surface by running it rather than reading it, and produced ten corrections — the SDK choice, the `./` landmine, config-inside-the-bundle, the absent stock shell patterns, the leaf `policy_target`, AGT's missing `rule_id`/`reason_codes`/`reasoning`, lowercase wire decisions, `steps/toolCallRequest` and the 19-hook count, the retired `opa` setup cost, and the Python identity collapse. Each is recorded above at the row it governs, with its evidence, in `docs/superpowers/plans/2026-08-09-v1-one-host-one-hook.md`.
+
+V2 planning produced no corrections — §V2 had nothing wrong in it — but it did close five open choices (P1–P5, recorded under §V2), add three watch-fors, add risk row 9, and surface D10. Its plan is `docs/superpowers/plans/2026-08-09-v2-envelope-inspector.md`.
