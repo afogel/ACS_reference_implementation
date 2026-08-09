@@ -10,6 +10,17 @@
  *     D8: V1 only NEGOTIATES and STORES this value on the wire -- applying
  *     the posture (the fail-open audit path, N6/N7) is V3. Nothing here
  *     reads or acts on it beyond returning it.
+ *
+ * Fix wave finding 7 (honesty, not a scope increase): this responder never
+ * reads the incoming ClientHello -- the client (host-adapter's `handshake`)
+ * genuinely sends one, but every field below is a constant, returned
+ * unconditionally. So "negotiated_version" and "selected_transport" are
+ * DECLARED by this Guardian, not actually negotiated against what the
+ * client proposed. That distinction matters in a reference implementation
+ * of a wire *contract*. Real negotiation (reading ClientHello, picking a
+ * mutually-supported version/transport, rejecting what isn't) is future
+ * work, not attempted here -- see the matching note in
+ * docs/demos/v1-runbook.md.
  */
 
 export type ServerHello = {

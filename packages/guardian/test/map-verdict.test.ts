@@ -42,4 +42,14 @@ describe("mapVerdict", () => {
       expect(out.toLowerCase()).toBe(out);
     }
   });
+
+  // Fix wave finding 1 -- previously-deferred coverage gap: this throw path
+  // (require_policy_references marked true, but no policy_references could
+  // be synthesized) had no test. It's real: a "warn" verdict with no
+  // `reason` hits it directly, and it's exactly what the Guardian's
+  // evaluation-failure catch (server.test.ts) now has to survive without
+  // turning it into an HTML 500 or a silent decision.
+  it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
+    expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
+  });
 });

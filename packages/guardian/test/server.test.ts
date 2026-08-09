@@ -143,3 +143,43 @@ describe("startGuardian POST /acs", () => {
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
   });
 });
+
+// Fix wave finding 1 -- a real fail-open bug: an unhandled throw from
+// assembleSnapshot/bridge.evaluate/mapVerdict inside handleAcsRequest used
+// to escape uncaught, and Bun.serve's default error page for a rejected
+// fetch() is `text/html`, not JSON. guardianClient.post's `res.json()` would
+// then throw a SyntaxError instead of surfacing a JSON-RPC error, and
+// acs-hook.ts's catch-all exits 1 with nothing on stdout -- Claude Code
+// treats that as "the hook never fired" and the tool call proceeds
+// ungoverned. This guards the fix, against a real (not mocked) AGT
+// evaluation -- only mapping.yaml is swapped for a fixture that marks
+// `allow` require_policy_references, so a genuine AGT "allow" verdict for a
+// benign command (which carries no reason/message) makes mapVerdict throw
+// inside handleAcsRequest for real.
+describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest", () => {
+  it("a real mapVerdict throw (require_policy_references unmet) still returns a parseable JSON-RPC error in -32000..-32099, not an HTML 500", async () => {
+    const guardian = await startGuardian({
+      port: 0,
+      manifestPath: "policy/manifest.yaml",
+      mappingPath: "packages/guardian/test/fixtures/mapping.require-policy-references-on-allow.yaml",
+    });
+
+    try {
+      // res.json() below is exactly guardianClient.post's call. Before the
+      // fix, Bun.serve's unhandled-rejection page is text/html and this
+      // throws a SyntaxError instead of resolving -- the same failure mode
+      // the finding describes at guardian-client.ts:70.
+      const response = await postAcs(guardian.url, toolCallEnvelope("ls -la"));
+
+      expect(response.result).toBeUndefined();
+      expect(response.error).toBeDefined();
+      expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+      expect(response.error?.code).toBeLessThanOrEqual(-32000);
+      // Never a decision -- same scope boundary as the schema-validation
+      // guard above (N27 is V3's call, not this fix's).
+      expect((response as Record<string, unknown>).decision).toBeUndefined();
+    } finally {
+      await guardian.close();
+    }
+  });
+});

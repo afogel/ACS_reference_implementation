@@ -14,9 +14,22 @@ hooks:
     acs_method: steps/toolCallRequest
     tool_name: $.tool_name
     arguments: $.tool_input
+# Fix wave finding 5: Claude Code's PreToolUse hookSpecificOutput only
+# accepts permissionDecision "allow" | "deny" | "ask" (see Claude Code's own
+# hook docs) -- there is no "defer" value on the wire, so `defer:
+# { permissionDecision: defer }` was never a legal Claude Code output. It
+# was unreachable in V1 (no verdict in mapping.yaml produces an ACS
+# "defer" decision today) but would have broken the moment one did.
+# ACS's own defer-details.json defaults an unresolved defer's
+# `timeout_decision` to "deny", so `deny` is the spec-consistent fail-closed
+# choice for a host (like Claude Code) with no native defer/pending state --
+# NOT a considered posture, just the least-wrong mapping until a host that
+# can actually represent deferral exists. V3, which owns posture and
+# disposition decisions (N27, N6/N7), should treat this as a known gap
+# rather than rediscovering it.
 decisions:
   allow:  { permissionDecision: allow }
   deny:   { permissionDecision: deny, reason_from: reasoning }
-  ask:    { permissionDecision: ask }
-  defer:  { permissionDecision: defer }
+  ask:    { permissionDecision: ask, reason_from: reasoning }
+  defer:  { permissionDecision: deny, reason_from: reasoning }
   modify: { permissionDecision: allow, updatedInput_from: modifications }

@@ -6,6 +6,8 @@
 
 **Framing correction (R4.4) — read before you narrate this.** The AGT stock bundle ships **no** shell or command patterns of its own — `patterns.rego` carries generic PII regexes only. What is stock is the *deciding module* (`agt.patterns`) and the priority chain in `agt_default.rego`; the destructive-command regex list this demo denies against is this project's own configuration, supplied as data (`policy/lib/data.json`), not authored Rego. Narrate this as "AGT's stock policy engine, configured" — never as "Microsoft ships an `rm -rf` deny-list." R2.1 still holds exactly: zero Rego authored, behaviour driven only through `data.agt.defaults.config`.
 
+**Framing correction (fix wave finding 7) — the handshake declares, it does not negotiate.** Before `steps/toolCallRequest`, the adapter sends a real `handshake/hello` ClientHello (`packages/host-adapter/src/handshake.ts`), and the Guardian answers with a ServerHello (`packages/guardian/src/handshake.ts`). In V1 that ServerHello's `negotiated_version` and `selected_transport` are constants the Guardian returns unconditionally — it never reads what the ClientHello proposed. So don't narrate this as version/transport negotiation actually happening; it is a fixed declaration on both ends, correct for this slice's single Guardian/single host pairing, but not the negotiation the field names imply. Real negotiation (picking a mutually-supported version or transport, refusing when none exists) is future work, not built here.
+
 ## What a viewer should watch for
 
 1. You ask Claude Code to run a destructive shell command.

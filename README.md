@@ -4,16 +4,24 @@ One wire contract between agent hosts and policy runtimes, so governance integra
 
 Today every policy vendor writes a module per agent, and every agent waits for a module per vendor. Microsoft's [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) ships four host packages with four different architectures — a Copilot CLI extension, subprocess hooks for Claude Code and Antigravity, an in-process plugin for OpenCode — and documents the capability divergence between them in its own READMEs.
 
-This repository shows the other shape. A host implements [ACS](https://github.com/Agent-Control-Standard/ACS) once and is governable by any conformant runtime. A runtime implements ACS once and governs any conformant host. AGT's policy engine runs unforked, with its stock Rego bundle deciding, across two structurally different coding agents — and adding the second host costs zero AGT code.
+This repository shows the other shape. A host implements [ACS](https://github.com/Agent-Control-Standard/ACS) once and is governable by any conformant runtime. A runtime implements ACS once and governs any conformant host. This slice (V1) wires one host — Claude Code — to AGT's policy engine running unforked, its stock Rego bundle deciding, entirely over the ACS wire.
 
 ## What this proves
 
+**Delivered in V1** — true of this tree today; verifiable by running the commands in Quickstart below.
+
 | Claim | How it is demonstrated |
 |---|---|
-| AGT is completely expressible in ACS | A machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell |
-| Interop is real | AGT's published policy library decides, used as shipped, at a pinned upstream commit, with no source changes |
-| The collapse is structural | The host adapter contains no AGT-specific code and the AGT bridge contains no host-specific code — verifiable by reading the file list |
-| It stays true | The same harness runs against AGT `main` on a schedule, so upstream drift surfaces as a named failing case |
+| AGT's policy engine runs unforked, over the ACS wire | AGT's published policy library decides, used as shipped, at a pinned upstream commit, with no source changes (`agt.lock`, [`test/pin.test.ts`](test/pin.test.ts)) |
+| The collapse is structural, not incidental | The host adapter contains no AGT-specific code and the AGT bridge contains no host-specific code — verifiable by reading the file list, and enforced by [`test/invariants.test.ts`](test/invariants.test.ts) |
+
+**Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
+
+| Claim | Slice |
+|---|---|
+| AGT is completely expressible in ACS: a machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell | V7 |
+| The same policy governs two structurally different coding agents, with the second host costing zero added AGT code | V5 |
+| A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
 
 ## Layout
 
@@ -69,7 +77,7 @@ This registers `hosts/claude-code/acs-hook.ts` as a `PreToolUse` hook for the `B
 claude
 ```
 
-Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exactly this command: `rm -rf /`"*. The tool call is blocked, with the real policy-engine reasoning surfaced in the transcript — not a canned string, the actual text produced by AGT's stock Rego evaluation for the pattern it matched. Ask for something harmless (`ls -la`) in the same session and it runs normally. Full walkthrough and what to watch for: [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md).
+Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exactly this command: `rm -rf /`"*. The tool call is blocked, with the real policy-engine reasoning surfaced in the transcript — not a canned string, the actual text AGT's stock policy engine produces when it evaluates the pattern it matched. That pattern list is this project's own configuration (`policy/lib/data.json`), not something AGT ships — the stock bundle carries no shell/command patterns of its own, only generic PII regexes; what's stock is the *deciding module* (`agt.patterns`) and the priority chain that consults it, per R2.1 (zero Rego authored). See the framing note in [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) before narrating this demo. Ask for something harmless (`ls -la`) in the same session and it runs normally. Full walkthrough and what to watch for: [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md).
 
 Steps 1–2 were run against this exact tree to write this README: `bun install` completes clean, and `bun run guardian` prints the line above. Steps 3–4 were verified the same way the project's own tests verify them — piping a Claude Code–shaped `PreToolUse` payload on stdin straight into the hook shim against a running Guardian:
 

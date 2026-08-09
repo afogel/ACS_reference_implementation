@@ -36,14 +36,26 @@ describe("AGT pin", () => {
     expect(extra).toEqual([]);
   });
 
-  it("authors no Rego of our own — every .rego is byte-identical to upstream", () => {
-    // UPSTREAM_BUNDLE is set by `bun run verify:pin`, which clones the pinned ref.
-    const upstream = process.env.UPSTREAM_BUNDLE;
-    if (!upstream) return; // skipped in the fast unit run; enforced by verify:pin in CI
-    for (const f of readdirSync("policy/lib").filter((f) => f.endsWith(".rego"))) {
-      expect(readFileSync(join("policy/lib", f), "utf8")).toBe(
-        readFileSync(join(upstream, f), "utf8"),
-      );
-    }
-  });
+  // UPSTREAM_BUNDLE is set by `bun run verify:pin`, which clones the pinned
+  // ref and needs network access to GitHub -- unavailable in the fast unit
+  // run. Fix wave finding 4: a bare early `return` here used to make this
+  // report green while asserting nothing, silently un-guarding the
+  // project's central "AGT runs unforked" claim. `it.skipIf` instead makes
+  // bun report this test as SKIPPED, not passed -- unmistakable in output --
+  // without failing when the env var is legitimately absent (offline dev),
+  // and without deleting the assertion `bun run verify:pin` still enforces.
+  it.skipIf(!process.env.UPSTREAM_BUNDLE)(
+    "authors no Rego of our own — every .rego is byte-identical to upstream",
+    () => {
+      const upstream = process.env.UPSTREAM_BUNDLE;
+      if (!upstream) {
+        throw new Error("UPSTREAM_BUNDLE must be set to run this assertion — see `bun run verify:pin`");
+      }
+      for (const f of readdirSync("policy/lib").filter((f) => f.endsWith(".rego"))) {
+        expect(readFileSync(join("policy/lib", f), "utf8")).toBe(
+          readFileSync(join(upstream, f), "utf8"),
+        );
+      }
+    },
+  );
 });

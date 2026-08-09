@@ -1,0 +1,41 @@
+# Test fixture only -- NOT read by production code. Identical to the real
+# mapping.yaml except `allow` is (wrongly) marked require_policy_references,
+# so a real AGT "allow" verdict for a benign command (which carries no
+# `reason`/`message`, per bridge.test.ts) makes mapVerdict throw for real.
+#
+# Used by packages/guardian/test/server.test.ts (fix wave finding 1) to
+# prove the Guardian's evaluation-failure catch turns a genuine
+# assembleSnapshot/bridge.evaluate/mapVerdict throw into a well-formed
+# JSON-RPC error in the ACS-reserved range, not an unhandled exception that
+# Bun.serve would otherwise turn into a text/html 500.
+acs_version: "0.1.0"
+agt_version: "0.3.1-beta"
+
+intervention_points:
+  pre_tool_call: { acs_method: "steps/toolCallRequest" }
+  post_tool_call: { acs_method: "steps/toolCallResult" }
+  agent_startup: { acs_method: "steps/sessionStart" }
+  agent_shutdown: { acs_method: "steps/sessionEnd" }
+  input: { acs_method: "steps/userMessage" }
+  output: { acs_method: "steps/agentResponse" }
+  pre_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
+  post_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
+
+verdicts:
+  allow: { decision: allow, require_policy_references: true }
+  deny: { decision: deny }
+  warn: { decision: allow, require_policy_references: true }
+  escalate: { decision: ask }
+  transform: { decision: modify }
+
+field_synthesis:
+  reasoning:
+    source: verdict.message
+  reason_codes:
+    source: verdict.reason
+    wrap: array
+  policy_references:
+    rule_id:
+      source: verdict.reason
+    policy_id:
+      literal: agt_stock

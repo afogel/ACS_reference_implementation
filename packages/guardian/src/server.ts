@@ -9,6 +9,22 @@
  *   bridge.evaluate("pre_tool_call", snapshot) (Task 2) ->
  *   mapVerdict(verdict, mapping) (Task 3) -> response envelope.
  *
+ * assembleSnapshot / bridge.evaluate / mapVerdict are wrapped in a try/catch
+ * (fix wave finding 1): an unhandled throw here -- e.g. mapVerdict's own
+ * require_policy_references check, or a genuine AGT runtime error -- would
+ * otherwise escape this handler, and Bun.serve's default error page for an
+ * unhandled fetch() rejection is `text/html`, not JSON-RPC. The client
+ * (packages/host-adapter/src/guardian-client.ts) calls `res.json()`
+ * unconditionally, so an HTML body throws a SyntaxError there instead of
+ * surfacing a JSON-RPC error -- and hosts/claude-code/acs-hook.ts's catch-all
+ * then exits 1 with nothing on stdout, which Claude Code treats as "the hook
+ * didn't fire": the tool call proceeds **ungoverned**. That is a fail-open in
+ * a governance tool. The catch below only guarantees a well-formed JSON-RPC
+ * error reaches the client -- it deliberately does NOT turn the failure into
+ * an ACS `deny` decision. That is N27 (denyOnInvalidEnvelope), scoped to V3;
+ * deciding what disposition an evaluation failure carries is V3's call, not
+ * this fix's.
+ *
  * The bridge (N31: AgentControl.fromPath) and the mapping table are both
  * constructed/loaded exactly once, at startGuardian() call time -- not per
  * request -- since AGT is meant to be built at boot and evaluated
@@ -31,15 +47,20 @@ const ACS_PATH = "/acs";
  * ACS reserves -32000..-32099 for application errors (Specification §17),
  * but only enumerates named codes -32000..-32007 in the §17.1 registry
  * (SESSION_REFUSED, UNSUPPORTED_VERSION, ...) -- none of which names "the
- * envelope failed schema validation" or "this method isn't dispatched by
- * this Guardian". Rather than reach for the generic JSON-RPC codes that
- * would otherwise fit (-32602 Invalid params, -32601 Method not found),
- * this module mints two codes from the unused part of the reserved band,
- * keeping every application-level failure inside -32000..-32099 per this
- * task's explicit instruction.
+ * envelope failed schema validation", "this method isn't dispatched by this
+ * Guardian", or "evaluation itself failed". Rather than reach for the
+ * generic JSON-RPC codes that would otherwise fit (-32602 Invalid params,
+ * -32601 Method not found), this module mints three codes from the unused
+ * part of the reserved band, keeping every application-level failure inside
+ * -32000..-32099 per this task's explicit instruction.
  */
 const ENVELOPE_INVALID_CODE = -32010;
 const METHOD_NOT_DISPATCHED_CODE = -32011;
+/** A throw from assembleSnapshot, bridge.evaluate, or mapVerdict -- e.g.
+ * mapVerdict's own require_policy_references check, or any AGT runtime
+ * error. See fix wave finding 1's comment above handleAcsRequest's
+ * TOOL_CALL_REQUEST_METHOD branch for why this must never be dead code. */
+const EVALUATION_FAILED_CODE = -32020;
 
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: Record<string, unknown> };
 type JsonRpcFailure = {
@@ -48,13 +69,23 @@ type JsonRpcFailure = {
   error: { code: number; message: string; data?: unknown };
 };
 
-export type StartGuardianOptions = { port: number; manifestPath: string };
+export type StartGuardianOptions = {
+  port: number;
+  manifestPath: string;
+  /** Overrides the mapping.yaml path this Guardian loads. Defaults to the
+   * repo's real mapping.yaml; exists so tests can inject a deliberately
+   * misconfigured mapping (e.g. require_policy_references on a decision
+   * AGT emits with no reason) to exercise the evaluation-failure catch in
+   * handleAcsRequest against a real bridge, without touching the mapping
+   * every other consumer reads. Not meant for production use. */
+  mappingPath?: string;
+};
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
-export async function startGuardian({ port, manifestPath }: StartGuardianOptions): Promise<StartedGuardian> {
+export async function startGuardian({ port, manifestPath, mappingPath }: StartGuardianOptions): Promise<StartedGuardian> {
   // N31 -- construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
-  const mapping = loadMapping(MAPPING_PATH);
+  const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
 
   const server = Bun.serve({
     port,
@@ -110,17 +141,26 @@ async function handleAcsRequest(
   }
 
   if (envelope.method === TOOL_CALL_REQUEST_METHOD) {
-    const snapshot = assembleSnapshot(envelope);
-    const { verdict } = await bridge.evaluate("pre_tool_call", snapshot);
-    const decision = mapVerdict(verdict, mapping);
+    try {
+      const snapshot = assembleSnapshot(envelope);
+      const { verdict } = await bridge.evaluate("pre_tool_call", snapshot);
+      const decision = mapVerdict(verdict, mapping);
 
-    const result: Record<string, unknown> = {
-      type: "final",
-      acs_version: envelope.params.acs_version,
-      request_id: envelope.params.request_id,
-      ...decision,
-    };
-    return successResponse(envelope.id, result);
+      const result: Record<string, unknown> = {
+        type: "final",
+        acs_version: envelope.params.acs_version,
+        request_id: envelope.params.request_id,
+        ...decision,
+      };
+      return successResponse(envelope.id, result);
+    } catch (error) {
+      // Fix wave finding 1 -- see the module-level comment above. This is
+      // deliberately a bare JSON-RPC error, not an ACS `deny` decision
+      // (N27 stays V3's call): the fix here is only that the client gets a
+      // parseable envelope back instead of an HTML 500.
+      const message = error instanceof Error ? error.message : String(error);
+      return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
+    }
   }
 
   // A well-formed envelope (it passed validateEnvelope: the method matched
