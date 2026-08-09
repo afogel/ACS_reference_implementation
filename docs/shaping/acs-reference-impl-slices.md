@@ -31,6 +31,8 @@ Every slice ends in something demo-able.
 
 **Demo:** In Claude Code, ask for a destructive shell command. AGT's stock policy denies it; the deny reason appears in the transcript.
 
+**⚠️ Framing correction (R4.4).** The stock bundle ships **no** shell or command patterns — `patterns.rego` carries generic PII regexes only. What is stock is the *deciding module* (`agt.patterns`) and the priority chain in `agt_default.rego`; the destructive-command regex list is ours, supplied as configuration. R2.1 still holds exactly — zero Rego authored, behaviour driven only through `data.agt.defaults.config` — but the demo must be narrated as "AGT's stock policy engine, configured", never as "Microsoft ships an `rm -rf` deny-list". Overclaiming here would breach R4.4.
+
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
 | U1 | P1 | claude-code | prompt input | type | → N1 | — |
@@ -46,18 +48,24 @@ Every slice ends in something demo-able.
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N23 | — |
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope → AGT snapshot | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision | call | — | → N4 |
-| N30 | P3.1 | agt-bridge | `evaluate_intervention_point(point, snapshot)` | call | — | → N24 |
-| N31 | P3.1 | agt-bridge | `AgentControl.from_path(manifest.yaml)` at boot | call | — | → N30 |
+| N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` | call | — | → N24 |
+| N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | S1 | P1 | store | `claude-code.hookmap.yaml` | — | — | → N2, N3 |
-| S7 | P3.1 | store | `manifest.yaml`, binding `rego` → `data.agt.defaults.verdict` | — | — | → N31 |
-| S8 | P3.1 | store | `data.agt.defaults.config` | — | — | → N31 |
-| S9 | P3.1 | store | AGT stock bundle at pinned ref | — | — | → N31 |
+| S7 | P3.1 | store | `manifest.yaml`, binding `rego` → `data.agt.defaults.verdict`; `policy_target` **must** resolve to a leaf string (`$.tool_call.args.command`) | — | — | → N31 |
+| S8 | P3.1 | store | `data.agt.defaults.config`, shipped as `policy/lib/data.json` **inside** the bundle directory | — | — | → N31 |
+| S9 | P3.1 | store | AGT stock bundle at pinned ref, every `.rego` byte-identical | — | — | → N31 |
 | S10 | shared | store | `mapping.yaml` | — | — | → N23, N24 |
 | S11 | shared | store | `agt.lock` | — | — | → N31 |
 
 **Scope note.** Only `pre_tool_call` is wired. No session state, no tap, no second host. `N23` assembles the snapshot from the envelope alone; it starts reading S3/S4/S5 in V6.
 
-**Setup cost this slice absorbs:** the `opa` CLI on PATH (S9 needs it), the pinned AGT checkout, and the first cut of `mapping.yaml`.
+**Setup cost this slice absorbs:** ⚠️ *amended* — the `opa` CLI is **no longer a setup cost*. The npm package pulls `agent-control-specification-opa-darwin-arm64`, which ships OPA 0.70.0, overridable via `ACS_OPA_PATH` / `ACS_OPA_NO_BUNDLE`. The stock bundle passes 105/105 under both it and system OPA 1.18.2. What remains: the pinned AGT checkout and the first cut of `mapping.yaml`. **This closes D7 as Rego** — Cedar's only advantage was removing an external binary, and there is no external binary.
+
+**⚠️ Watch-for — the `./` landmine.** `policies.<id>.bundle` must **not** begin with `./`. AGT joins the manifest directory to the literal value, yielding `<dir>/./policy/lib`; OPA's bundle loader mis-derives the data mount path from the `/./` segment and silently drops `data.json`. The policy then matches nothing and **every decision becomes `allow`** — a fail-open with no error, in a governance tool. Measured: `./policy/lib` loads, `/abs/policy/lib` loads, `/abs/./policy/lib` is UNDEFINED. `createBridge` throws on `/./`, and V1's deny test is the backstop.
+
+**⚠️ Amendment — the config lives inside the bundle.** `data_paths` cannot deliver `data.agt.defaults.config` while `bundle:` is set: the stock bundle ships no `.manifest`, so its roots default to `""`, it owns the whole data tree, and the `--data` document is discarded. S8 therefore ships as `policy/lib/data.json`. Every stock `.rego` stays byte-identical; `data.json` is the only added file, so R2.1/R2.3 hold — we author a data document, not policy.
+
+**⚠️ Amendment — the bridge embeds the Node SDK, not the Python SDK.** The PyO3 binding sets only `action_identity`; the Node binding sets `input_identity` and `enforced_identity` distinctly (`sdk/node/native/lib.rs:191-204`). On Python, R1.4 is unverifiable and V7's N43 is impossible. This also makes the whole repo one TypeScript toolchain. Amends shaping A4.
 
 ---
 
@@ -204,9 +212,12 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 |---|------|-------|----------|
 | 1 | `updatedToolOutput` does not behave as documented | V4 | Confirm early (F1). V4 drops cleanly if it fails |
 | 2 | OpenCode plugin cannot express modify | V5 | Confirm early (F2). Falls back to deny-only, weakening but not breaking V5 |
-| 3 | `opa` CLI dependency raises setup friction | V1 | Cedar is the built-in fallback with a parity library — that is D7 |
+| 3 | ~~`opa` CLI dependency raises setup friction~~ | ~~V1~~ | ✅ **Retired.** The SDK ships OPA 0.70.0 in `agent-control-specification-opa-<platform>`. No external binary, so D7 closes as Rego |
 | 4 | Two model-call cells cannot go green on v0.1.0 | V7 | Ship red with a stated reason; drive `steps/modelCall` into v0.2 |
 | 5 | Upstream AGT breaks the contract mid-project | all | V8 exists for this, but lands late — consider pulling N45/N46 forward if upstream churn shows up during V1 |
+| 6 | ⚠️ A `./`-prefixed `bundle:` path silently disables policy — every decision becomes `allow`, with no error | V1 | `createBridge` throws on `/./`; V1's deny test is the backstop. Worth reporting upstream: a fail-open in a governance tool |
+| 7 | ⚠️ `enforced_identity` bisection is unavailable over AGT's Python binding | V7 | Resolved by embedding the **Node** SDK, which serializes `input_identity` and `enforced_identity` distinctly. Had we stayed on Python, R1.4 would be unverifiable and N43 impossible |
+| 8 | ⚠️ AGT's verdict carries no `rule_id` / `reason_codes` / `reasoning` | V1, V7 | `mapVerdict` synthesizes them from `reason` / `message`, and `mapping.yaml` is where that synthesis is declared — so V7 measures it rather than assuming it |
 
 ## Open decisions carried from shaping
 
@@ -216,4 +227,7 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | D3 | Hook coverage beyond AGT's eight | V7 scope |
 | D4 | Spec `steps/modelCall` for v0.2 as part of this work | V7 red cells |
 | D5 | Determinism of the demo | V1 onward |
-| D7 | Rego versus Cedar for the demo bundle | V1 |
+| ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
+| D8 | 🟡 Which `on_decision_failure` ships as default — V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6). Leaning to the spec default `proceed`, paired with U23's audit count | V3 |
+
+**Correction log.** V1 planning verified the AGT surface by running it rather than reading it, and produced ten corrections — the SDK choice, the `./` landmine, config-inside-the-bundle, the absent stock shell patterns, the leaf `policy_target`, AGT's missing `rule_id`/`reason_codes`/`reasoning`, lowercase wire decisions, `steps/toolCallRequest` and the 19-hook count, the retired `opa` setup cost, and the Python identity collapse. Each is recorded above at the row it governs, with its evidence, in `docs/superpowers/plans/2026-08-09-v1-one-host-one-hook.md`.

@@ -127,7 +127,7 @@ The literal reading of the spec. Hosts are ACS clients; a Guardian is a server; 
 | A1.2 | OpenCode: same shape, driven from `tool.execute.before` / `.after` in-process plugin hooks | |
 | **A2** | ACS Guardian service: JSON-RPC 2.0 over HTTP, validates every envelope against the v0.1.0 schemas | |
 | **A3** | Session layer in the Guardian: SessionContext hash chain, Intent, provenance lineage; persists AGT `result_labels` and re-supplies as `input.ifc.source_labels` | |
-| **A4** | AGT bridge: embeds the AGT Python SDK; ACS envelope → 5-member policy input; `evaluate_intervention_point`; verdict → ACS decision | |
+| **A4** | AGT bridge: embeds the AGT **Node** SDK ⚠️ *amended, was Python*; ACS envelope → 5-member policy input; `evaluateInterventionPoint`; verdict → ACS decision | |
 | **A5** | Envelope tap: every request and response rendered as pretty JSON in a live viewer | |
 | **A6** | Demo runbook: one AGT policy bundle, both hosts, side by side with AGT's native packages | |
 
@@ -181,6 +181,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 - R5 fails B: envelopes that are never serialized are not inspectable on the wire, which is what R5.1 asks for.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.
+- ⚠️ **A4's SDK choice is load-bearing for R1.4, discovered during V1 planning.** AGT's PyO3 binding surfaces only `action_identity`, collapsing `input_identity` and `enforced_identity`; the Node binding serializes both. Every shape embeds A4, so on the Python SDK R1.4 ("`enforced_identity` survives the adapter") would be unverifiable in *all three* columns and C's R1 ✅ would not survive contact with C2's harness. A4 is amended to the Node SDK and the verdicts stand as written. No other row moves.
 
 ---
 
@@ -201,7 +202,7 @@ All resolved — see `spike-agt-integration.md`.
 |---|------|
 | F1 | Confirm by hand that Claude Code `PostToolUse.updatedToolOutput` rewrites tool results as documented |
 | F2 | Confirm an OpenCode plugin can express deny and modify through `tool.execute.before` / `.after` |
-| F3 | Decide Rego (canonical, needs `opa` CLI) versus Cedar (zero extra binary) for the demo bundle |
+| ~~F3~~ | ✅ **Resolved: Rego.** The premise was wrong — the SDK bundles OPA 0.70.0 as a platform package, so Rego needs no external binary and Cedar's only advantage disappears. Stock bundle verified 105/105 under the bundled OPA and system OPA 1.18.2. Closes D7 |
 
 ---
 
@@ -263,8 +264,8 @@ All resolved — see `spike-agt-integration.md`.
 | N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `handshakeResponder()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
-| N30 | P3.1 | agt-bridge | `evaluate_intervention_point(point, snapshot)` | call | — | → N24 |
-| N31 | P3.1 | agt-bridge | `AgentControl.from_path(manifest.yaml)` at boot | call | — | → N30 |
+| N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
+| N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
@@ -357,8 +358,8 @@ flowchart TB
         S6["S6: envelope log"]
 
         subgraph P31["P3.1: AGT bridge"]
-            N30["N30: evaluate_intervention_point()"]
-            N31["N31: AgentControl.from_path()"]
+            N30["N30: evaluateInterventionPoint()"]
+            N31["N31: AgentControl.fromPath()"]
             S7["S7: manifest.yaml"]
             S8["S8: data.agt.defaults.config"]
             S9["S9: AGT stock bundle (pinned)"]
@@ -523,5 +524,6 @@ flowchart TB
 | D4 | R1.1 — spec `steps/modelCall` for v0.2 as part of this work, or map AGT's two model-call points onto existing hooks and declare the seam | Open | Decides whether this is an implementation project or a spec-and-implementation project |
 | D5 | R7.3 — determinism | Open | A scripted transcript demos reliably; a live model demos honestly |
 | D6 | Shape selection | **Decided: C** | C is the only shape that proves R1 rather than asserting it |
-| D7 | F3 — Rego or Cedar for the demo bundle | Open | Rego is the canonical default binding; Cedar removes an external binary from setup |
-| D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly |
+| ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
+| D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open, leaning `proceed` | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly. V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6), so the decision is only needed by V3 |
+| D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |
