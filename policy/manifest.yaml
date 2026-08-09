@@ -25,3 +25,17 @@ tools:
     type: Tool
     id: run_shell
     security_labels: [shell]
+  # Task 8 addition: an unregistered tool_call.name fails AGT's own
+  # evaluation closed with a generic runtime_error:tool_unknown deny --
+  # discovered by Task 8's real host -> wire -> policy -> host test, which
+  # posts a real Claude Code PreToolUse envelope (tool.name "Bash", per
+  # Task 7's own fixture) through a live Guardian. "run_shell" above is
+  # AGT's own stock example name and stays for the existing bridge/guardian
+  # tests that fixture against it; "Bash" is Claude Code's actual tool name
+  # for shell execution and must be registered too for the real demo (Task
+  # 9) to evaluate real Claude Code payloads rather than fail closed on an
+  # unknown tool before the destructive-command pattern check ever runs.
+  Bash:
+    type: Tool
+    id: Bash
+    security_labels: [shell]
