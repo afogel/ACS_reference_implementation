@@ -15,6 +15,13 @@
         "agent-control-specification": "0.3.1-beta.0",
       },
     },
+    "packages/guardian": {
+      "name": "guardian",
+      "version": "0.1.0",
+      "dependencies": {
+        "agt-bridge": "workspace:*",
+      },
+    },
   },
   "packages": {
     "agent-control-specification": ["agent-control-specification@0.3.1-beta.0", "", { "optionalDependencies": { "agent-control-specification-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-darwin-x64": "0.3.1-beta.0", "agent-control-specification-linux-arm64-gnu": "0.3.1-beta.0", "agent-control-specification-linux-x64-gnu": "0.3.1-beta.0", "agent-control-specification-opa-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-opa-darwin-x64": "0.3.1-beta.0", "agent-control-specification-opa-linux-arm64": "0.3.1-beta.0", "agent-control-specification-opa-linux-x64": "0.3.1-beta.0", "agent-control-specification-opa-win32-x64": "0.3.1-beta.0", "agent-control-specification-win32-x64-msvc": "0.3.1-beta.0" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.100.0", "@langchain/core": ">=1.1.0", "@openai/agents": ">=0.11.0", "langchain": ">=1.0.0" }, "optionalPeers": ["@anthropic-ai/sdk", "@langchain/core", "@openai/agents", "langchain"] }, "sha512-vD1N169F2YhTCLbF4u7hEV5xfmAY1vziq4bHL2xhBa5QNOhdeEzrTdOIshWZw46fxxPJzEYDjQyjSmI2NnHCuQ=="],
@@ -40,5 +47,7 @@
     "agent-control-specification-win32-x64-msvc": ["agent-control-specification-win32-x64-msvc@0.3.1-beta.0", "", { "os": "win32", "cpu": "x64" }, "sha512-+9/DAvNb1bGPQwYOppaiVctxDs0i8RalbZnUuobJLxghqmR4GN9JpqGKBwdk4Du9EIRwRkP5C4/AjmPj5vr+RA=="],
 
     "agt-bridge": ["agt-bridge@workspace:packages/agt-bridge"],
+
+    "guardian": ["guardian@workspace:packages/guardian"],
   }
 }

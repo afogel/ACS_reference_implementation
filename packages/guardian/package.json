@@ -1,0 +1,11 @@
+{
+  "name": "guardian",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "main": "src/map-verdict.ts",
+  "types": "src/map-verdict.ts",
+  "dependencies": {
+    "agt-bridge": "workspace:*"
+  }
+}
