@@ -168,4 +168,54 @@ describe("tailEnvelopeLog (N50)", () => {
       expect(entries).toEqual([]);
     });
   });
+
+  it("keeps streaming, without crashing, when the log file is unlinked and later reappears", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1, "request"));
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      const first = await collectOne(tail);
+      expect(first?.seq).toBe(1);
+
+      unlinkSync(path);
+      await Bun.sleep(POLL_MS * 3);
+      writeFileSync(path, entryLine(9, "response"));
+
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([9]);
+    });
+
+    async function collectOne(tail: AsyncGenerator<TapEntry, void, void>): Promise<TapEntry | undefined> {
+      const { value } = await tail.next();
+      return value ?? undefined;
+    }
+  });
+
+  it("does not start polling until the caller asks for a value", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, "");
+      const malformed: string[] = [];
+      const controller = new AbortController();
+      const tail = tailEnvelopeLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (line) => malformed.push(line),
+      });
+
+      appendFileSync(path, "{not json\n");
+      // Several poll intervals pass with nobody ever calling next(). If a
+      // timer had started at construction time rather than on first
+      // consumption, this malformed line would already have been reported.
+      await Bun.sleep(POLL_MS * 5);
+      expect(malformed).toEqual([]);
+
+      appendFileSync(path, entryLine(4, "request"));
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([4]);
+      expect(malformed).toEqual(["{not json"]);
+    });
+  });
 });
