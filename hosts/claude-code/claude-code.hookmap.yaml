@@ -1,0 +1,22 @@
+# S1 -- the ONLY per-host artifact besides the hook shim (N1, Task 9).
+#
+# Pure data: maps Claude Code's own hook names and payload shape onto ACS
+# methods/arguments (the `hooks` block, read by buildEnvelope / N2), and
+# maps ACS decisions onto Claude Code's `hookSpecificOutput` shape (the
+# `decisions` block, read by renderDecision / N3, Task 8).
+#
+# `tool_name` and `arguments` are JSONPath-lite references (`$.<field>`)
+# into the raw hook payload Claude Code delivers on stdin for this event --
+# see the real PreToolUse payload shape in the Task 7 brief.
+host: claude-code
+hooks:
+  PreToolUse:
+    acs_method: steps/toolCallRequest
+    tool_name: $.tool_name
+    arguments: $.tool_input
+decisions:
+  allow:  { permissionDecision: allow }
+  deny:   { permissionDecision: deny, reason_from: reasoning }
+  ask:    { permissionDecision: ask }
+  defer:  { permissionDecision: defer }
+  modify: { permissionDecision: allow, updatedInput_from: modifications }

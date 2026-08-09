@@ -1,0 +1,11 @@
+{
+  "name": "host-adapter",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "main": "src/build-envelope.ts",
+  "types": "src/build-envelope.ts",
+  "devDependencies": {
+    "guardian": "workspace:*"
+  }
+}

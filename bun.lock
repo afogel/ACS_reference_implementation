@@ -24,6 +24,13 @@
         "ajv-formats": "^3.0.1",
       },
     },
+    "packages/host-adapter": {
+      "name": "host-adapter",
+      "version": "0.1.0",
+      "devDependencies": {
+        "guardian": "workspace:*",
+      },
+    },
   },
   "packages": {
     "agent-control-specification": ["agent-control-specification@0.3.1-beta.0", "", { "optionalDependencies": { "agent-control-specification-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-darwin-x64": "0.3.1-beta.0", "agent-control-specification-linux-arm64-gnu": "0.3.1-beta.0", "agent-control-specification-linux-x64-gnu": "0.3.1-beta.0", "agent-control-specification-opa-darwin-arm64": "0.3.1-beta.0", "agent-control-specification-opa-darwin-x64": "0.3.1-beta.0", "agent-control-specification-opa-linux-arm64": "0.3.1-beta.0", "agent-control-specification-opa-linux-x64": "0.3.1-beta.0", "agent-control-specification-opa-win32-x64": "0.3.1-beta.0", "agent-control-specification-win32-x64-msvc": "0.3.1-beta.0" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.100.0", "@langchain/core": ">=1.1.0", "@openai/agents": ">=0.11.0", "langchain": ">=1.0.0" }, "optionalPeers": ["@anthropic-ai/sdk", "@langchain/core", "@openai/agents", "langchain"] }, "sha512-vD1N169F2YhTCLbF4u7hEV5xfmAY1vziq4bHL2xhBa5QNOhdeEzrTdOIshWZw46fxxPJzEYDjQyjSmI2NnHCuQ=="],
@@ -59,6 +66,8 @@
     "fast-uri": ["fast-uri@3.1.5", "", {}, "sha512-gHwA1O9LDIcKunMKhObS/HimwtehO1nPUECKAu5TpKgaO19fcWEl4bliWe1jWxVFvIXztJjjQ4L8XQ1EU9f7Jw=="],
 
     "guardian": ["guardian@workspace:packages/guardian"],
+
+    "host-adapter": ["host-adapter@workspace:packages/host-adapter"],
 
     "json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
