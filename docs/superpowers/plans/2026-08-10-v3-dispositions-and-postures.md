@@ -429,7 +429,7 @@ describe("createFileSessionConfigStore — S13 across processes", () => {
 describe("createFileSessionConfigStore — session_id is untrusted input (constraint 9)", () => {
   // session_id arrives in a host payload and becomes part of a path. These
   // must be impossible, not unlikely.
-  for (const bad of ["..", ".", "../escape", "a/b", "a\\b", "", "sess ", "a".repeat(129)]) {
+  for (const bad of ["..", ".", "../escape", "a/b", "a\\b", "", "sess id", "a".repeat(129)]) {
     it(`rejects ${JSON.stringify(bad)}`, () => {
       expect(() => createFileSessionConfigStore({ dir: scratch(), sessionId: bad })).toThrow(InvalidSessionIdError);
     });
@@ -2309,8 +2309,8 @@ describe("renderPostureBadge — U23", () => {
   });
 
   it("paints a non-zero proceed count as a warning and zero as clean", () => {
-    expect(renderPostureBadge({ posture: "proceed", proceeds: 1 }, { color: true })).toContain("[33m");
-    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true })).not.toContain("[33m");
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 1 }, { color: true })).toContain("\u001b[33m");
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true })).not.toContain("\u001b[33m");
   });
 
   it("paints the deny posture distinctly from proceed", () => {
@@ -2323,7 +2323,7 @@ describe("renderPostureBadge — U23", () => {
     for (const posture of ["proceed", "deny", null] as const) {
       for (const proceeds of [0, 1, 42]) {
         const out = renderPostureBadge({ posture, proceeds }, { color: false });
-        expect(out).not.toContain("");
+        expect(out).not.toContain("\u001b");
       }
     }
   });
