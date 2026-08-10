@@ -33,24 +33,21 @@ type FieldLiteral = { literal: string };
  * can refuse everything outside it. */
 type WrapMode = "array";
 
-/** modifications.json's three fields -- the complete key set an AGT
- * transform's rewritten value can land in. `ModificationsRule.into` is
- * typed from this array (not the reverse) so the type and the runtime
- * membership check in synthesizeModifications can never drift apart. */
-const MODIFICATIONS_FIELDS = ["parameter_overrides", "redactions", "modified_content"] as const;
-
 /** The mapping's declaration of how an AGT transform becomes ACS
  * modifications. `when_path` is the only transform path this mapping can
  * express; anything else is a mapping gap and must fail loudly rather than
- * silently drop a rewrite. `into` picks which modifications.json field the
- * rewrite lands in -- read from the mapping, not hardcoded, so an edit to
- * mapping.yaml's `into` changes runtime behavior instead of being silently
- * ignored (loadMapping validates nothing at runtime: it casts the parsed
- * YAML with `as Mapping`). */
+ * silently drop a rewrite. Same for `into`: the single-member union is the
+ * whole truth about what this mapping can build today -- one modification
+ * shape, keyed by argument name -- so a value the code cannot honour is a
+ * typecheck failure when written into code, not a runtime surprise. That
+ * guarantee doesn't reach mapping.yaml itself, though: loadMapping casts
+ * the parsed YAML with `as Mapping` and validates nothing, so `into` is
+ * still read from the mapping (not hardcoded) and checked at synthesis
+ * time against the one value this mapping can express. */
 type ModificationsRule = {
   from: string;
   when_path: string;
-  into: (typeof MODIFICATIONS_FIELDS)[number];
+  into: "parameter_overrides";
   policy_target_argument: string;
 };
 
@@ -156,10 +153,10 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * The output key comes from rule.into, not a hardcoded literal, so this
  * stays genuinely declaration-driven: mapping.yaml and this function can
  * never quietly disagree about which modifications.json field the rewrite
- * lands in. rule.into is checked against MODIFICATIONS_FIELDS before use
- * because loadMapping validates nothing at runtime -- the same reason
- * transform.path is checked against rule.when_path above rather than
- * trusted.
+ * lands in. rule.into is still checked against the one value this mapping
+ * can express before use, because loadMapping validates nothing at runtime
+ * -- the same reason transform.path is checked against rule.when_path
+ * above rather than trusted.
  *
  * Note what is NOT here: re-applying the substitution. The SDK already
  * returns the transformed value (verified: transformedPolicyTarget carries
@@ -180,13 +177,13 @@ function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): 
         `but the verdict rewrote ${JSON.stringify(transform.path)}`,
     );
   }
-  if (!MODIFICATIONS_FIELDS.includes(rule.into)) {
+  if (rule.into !== "parameter_overrides") {
     throw new Error(
       `mapping.yaml declares field_synthesis.modifications.into as ${JSON.stringify(rule.into)}, ` +
-        `but modifications.json defines no such field`,
+        `but this mapping can only express "parameter_overrides"`,
     );
   }
-  return { [rule.into]: { [rule.policy_target_argument]: transform.value } } as AcsModifications;
+  return { [rule.into]: { [rule.policy_target_argument]: transform.value } };
 }
 
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {

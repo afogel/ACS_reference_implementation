@@ -206,29 +206,29 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications (
       .toBe("ask");
   });
 
-  // Fix round 1 finding -- into was declared, typed, and read by nobody:
-  // synthesizeModifications hardcoded the literal key "parameter_overrides"
-  // instead of consulting rule.into. This mapping still ships
-  // into: parameter_overrides, so the hardcoded literal happened to agree
-  // with it; this test disagrees with it on purpose.
-  it("uses the mapping's declared into as the output key, not a hardcoded parameter_overrides", () => {
-    const withDifferentInto: Mapping = {
+  // Fix round 2 -- round 1's finding was that `into` was declared, typed,
+  // and read by nobody. Widening `into` to test that directly let a value
+  // the code can't honour type-check and get built, which needed an
+  // `as AcsModifications` cast to compile -- a bad trade. `into` is back to
+  // its single-member union (no cast in the implementation), and this test
+  // simulates what that cast was covering for: a mapping.yaml edit that
+  // loadMapping's unchecked `as Mapping` would let through unnoticed. The
+  // cast belongs here now -- the test is deliberately standing in for
+  // malformed YAML -- and proves the runtime rejects it loudly instead of
+  // silently misbuilding or disagreeing with the declaration.
+  it("throws when mapping.yaml declares an into this mapping cannot express", () => {
+    const withUnsupportedInto = {
       ...m,
       field_synthesis: {
         ...m.field_synthesis,
         modifications: { ...m.field_synthesis.modifications, into: "redactions" },
       },
-    };
-    const decision = mapVerdict(
-      { decision: "transform", reason: "x", transform: { path: "$policy_target", value: "y" } },
-      withDifferentInto,
-    );
-    // AcsModifications types `redactions` as an array (the real ACS shape).
-    // This test deliberately declares an into this mapping doesn't ship,
-    // to prove the key is read from the mapping rather than hardcoded, so
-    // the result is inspected as a plain record instead of asserted
-    // against that stricter shape, which no rule in mapping.yaml uses.
-    const modifications: Record<string, unknown> | undefined = decision.modifications;
-    expect(modifications).toEqual({ redactions: { command: "y" } });
+    } as unknown as Mapping;
+    expect(() =>
+      mapVerdict(
+        { decision: "transform", reason: "x", transform: { path: "$policy_target", value: "y" } },
+        withUnsupportedInto,
+      ),
+    ).toThrow(/redactions/);
   });
 });
