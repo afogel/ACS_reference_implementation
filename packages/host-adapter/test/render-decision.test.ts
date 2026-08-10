@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { loadHookmap, type Hookmap } from "../src/build-envelope.ts";
 import { renderDecision } from "../src/render-decision.ts";
+import { validateDecision } from "../src/validate-decision.ts";
 
 /**
  * A hookmap for a host that is not Claude Code, deliberately.
@@ -203,6 +204,36 @@ describe("renderDecision", () => {
       permissionDecision: "allow",
       permissionDecisionReason: "drift_score 0.9 reached threshold 0.5",
     });
+  });
+
+  // The coupling nothing guarded before this test (whole-branch review, C2):
+  // `validateDecision` puts the applied arguments in `applied_input`, and the
+  // real hookmap's `modify` entry names `updatedInput_from: applied_input`.
+  // Every other modify test in this file uses the local fixture above, whose
+  // `modify` entry names `modifications` instead -- so renaming either half
+  // would leave the real deployment rendering `allow` with no `updatedInput`
+  // at all, and the whole suite would still pass. This is the one test that
+  // fails when the two names stop agreeing.
+  it("loads the real hookmap and renders a modify with updatedInput carrying the applied arguments (R1.6)", () => {
+    const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+    const originalArguments = { command: "echo ghp_SECRET123456" };
+
+    const validated = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { parameter_overrides: { command: "echo [REDACTED]" } },
+      },
+      { elapsedMs: 10, originalArguments },
+    );
+
+    const { hookSpecificOutput } = renderDecision("PreToolUse", validated, real);
+
+    expect(hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(hookSpecificOutput.updatedInput).toEqual({ command: "echo [REDACTED]" });
+    // The rewrite is only real if the original does not survive into what the
+    // host is told to run.
+    expect(JSON.stringify(hookSpecificOutput.updatedInput)).not.toContain("ghp_SECRET123456");
   });
 
   it("loads the real claude-code.hookmap.yaml and renders a deny end to end", () => {

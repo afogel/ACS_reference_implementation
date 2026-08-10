@@ -81,6 +81,110 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
       { ...FRESH, originalArguments: ARGS },
     ).decision).toBe("deny");
   });
+
+  // The CRITICAL this round exists for. Reproduced before the fix: the
+  // decision stayed `modify`, `applied_input` carried BOTH the invented key
+  // and the untouched original, the hookmap rendered
+  // `permissionDecision: allow` with that updatedInput, and the host ran the
+  // original un-redacted command -- while reporting the rewrite as applied.
+  // Nothing was audited, because the audit sink records delivery failures.
+  it("denies a parameter_overrides key that names no existing argument, instead of inventing the field", () => {
+    const out = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redacted",
+        // "cmd", not "command": one character away from the real argument.
+        modifications: { parameter_overrides: { cmd: "echo [REDACTED]" } },
+      },
+      { ...FRESH, originalArguments: { command: "echo ghp_SECRET123456" } },
+    );
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    // The secret must not survive into anything the host would run.
+    expect(out.applied_input).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("ghp_SECRET123456");
+  });
+
+  it("denies a redaction path whose target is absent from the arguments that were sent", () => {
+    const out = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redacted",
+        modifications: { redactions: [{ path: "/env/TOKEN" }] },
+      },
+      { ...FRESH, originalArguments: { command: "echo ghp_SECRET123456" } },
+    );
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_input).toBeUndefined();
+  });
+
+  it("denies a multi-segment redaction that would descend through an array", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/items/0" }] } },
+      { ...FRESH, originalArguments: { items: ["a", "b"] } },
+    );
+    expect(out.decision).toBe("deny");
+  });
+
+  // The reasoning is asserted, not just the deny: an absent-target check
+  // alone already denies all three of these (none is an OWN property of an
+  // arguments object), so a test that only checked `decision` would pass with
+  // this guard deleted -- blind to the thing it exists to pin.
+  for (const segment of ["__proto__", "constructor", "prototype"]) {
+    it(`denies a redaction path or override key naming ${segment}, and says why`, () => {
+      const redaction = validateDecision(
+        { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: `/${segment}` }] } },
+        { ...FRESH, originalArguments: ARGS },
+      );
+      expect(redaction.decision).toBe("deny");
+      expect(redaction.reasoning).toContain(`reserved segment "${segment}"`);
+
+      const override = validateDecision(
+        { decision: "modify", reasoning: "r", modifications: { parameter_overrides: { [segment]: "x" } } },
+        { ...FRESH, originalArguments: ARGS },
+      );
+      expect(override.decision).toBe("deny");
+      expect(override.reasoning).toContain(`reserved segment "${segment}"`);
+    });
+  }
+
+  // modified_content alone passed validation and then applied nothing: the
+  // apply step has no mapping from a wholesale content replacement onto an
+  // arguments object, so it returned the arguments untouched and still
+  // reported `modify`. Same shape as an absent target, one branch over.
+  it("denies a modify carrying only modified_content, which this host cannot apply to an arguments object", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { modified_content: "echo [REDACTED]" } },
+      { ...FRESH, originalArguments: ARGS },
+    );
+    expect(out.decision).toBe("deny");
+    expect(out.applied_input).toBeUndefined();
+  });
+
+  // Deferred minor from Task 6, closed here: both of these already failed
+  // closed, but the raw JS error text ("...map is not a function") was what
+  // landed in the deny's reasoning, which is the audit record a human reads.
+  it("reports a clean ModificationsInvalidError for a non-object redactions entry or a non-array redactions", () => {
+    for (const modifications of [{ redactions: [null] }, { redactions: "abc" }, { redactions: [42] }]) {
+      const out = validateDecision(
+        { decision: "modify", reasoning: "r", modifications },
+        { ...FRESH, originalArguments: ARGS },
+      );
+      expect(out.decision).toBe("deny");
+      expect(out.reasoning).toContain("modifications cannot be honoured as specified");
+      expect(out.reasoning).not.toContain("is not a function");
+    }
+  });
+
+  it("reports a clean ModificationsInvalidError for a non-object parameter_overrides", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { parameter_overrides: ["command"] } },
+      { ...FRESH, originalArguments: ARGS },
+    );
+    expect(out.decision).toBe("deny");
+    expect(out.reasoning).toContain("parameter_overrides must be an object");
+  });
 });
 
 describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
@@ -287,5 +391,30 @@ describe("applyModifications — §6.3", () => {
   it("throws a clean ModificationsInvalidError on a missing or non-string redaction path, not raw JS error text", () => {
     expect(() => applyModifications(ARGS, { redactions: [{}] })).toThrow(ModificationsInvalidError);
     expect(() => applyModifications(ARGS, { redactions: [{ path: 42 }] })).toThrow(ModificationsInvalidError);
+  });
+
+  it("throws rather than creating an absent target, at either depth", () => {
+    expect(() => applyModifications(ARGS, { parameter_overrides: { cmd: "x" } })).toThrow(ModificationsInvalidError);
+    expect(() => applyModifications(ARGS, { redactions: [{ path: "/env/TOKEN" }] })).toThrow(ModificationsInvalidError);
+    // Depth 2 where the first segment exists and the second does not.
+    expect(() => applyModifications({ env: { OTHER: "x" } }, { redactions: [{ path: "/env/TOKEN" }] }))
+      .toThrow(ModificationsInvalidError);
+  });
+
+  // The array rule refuses descending *through* an array, not touching one:
+  // a single-segment path replaces the whole value, which is a real edit.
+  it("still replaces an array wholesale when the path names it directly", () => {
+    expect(applyModifications({ items: ["a", "b"] }, { redactions: [{ path: "/items" }] }))
+      .toEqual({ items: "[REDACTED]" });
+    expect(() => applyModifications({ items: ["a", "b"] }, { redactions: [{ path: "/items/0" }] }))
+      .toThrow(ModificationsInvalidError);
+  });
+
+  // An argument whose value is legitimately absent-looking must still be
+  // editable: `hasOwnProperty`, not truthiness or `!== undefined`, is what
+  // decides existence, so a null-valued argument is a real target.
+  it("treats a null-valued argument as present", () => {
+    expect(applyModifications({ command: null }, { parameter_overrides: { command: "echo hi" } }))
+      .toEqual({ command: "echo hi" });
   });
 });
