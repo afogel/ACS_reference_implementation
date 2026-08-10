@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -283,5 +283,39 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     // Nothing was written either -- the hookmap failed before the session
     // store was ever built.
     expect(existsSync(join(dir, "sessions"))).toBe(false);
+  });
+
+  it("exits 2 (blocking) when the hookmap's decisions block is malformed, not merely absent (fix round 3)", async () => {
+    const dir = scratch();
+    // A hookmap that loadHookmap's presence check alone would have let
+    // through (before fix round 3): "allow" is a key in `decisions`, but
+    // its value is `null`, not a renderable rule. This must fail at load
+    // time (exit 2), not at render time deep inside the shim's own
+    // fallback (which would have been a THIRD route to exit 1 with empty
+    // stdout -- the exact fail-open this task exists to remove).
+    const hookmapPath = join(dir, "bad-hookmap.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
+        "decisions:\n" +
+        "  allow: null\n" +
+        "  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+    );
+    try {
+      const out = await runShim(payload("ls -la"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain("decisions.allow");
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
   });
 });

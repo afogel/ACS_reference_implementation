@@ -54,9 +54,10 @@
  *     (`applyFailurePosture`, N6) -- proceed or deny -- and every fail-open
  *     `proceed` taken this way is written to the audit sink (S14) first,
  *     so the bypass is visible rather than silent. The posture's own
- *     "allow"/"deny" is guaranteed renderable (loadHookmap enforces that
- *     both exist in every hookmap's `decisions` block), so this tier can
- *     never recurse into itself.
+ *     "allow"/"deny" is guaranteed renderable: loadHookmap doesn't just
+ *     require both to exist in every hookmap's `decisions` block, it
+ *     shape-checks every entry it accepts, so this tier can never recurse
+ *     into itself.
  *
  * V1's own version of this paragraph described a placeholder, not a
  * considered posture: it caught nothing, wrote the error to stderr only,
@@ -153,6 +154,7 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
   return { ...rendered, [HOOK_SPECIFIC_OUTPUT]: { hookEventName, ...(wrapper as Record<string, unknown>) } };
 }
 
+/**
  * Thrown when this shim cannot trust its own configuration enough to make
  * a governed decision at all -- a hookmap that fails to load, or a
  * `session_id` unsafe to use as a path segment. Distinct from a step-1
@@ -258,10 +260,11 @@ async function main(): Promise<void> {
   // as undeliverable as a timeout or a JSON-RPC error, and must be answered
   // by the posture the same way, not left to escape as a bare throw. The
   // fallback render in the catch cannot itself fail: loadHookmap already
-  // guaranteed `allow` and `deny` both exist in `hookmap.decisions`,
-  // applyFailurePosture never returns any decision but those two, and both
-  // of their hookmap entries declare a path under the wrapper that
-  // asClaudeCodeOutput requires.
+  // guaranteed every entry in `hookmap.decisions` it accepted -- including
+  // `allow` and `deny`, both required -- is itself a renderable rule, not
+  // merely present, and applyFailurePosture never returns any decision but
+  // those two. Both of those rules also declare a path under the wrapper
+  // that asClaudeCodeOutput requires, so the wrap cannot fail either.
   //
   // `requestDecision` answers the one question that matters here and never
   // throws for a delivery failure (PR #10 review, Important). This shim does

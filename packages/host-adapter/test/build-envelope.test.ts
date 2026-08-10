@@ -193,6 +193,42 @@ describe("buildEnvelope", () => {
         },
       );
     });
+
+    // Fix round 3: presence alone let both of these through. `allow: null`
+    // satisfies `"allow" in decisions` but is not an object renderDecision
+    // can read a permissionDecision off -- it would throw at render time,
+    // past every guard, exiting 1 with empty stdout (a third route to the
+    // fail-open this task exists to remove). `allow: {}` also satisfies
+    // presence, renderDecision does NOT throw for it, but
+    // `permissionDecision` comes out `undefined`, which JSON.stringify
+    // drops -- stdout would carry hookSpecificOutput with no decision in
+    // it at all. Both must be rejected at load time instead.
+    it("throws when allow is present but not an object (null)", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: null\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
+        },
+      );
+    });
+
+    it("throws when allow is an object but names no permissionDecision", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: {}\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/permissionDecision/);
+        },
+      );
+    });
+
+    it("throws when a THIRD entry (not allow or deny) is malformed -- every declared entry is checked", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n  deny: { permissionDecision: deny, reason_from: reasoning }\n  modify: { updatedInput_from: applied_input }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/decisions\.modify/);
+        },
+      );
+    });
   });
 
   describe("unwrapArguments (V3 fix round 1, item 6)", () => {
