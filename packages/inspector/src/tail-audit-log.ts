@@ -16,6 +16,22 @@
  * agreement, and importing the other side's type would make that agreement
  * a tautology instead of a check.
  *
+ * THE RAW VS DERIVED SESSION IDENTIFIER, stated here because render.ts's
+ * renderAuditEntry doc points at this paragraph for it and, until the
+ * whole-branch review (I1), this paragraph did not exist. **S14's
+ * `session_id` and S6's are not the same value, and the two logs cannot be
+ * joined on it.** S14 records the identifier the host itself uses -- whatever
+ * the host's own session is called, which is also the key its session store
+ * is filed under. S6's envelopes carry `metadata.session_id`, which ACS's
+ * schemas constrain to `format: uuid`, so a host whose session identifier is
+ * not already a UUID has one *derived* from it before the envelope goes out.
+ * Derivation is one-way as far as this package is concerned: nothing here can
+ * turn one into the other, so nothing here tries. The mitigation is to label
+ * rather than to correlate -- renderAuditEntry prints `audit_session=`, never
+ * `session=`, so neither value can be misread as comparable to the other.
+ * Making the two joinable is not this slice's work; V6's session chain is
+ * where that seam is next touched.
+ *
  * One divergence from tail-envelope-log.ts, deliberate rather than
  * incidental: there, a log file that does not exist yet is ordinary --
  * nothing has written to it, and `sizeOf` reports that as size zero with no

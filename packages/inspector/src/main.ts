@@ -13,10 +13,13 @@
  *
  * The two logs are tailed concurrently and independently -- neither waits
  * on the other, and S14's raw session identifier is never matched against
- * S6's derived one (see render.ts's renderAuditEntry doc). The posture
- * badge (U23) is reprinted every time an S14 entry changes it: the posture
- * in force, and the running count of audited fail-open proceeds, which is
- * the number this whole task exists to keep in front of a human.
+ * S6's derived one (see tail-audit-log.ts's module doc for the split, and
+ * render.ts's renderAuditEntry doc for how it is labelled). The posture
+ * badge (U23) is reprinted every time an S14 entry changes it: the last
+ * posture *observed* in the audit log -- not the negotiated one, which lives
+ * in a host-side store this package deliberately does not read -- and the
+ * running count of audited fail-open proceeds, which is the number this
+ * whole task exists to keep in front of a human.
  */
 import { tailAuditLog, type AuditEntry } from "./tail-audit-log.ts";
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";

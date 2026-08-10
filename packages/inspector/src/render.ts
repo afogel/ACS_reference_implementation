@@ -242,11 +242,21 @@ export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderO
   return [header, ...(outcome === null ? [] : [outcome]), body].join("\n");
 }
 
-/** U23's running state: the most recently observed posture, and how many
- * audited fail-open proceeds have crossed since the tail started. `posture`
- * is null before any S14 entry has arrived -- there is no negotiated (or
- * default) posture to show yet, and saying so plainly is the honest
- * baseline constraint 2 asks for, not an omission to paper over. */
+/**
+ * U23's running state: the posture carried by the most recent S14 entry, and
+ * how many audited fail-open proceeds have crossed since the tail started.
+ *
+ * `posture` is the *last observed* posture, not the negotiated one, and the
+ * label says so (whole-branch review, I5). It is null until an S14 entry
+ * arrives -- which, in the healthy case, is forever: a session with zero
+ * delivery failures writes no audit entry at all, and the posture it
+ * negotiated is sitting in the session store this package cannot read. It
+ * cannot read it for a stated reason rather than an accidental one: the store
+ * is keyed by the host's own raw session identifier, which no artifact this
+ * package tails carries (see tail-audit-log.ts's module doc on the raw vs
+ * derived split), and reading a host-side store would put this package back
+ * inside the boundary R5.1/R5.2 draw around it.
+ */
 export type PostureBadgeState = { posture: "proceed" | "deny" | null; proceeds: number };
 
 /**
@@ -256,15 +266,21 @@ export type PostureBadgeState = { posture: "proceed" | "deny" | null; proceeds: 
  * count is painted as a warning; zero is clean. The posture itself is
  * painted so `deny` and `proceed` read as visibly different states, not
  * just different words -- distinguishing them is what U23 is for.
+ *
+ * Both halves are labelled as what they are: the posture is the last one
+ * *observed* in S14, and its absence is "(none observed)", not "(not
+ * negotiated)". The old label made a claim this badge cannot check -- a
+ * session that negotiated `deny` and had zero delivery failures is the
+ * healthy case, and it read as though nothing had been negotiated at all.
  */
 export function renderPostureBadge(state: PostureBadgeState, options: RenderOptions = {}): string {
   const color = options.color ?? false;
-  const postureLabel = state.posture === null ? "(not negotiated)" : state.posture;
+  const postureLabel = state.posture === null ? "(none observed)" : state.posture;
   const postureColor = state.posture === "deny" ? RED : state.posture === "proceed" ? GREEN : DIM;
   const proceedsColor = state.proceeds > 0 ? YELLOW : GREEN;
 
   return [
-    paint(`posture=${postureLabel}`, postureColor, color),
+    paint(`last_observed_posture=${postureLabel}`, postureColor, color),
     paint(`fail-open proceeds=${state.proceeds}`, proceedsColor, color),
   ].join("  ");
 }
@@ -277,11 +293,12 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
  * policy identically to a clean allow: the outcome that bypassed a decision
  * is the one line here that must not read like an ordinary one.
  *
- * S14 records the host's own raw session identifier, not the derived UUID
- * S6's envelopes carry (see tail-audit-log.ts's module doc) -- the two logs
- * cannot be joined on it. Labelled `audit_session` here, deliberately not
- * `session`, so nothing reads this value as comparable to an id printed
- * anywhere near a rendered TapEntry.
+ * S14 records the host's own raw session identifier, not the UUID derived
+ * from it that S6's envelopes carry (see tail-audit-log.ts's module doc,
+ * which now spells the split out) -- the two logs cannot be joined on it.
+ * Labelled `audit_session` here, deliberately not `session`, so nothing
+ * reads this value as comparable to an id printed anywhere near a rendered
+ * TapEntry.
  */
 export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;

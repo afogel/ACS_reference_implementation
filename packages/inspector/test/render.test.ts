@@ -268,21 +268,28 @@ describe("renderEnvelopeLogEntry", () => {
 });
 
 describe("renderPostureBadge — U23", () => {
-  it("shows the negotiated posture and a zero count before anything fails", () => {
+  it("shows the last observed posture and a zero count before anything fails", () => {
     expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: false }))
-      .toBe("posture=proceed  fail-open proceeds=0");
+      .toBe("last_observed_posture=proceed  fail-open proceeds=0");
   });
 
   // The number that matters. A fail-open bypass is invisible unless something
   // counts it, and §6.4 exists because it must not be invisible.
   it("counts audited fail-open proceeds", () => {
     expect(renderPostureBadge({ posture: "proceed", proceeds: 3 }, { color: false }))
-      .toBe("posture=proceed  fail-open proceeds=3");
+      .toBe("last_observed_posture=proceed  fail-open proceeds=3");
   });
 
-  it("says so when no posture has been negotiated yet", () => {
-    expect(renderPostureBadge({ posture: null, proceeds: 0 }, { color: false }))
-      .toBe("posture=(not negotiated)  fail-open proceeds=0");
+  // Whole-branch review, I5: this used to read "posture=(not negotiated)",
+  // which is false in the healthiest case there is -- a session that
+  // negotiated `deny` and had zero delivery failures writes no audit entry at
+  // all, so the badge said "not negotiated" forever while the negotiated
+  // value sat in the session store. The badge reports what it can actually
+  // see: the last posture observed in S14, and its absence.
+  it("says nothing has been observed yet, rather than claiming nothing was negotiated", () => {
+    const badge = renderPostureBadge({ posture: null, proceeds: 0 }, { color: false });
+    expect(badge).toBe("last_observed_posture=(none observed)  fail-open proceeds=0");
+    expect(badge).not.toContain("negotiated");
   });
 
   it("paints a non-zero proceed count as a warning and zero as clean", () => {

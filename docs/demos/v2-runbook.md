@@ -291,8 +291,9 @@ Guardian, which is why its `seq` starts at `#1`):
 
 **The bare badge line, explained.** No `policy_references=[...]` segment appears beside
 `● DENY` because `policy_references` is empty — deliberately: R1.2 makes a *non-empty*
-`policy_references` the marker of a policy that actually fired (AGT's "warn," rendered
-as `deny`'s allow-with-a-fired-policy cousin). A Guardian-side failure fired no policy at
+`policy_references` the marker of a policy that actually fired — the marker that tells an
+`allow` a policy fired on (AGT's `warn`) apart from a clean `allow`, and the one this
+`deny` would carry if a policy had decided it. A Guardian-side failure fired no policy at
 all, so `denyOnInvalidEnvelope` leaves the array empty rather than inventing a reference
 for it. `request_id` echoes `"1"` — the envelope carried no `params.request_id` of its
 own (that is exactly what failed validation), so the deny decision falls back to the
@@ -523,10 +524,13 @@ Inspector shows nothing at all during a live demo, check this before you check t
 
 ## If the Inspector shows nothing
 
-- **The Guardian is not running, or is on another port.** The shim writes an error to
-  stderr and exits 1, and no envelope is ever written. V1's runbook covers this failure
-  in full; V2 does not change it. `N6`/`N7`, the considered fail-open/fail-closed
-  posture, are V3.
+- **The Guardian is not running, or is on another port.** No envelope is ever written,
+  since nothing reaches the Guardian to be tapped. What the shim does about it changed in
+  V3: it now writes a decision to stdout and exits 0, applying the deployment's negotiated
+  `on_decision_failure` posture (`N6`/`N7`) and recording the outcome in
+  `.acs/audit.jsonl`. Before V3 it wrote an error to stderr and exited 1, and the tool
+  call proceeded ungoverned — see V1's runbook, which keeps that note, and
+  [`v3-runbook.md`](v3-runbook.md) for the posture that replaced it.
 - **The agent never issued the tool call.** See the section above. Check the log's size:
   `wc -c .acs/envelopes.jsonl`.
 - **The Inspector started after the entries were written.** It starts at the current end
