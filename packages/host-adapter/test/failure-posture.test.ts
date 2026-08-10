@@ -10,7 +10,24 @@ import type { SessionConfig } from "../src/session-config.ts";
 
 function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
   const events: AuditEvent[] = [];
-  return { sink: { path: "test", write: (e) => void events.push(e) }, events };
+  return {
+    sink: {
+      path: "test",
+      write: (e) => {
+        events.push(e);
+        return true;
+      },
+    },
+    events,
+  };
+}
+
+/** A sink that behaves exactly as the real one does when it cannot write:
+ * it does not throw, it reports nothing back to the caller but false, and it
+ * records nothing. The reproduction was ACS_AUDIT_LOG pointing at a path
+ * under a regular file. */
+function unwritableSink(): AuditSink {
+  return { path: "test", write: () => false };
 }
 
 const NEGOTIATED = (posture: "proceed" | "deny"): SessionConfig => ({
@@ -101,6 +118,144 @@ describe("applyFailurePosture — R1.7", () => {
       applyFailurePosture({ failure: new Error("x"), sessionConfig: NEGOTIATED("deny"), audit: throwing, ...CALL })
         .decision,
     ).toBe("deny");
+  });
+});
+
+// Constraints 2 and 3 genuinely disagree here, and 3 governs: §6.4 makes the
+// audit entry a MUST for a step that proceeds without a decision, so a
+// proceed that could not be recorded is a silent bypass -- the one outcome
+// this slice exists to make impossible. Reproduced before this fix: with
+// ACS_AUDIT_LOG under a regular file, the step proceeded, exited 0, and wrote
+// no entry; the only trace was a stderr line from a subprocess that succeeded.
+describe("applyFailurePosture — an unauditable proceed is not a proceed (constraint 3, §6.4)", () => {
+  it("downgrades a proceed it could not audit to deny, with its own reason code", () => {
+    const decision = applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: NEGOTIATED("proceed"),
+      audit: unwritableSink(),
+      ...CALL,
+    });
+    expect(decision.decision).toBe("deny");
+    expect(decision.reason_codes).toEqual(["decision_failure", "audit_unavailable"]);
+    expect(decision.reasoning).toMatch(/could not be recorded/i);
+  });
+
+  it("downgrades when the sink throws outright, not only when it reports false", () => {
+    const throwing: AuditSink = { path: null, write: () => { throw new Error("sink is broken"); } };
+    expect(
+      applyFailurePosture({
+        failure: new GuardianTimeoutError(5000),
+        sessionConfig: NEGOTIATED("proceed"),
+        audit: throwing,
+        ...CALL,
+      }).decision,
+    ).toBe("deny");
+  });
+
+  // A deny needs no downgrade: the step is blocked either way, and the failed
+  // write is already reported by the sink's own error path. It must not pick
+  // up the downgrade's reason code, which would misdescribe why it blocked.
+  it("leaves an unauditable deny alone", () => {
+    const decision = applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: NEGOTIATED("deny"),
+      audit: unwritableSink(),
+      ...CALL,
+    });
+    expect(decision.decision).toBe("deny");
+    expect(decision.reason_codes).toEqual(["decision_failure"]);
+  });
+
+  it("still proceeds when the entry WAS recorded -- the downgrade is about the record, not the posture", () => {
+    const { sink } = recordingSink();
+    expect(
+      applyFailurePosture({
+        failure: new GuardianTimeoutError(5000),
+        sessionConfig: NEGOTIATED("proceed"),
+        audit: sink,
+        ...CALL,
+      }).decision,
+    ).toBe("allow");
+  });
+});
+
+describe("applyFailurePosture — a request that was never sent is not a delivery failure (I2)", () => {
+  const NOT_SENT = { ...CALL, method: null, requestSent: false };
+
+  it("classifies it as host_configuration, not unknown", () => {
+    const { sink, events } = recordingSink();
+    applyFailurePosture({
+      failure: new Error('buildEnvelope: hookmap has no entry for hook "PostToolUse"'),
+      sessionConfig: NEGOTIATED("proceed"),
+      audit: sink,
+      ...NOT_SENT,
+    });
+    expect(events[0]?.failure.kind).toBe("host_configuration");
+    expect(events[0]?.method).toBeNull();
+  });
+
+  // The audit trail must not send an incident review to the wrong process.
+  it("does not blame the guardian in the reasoning or the reason code", () => {
+    const { sink } = recordingSink();
+    const decision = applyFailurePosture({
+      failure: new Error("no entry for this hook"),
+      sessionConfig: NEGOTIATED("proceed"),
+      audit: sink,
+      ...NOT_SENT,
+    });
+    expect(decision.reasoning).not.toMatch(/guardian/i);
+    expect(decision.reasoning).toMatch(/could not build a request/i);
+    expect(decision.reason_codes).toEqual(["host_configuration"]);
+  });
+
+  it("still names the guardian when a request really was sent", () => {
+    const { sink } = recordingSink();
+    const decision = applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: NEGOTIATED("proceed"),
+      audit: sink,
+      ...CALL,
+    });
+    expect(decision.reasoning).toMatch(/guardian/i);
+  });
+});
+
+describe("applyFailurePosture — a session config that could not be established is recorded (I3)", () => {
+  it("carries the session failure into the audited entry, beside the step's own failure", () => {
+    const { sink, events } = recordingSink();
+    applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: undefined,
+      audit: sink,
+      sessionFailure: new Error("EACCES: permission denied, mkdir '.acs/sessions'"),
+      ...CALL,
+    });
+    expect(events[0]?.failure.kind).toBe("timeout");
+    expect(events[0]?.session_failure?.message).toContain("EACCES");
+  });
+
+  it("omits the field entirely when the session config was fine", () => {
+    const { sink, events } = recordingSink();
+    applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: NEGOTIATED("proceed"),
+      audit: sink,
+      ...CALL,
+    });
+    expect(events[0]).not.toHaveProperty("session_failure");
+  });
+
+  it("says so in the reasoning a human reads, rather than discarding it", () => {
+    const { sink } = recordingSink();
+    const decision = applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: undefined,
+      audit: sink,
+      sessionFailure: new Error("EACCES: permission denied"),
+      ...CALL,
+    });
+    expect(decision.reasoning).toMatch(/could not be established or stored/i);
+    expect(decision.reasoning).toContain("EACCES");
   });
 });
 

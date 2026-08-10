@@ -233,16 +233,19 @@ async function main(): Promise<void> {
   const guardian = createGuardianClient(guardianUrl);
 
   // Step 4: negotiate once per session. A handshake failure decides nothing
-  // by itself, and is not carried forward into whatever the step call
-  // below reports: the two are different requests that can fail for
-  // unrelated reasons, and the audited entry (if one is written at all)
-  // must classify the failure of the request it is filed against
-  // (steps/toolCallRequest), not this one. `posture_source: "default"`
-  // already records, durably, that no handshake ever completed for this
-  // session -- that is the fact that matters, not which error this
-  // particular attempt raised. The step call may still succeed even after
-  // this fails (Global Constraint 2: the posture must never touch an
-  // arriving decision).
+  // by itself, and it does not become the step call's failure: the two are
+  // different requests that can fail for unrelated reasons, and the audited
+  // entry must classify the failure of the request it is filed against
+  // (steps/toolCallRequest), not this one. It is no longer *discarded*,
+  // though (whole-branch review, I3): it travels beside that failure as
+  // `session_failure`, because the case that matters is a session store this
+  // deployment cannot write to -- `set()` throws by design there, every hook
+  // then re-handshakes and `store.get()` stays undefined, so a deployment
+  // that declared `deny` silently fails open on every delivery failure.
+  // `posture_source: "default"` records that no negotiated config was found;
+  // this records why. The step call may still succeed even after this fails
+  // (Global Constraint 1: the posture must never touch an arriving decision).
+  let sessionFailure: unknown;
   if (store.get() === undefined) {
     try {
       // metadata.session_id is schema-constrained to "uuid" (same rule
@@ -263,8 +266,10 @@ async function main(): Promise<void> {
         },
         store,
       );
-    } catch {
-      // Not fatal, and not carried forward -- see the comment above.
+    } catch (error) {
+      // Not fatal, and not this step's own failure -- but not thrown away
+      // either. See the comment above.
+      sessionFailure = error;
     }
   }
 
@@ -313,6 +318,7 @@ async function main(): Promise<void> {
           method: envelope.method,
           rpcId: envelope.id,
           audit,
+          sessionFailure,
         });
 
     hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
@@ -321,9 +327,19 @@ async function main(): Promise<void> {
       failure: error,
       sessionConfig,
       sessionId,
-      method: envelope?.method ?? hookEventName,
+      // The ACS method, or null -- never this host's own event name. An
+      // envelope that could not be built has no ACS method to report, and
+      // the audit log is read by consumers that know only ACS: putting
+      // "PreToolUse" here made `bun run inspector`, whose whole claim is
+      // that it names no host, print a Claude Code hook name at runtime.
+      method: envelope?.method ?? null,
       rpcId: envelope?.id ?? null,
       audit,
+      // No envelope means nothing was ever sent, so this is host-side
+      // configuration rather than a delivery failure, and the reasoning must
+      // not blame a Guardian that was never contacted.
+      requestSent: envelope !== undefined,
+      sessionFailure,
     });
     hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
   }

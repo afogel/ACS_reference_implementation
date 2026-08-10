@@ -12,6 +12,19 @@
  * honoured regardless of posture (R1.5), and that is enforced by the caller
  * never calling this on a decision, plus the end-to-end assertions in Task 8.
  *
+ * One place two of this slice's global constraints genuinely disagree, and
+ * how it is resolved: constraint 2 says a sink that cannot write "degrades
+ * observability and nothing else", while constraint 3 says every fail-open
+ * proceed is audited and "a proceed with no audit entry is a silent bypass
+ * and is the one outcome this slice exists to make impossible". Constraint 3
+ * governs, because §6.4 makes the entry a MUST for a step that proceeds
+ * without a decision -- an unauditable bypass is not a bypass the spec
+ * permits. So a `proceed` this function could not audit is downgraded to
+ * `deny`, with its own reason code. What constraint 2 was protecting is
+ * untouched: the sink still never throws, never delays a decision, and never
+ * changes one -- the change is entirely in what this caller does with a
+ * write it was told did not happen.
+ *
  * R3.2: nothing here knows the policy runtime behind the wire. A delivery
  * failure is a property of the wire, not of whatever evaluates policy on
  * the other side of it.
@@ -27,7 +40,19 @@ export const DEFAULT_POSTURE = "proceed" as const;
  * Matches the Guardian's declared default so the two agree by value. */
 export const DEFAULT_TIMEOUT_MS = 5000;
 
-export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decision" | "unknown";
+export type DeliveryFailureKind =
+  | "timeout"
+  | "transport"
+  | "error_without_decision"
+  | "unknown"
+  /**
+   * Not a delivery failure at all: the request was never sent, because this
+   * host could not build one. Its own kind because "unknown" was actively
+   * misleading for it -- the cause is precisely known and entirely host-side,
+   * and an audit entry that files a host misconfiguration under an unknown
+   * delivery failure sends an incident review to the wrong process.
+   */
+  | "host_configuration";
 
 /** A JSON-RPC error object, as it arrives in a response that carried no decision. */
 type ErrorLike = { code?: unknown; message?: unknown };
@@ -107,10 +132,30 @@ export type ApplyFailurePostureInput = {
   /** S13's contents, or undefined when no handshake ever completed. */
   sessionConfig: SessionConfig | undefined;
   sessionId: string;
-  method: string;
+  /** The ACS method, or null when no request was built and so none is
+   * knowable. Never a host's own event name -- see AuditEntry.method. */
+  method: string | null;
   rpcId: string | number | null;
   /** Required, not optional: constraint 3 makes auditing non-skippable. */
   audit: AuditSink;
+  /**
+   * False when no request was ever sent -- the envelope could not even be
+   * built, so nothing was asked of anything. Such a failure is host-side
+   * configuration rather than a delivery failure, and both the classified
+   * kind and the reasoning say so instead of naming a Guardian that was
+   * never contacted. Defaults to true, which is every ordinary call site.
+   */
+  requestSent?: boolean;
+  /**
+   * Whatever went wrong establishing this session's negotiated config, if
+   * anything did: a handshake that failed, or a ServerHello that could not
+   * be stored. Recorded alongside the step's own failure rather than merged
+   * into it (see AuditEntry.session_failure) -- a session config that cannot
+   * be persisted means every hook re-negotiates and the declared posture
+   * never applies, which is how a deployment that asked to fail closed
+   * quietly fails open.
+   */
+  sessionFailure?: unknown;
 };
 
 export type PostureDecision = {
@@ -126,9 +171,13 @@ export function applyFailurePosture({
   method,
   rpcId,
   audit,
+  requestSent = true,
+  sessionFailure,
 }: ApplyFailurePostureInput): PostureDecision {
   const posture = sessionConfig?.on_decision_failure ?? DEFAULT_POSTURE;
-  const classified = classifyDeliveryFailure(failure);
+  const classified = requestSent
+    ? classifyDeliveryFailure(failure)
+    : { kind: "host_configuration" as const, message: messageOf(failure) };
   const outcome = posture === "proceed" ? "proceeded" : "blocked";
 
   // Computed before the audit write, and written into it: "the guardian was
@@ -142,19 +191,25 @@ export function applyFailurePosture({
   // breaks its own totality contract -- the posture is the load-bearing
   // half, the record is the accountability half, and losing the record must
   // not lose the posture.
+  let audited = false;
   try {
-    audit.write({
-      session_id: sessionId,
-      method,
-      rpc_id: rpcId,
-      posture,
-      posture_source: postureSource,
-      outcome,
-      failure: classified,
-    });
+    audited =
+      audit.write({
+        session_id: sessionId,
+        method,
+        rpc_id: rpcId,
+        posture,
+        posture_source: postureSource,
+        outcome,
+        failure: classified,
+        ...(sessionFailure === undefined
+          ? {}
+          : { session_failure: { kind: "session_config", message: messageOf(sessionFailure) } }),
+      }) === true;
   } catch {
     // The sink is documented total; if it throws anyway, there is nowhere
-    // left to report it that would not have the same problem.
+    // left to report it that would not have the same problem. It counts as
+    // unaudited, which is the only thing the decision below needs from it.
   }
 
   // Honest about where the posture came from: a negotiated deployment
@@ -164,11 +219,53 @@ export function applyFailurePosture({
       ? `no session was ever negotiated, so the ACS default posture (${DEFAULT_POSTURE}) applies`
       : "the session's negotiated posture applies";
 
+  // Never names a Guardian for a request that never reached one (whole-branch
+  // review, I2): a `host_configuration` failure is this host's own, and an
+  // audit trail that blames the policy runtime for it sends an incident
+  // review to the wrong process.
+  const cause = requestSent
+    ? `no decision arrived from the guardian for ${method ?? "this step"} (${classified.kind}: ${classified.message})`
+    : `this host could not build a request for this step, so no decision was ever sought ` +
+      `(${classified.kind}: ${classified.message})`;
+
+  const sessionNote =
+    sessionFailure === undefined
+      ? ""
+      : ` this session's negotiated configuration could not be established or stored ` +
+        `(${messageOf(sessionFailure)}), so any posture this deployment declared was unavailable to this step;`;
+
+  // Constraint 3 outranks the posture here, and this is the one place the two
+  // can disagree. §6.4 makes the audit entry a MUST for a step that proceeds
+  // without a decision, so a proceed that could not be recorded is not a
+  // proceed this deployment is entitled to take: an unauditable bypass is
+  // exactly the silent bypass this slice exists to make impossible. The sink
+  // stays total (it never threw and never will); what changes is what the
+  // caller does with a failed write. A `deny` needs no such downgrade -- the
+  // step is blocked either way, and the failed write is already reported by
+  // the sink's own error path.
+  if (posture === "proceed" && !audited) {
+    return {
+      decision: "deny",
+      reasoning:
+        `${cause};${sessionNote} ${postureOrigin} -- on_decision_failure=proceed, but the audit entry §6.4 ` +
+        "requires for a step that proceeds without a decision could not be recorded, so this step was blocked " +
+        "instead: a bypass that cannot be recorded is not one this deployment can take.",
+      reason_codes: ["decision_failure", "audit_unavailable"],
+    };
+  }
+
   return {
     decision: posture === "proceed" ? "allow" : "deny",
-    reasoning:
-      `no decision arrived from the guardian for ${method} (${classified.kind}: ${classified.message}); ` +
-      `${postureOrigin} -- on_decision_failure=${posture}, so this step was ${outcome}.`,
-    reason_codes: ["decision_failure"],
+    reasoning: `${cause};${sessionNote} ${postureOrigin} -- on_decision_failure=${posture}, so this step was ${outcome}.`,
+    reason_codes: [requestSent ? "decision_failure" : "host_configuration"],
   };
+}
+
+/** The message of whatever was thrown, without assuming it was an Error. */
+function messageOf(failure: unknown): string {
+  try {
+    return failure instanceof Error ? failure.message : String(failure);
+  } catch {
+    return "<unprintable failure>";
+  }
 }

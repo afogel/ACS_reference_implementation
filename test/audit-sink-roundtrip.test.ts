@@ -71,6 +71,41 @@ describe("S14 write -> N51 read: every field survives", () => {
     });
   }
 
+  // Both fields the whole-branch review added, together: a null `method`
+  // (nothing was sent, so no ACS method was ever determined) and a
+  // `session_failure` beside the step's own failure. The optional field is
+  // exactly where two independent type declarations drift most quietly, so it
+  // is asserted with toEqual like the rest.
+  it("round-trips a null method and a session_failure", async () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") }).write({
+      session_id: "sess-1",
+      method: null,
+      rpc_id: null,
+      posture: "proceed",
+      posture_source: "default",
+      outcome: "proceeded",
+      failure: { kind: "host_configuration", message: "no entry for this hook" },
+      session_failure: { kind: "session_config", message: "EACCES: permission denied" },
+    });
+
+    for await (const entry of tailAuditLog({ path, fromStart: true })) {
+      expect(entry).toEqual({
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: null,
+        rpc_id: null,
+        posture: "proceed",
+        posture_source: "default",
+        outcome: "proceeded",
+        failure: { kind: "host_configuration", message: "no entry for this hook" },
+        session_failure: { kind: "session_config", message: "EACCES: permission denied" },
+      });
+      break;
+    }
+  });
+
   it("survives a null rpc_id, which an unpaired failure produces", async () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path }).write({

@@ -47,13 +47,21 @@ import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 export type AuditEntry = {
   seq: number;
   recorded_at: string;
+  /** The writer's own session identifier, which is NOT the `session_id` an
+   * envelope in S6 carries -- see this module's doc. */
   session_id: string;
-  method: string;
+  /** An ACS method, or null when the writer never determined one. Never a
+   * host's own event name: this reader knows ACS and nothing else. */
+  method: string | null;
   rpc_id: string | number | null;
   posture: "proceed" | "deny";
   posture_source: "negotiated" | "default";
   outcome: "proceeded" | "blocked";
   failure: { kind: string; message: string };
+  /** Present only when establishing the session's negotiated configuration
+   * failed. Distinct from `failure`, which is the failure of the step the
+   * entry is filed against. */
+  session_failure?: { kind: string; message: string };
 };
 
 export type TailAuditLogOptions = {
@@ -87,20 +95,28 @@ function isAuditEntryShape(value: unknown): value is AuditEntry {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  const failure = candidate.failure;
   return (
     typeof candidate.seq === "number" &&
     typeof candidate.recorded_at === "string" &&
     typeof candidate.session_id === "string" &&
-    typeof candidate.method === "string" &&
+    (typeof candidate.method === "string" || candidate.method === null) &&
     (typeof candidate.rpc_id === "string" || typeof candidate.rpc_id === "number" || candidate.rpc_id === null) &&
     (candidate.posture === "proceed" || candidate.posture === "deny") &&
     (candidate.posture_source === "negotiated" || candidate.posture_source === "default") &&
     (candidate.outcome === "proceeded" || candidate.outcome === "blocked") &&
-    typeof failure === "object" &&
-    failure !== null &&
-    typeof (failure as Record<string, unknown>).kind === "string" &&
-    typeof (failure as Record<string, unknown>).message === "string"
+    isFailureShape(candidate.failure) &&
+    // Optional, so absent is valid -- but a present one is checked as
+    // strictly as the required one, because the renderer prints it.
+    (candidate.session_failure === undefined || isFailureShape(candidate.session_failure))
+  );
+}
+
+function isFailureShape(value: unknown): value is { kind: string; message: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).kind === "string" &&
+    typeof (value as Record<string, unknown>).message === "string"
   );
 }
 

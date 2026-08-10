@@ -58,6 +58,53 @@ describe("createAuditSink — S14", () => {
     expect(readEntries(path).map((e) => e.seq)).toEqual([1, 2]);
   });
 
+  // I6: seq used to be per sink *instance*, and the shipped host builds a
+  // fresh sink in a fresh subprocess per hook -- so every entry in a session
+  // was `seq: 1`. It ordered nothing, could not exhibit the gap its own doc
+  // tells a reader to look for, and rendered as identical `#1` headers that
+  // read as one entry repeated.
+  it("continues the numbering a previous sink instance left in the file", () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path }).write(EVENT);
+    createAuditSink({ path }).write(EVENT);
+    expect(readEntries(path).map((e) => e.seq)).toEqual([1, 2]);
+  });
+
+  it("keeps counting across many instances, the way a session of hooks does", () => {
+    const path = join(scratch(), "audit.jsonl");
+    for (let i = 0; i < 4; i += 1) {
+      createAuditSink({ path }).write(EVENT);
+    }
+    expect(readEntries(path).map((e) => e.seq)).toEqual([1, 2, 3, 4]);
+  });
+
+  // Total: the numbering is a nicety, the entry is the §6.4 MUST. An
+  // unreadable or garbled log must cost the former and never the latter.
+  it("starts from 1 rather than throwing when the existing log cannot be parsed", () => {
+    const path = join(scratch(), "audit.jsonl");
+    writeFileSync(path, "{not json\n");
+    const sink = createAuditSink({ path });
+    expect(sink.write(EVENT)).toBe(true);
+    // One prior line, unparseable: it still counts as an entry, so the new
+    // one takes 2 rather than colliding with it. Read by hand -- readEntries
+    // would choke on the deliberately broken first line.
+    const lines = readFileSync(path, "utf8").split("\n").filter((line) => line.length > 0);
+    expect(lines).toHaveLength(2);
+    expect((JSON.parse(lines[1] as string) as AuditEntry).seq).toBe(2);
+  });
+
+  it("does not reuse a number after a gap left by a lost write", () => {
+    const path = join(scratch(), "audit.jsonl");
+    writeFileSync(path, `${JSON.stringify({ ...EVENT, seq: 7, recorded_at: "2026-08-10T12:00:00.000Z" })}\n`);
+    createAuditSink({ path }).write(EVENT);
+    expect(readEntries(path).map((e) => e.seq)).toEqual([7, 8]);
+  });
+
+  it("reports whether the entry was recorded", () => {
+    const path = join(scratch(), "audit.jsonl");
+    expect(createAuditSink({ path }).write(EVENT)).toBe(true);
+  });
+
   it("records a blocked step too, so U23 can distinguish the two outcomes", () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path }).write({ ...EVENT, posture: "deny", outcome: "blocked" });
@@ -86,6 +133,19 @@ describe("createAuditSink — total by construction (constraint 2)", () => {
     const sink = createAuditSink({ path: join(blocker, "audit.jsonl"), onError: (e) => errors.push(e) });
     expect(() => sink.write(EVENT)).not.toThrow();
     expect(errors).toHaveLength(1);
+  });
+
+  // Totality and silence are different properties: the sink must not throw,
+  // and it must still tell the caller nothing was recorded, so N6 can honour
+  // constraint 3 rather than proceeding on an unrecorded bypass.
+  it("reports false when it could not write, without throwing", () => {
+    const dir = scratch();
+    const blocker = join(dir, "blocker-false");
+    writeFileSync(blocker, "x");
+    const sink = createAuditSink({ path: join(blocker, "audit.jsonl"), onError: () => {} });
+    expect(sink.write(EVENT)).toBe(false);
+    // And every later write too, since the sink has disabled itself.
+    expect(sink.write(EVENT)).toBe(false);
   });
 
   it("disables itself after the first failure rather than reporting per call", () => {
@@ -153,5 +213,11 @@ describe("NULL_AUDIT_SINK", () => {
   it("accepts writes and reports no path", () => {
     expect(NULL_AUDIT_SINK.path).toBeNull();
     expect(() => NULL_AUDIT_SINK.write(EVENT)).not.toThrow();
+  });
+
+  // It records nothing, so it says nothing was recorded. Claiming otherwise
+  // would make this the one sink able to hide a bypass from constraint 3.
+  it("reports false, because it recorded nothing", () => {
+    expect(NULL_AUDIT_SINK.write(EVENT)).toBe(false);
   });
 });

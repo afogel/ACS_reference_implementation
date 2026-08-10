@@ -336,4 +336,45 @@ describe("renderAuditEntry — N51", () => {
     );
     expect(line).toContain("BLOCKED");
   });
+
+  // Whole-branch review, I2: `method` used to be rendered verbatim from the
+  // entry, and the writer put its own hook event name there when no request
+  // was ever built -- so this package, whose whole claim is that it names no
+  // host, printed a host's event name at runtime while the grep gate over its
+  // source stayed green. It now reads null, and this is the fallback.
+  it("labels an entry with no ACS method rather than printing whatever was in the field", () => {
+    const line = renderAuditEntry(
+      { seq: 1, recorded_at: "2026-08-10T12:00:00.000Z", session_id: "s", method: null, rpc_id: null,
+        posture: "proceed", posture_source: "default", outcome: "proceeded",
+        failure: { kind: "host_configuration", message: "no entry for this hook" } },
+      { color: false },
+    );
+    expect(line).toContain("(no method)");
+    expect(line).not.toContain("null");
+  });
+
+  it("renders a session_failure on its own labelled line, and nothing when absent", () => {
+    const base = {
+      seq: 1,
+      recorded_at: "2026-08-10T12:00:00.000Z",
+      session_id: "s",
+      method: "steps/toolCallRequest",
+      rpc_id: null,
+      posture: "proceed",
+      posture_source: "default",
+      outcome: "proceeded",
+      failure: { kind: "timeout", message: "no decision within 5000ms" },
+    } as const;
+
+    const withSessionFailure = renderAuditEntry(
+      { ...base, session_failure: { kind: "session_config", message: "EACCES: permission denied" } },
+      { color: false },
+    );
+    expect(withSessionFailure.split("\n")).toHaveLength(3);
+    expect(withSessionFailure).toContain("session_failure=session_config: EACCES: permission denied");
+    // The step's own failure is still reported as the step's own.
+    expect(withSessionFailure).toContain("failure=timeout: no decision within 5000ms");
+
+    expect(renderAuditEntry(base, { color: false }).split("\n")).toHaveLength(2);
+  });
 });

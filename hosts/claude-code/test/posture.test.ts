@@ -128,7 +128,15 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(0);
     const hook = JSON.parse(out.stdout).hookSpecificOutput;
     expect(hook.permissionDecision).toBe("allow");
-    expect(hook.permissionDecisionReason).toMatch(/no decision/i);
+    // Byte-for-byte what docs/demos/v3-runbook.md captures for this step. The
+    // session note added for an unpersistable config must not leak into the
+    // healthy path, where hook 2 reads the config hook 1 stored and never
+    // re-handshakes at all.
+    expect(hook.permissionDecisionReason).toBe(
+      "no decision arrived from the guardian for steps/toolCallRequest (transport: Unable to connect. Is the " +
+        "computer able to access the url?); the session's negotiated posture applies -- " +
+        "on_decision_failure=proceed, so this step was proceeded.",
+    );
 
     const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(audit).toHaveLength(1);
@@ -239,6 +247,31 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
     } finally {
       stub.stop(true);
+    }
+  });
+
+  // Reproduced from the whole-branch review (I3): with ACS_AUDIT_LOG pointing
+  // at a path under a regular file, the step used to proceed, exit 0, and
+  // write nothing -- the only trace being a stderr line from a subprocess that
+  // succeeded. §6.4 makes the entry a MUST for a step that proceeds without a
+  // decision, so an unauditable proceed is a silent bypass and blocks instead.
+  it("blocks rather than proceeding when the audit entry cannot be written (constraint 3)", async () => {
+    const dir = scratch();
+    // Parent path is a regular file, so both mkdir and append fail.
+    const blocker = join(dir, "blocker");
+    writeFileSync(blocker, "x");
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(blocker, "audit.jsonl"),
+      });
+      expect(out.exitCode).toBe(0);
+      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      expect(hook.permissionDecision).toBe("deny");
+      expect(hook.permissionDecisionReason).toMatch(/could not be recorded/i);
+    } finally {
+      unlinkSync(blocker);
     }
   });
 

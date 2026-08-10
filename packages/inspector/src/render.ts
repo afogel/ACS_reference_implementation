@@ -288,14 +288,26 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
   const outcomeLabel = entry.outcome === "proceeded" ? "PROCEEDED" : "BLOCKED";
   const outcomeColor = entry.outcome === "proceeded" ? YELLOW : RED;
   const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
+  // Same fallback renderEntry uses for a TapEntry with no method, and for the
+  // same reason: an entry written before any request could be built has no
+  // ACS method, and this renderer has no other vocabulary to fall back on.
+  const method = entry.method ?? "(no method)";
 
   const header = paint(
-    `── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${outcomeLabel}  ${entry.method}  ${id}  ` +
+    `── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${outcomeLabel}  ${method}  ${id}  ` +
       `posture=${entry.posture}/${entry.posture_source}  audit_session=${entry.session_id}`,
     outcomeColor,
     color,
   );
   const failureLine = paint(`failure=${entry.failure.kind}: ${entry.failure.message}`, DIM, color);
+  // A second, separately labelled line rather than a merged one: the session's
+  // configuration failing and this step's decision failing are different
+  // events, and the whole point of recording both is that neither gets
+  // attributed to the other.
+  const sessionLine =
+    entry.session_failure === undefined
+      ? []
+      : [paint(`session_failure=${entry.session_failure.kind}: ${entry.session_failure.message}`, DIM, color)];
 
-  return [header, failureLine].join("\n");
+  return [header, failureLine, ...sessionLine].join("\n");
 }
