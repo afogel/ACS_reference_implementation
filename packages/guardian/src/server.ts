@@ -54,7 +54,7 @@
  * `hostname` option (main.ts reads ACS_GUARDIAN_HOST for it).
  */
 import { fileURLToPath } from "node:url";
-import { createBridge, type PolicyBridge } from "agt-bridge";
+import { createBridge, type Annotator, type PolicyBridge } from "agt-bridge";
 import { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
@@ -215,6 +215,13 @@ export type StartGuardianOptions = {
    * called with no argument and reads the actual environment, exactly as
    * `packages/guardian/src/main.ts` needs it to. */
   onDecisionFailure?: "proceed" | "deny";
+  /** A host-supplied annotator, threaded straight to `createBridge` (which
+   * wraps it before handing it to AGT). Optional and off by default: the
+   * main manifest (`policy/manifest.yaml`) declares no annotator, so a
+   * Guardian that omits this option behaves exactly as it did before this
+   * option existed -- see `policy/manifest.drift.yaml` and its own header
+   * for the one manifest that does declare one. */
+  annotator?: Annotator;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
@@ -225,9 +232,10 @@ export async function startGuardian({
   mappingPath,
   envelopeLogPath,
   onDecisionFailure,
+  annotator,
 }: StartGuardianOptions): Promise<StartedGuardian> {
-  // Construct the bridge once at boot, not per request.
-  const bridge = createBridge(manifestPath);
+  // N31 -- construct the bridge once at boot, not per request.
+  const bridge = createBridge(manifestPath, annotator ? { annotator } : undefined);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
 
