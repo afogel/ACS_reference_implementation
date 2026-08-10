@@ -190,6 +190,26 @@ describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error
     expect(response.error?.code).toBe(-32010);
   });
 
+  // Half 2 of 2 (see deny-on-invalid-envelope.test.ts's unit-level half for
+  // half 1). params.request_id present, top-level id absent -- the one
+  // shape where two correct-looking behaviours have to compose:
+  // denyOnInvalidEnvelope legitimately returns a decision (it found a
+  // usable params.request_id), and asDecisionResponse legitimately refuses
+  // to send it (a JSON-RPC *response* needs a non-null id of its own, and
+  // this envelope gives it none). The error response below is the honest
+  // answer -- pinned here so nobody "simplifies" asDecisionResponse into
+  // forwarding a decision the client could never correlate.
+  it("keeps an envelope addressable only by params.request_id a JSON-RPC error, since the response itself has no id to carry (constraint 10)", async () => {
+    const response = await postAcs(url, {
+      jsonrpc: "2.0",
+      method: "steps/toolCallRequest",
+      params: { request_id: "req-1" },
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+  });
+
   it("keeps a handshake failure a JSON-RPC error — a ServerHello is not a decision", async () => {
     const bad = makeEnvelope("handshake/hello", {}, { id: 99 });
     delete (bad.params as Record<string, unknown>).acs_version;

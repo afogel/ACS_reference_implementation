@@ -42,6 +42,21 @@ describe("denyOnInvalidEnvelope — N27", () => {
     expect(denyOnInvalidEnvelope({ id: { not: "a scalar" } }, OPTS)).toEqual({ kind: "unaddressable" });
   });
 
+  // Half 1 of 2 (see server.test.ts's HTTP-level half): params.request_id
+  // present, top-level id absent. denyOnInvalidEnvelope's job stops at
+  // finding an id to address the decision to -- it does not know or care
+  // whether that id can also address a JSON-RPC *response*, which is
+  // asDecisionResponse's job in server.ts. Pinned here so nobody
+  // "simplifies" this function to require both ids at once: a decision is
+  // exactly what it should return for this shape.
+  it("returns a decision addressed by params.request_id alone, even with no top-level id at all", () => {
+    const out = denyOnInvalidEnvelope(
+      { jsonrpc: "2.0", method: "steps/toolCallRequest", params: { request_id: "req-1" } },
+      OPTS,
+    );
+    expect(out).toMatchObject({ kind: "decision", result: { request_id: "req-1" } });
+  });
+
   it("never throws, whatever it is handed", () => {
     for (const raw of [undefined, 42, "string", [], Object.create(null)]) {
       expect(() => denyOnInvalidEnvelope(raw, OPTS)).not.toThrow();
