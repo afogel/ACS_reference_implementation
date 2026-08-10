@@ -56,3 +56,10 @@ export {
   type DeliveryFailureKind,
   type PostureDecision,
 } from "./failure-posture.ts";
+export {
+  applyModifications,
+  ModificationsInvalidError,
+  validateDecision,
+  type ValidateDecisionContext,
+  type ValidatedDecision,
+} from "./validate-decision.ts";

@@ -30,8 +30,15 @@
  * No policy-runtime vocabulary here and no host vocabulary either;
  * test/invariants.test.ts gates both. An observe-only upstream signal has
  * already become an ACS `allow` (with policy_references) by the time it
- * reaches this module, and dispatches through the same `decisions.allow` entry
- * a plain allow does.
+ * reaches this module, per R1.2, and it is dispatched through the exact same
+ * `decisions.allow` entry a plain allow is: still one dispatch path, still
+ * driven by the hookmap alone.
+ *
+ * V3: the decision this module renders now arrives via N7's
+ * validateDecision (validate-decision.ts), which resolves §6.3's
+ * modifications and any ASK/DEFER expiry before this module ever sees the
+ * result -- which is why `modify`'s hookmap entry names a post-validation
+ * field (`applied_input`), not `modifications` itself.
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";

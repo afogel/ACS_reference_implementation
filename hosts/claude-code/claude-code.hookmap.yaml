@@ -61,7 +61,10 @@ hooks:
 # NOT a considered posture, just the least-wrong mapping until a host that
 # can actually represent deferral exists. V3, which owns posture and
 # disposition decisions (N27, N6/N7), should treat this as a known gap
-# rather than rediscovering it.
+# rather than rediscovering it. V3 confirmed nothing upstream of this
+# hookmap ever produces an ACS `defer` decision today (P2), so this entry
+# stays a guard for a Guardian that emits one rather than a path this
+# deployment exercises.
 decisions:
   allow:
     output:
@@ -78,7 +81,13 @@ decisions:
     output:
       hookSpecificOutput.permissionDecision:       { value: deny }
       hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+  # V3: renderDecision now receives a decision that has been through N7
+  # (validateDecision), which applies §6.3's modifications to the original
+  # tool arguments and puts the result in `applied_input`. V1 named
+  # `modifications` here, which handed Claude Code the raw ACS modifications
+  # object -- a shape its updatedInput does not accept, so the rewrite would
+  # have been reported and never taken effect (R1.6).
   modify:
     output:
       hookSpecificOutput.permissionDecision:       { value: allow }
-      hookSpecificOutput.updatedInput:             { from: modifications }
+      hookSpecificOutput.updatedInput:             { from: applied_input }
