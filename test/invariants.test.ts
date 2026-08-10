@@ -23,6 +23,20 @@ function stripComments(src: string): string {
 }
 
 /**
+ * True when `relativePath` has a `test` path segment anywhere, including at
+ * the very start. `Glob.scanSync` returns paths relative to the scanned
+ * root, with no leading slash, so a `test/` directory sitting directly under
+ * that root (e.g. scanning `packages/foo/src` with a `packages/foo/src/test/`
+ * subdirectory) produces a path like `test/bar.ts` -- no `/test/` substring
+ * for a plain `.includes("/test/")` check to find. Anchoring on `(^|/)`
+ * catches that case as well as the nested one, without false-positiving on a
+ * segment that merely starts with "test" (`testing/`, `latest/`).
+ */
+function isUnderTestDir(relativePath: string): boolean {
+  return /(^|\/)test\//.test(relativePath);
+}
+
+/**
  * Every non-test `.ts` file under `dir`, with comments stripped.
  *
  * The emptiness check is what stops all four gates below from passing
@@ -33,7 +47,7 @@ function stripComments(src: string): string {
  * enforcement in the README while enforcing nothing.
  */
 function readSourceFiles(dir: string): { file: string; code: string }[] {
-  const files = [...new Glob("**/*.ts").scanSync(dir)].filter((f) => !f.includes("/test/"));
+  const files = [...new Glob("**/*.ts").scanSync(dir)].filter((f) => !isUnderTestDir(f));
   expect({ dir, sourceFiles: files.length > 0 }).toEqual({ dir, sourceFiles: true });
   return files.map((f) => ({ file: f, code: stripComments(readFileSync(`${dir}/${f}`, "utf8")) }));
 }
@@ -221,5 +235,34 @@ describe("the import gate itself", () => {
     ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
 
     expect(ignored).toEqual(ignored.map(({ line }) => ({ line, found: false })));
+  });
+});
+
+describe("the source-file filter itself", () => {
+  /**
+   * `Glob.scanSync`'s relative paths never carry a leading slash, so a
+   * `test/` directory sitting directly under the scanned root -- rather than
+   * nested deeper -- produces a path with no `/test/` substring at all. No
+   * scanned package has such a directory today (each puts `test/` as a
+   * sibling of `src/`, never inside it), so this was stricter-than-intended
+   * rather than a real hole, but it is still the exact case a bare
+   * `.includes("/test/")` misses.
+   */
+  it("excludes a test/ segment at the start of the path, not only when nested", () => {
+    const paths = ["test/invariants.test.ts", "src/test/helper.ts", "packages/foo/test/bar.ts"].map((path) => ({
+      path,
+      excluded: isUnderTestDir(path),
+    }));
+
+    expect(paths).toEqual(paths.map(({ path }) => ({ path, excluded: true })));
+  });
+
+  it("does not exclude a segment that merely starts with the letters 'test'", () => {
+    const paths = ["latest/foo.ts", "testing/bar.ts", "src/index.ts"].map((path) => ({
+      path,
+      excluded: isUnderTestDir(path),
+    }));
+
+    expect(paths).toEqual(paths.map(({ path }) => ({ path, excluded: false })));
   });
 });

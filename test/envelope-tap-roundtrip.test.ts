@@ -74,9 +74,11 @@ describe("S6 round trip: Guardian tap (N26) -> Inspector tail (N50) -> badge (U2
       expect(request?.seq).toBe(1);
       expect(response?.seq).toBe(2);
       expect(typeof request?.recorded_at).toBe("string");
+      expect(typeof response?.recorded_at).toBe("string");
       expect(request?.direction).toBe("request");
       expect(response?.direction).toBe("response");
       expect(request?.method).toBe("steps/toolCallRequest");
+      expect(response?.method).toBe("steps/toolCallRequest");
       expect(request?.rpc_id).toBe(77);
       expect(response?.rpc_id).toBe(77);
 
