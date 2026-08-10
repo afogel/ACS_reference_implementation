@@ -25,7 +25,12 @@ __pycache__/
 # source. Fixed name (not mkdtemp's random one), so this one line covers it.
 packages/guardian/tmp-schemaless-scratch/
 
-# Same reasoning, a second scratch tree: server.test.ts's non-string-message
-# test double for validate-envelope.ts, alongside a real, unmodified copy of
-# every other file in packages/guardian/src.
-packages/guardian/tmp-nonstring-message-scratch/
+# Same reasoning, two more scratch trees: server.test.ts's fake
+# validate-envelope.ts test doubles (a non-string .message, and a throwing
+# .message accessor), each alongside a real, unmodified copy of every other
+# file in packages/guardian/src. Two separate directories, not one, because
+# Bun's module cache keys by resolved path and these two fake sources differ
+# from each other -- sharing one directory would silently hand the second
+# test the first's already-loaded module.
+packages/guardian/tmp-undefined-message-scratch/
+packages/guardian/tmp-throwing-message-accessor-scratch/

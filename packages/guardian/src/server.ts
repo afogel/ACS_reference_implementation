@@ -135,11 +135,33 @@ const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g,
  * and otherwise-shaped `unknown` values can be asserted directly, rather
  * than only through a real Guardian and an HTTP round trip. The blocking
  * regression this exists to prevent is still covered end to end, separately
- * -- see server.test.ts's `withNonStringMessageGuardian` test.
+ * -- see server.test.ts's `withFakeValidateEnvelopeGuardian` tests.
+ *
+ * The whole body is wrapped in its own try/catch, including the
+ * `instanceof` check -- belt-and-braces, not a reaction to a live bug.
+ * Nothing in this tree throws an `Error` whose `.message` is a
+ * throwing accessor, a value whose `toString`/`valueOf` throws, or a
+ * `Proxy` that throws on `get` or on `getPrototypeOf` (which would defeat
+ * `instanceof Error` itself, since it walks the prototype chain through
+ * `[[GetPrototypeOf]]`, before `String()` below ever runs) -- all four are
+ * unreachable from any throw site in this repo today, same as the shape the
+ * previous fix in this module closed. They are guarded anyway because
+ * "unreachable today" should not be load-bearing for the one function whose
+ * entire job is upholding this module's stated contract that nothing
+ * escapes the outer net: this project has already found five fail-opens of
+ * this shape, the last one introduced by a fix for a minor, and V3 (N27
+ * `denyOnInvalidEnvelope`) adds new routes through this exact path. The
+ * fallback string names the failure mode rather than guessing at a partial
+ * message, since the point is that nothing about the original error could
+ * be read at all.
  */
 export function toRepoRelativeMessage(error: unknown): string {
-  const message = String(error instanceof Error ? error.message : error);
-  return message.replace(REPO_ROOT_PATTERN, "");
+  try {
+    const message = String(error instanceof Error ? error.message : error);
+    return message.replace(REPO_ROOT_PATTERN, "");
+  } catch {
+    return "<unprintable error>";
+  }
 }
 
 /**

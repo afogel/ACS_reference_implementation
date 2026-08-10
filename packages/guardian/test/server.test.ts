@@ -289,12 +289,21 @@ async function withSchemalessGuardian(
   }
 }
 
-/** Same reasoning as SCHEMALESS_SCRATCH_DIR: a stable, predictable name,
- * ignored and tsconfig-excluded, so a killed run cannot leave `bun run
- * typecheck` a stray copy of the Guardian's own source. A distinct name
- * from SCHEMALESS_SCRATCH_DIR, since a run of this suite can have both
- * scratch trees on disk at once. */
-const NON_STRING_MESSAGE_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-nonstring-message-scratch");
+/**
+ * One scratch directory *per distinct fake source*, not shared the way
+ * `SCHEMALESS_SCRATCH_DIR` is shared across `withSchemalessGuardian`'s four
+ * tests. Those four all copy the *same* real files every time, so whichever
+ * call's module instance Bun's cache happens to answer with behaves
+ * identically. These two fake sources differ from each other, and Bun's
+ * module cache keys by resolved path: reusing one directory for both meant
+ * the second call's `import()` returned the *first* call's already-loaded
+ * module -- silently exercising the wrong test double, discovered by this
+ * test failing with the first double's behaviour instead of the second's
+ * before this was split out. Two names, so each call gets a path Bun has
+ * never loaded before.
+ */
+const UNDEFINED_MESSAGE_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-undefined-message-scratch");
+const THROWING_MESSAGE_ACCESSOR_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-throwing-message-accessor-scratch");
 
 /**
  * A test double, not the real `validate-envelope.ts`. It exists to force a
@@ -309,7 +318,7 @@ const NON_STRING_MESSAGE_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-nonstring-message
  * rethrows, the same way it would for any error the real module didn't
  * throw as an `EnvelopeValidationError`.
  */
-const NON_STRING_MESSAGE_VALIDATE_ENVELOPE_SOURCE = `
+const UNDEFINED_MESSAGE_VALIDATE_ENVELOPE_SOURCE = `
 export class EnvelopeValidationError extends Error {}
 
 export function validateEnvelope(_input) {
@@ -320,19 +329,61 @@ export function validateEnvelope(_input) {
 `;
 
 /**
- * Runs \`body\` against a Guardian whose \`validate-envelope.ts\` has been
- * replaced by the test double above -- reproducing the blocking finding
- * from this wave's review: a real \`Error\`, thrown on \`dispatch\`'s one
- * rethrow route, whose \`.message\` is not a string. Structurally identical
- * to \`withSchemalessGuardian\`: a real, unmodified copy of every other file
- * in \`packages/guardian/src\`, dynamically imported from its own scratch
- * directory so it is a distinct module instance, with only
- * \`validate-envelope.ts\` swapped for the double. No \`envelopeLogPath\` --
- * this test needs no tap, and \`NULL_TAP\`'s totality is already covered
- * elsewhere.
+ * A second test double, for the residual the follow-up review surfaced:
+ * `toRepoRelativeMessage`'s own `error instanceof Error ? error.message :
+ * error` line can itself throw, if `.message` is an accessor that throws on
+ * get -- a case the plain `undefined`-message double above does not
+ * exercise, since overwriting `.message` with a value never triggers a
+ * getter. `EnvelopeValidationError` is redeclared here for the same reason
+ * as the double above.
+ *
+ * Deliberately *not* the getPrototypeOf-trapping Proxy the review also
+ * named. That shape is real and is covered directly, at the unit level,
+ * below -- but it cannot reach `toRepoRelativeMessage` unmutated through
+ * this route: `dispatch`'s own `error instanceof EnvelopeValidationError`
+ * check runs first, and `instanceof` needs exactly the trapped
+ * `[[GetPrototypeOf]]` internal method to walk the prototype chain, so the
+ * *trap's own thrown Error* replaces the Proxy at that point -- a normal,
+ * well-behaved Error reaches the outer catch instead, and the interesting
+ * case never arrives. A throwing `.message` accessor has no such problem:
+ * `instanceof` never touches `.message`, so a real `Error` carrying one
+ * passes through dispatch's check untouched and reaches
+ * `toRepoRelativeMessage` exactly as thrown.
  */
-async function withNonStringMessageGuardian(body: (guardian: { url: string }) => Promise<void>): Promise<void> {
-  const root = NON_STRING_MESSAGE_SCRATCH_DIR;
+const THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE = `
+export class EnvelopeValidationError extends Error {}
+
+export function validateEnvelope(_input) {
+  const error = new Error("real message, about to be hidden behind a throwing getter");
+  Object.defineProperty(error, "message", {
+    get() {
+      throw new Error("message getter blew up");
+    },
+  });
+  throw error;
+}
+`;
+
+/**
+ * Runs \`body\` against a Guardian whose \`validate-envelope.ts\` has been
+ * replaced by \`fakeSource\` -- reproducing, through \`dispatch\`'s one
+ * rethrow route, a pathological value that a real \`validateEnvelope\`
+ * would never throw. Structurally identical to \`withSchemalessGuardian\`: a
+ * real, unmodified copy of every other file in \`packages/guardian/src\`,
+ * dynamically imported from its own scratch directory so it is a distinct
+ * module instance, with only \`validate-envelope.ts\` swapped for the
+ * double. No \`envelopeLogPath\` -- these tests need no tap, and
+ * \`NULL_TAP\`'s totality is already covered elsewhere.
+ *
+ * \`root\` is the caller's -- one of the two scratch-dir constants above,
+ * never shared between two different \`fakeSource\`s (see their doc comment
+ * for why that matters here specifically).
+ */
+async function withFakeValidateEnvelopeGuardian(
+  root: string,
+  fakeSource: string,
+  body: (guardian: { url: string }) => Promise<void>,
+): Promise<void> {
   const srcDir = join(root, "src");
   const copied = readdirSync(join(GUARDIAN_PKG, "src")).filter((f) => f.endsWith(".ts") && f !== "validate-envelope.ts");
   let guardian: { close(): Promise<void> } | undefined;
@@ -343,7 +394,7 @@ async function withNonStringMessageGuardian(body: (guardian: { url: string }) =>
     for (const file of copied) {
       copyFileSync(join(GUARDIAN_PKG, "src", file), join(srcDir, file));
     }
-    writeFileSync(join(srcDir, "validate-envelope.ts"), NON_STRING_MESSAGE_VALIDATE_ENVELOPE_SOURCE);
+    writeFileSync(join(srcDir, "validate-envelope.ts"), fakeSource);
 
     const relocated = (await import(join(srcDir, "index.ts"))) as typeof import("../src/index.ts");
     const started = await relocated.startGuardian({
@@ -470,7 +521,7 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
   // guardianClient.post's call -- throws a SyntaxError instead of returning
   // a response).
   it("does not let a real Error with a non-string .message escape the outer catch as an HTML 500", async () => {
-    await withNonStringMessageGuardian(async ({ url }) => {
+    await withFakeValidateEnvelopeGuardian(UNDEFINED_MESSAGE_SCRATCH_DIR, UNDEFINED_MESSAGE_VALIDATE_ENVELOPE_SOURCE, async ({ url }) => {
       const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -491,14 +542,52 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
       expect(response.error?.message).toContain("undefined");
     });
   });
+
+  // Residual the follow-up review surfaced and the coordinator asked closed
+  // anyway: an Error whose `.message` is an accessor that throws on get
+  // defeats `error instanceof Error ? error.message : error` inside
+  // toRepoRelativeMessage itself. Unreachable from any real throw site in
+  // this repo today -- belt and braces, not a reaction to a live bug (see
+  // toRepoRelativeMessage's doc comment) -- but the unit assertions in the
+  // describe block below only prove the helper itself is total; this
+  // proves the outer net around it still holds when the value it's handed
+  // is this pathological. (The getPrototypeOf-trapping Proxy the review
+  // also named is covered at the unit level only, not here -- see
+  // THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE's doc comment for
+  // why that one specifically cannot reach toRepoRelativeMessage unmutated
+  // through dispatch's rethrow route.)
+  it("does not let an Error with a throwing .message accessor escape the outer catch as an HTML 500 either", async () => {
+    await withFakeValidateEnvelopeGuardian(
+      THROWING_MESSAGE_ACCESSOR_SCRATCH_DIR,
+      THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE,
+      async ({ url }) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(toolCallEnvelope("ls -la", { id: 10 })),
+        });
+
+        const text = await res.text();
+        expect(text.slice(0, 1)).toBe("{");
+        const response = JSON.parse(text) as JsonRpcResponse;
+
+        expect(response.jsonrpc).toBe("2.0");
+        expect(response.id).toBe(10);
+        expect(response.error).toBeDefined();
+        expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+        expect(response.error?.code).toBeLessThanOrEqual(-32000);
+        expect(response.error?.message).toContain("<unprintable error>");
+      },
+    );
+  });
 });
 
 describe("toRepoRelativeMessage", () => {
-  // The regression this wave's review found: an earlier version assumed its
-  // argument's `.message` was a string whenever `error instanceof Error`
+  // The regression an earlier review wave found: an earlier version assumed
+  // its argument's `.message` was a string whenever `error instanceof Error`
   // was true. `instanceof Error` says nothing about what `.message` was
   // reassigned to after construction, so it wasn't. Exercised directly
-  // (rather than only through withNonStringMessageGuardian's HTTP round
+  // (rather than only through withFakeValidateEnvelopeGuardian's HTTP round
   // trip) so every shape of `unknown` a catch clause can hand it is covered
   // without standing up a Guardian for each one.
   it("never throws, for an Error whose .message is not a string", () => {
@@ -520,6 +609,61 @@ describe("toRepoRelativeMessage", () => {
     expect(toRepoRelativeMessage(null)).toBe("null");
     expect(toRepoRelativeMessage(undefined)).toBe("undefined");
     expect(toRepoRelativeMessage({ some: "object" })).toBe("[object Object]");
+  });
+
+  // Follow-up review residual, parked by that review on correct facts
+  // (unreachable from any throw site here today, identical exposure existed
+  // pre-fix, out of that round's scope) and closed anyway: the contract this
+  // function exists to uphold is that nothing escapes the outer net, and
+  // "unreachable today" should not be load-bearing for that (see this
+  // function's doc comment). Four shapes, each defeating a different step
+  // of `String(error instanceof Error ? error.message : error)`:
+  //   - an Error whose `.message` is a throwing accessor
+  //   - a value whose `toString`/`valueOf` both throw, so `String()` itself
+  //     throws on the non-Error branch
+  //   - a Proxy that throws on `get` (String() needs to read
+  //     Symbol.toPrimitive/toString/valueOf off it)
+  //   - a Proxy that throws on `getPrototypeOf`, defeating `instanceof
+  //     Error` before `String()` is ever reached at all
+  it("never throws, even for values that defeat message access, stringification, or property/prototype traps", () => {
+    const throwingAccessor = new Error("real message, about to be hidden behind a throwing getter");
+    Object.defineProperty(throwingAccessor, "message", {
+      get() {
+        throw new Error("message getter blew up");
+      },
+    });
+
+    const throwingToString = {
+      toString() {
+        throw new Error("toString blew up");
+      },
+      valueOf() {
+        throw new Error("valueOf blew up");
+      },
+    };
+
+    const throwingGetProxy = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("get trap blew up");
+        },
+      },
+    );
+
+    const throwingGetPrototypeOfProxy = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("getPrototypeOf trap blew up");
+        },
+      },
+    );
+
+    expect(toRepoRelativeMessage(throwingAccessor)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingToString)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingGetProxy)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingGetPrototypeOfProxy)).toBe("<unprintable error>");
   });
 
   // This file's own REPO_ROOT (above, line 190) keeps the trailing slash
