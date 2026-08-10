@@ -50,6 +50,10 @@ MS-ACS surface to express (`policy-engine/spec/SPECIFICATION.md`, wire schemas):
 
 The closed, five-member policy input is what makes "completely expressed in ACS" a provable claim rather than an aspiration.
 
+**⚠️ V3 correction — four of the five members come from the snapshot; `annotations` does not.** Verified by running it, not by reading: annotations placed at the snapshot's top level, under `envelope`, under `tool_call`, under `context`, or under two snake_case aliases are **all dropped**, and a `confidence.min_score` gate that should have denied returned `allow` in every placement. `annotations` is populated by a manifest-declared annotator dispatched through the SDK's `annotatorDispatcher` — a surface published in `AgentControl.fromPath`'s own type signature, so coupling to it satisfies R2.4. The manifest shape is `annotators: { <name>: { type: classifier|llm|endpoint } }` plus, per intervention point, `annotations: { <annotator-name>: { from: "<JSONPath into the snapshot>" } }`; the annotator's return value lands at `input.annotations.<name>`.
+
+This qualifies **R1.3**: the four snapshot-borne members are constructible from an ACS envelope, and `annotations` is not — the ACS v0.1.0 tool-call-request payload carries `tool`, `operation`, `capability`, `arguments`, `raw_command`, `intent`, and nothing a drift or confidence score could be derived from. The consequence is narrow but real: the two stock gates that read `input.annotations.*` (drift → `warn`, confidence → `deny`) are drivable only by a Guardian that originates the value, which is exactly what AGT's design asks a host to do ("Hosts run a behaviour-drift detector outside the policy engine"). So it is a note about **ACS v0.1.0's coverage**, not about AGT, and V7's matrix records it as a cell that is green for the Guardian and red for a wire consumer. Surfaced during V3 planning; see §V3 in the slices doc.
+
 ---
 
 ## Requirements (R)
@@ -60,7 +64,7 @@ The closed, five-member policy input is what makes "completely expressed in ACS"
 | **R1** | **AGT is completely expressible in ACS** | Core goal |
 | R1.1 | All 8 intervention points map to ACS hooks without loss | Must-have |
 | R1.2 | All 5 verdicts map to ACS dispositions without loss — `warn` = `allow` with non-empty `policy_references` | Must-have |
-| R1.3 | The AGT policy input's five members are constructible from an ACS envelope | Must-have |
+| R1.3 | ⚠️ The AGT policy input's five members are constructible from an ACS envelope — **four of them.** `annotations` comes from a manifest-declared annotator, and ACS v0.1.0 carries no field to derive one from; see Verified ground and the Fit Check note | Must-have, qualified |
 | R1.4 | `enforced_identity` survives the adapter — approval binds to the action that executes | Must-have |
 | R1.5 | 🟡 AGT's evaluation-layer fail-closed survives: an AGT `deny` verdict is delivered as an ACS `deny` and honored regardless of wire posture | Must-have |
 | R1.6 | `transform`'s `$policy_target` bound survives as ACS `modify` | Must-have |
@@ -181,6 +185,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 - R5 fails B: envelopes that are never serialized are not inspectable on the wire, which is what R5.1 asks for.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.
+- ⚠️ **R1.3 is qualified, discovered during V3 planning — and no verdict moves.** Four of AGT's five policy-input members come from the snapshot the Guardian assembles; `annotations` comes from a manifest-declared annotator instead, and the ACS v0.1.0 wire carries no field a drift or confidence score could be derived from (evidence under Verified ground). So "the AGT policy input's five members are constructible from an ACS envelope" is true of four and Guardian-originated for the fifth. This does not move R1 in any column: A and B assert expressibility and still do not prove it; C still proves it case by case, and the qualification becomes one more resolved cell in C2's matrix — green for the Guardian, red for a wire consumer — which is the honest result C2 exists to produce. It is a note about ACS v0.1.0's coverage, not about AGT, so R4 is untouched.
 - ⚠️ **A4's SDK choice is load-bearing for R1.4, discovered during V1 planning.** AGT's PyO3 binding surfaces only `action_identity`, collapsing `input_identity` and `enforced_identity`; the Node binding serializes both. Every shape embeds A4, so on the Python SDK R1.4 ("`enforced_identity` survives the adapter") would be unverifiable in *all three* columns and C's R1 ✅ would not survive contact with C2's harness. A4 is amended to the Node SDK and the verdicts stand as written. No other row moves.
 
 ---
@@ -248,7 +253,7 @@ All resolved — see `spike-agt-integration.md`.
 | N4 | P1 | `@acs/host-adapter` | `createGuardianClient(url).requestDecision()` JSON-RPC over HTTP | call | → N20 | → N7 |
 | N5 | P1 | `@acs/host-adapter` | `negotiateSessionConfig()` — `handshake/hello`; negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
 | N6 | P1 | `@acs/host-adapter` | `applyFailurePosture()` — no decision within timeout → negotiated posture (default `proceed`); writes an audit event on every fail-open proceed | call | → S14, → N3 | — |
-| N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults | call | → N3, → N6 | — |
+| N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults; **applies** §6.3's modifications to the original arguments so the host's rewritten input is a shape the host accepts (R1.6) | call | → N3, → N6 | — |
 | N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
 | N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — **same module as N2** | call | → N13 | — |
 | N12 | P2 | `@acs/host-adapter` | `renderDecision()` — **same module as N3** | call | → U11, → U12 | — |
@@ -260,7 +265,7 @@ All resolved — see `spike-agt-integration.md`.
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N22, → N27 | — |
 | N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope + session state → AGT snapshot | call | → N30 | — |
-| N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references` | call | → N25, → N26 | → N4, → N13 |
+| N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → `modifications.parameter_overrides` keyed by argument name (R1.6, declared in S10) | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
 | N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
@@ -286,9 +291,9 @@ All resolved — see `spike-agt-integration.md`.
 |---|-------|-------|-------------|
 | S1 | P1 | `claude-code.hookmap.yaml` | Claude Code hook names ↔ ACS `steps/*`; ACS decisions ↔ `permissionDecision` / `updatedInput` / `updatedToolOutput` |
 | S2 | P2 | `opencode.hookmap.yaml` | OpenCode plugin hooks ↔ ACS `steps/*`; ACS decisions ↔ plugin return values |
-| S13 | P1 | `negotiated session config` | ServerHello result: `timeout_config`, `on_decision_failure`, startup posture, `profiles_accepted` |
-| S14 | P1 | `audit sink` | Every fail-open proceed, per §6.4's MUST |
-| S15 | P2 | `negotiated session config` | Same shape as S13 |
+| S13 | P1 | `negotiated session config` | ServerHello result: `timeout_config`, `on_decision_failure`, startup posture, `profiles_accepted`. **One interface, two implementations** (V3): file-backed at `.acs/sessions/<session_id>.json` for subprocess hosts like Claude Code, in-memory for in-process hosts. A fresh hook process has to read the negotiated posture without asking the Guardian — that is the only situation the posture exists for. `session_id` is untrusted input on a filesystem path and is validated as one safe segment |
+| S14 | P1 | `audit sink` | Every fail-open proceed, per §6.4's MUST. JSONL at `.acs/audit.jsonl`. Total by construction, on N26's discipline: it runs on the decision path, so a sink that cannot write degrades observability and never a decision |
+| S15 | P2 | `negotiated session config` | Same interface as S13, in-memory implementation — an in-process plugin needs no file |
 | S16 | P2 | `audit sink` | Same shape as S14 |
 | S3 | P3 | `sessionContext` | Hash-chained entries per `session_id` |
 | S4 | P3 | `intent` | Immutable Intent baseline per session |
@@ -532,7 +537,7 @@ flowchart TB
 | D5 | R7.3 — determinism | Open | A scripted transcript demos reliably; a live model demos honestly |
 | D6 | Shape selection | **Decided: C** | C is the only shape that proves R1 rather than asserting it |
 | ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
-| D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open, leaning `proceed` | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly. V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6), so the decision is only needed by V3 |
+| ~~D8~~ | Which `on_decision_failure` the reference ships as its default | ✅ **Decided: `proceed`, the spec default** | R1.7 and `handshake.json`'s own `default` both fix it, and V1 already shipped it in `handshakeResponder()`. The original reasoning stands: a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly, which is why V3 pairs the default with S14 and the fail-open proceed count. V3 makes the value deployment-declared (`ACS_ON_DECISION_FAILURE`) so one binary demos both halves, and a value that is neither posture **throws** rather than falling back — guessing a posture from a typo is the silent bypass V3 exists to remove |
 | D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |
 | ~~D10~~ | R5.3 — does this implementation claim the ACS **Trace** pillar? | ✅ **Decided: no, and V7 measures the non-claim** (N49 → U33). V7 does not build an exporter; per the evidence note below it could only live in the Guardian, which would be a slice of its own | `specification/v0.1.0/trace/otel-mapping.json` is normative: a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it maps `steps/toolCallRequest` → `gen_ai.tool.call` by name. `trace/ocsf-mapping.json` is its sibling. V2's envelope log (S6) is a raw JSONL log, deliberately not an OTel or OCSF export, so today we claim neither pillar. R5.3 requires declaring that either way. Settled: the matrix records Trace as an explicit non-claim, and **two of its required span attributes have no wire source at all — evidence note directly below** |
 
