@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   outcomeMessageOf,
+  renderAuditEntry,
   renderDecisionBadge,
   renderEnvelopeLogEntry,
   renderOutcome,
+  renderPostureBadge,
   renderRpcError,
   type OutcomeMessage,
   type RenderOptions,
@@ -262,5 +264,76 @@ describe("renderEnvelopeLogEntry", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe("── #3  12:04:31.221  ← RESPONSE  steps/toolCallRequest  id=1");
     expect(lines[1]).toBe("(no envelope recorded)");
+  });
+});
+
+describe("renderPostureBadge — U23", () => {
+  it("shows the negotiated posture and a zero count before anything fails", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: false }))
+      .toBe("posture=proceed  fail-open proceeds=0");
+  });
+
+  // The number that matters. A fail-open bypass is invisible unless something
+  // counts it, and §6.4 exists because it must not be invisible.
+  it("counts audited fail-open proceeds", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 3 }, { color: false }))
+      .toBe("posture=proceed  fail-open proceeds=3");
+  });
+
+  it("says so when no posture has been negotiated yet", () => {
+    expect(renderPostureBadge({ posture: null, proceeds: 0 }, { color: false }))
+      .toBe("posture=(not negotiated)  fail-open proceeds=0");
+  });
+
+  it("paints a non-zero proceed count as a warning and zero as clean", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 1 }, { color: true })).toContain(String.fromCharCode(27) + "[33m");
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true })).not.toContain(String.fromCharCode(27) + "[33m");
+  });
+
+  it("paints the deny posture distinctly from proceed", () => {
+    const deny = renderPostureBadge({ posture: "deny", proceeds: 0 }, { color: true });
+    const proceed = renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true });
+    expect(deny).not.toBe(proceed);
+  });
+
+  it("is byte-identical with color off, whatever the state", () => {
+    for (const posture of ["proceed", "deny", null] as const) {
+      for (const proceeds of [0, 1, 42]) {
+        const out = renderPostureBadge({ posture, proceeds }, { color: false });
+        expect(out).not.toContain(String.fromCharCode(27));
+      }
+    }
+  });
+});
+
+describe("renderAuditEntry — N51", () => {
+  it("renders a proceeded entry with the failure that caused it", () => {
+    const line = renderAuditEntry(
+      {
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallRequest",
+        rpc_id: "req-1",
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "proceeded",
+        failure: { kind: "timeout", message: "no decision within 5000ms" },
+      },
+      { color: false },
+    );
+    expect(line).toContain("PROCEEDED");
+    expect(line).toContain("steps/toolCallRequest");
+    expect(line).toContain("timeout");
+  });
+
+  it("renders a blocked entry distinctly", () => {
+    const line = renderAuditEntry(
+      { seq: 2, recorded_at: "2026-08-10T12:00:01.000Z", session_id: "s", method: "m", rpc_id: null,
+        posture: "deny", posture_source: "negotiated", outcome: "blocked",
+        failure: { kind: "transport", message: "gone" } },
+      { color: false },
+    );
+    expect(line).toContain("BLOCKED");
   });
 });

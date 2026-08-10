@@ -1,0 +1,197 @@
+import { describe, expect, it } from "bun:test";
+import { appendFileSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { tailAuditLog, type AuditEntry } from "../src/tail-audit-log.ts";
+
+const POLL_MS = 10;
+
+function entryLine(seq: number, overrides: Partial<AuditEntry> = {}): string {
+  const entry: AuditEntry = {
+    seq,
+    recorded_at: "2026-08-10T12:00:00.000Z",
+    session_id: "sess-1",
+    method: "steps/toolCallRequest",
+    rpc_id: seq,
+    posture: "proceed",
+    posture_source: "negotiated",
+    outcome: "proceeded",
+    failure: { kind: "timeout", message: "no decision within 5000ms" },
+    ...overrides,
+  };
+  return `${JSON.stringify(entry)}\n`;
+}
+
+/** Collects `count` entries or rejects after `timeoutMs`, then aborts the
+ * generator so the test cannot hang the suite. */
+async function collect(
+  iterable: AsyncGenerator<AuditEntry, void, void>,
+  count: number,
+  controller: AbortController,
+  timeoutMs = 3000,
+): Promise<AuditEntry[]> {
+  const out: AuditEntry[] = [];
+  const deadline = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    for await (const entry of iterable) {
+      out.push(entry);
+      if (out.length >= count) {
+        break;
+      }
+    }
+  } finally {
+    clearTimeout(deadline);
+    controller.abort();
+  }
+  return out;
+}
+
+function withTempDir(run: (dir: string, path: string) => Promise<void>): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), "acs-audit-tail-"));
+  const path = join(dir, "audit.jsonl");
+  return run(dir, path).finally(() => {
+    try {
+      unlinkSync(path);
+    } catch {
+      // some cases leave nothing behind to unlink
+    }
+    rmdirSync(dir);
+  });
+}
+
+describe("tailAuditLog (N51)", () => {
+  it("streams what arrives after the tail starts", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, pollMs: POLL_MS, signal: controller.signal });
+      // Give the (lazily-started) timer a poll to record its starting offset
+      // before the appends land, which is the behaviour under test.
+      await Bun.sleep(POLL_MS * 3);
+      appendFileSync(path, entryLine(1) + entryLine(2));
+
+      const entries = await collect(tail, 2, controller);
+      expect(entries.map((e) => e.seq)).toEqual([1, 2]);
+    });
+  });
+
+  it("fromStart replays what is already there; without it, nothing does", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1) + entryLine(2));
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      const entries = await collect(tail, 2, controller);
+      expect(entries.map((e) => e.seq)).toEqual([1, 2]);
+    });
+
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1) + entryLine(2));
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, pollMs: POLL_MS, signal: controller.signal });
+
+      await Bun.sleep(POLL_MS * 5);
+      controller.abort();
+      const entries: AuditEntry[] = [];
+      for await (const entry of tail) {
+        entries.push(entry);
+      }
+      expect(entries).toEqual([]);
+    });
+  });
+
+  it("reassembles a partial line written in two chunks with a poll in between", async () => {
+    await withTempDir(async (_dir, path) => {
+      const line = entryLine(1);
+      const split = Math.floor(line.length / 2);
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      appendFileSync(path, line.slice(0, split));
+      // Start consuming now, before the second chunk lands, so the
+      // (now lazily-started) timer actually ticks against the partial line
+      // at least once before the rest arrives.
+      const collecting = collect(tail, 1, controller);
+      await Bun.sleep(POLL_MS * 5);
+      appendFileSync(path, line.slice(split));
+
+      const entries = await collecting;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toEqual(JSON.parse(line));
+    });
+  });
+
+  it("routes a line that parses but is not an AuditEntry, and yields nothing", async () => {
+    await withTempDir(async (_dir, path) => {
+      const malformed: string[] = [];
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (line) => malformed.push(line),
+      });
+
+      // Calling next() (without awaiting yet) runs the generator body
+      // synchronously up to its first await, which is what starts the
+      // timer -- so the poll below is guaranteed to run against these
+      // lines rather than racing a not-yet-started one.
+      const pending = tail.next();
+      appendFileSync(path, '{"seq":1}\n{"not":"an entry"}\n[]\n');
+      await Bun.sleep(POLL_MS * 5);
+      controller.abort();
+
+      const { value, done } = await pending;
+      expect(done).toBe(true);
+      expect(value).toBeUndefined();
+      expect(malformed).toEqual(['{"seq":1}', '{"not":"an entry"}', "[]"]);
+    });
+  });
+
+  it("resets the offset on truncation without re-delivering what was already parsed", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1));
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      const { value: first } = await tail.next();
+      expect(first?.seq).toBe(1);
+
+      truncateSync(path, 0);
+      await Bun.sleep(POLL_MS * 3);
+      appendFileSync(path, entryLine(9));
+
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([9]);
+    });
+  });
+
+  it("reports a poll error through onPollError and keeps streaming once the file returns", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1));
+      const pollErrors: unknown[] = [];
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onPollError: (error) => pollErrors.push(error),
+      });
+
+      const { value: first } = await tail.next();
+      expect(first?.seq).toBe(1);
+
+      unlinkSync(path);
+      await Bun.sleep(POLL_MS * 5);
+      expect(pollErrors.length).toBeGreaterThan(0);
+
+      writeFileSync(path, entryLine(9));
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([9]);
+    });
+  });
+});

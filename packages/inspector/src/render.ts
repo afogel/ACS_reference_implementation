@@ -1,12 +1,13 @@
 /**
- * Renders the two things the Inspector prints: the envelope stream and the
- * ACS decision badge.
+ * U20 (envelope stream), U21 (decision badge), U23 (posture badge), and N51
+ * (audit-entry line).
  *
  * Every function here is pure: no clock, no env, no process. The CLI decides
  * whether the terminal wants ANSI and passes `color`; tests assert exact
- * plain strings. The badge reads only ACS's own `decision`, `reason_codes`,
- * and `policy_references` fields -- nothing here knows what policy runtime
- * produced a decision.
+ * plain strings. Nothing here knows what produced a decision -- the decision
+ * badge reads ACS's own `decision`, `reason_codes`, and `policy_references`
+ * fields and nothing else (global constraint 9). The posture badge and the
+ * audit-entry line read only the fields S14's AuditEntry declares.
  *
  * `renderDecisionBadge` is told a decision rather than handed a log row to
  * interrogate: `outcomeMessageOf` is the one place that reads an envelope's
@@ -22,6 +23,7 @@
  * carried none -- and `renderOutcome` dispatches between them for the
  * stream renderer.
  */
+import type { AuditEntry } from "./tail-audit-log.ts";
 import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
 
 export type RenderOptions = { color?: boolean; indent?: number };
@@ -238,4 +240,62 @@ export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderO
   const body = JSON.stringify(entry.envelope, null, options.indent ?? 2) ?? "(no envelope recorded)";
 
   return [header, ...(outcome === null ? [] : [outcome]), body].join("\n");
+}
+
+/** U23's running state: the most recently observed posture, and how many
+ * audited fail-open proceeds have crossed since the tail started. `posture`
+ * is null before any S14 entry has arrived -- there is no negotiated (or
+ * default) posture to show yet, and saying so plainly is the honest
+ * baseline constraint 2 asks for, not an omission to paper over. */
+export type PostureBadgeState = { posture: "proceed" | "deny" | null; proceeds: number };
+
+/**
+ * U23. The count is the point (see this module's own header and §6.4): a
+ * fail-open proceed is a tool call that ran with no policy decision behind
+ * it, and it is invisible unless something puts a number on it. A non-zero
+ * count is painted as a warning; zero is clean. The posture itself is
+ * painted so `deny` and `proceed` read as visibly different states, not
+ * just different words -- distinguishing them is what U23 is for.
+ */
+export function renderPostureBadge(state: PostureBadgeState, options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+  const postureLabel = state.posture === null ? "(not negotiated)" : state.posture;
+  const postureColor = state.posture === "deny" ? RED : state.posture === "proceed" ? GREEN : DIM;
+  const proceedsColor = state.proceeds > 0 ? YELLOW : GREEN;
+
+  return [
+    paint(`posture=${postureLabel}`, postureColor, color),
+    paint(`fail-open proceeds=${state.proceeds}`, proceedsColor, color),
+  ].join("  ");
+}
+
+/**
+ * N51. One S14 line as a header plus the failure that produced it. Every
+ * AuditEntry carries an `outcome`, and the two are rendered distinctly
+ * (`PROCEEDED` in the same warning colour as a non-zero U23 count, `BLOCKED`
+ * in the deny colour) for the same reason U21 refuses to render a fired
+ * policy identically to a clean allow: the outcome that bypassed a decision
+ * is the one line here that must not read like an ordinary one.
+ *
+ * S14 records the host's own raw session identifier, not the derived UUID
+ * S6's envelopes carry (see tail-audit-log.ts's module doc) -- the two logs
+ * cannot be joined on it. Labelled `audit_session` here, deliberately not
+ * `session`, so nothing reads this value as comparable to an id printed
+ * anywhere near a rendered TapEntry.
+ */
+export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+  const outcomeLabel = entry.outcome === "proceeded" ? "PROCEEDED" : "BLOCKED";
+  const outcomeColor = entry.outcome === "proceeded" ? YELLOW : RED;
+  const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
+
+  const header = paint(
+    `── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${outcomeLabel}  ${entry.method}  ${id}  ` +
+      `posture=${entry.posture}/${entry.posture_source}  audit_session=${entry.session_id}`,
+    outcomeColor,
+    color,
+  );
+  const failureLine = paint(`failure=${entry.failure.kind}: ${entry.failure.message}`, DIM, color);
+
+  return [header, failureLine].join("\n");
 }

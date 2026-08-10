@@ -1,0 +1,314 @@
+/**
+ * tailAuditLog (N51) streams S14 -- the audit record §6.4 requires for every
+ * step that proceeds with no decision behind it -- as it grows, the way
+ * `tail -f` does. Same contract as tailEnvelopeLog: same option shape, same
+ * lazily-started poll, same eagerly-captured starting offset, same
+ * Buffer-based partial-line reassembly, same shape check between
+ * `JSON.parse` and `yield`. That design is not re-derived here; see
+ * tail-envelope-log.ts's module doc for the reasoning behind each of those
+ * choices, all of which apply unchanged to this file.
+ *
+ * S14 is written on the other side of the wire from S6: something that
+ * negotiates a failure posture, not anything running a policy decision.
+ * This package still imports nothing from it. AuditEntry is re-declared
+ * here for the same reason TapEntry is: the round-trip contract test at
+ * test/audit-sink-roundtrip.test.ts is what keeps the two declarations in
+ * agreement, and importing the other side's type would make that agreement
+ * a tautology instead of a check.
+ *
+ * One divergence from tail-envelope-log.ts, deliberate rather than
+ * incidental: there, a log file that does not exist yet is ordinary --
+ * nothing has written to it, and `sizeOf` reports that as size zero with no
+ * complaint. Here, a log that *existed and then went missing* is reported
+ * through `onPollError` instead of silently read as size zero. A file that
+ * was never created is still treated as size zero without comment -- this
+ * log recording nothing yet is the good outcome, the one where no bypass
+ * has happened -- but a file that vanished after this tailer had already
+ * read from it is exactly the kind of thing a reader of this audit trail
+ * should be told about rather than have quietly reinterpreted as "back to
+ * empty". Because the poll after recreation must not assume whatever is on
+ * disk now continues what was read before -- an unlink-and-recreate can
+ * land a same-length replacement at the very offset already consumed, which
+ * a size-only comparison would then read as no growth at all -- the offset
+ * is reset once, on the tick the file is seen to exist again, rather than
+ * left to a same-length coincidence.
+ */
+import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
+
+/** One line of S14, as written by the audit sink on the posture-negotiating
+ * side of the wire. */
+export type AuditEntry = {
+  seq: number;
+  recorded_at: string;
+  session_id: string;
+  method: string;
+  rpc_id: string | number | null;
+  posture: "proceed" | "deny";
+  posture_source: "negotiated" | "default";
+  outcome: "proceeded" | "blocked";
+  failure: { kind: string; message: string };
+};
+
+export type TailAuditLogOptions = {
+  path: string;
+  /** Replay everything already in the file before following. Default false:
+   * start at the current end, like `tail -f`. */
+  fromStart?: boolean;
+  pollMs?: number;
+  signal?: AbortSignal;
+  /** Called per unparseable line. Defaults to one stderr warning. Streaming
+   * continues either way -- a corrupt line is not a reason to stop showing
+   * the ones after it. */
+  onMalformedLine?: (line: string, error: unknown) => void;
+  /** Called when a poll fails to read the log -- including the log having
+   * existed and then gone missing (see the module doc). Defaults to one
+   * stderr warning per failed tick. Streaming continues either way. */
+  onPollError?: (error: unknown) => void;
+};
+
+const NEWLINE = 0x0a;
+
+/**
+ * S14 is a plain file on disk; anything can write a line to it that is
+ * valid JSON but not a valid AuditEntry. Checked here, right after
+ * `JSON.parse`, using exactly the fields the renderer depends on, so a line
+ * of the wrong shape is routed to `onMalformedLine` instead of reaching a
+ * consumer that assumes every field is present and correctly typed.
+ */
+function isAuditEntryShape(value: unknown): value is AuditEntry {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const failure = candidate.failure;
+  return (
+    typeof candidate.seq === "number" &&
+    typeof candidate.recorded_at === "string" &&
+    typeof candidate.session_id === "string" &&
+    typeof candidate.method === "string" &&
+    (typeof candidate.rpc_id === "string" || typeof candidate.rpc_id === "number" || candidate.rpc_id === null) &&
+    (candidate.posture === "proceed" || candidate.posture === "deny") &&
+    (candidate.posture_source === "negotiated" || candidate.posture_source === "default") &&
+    (candidate.outcome === "proceeded" || candidate.outcome === "blocked") &&
+    typeof failure === "object" &&
+    failure !== null &&
+    typeof (failure as Record<string, unknown>).kind === "string" &&
+    typeof (failure as Record<string, unknown>).message === "string"
+  );
+}
+
+export function tailAuditLog({
+  path,
+  fromStart = false,
+  pollMs = 120,
+  signal,
+  onMalformedLine = warnMalformedLine,
+  onPollError = warnPollError,
+}: TailAuditLogOptions): AsyncGenerator<AuditEntry, void, void> {
+  let offset = fromStart ? 0 : sizeOf(path);
+  // Bytes, not a string: a poll can land mid-line and, worse, mid-codepoint.
+  // Decoding only complete lines keeps multi-byte UTF-8 intact.
+  let pending = Buffer.alloc(0);
+  // True once the log has been seen to exist and then, on some later tick,
+  // has not. Consulted (and cleared) the moment existence is seen again, so
+  // that tick resets `offset` unconditionally rather than trusting a
+  // same-length-or-longer coincidence to look like ordinary growth.
+  let wasMissing = false;
+
+  // Entries the timer has parsed but nobody has consumed yet, and the
+  // wake-up the drain loop below is currently parked on while that queue is
+  // empty. The timer and the generator only communicate through these two.
+  const ready: AuditEntry[] = [];
+  let wake: (() => void) | undefined;
+  let stopped = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  function poll(): void {
+    if (stopped) {
+      return;
+    }
+    try {
+      if (!existsSync(path)) {
+        wasMissing = true;
+        throw new Error(`audit log not found at ${path}`);
+      }
+      const size = statSync(path).size;
+
+      if (wasMissing) {
+        // The log just came back (or this is the first tick to see it at
+        // all, if it was never created before `fromStart` forced offset to
+        // 0 -- in which case this is a no-op). Whatever is on disk now is
+        // not assumed to be a continuation of what "offset" already
+        // accounts for.
+        wasMissing = false;
+        offset = 0;
+        pending = Buffer.alloc(0);
+      }
+
+      if (size < offset) {
+        // Truncated or rotated underneath us (`: > .acs/audit.jsonl`).
+        offset = 0;
+        pending = Buffer.alloc(0);
+      }
+
+      if (size > offset) {
+        pending = Buffer.concat([pending, readRange(path, offset, size - offset)]);
+        offset = size;
+
+        let added = false;
+        try {
+          let newline = pending.indexOf(NEWLINE);
+          while (newline !== -1) {
+            const line = pending.subarray(0, newline).toString("utf8");
+            pending = pending.subarray(newline + 1);
+            newline = pending.indexOf(NEWLINE);
+
+            if (line.trim() === "") {
+              continue;
+            }
+            try {
+              const parsed: unknown = JSON.parse(line);
+              if (!isAuditEntryShape(parsed)) {
+                throw new Error("line parsed as JSON but does not match the AuditEntry shape");
+              }
+              ready.push(parsed);
+              added = true;
+            } catch (error) {
+              // Guarded here, not left to poll()'s outer catch: `offset` is
+              // already at `size`, so a complete line still sitting in
+              // `pending` behind a bad one would never be re-scanned on a
+              // later tick. One malformed line must not cost the good ones
+              // behind it.
+              reportMalformedLine(onMalformedLine, line, error);
+            }
+          }
+        } finally {
+          // In the `finally`, not after the loop: an entry already pushed
+          // to `ready` must reach the consumer even if the scan above left
+          // by a throw.
+          if (added) {
+            wake?.();
+          }
+        }
+      }
+    } catch (error) {
+      // A timer callback, not a step inside the generator's own call stack:
+      // nothing here is awaiting a promise that could catch a throw, so an
+      // uncaught one would take the whole process down. Skip this tick
+      // instead -- the next one resyncs on its own once the log is
+      // readable again.
+      reportPollError(onPollError, error);
+    }
+  }
+
+  function stop(): void {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    if (timer !== undefined) {
+      clearInterval(timer);
+    }
+    signal?.removeEventListener("abort", stop);
+    wake?.();
+  }
+
+  signal?.addEventListener("abort", stop, { once: true });
+  if (signal?.aborted) {
+    stop();
+  }
+
+  return drain();
+
+  async function* drain(): AsyncGenerator<AuditEntry, void, void> {
+    // Starting the timer here, not above, means a tail nobody ever iterates
+    // (and nobody ever aborts) never ticks at all.
+    if (!stopped) {
+      timer = setInterval(poll, pollMs);
+    }
+    try {
+      while (true) {
+        while (ready.length === 0 && !stopped) {
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+          wake = undefined;
+        }
+        if (ready.length === 0) {
+          return;
+        }
+        const entry = ready.shift();
+        if (entry !== undefined) {
+          yield entry;
+        }
+      }
+    } finally {
+      stop();
+    }
+  }
+}
+
+/** Used only for the eager, at-call-time starting offset (see the module
+ * doc on tail-envelope-log.ts for why that capture cannot be deferred into
+ * the generator body). A log that has not been created yet is size zero
+ * here, same as tail-envelope-log.ts's sizeOf -- there is nothing wrong yet
+ * to report; the divergence documented above is about a log disappearing
+ * *after* this tailer has already been reading it, which poll() alone
+ * tracks. */
+function sizeOf(path: string): number {
+  if (!existsSync(path)) {
+    return 0;
+  }
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
+}
+
+function readRange(path: string, offset: number, length: number): Buffer {
+  const buffer = Buffer.alloc(length);
+  const fd = openSync(path, "r");
+  try {
+    const read = readSync(fd, buffer, 0, length, offset);
+    return buffer.subarray(0, read);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Calls the caller's malformed-line reporter without letting it break the
+ * scan. A reporter that throws gets one warning of its own; the line it was
+ * reporting is still skipped, and the lines after it are still parsed. */
+function reportMalformedLine(
+  onMalformedLine: (line: string, error: unknown) => void,
+  line: string,
+  error: unknown,
+): void {
+  try {
+    onMalformedLine(line, error);
+  } catch (callbackError) {
+    const message = callbackError instanceof Error ? callbackError.message : String(callbackError);
+    console.error(`onMalformedLine threw while reporting an unparseable audit-log line (${message})`);
+  }
+}
+
+/** Same guard as reportMalformedLine, for the poll-error callback. */
+function reportPollError(onPollError: (error: unknown) => void, error: unknown): void {
+  try {
+    onPollError(error);
+  } catch (callbackError) {
+    const message = callbackError instanceof Error ? callbackError.message : String(callbackError);
+    console.error(`onPollError threw while reporting a failed audit-log poll (${message})`);
+  }
+}
+
+function warnMalformedLine(line: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`skipping unparseable audit-log line (${message}): ${line.slice(0, 120)}`);
+}
+
+function warnPollError(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`audit log poll failed, retrying next tick (${message})`);
+}

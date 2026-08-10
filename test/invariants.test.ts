@@ -179,14 +179,24 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * Envelopes are inspectable *on the wire*. If the Inspector imported the
-   * Guardian's types, "inspectable" would be a claim about our own type graph
-   * instead: any third-party reader of the log has only the file, and so does
-   * this one.
+   * R5.1 -- envelopes are inspectable *on the wire*. If the Inspector
+   * imported the Guardian's types, "inspectable" would be a claim about our
+   * own type graph instead: any third-party reader of S6 has only the file.
+   * So does this one.
+   *
+   * "host-adapter" widened this list the moment N51 landed: the Inspector
+   * now also tails S14, a host-side artifact, and declares its own
+   * AuditEntry rather than importing the adapter's for exactly the same
+   * reason it re-declares TapEntry rather than importing the Guardian's
+   * (see tail-audit-log.ts's module doc). Without this third entry, the
+   * gate would still pass -- but it would no longer be testing the claim
+   * this task exists to make, and a gate that passes without covering what
+   * changed is worse than no gate: it looks like coverage while quietly
+   * losing it.
    */
-  it("the Envelope Inspector imports nothing from the Guardian or the AGT bridge", () => {
+  it("the Envelope Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter", () => {
     for (const { file, code } of readSourceFiles("packages/inspector/src")) {
-      for (const spec of ["guardian", "agt-bridge"]) {
+      for (const spec of ["guardian", "agt-bridge", "host-adapter"]) {
         const found = importsSpecifier(code, spec);
         expect({ file, spec, found }).toEqual({ file, spec, found: false });
       }
