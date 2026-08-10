@@ -799,6 +799,12 @@ export type AuditEntry = {
   rpc_id: string | number | null;
   /** The posture in force -- negotiated, or the ACS default when nothing was. */
   posture: "proceed" | "deny";
+  /** Whether `posture` was negotiated at handshake or is the ACS default
+   * because no handshake ever completed. The transient `reasoning` string a
+   * human sees in a transcript is not enough: the audit log is the durable
+   * record, and "the Guardian was down for this whole session" is a different
+   * incident from "this deployment chose to fail open". */
+  posture_source: "negotiated" | "default";
   /** `proceeded` is the fail-open bypass §6.4 requires be recorded. */
   outcome: "proceeded" | "blocked";
   failure: { kind: string; message: string };
@@ -2339,6 +2345,7 @@ describe("renderAuditEntry — N51", () => {
         method: "steps/toolCallRequest",
         rpc_id: "req-1",
         posture: "proceed",
+        posture_source: "negotiated",
         outcome: "proceeded",
         failure: { kind: "timeout", message: "no decision within 5000ms" },
       },
@@ -2352,7 +2359,8 @@ describe("renderAuditEntry — N51", () => {
   it("renders a blocked entry distinctly", () => {
     const line = renderAuditEntry(
       { seq: 2, recorded_at: "2026-08-10T12:00:01.000Z", session_id: "s", method: "m", rpc_id: null,
-        posture: "deny", outcome: "blocked", failure: { kind: "transport", message: "gone" } },
+        posture: "deny", posture_source: "negotiated", outcome: "blocked",
+        failure: { kind: "transport", message: "gone" } },
       { color: false },
     );
     expect(line).toContain("BLOCKED");
@@ -2402,6 +2410,7 @@ describe("S14 write -> N51 read: every field survives", () => {
         method: "steps/toolCallRequest",
         rpc_id: outcome === "proceeded" ? "req-1" : 7,
         posture: outcome === "proceeded" ? "proceed" : "deny",
+        posture_source: "negotiated",
         outcome,
         failure: { kind: "timeout", message: "no decision within 5000ms" },
       });
@@ -2421,6 +2430,7 @@ describe("S14 write -> N51 read: every field survives", () => {
         method: "steps/toolCallRequest",
         rpc_id: outcome === "proceeded" ? "req-1" : 7,
         posture: outcome === "proceeded" ? "proceed" : "deny",
+        posture_source: "negotiated",
         outcome,
         failure: { kind: "timeout", message: "no decision within 5000ms" },
       });
@@ -2434,6 +2444,7 @@ describe("S14 write -> N51 read: every field survives", () => {
       method: "steps/toolCallRequest",
       rpc_id: null,
       posture: "proceed",
+      posture_source: "default",
       outcome: "proceeded",
       failure: { kind: "transport", message: "gone" },
     });
@@ -2459,7 +2470,7 @@ The invariants gate should fail **first**, before `tail-audit-log.ts` exists —
 
 Write the three pieces. Constraints specific to this task:
 
-- `packages/inspector/src/tail-audit-log.ts` declares its own `AuditEntry` and imports nothing from `host-adapter`. `isAuditEntryShape` validates `seq`, `recorded_at`, `session_id`, `method`, `posture`, `outcome`, and `failure.kind`/`failure.message`; `rpc_id` may be a string, number, or null.
+- `packages/inspector/src/tail-audit-log.ts` declares its own `AuditEntry` and imports nothing from `host-adapter`. `isAuditEntryShape` validates `seq`, `recorded_at`, `session_id`, `method`, `posture`, `posture_source`, `outcome`, and `failure.kind`/`failure.message`; `rpc_id` may be a string, number, or null.
 - `renderPostureBadge` takes `{ posture: "proceed" | "deny" | null; proceeds: number }`. With `color: false` it emits no escape bytes at all.
 - `main.ts` tails both logs concurrently and keeps a running badge: envelope lines stream as they do today, audit entries print as their own line, and the posture badge is re-emitted when it changes. `--audit-path` and `ACS_AUDIT_LOG` select the audit log, defaulting to `.acs/audit.jsonl`.
 - **The vocabulary gate still applies:** no "AGT", no "claude", no host names anywhere under `packages/inspector/src`, comments included.
