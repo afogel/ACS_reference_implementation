@@ -202,6 +202,36 @@ describe("architectural invariants", () => {
       }
     }
   });
+
+  /**
+   * R3.2 from the host's side, and the gate that did not exist (whole-branch
+   * review, I7). The vocabulary gate above deliberately excludes `hosts/`,
+   * because a host shim is host-specific by definition and its doc comment may
+   * name the policy runtime in prose -- but the invariant that *does* bind it
+   * is an import-graph one, exactly as that exclusion says: "never imports
+   * agt-bridge or guardian's server-side pieces, only host-adapter's public
+   * surface". Global Constraint 7 names `hosts/` as in scope and
+   * acs-hook.ts's own header asserts the property, and until now nothing
+   * checked either.
+   *
+   * That claim is what makes V5's second host cost zero policy-runtime code:
+   * a shim reaching into the Guardian in-process would be governable by that
+   * Guardian and nothing else, which is the M×N collapse undone. It passes
+   * today with one shim, and starts biting the moment there are two.
+   *
+   * `isUnderTestDir` excludes hosts/claude-code/test/, which is the only
+   * place that legitimately imports `guardian` -- it stands up a real one to
+   * prove the wire contract end to end, the same test-only precedent
+   * packages/host-adapter/test/ already sets.
+   */
+  it("every host shim imports the adapter only -- never the Guardian, never the AGT bridge", () => {
+    for (const { file, code } of readSourceFiles("hosts")) {
+      for (const spec of ["agt-bridge", "guardian"]) {
+        const found = importsSpecifier(code, spec);
+        expect({ file, spec, found }).toEqual({ file, spec, found: false });
+      }
+    }
+  });
 });
 
 /**

@@ -326,6 +326,48 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
       await server.stop(true);
     }
   });
+
+  // Whole-branch review, I8: `await res.json()` used to sit OUTSIDE the try
+  // that maps a TimeoutError onto GuardianTimeoutError, so a Guardian whose
+  // headers beat the timeout while its body did not surfaced as a bare
+  // DOMException -- which classifyDeliveryFailure then filed as
+  // `error_without_decision` rather than `timeout`. §6.4 defines a decision
+  // failure by the absence of a usable decision within the negotiated
+  // timeout; a body that never arrives is exactly that.
+  it("throws GuardianTimeoutError when the headers arrive but the body never does", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        // Headers go out immediately; the body stream stays open. Tied to the
+        // request's own signal for the same reason as the test above -- an
+        // interval outliving the aborted request would hold the event loop.
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"jsonrpc":"2.0",'));
+            req.signal.addEventListener(
+              "abort",
+              () => {
+                try {
+                  controller.close();
+                } catch {
+                  // Already closed by the abort itself; nothing to do.
+                }
+              },
+              { once: true },
+            );
+          },
+        });
+        return new Response(body, { headers: { "content-type": "application/json" } });
+      },
+    });
+    try {
+      const url = `http://localhost:${server.port}/acs`;
+      const envelope = { jsonrpc: "2.0" as const, method: "steps/toolCallRequest", id: "1", params: {} };
+      await expect(guardianClient.post(url, envelope, { timeoutMs: 40 })).rejects.toThrow(GuardianTimeoutError);
+    } finally {
+      await server.stop(true);
+    }
+  });
 });
 
 describe("negotiateSessionConfig (N5)", () => {

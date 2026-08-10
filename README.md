@@ -134,7 +134,7 @@ Second, through the real `claude` CLI with `.claude/settings.json` installed —
 ### Verify
 
 ```bash
-bun test          # 276 tests across 26 files (275 pass, 1 skip), including the R3.2/R3.3
+bun test          # 317 tests across 26 files (316 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
@@ -156,7 +156,7 @@ V3 ("all five dispositions, and both failure postures") is implemented: AGT's fi
 
 **The two logs cannot be joined on `session_id`.** The audit log records the host's own raw session identifier — the same key the session config is filed under — while an envelope carries `metadata.session_id`, which ACS's schemas constrain to `format: uuid`, so a host session id that is not already a UUID has one derived from it on the way out. The Inspector labels the audit value `audit_session=` for exactly that reason, and never correlates the two. Making them joinable is V6's work, not this slice's.
 
-Four of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host vocabulary in the AGT bridge), and R5.1 and R5.2 (the Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter, and names neither AGT nor any host).
+Five of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host vocabulary in the AGT bridge), R5.1 and R5.2 (the Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter, and names neither AGT nor any host), and R3.2 from the host's own side (a host shim imports the adapter only — never the AGT bridge, never the Guardian, which is what makes a second host cost zero AGT code).
 
 Slices V4–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
 

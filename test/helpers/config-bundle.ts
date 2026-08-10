@@ -52,7 +52,21 @@ export type ConfigBundle = { dir: string; cleanup(): void };
 export function buildConfigBundle(config: unknown): ConfigBundle {
   const dir = mkdtempSync(join(tmpdir(), "acs-config-bundle-"));
 
-  const regoFiles = readdirSync(POLICY_LIB_DIR).filter((f) => f.endsWith(".rego"));
+  // The copy below is deliberately flat -- `*.rego` in this one directory,
+  // nothing recursive -- which is correct for the bundle this project vendors
+  // and would silently under-copy the day it gained a nested rego file. So the
+  // assumption is asserted rather than explained: a subdirectory here fails
+  // loudly now instead of producing a quietly incomplete fixture bundle later.
+  const entries = readdirSync(POLICY_LIB_DIR, { withFileTypes: true });
+  const subdirectories = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  if (subdirectories.length > 0) {
+    throw new Error(
+      `buildConfigBundle: ${POLICY_LIB_DIR} has subdirectories (${subdirectories.join(", ")}), but this helper ` +
+        "copies *.rego from the top level only -- make the copy recursive before adding a nested rego file",
+    );
+  }
+
+  const regoFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".rego")).map((entry) => entry.name);
   for (const file of regoFiles) {
     const source = readFileSync(join(POLICY_LIB_DIR, file));
     writeFileSync(join(dir, file), source);

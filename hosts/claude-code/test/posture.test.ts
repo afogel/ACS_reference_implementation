@@ -199,6 +199,57 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(0);
   });
 
+  // Whole-branch review, M1. Malformed per JSON-RPC (a response carries one of
+  // `result`/`error`, never both) and audited whenever it happens, so it was
+  // never a silent bypass -- but it was the only expression in the tree where
+  // a posture could outrank an arriving decision, and Global Constraint 1 does
+  // not have an exception for a malformed envelope.
+  it("honours a deny that arrives alongside an error, rather than answering with the posture", async () => {
+    const dir = scratch();
+    const stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number; method: string };
+        if (body.method === "handshake/hello") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              negotiated_version: "0.1.0",
+              methods_evaluated: ["steps/toolCallRequest"],
+              selected_transport: "http",
+              timeout_config: { default_ms: 5000 },
+              // The posture that would have answered instead, had the error
+              // branch won: a plain allow.
+              on_decision_failure: "proceed",
+            },
+          });
+        }
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: -32020, message: "evaluation failed" },
+          result: { decision: "deny", reasoning: "blocked by policy" },
+        });
+      },
+    });
+    try {
+      const out = await runShim(payload("ls -la"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      expect(hook.permissionDecision).toBe("deny");
+      expect(hook.permissionDecisionReason).toBe("blocked by policy");
+      // A decision arrived, so nothing was a delivery failure and nothing is
+      // audited as one.
+      expect(existsSync(join(dir, "audit.jsonl"))).toBe(false);
+    } finally {
+      stub.stop(true);
+    }
+  });
+
   it("still exits 0 with a decision when the Guardian returns a decision this hookmap cannot render (CRITICAL fix)", async () => {
     const dir = scratch();
     // A stub, not a real Guardian: answers handshake/hello honestly (so
@@ -245,6 +296,76 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
       expect(audit).toHaveLength(1);
       expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
+    } finally {
+      stub.stop(true);
+    }
+  });
+
+  // Whole-branch review, I8: the runbook demonstrates both postures against a
+  // *killed* Guardian, so both captures show failure.kind "transport". The
+  // case §6.4 actually defines a decision failure by -- a Guardian that
+  // accepts the connection and stays silent past the negotiated timeout, which
+  // is why the client grew an AbortSignal.timeout at all -- appeared nowhere
+  // end to end. This slice has already shipped one classification verified
+  // against an assumption instead of the runtime, and it was wrong, so an
+  // unexercised classification path is not something to take on trust.
+  it("classifies a Guardian that accepts and never answers as a timeout, not a transport failure", async () => {
+    const dir = scratch();
+    // Answers the handshake honestly -- declaring a short negotiated timeout,
+    // so this test costs milliseconds rather than the ACS default's 5s -- then
+    // accepts the step request and never answers it.
+    const stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number; method: string };
+        if (body.method === "handshake/hello") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              negotiated_version: "0.1.0",
+              methods_evaluated: ["steps/toolCallRequest"],
+              selected_transport: "http",
+              timeout_config: { default_ms: 120 },
+              on_decision_failure: "proceed",
+            },
+          });
+        }
+        // Tied to the request's own signal, never a bare timer: once the hook
+        // times out and `stub.stop(true)` aborts the in-flight request, this
+        // clears the timer instead of holding the event loop open past the
+        // test.
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 30_000);
+          req.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        return Response.json({ jsonrpc: "2.0", id: body.id, result: { decision: "allow" } });
+      },
+    });
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      expect(out.exitCode).toBe(0);
+      expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+
+      const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "proceeded",
+        failure: { kind: "timeout" },
+      });
+      // The negotiated timeout, not the ACS default -- which is also what
+      // proves the bound came from the handshake rather than from anywhere
+      // else this hook could have got a number.
+      expect(audit[0].failure.message).toContain("120ms");
     } finally {
       stub.stop(true);
     }

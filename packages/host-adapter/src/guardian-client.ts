@@ -162,9 +162,9 @@ export type GuardianClient = {
 export function createGuardianClient(url: string): GuardianClient {
   async function post(envelope: JsonRpcRequest, options: PostOptions = {}): Promise<JsonRpcResponse> {
     const { timeoutMs } = options;
-    let res: Response;
+    let response: JsonRpcResponse;
     try {
-      res = await fetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(envelope),
@@ -173,14 +173,21 @@ export function createGuardianClient(url: string): GuardianClient {
         // immediately -- fetch does not wait out the clock for those.
         signal: timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs),
       });
+      // Inside the same try as the fetch, deliberately. The abort signal
+      // bounds the body too, and a Guardian whose headers beat the timeout
+      // while its body does not is still "no usable decision within the
+      // negotiated timeout" (§6.4). With this read outside, that case
+      // surfaced as a bare DOMException and was classified
+      // `error_without_decision` -- a wrong classification for a plain
+      // timeout, in the one field the audit log has for naming what went
+      // wrong.
+      response = (await res.json()) as JsonRpcResponse;
     } catch (error) {
       if (timeoutMs !== undefined && error instanceof Error && error.name === "TimeoutError") {
         throw new GuardianTimeoutError(timeoutMs);
       }
       throw error;
     }
-
-    const response = (await res.json()) as JsonRpcResponse;
 
     if (response.id !== envelope.id) {
       throw new GuardianResponseMismatchError(envelope.id, response.id);

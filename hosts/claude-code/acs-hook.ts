@@ -309,6 +309,18 @@ async function main(): Promise<void> {
     const answer = await guardian.requestDecision(envelope, { timeoutMs });
     const elapsedMs = performance.now() - startedAt;
 
+    // An arriving decision is checked for FIRST, and Global Constraint 1's M1
+    // case is the reason: a JSON-RPC response carrying both `error` and
+    // `result` is malformed per JSON-RPC, but if the `result` names a decision
+    // then a decision did arrive, and an arriving `deny` is honoured
+    // regardless of posture -- answering it with the posture instead would let
+    // a delivery-failure rule overrule a policy decision.
+    //
+    // That check is no longer written here. `requestDecision` performs it and
+    // answers `decisionArrived`, which is the whole point of that reshape (PR
+    // #10 review, Important): the branch is stated once, in the module that
+    // owns the wire, instead of once per host shim -- and V5's second shim
+    // would have inherited a copy of it, fail-open and all.
     const decision: AcsDecision = answer.decisionArrived
       ? validateDecision(answer.decision, { elapsedMs, originalArguments })
       : applyFailurePosture({
