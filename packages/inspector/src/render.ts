@@ -41,6 +41,10 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+/** Formats each `policy_references` entry as `policy_id#rule_id`, falling
+ * back to the bare `policy_id` when `rule_id` is absent. ACS's schemas do
+ * not require `rule_id` on a policy_reference, so that fallback is a real
+ * shape this renders deliberately, not a defect. */
 function referenceList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -88,12 +92,16 @@ export function renderDecisionBadge(entry: TapEntry, options: RenderOptions = {}
     head = paint(`◆ ${result.decision.toUpperCase()}`, CYAN, color);
   }
 
+  // Dimmed rather than left plain: with color:true, painting only `head`
+  // made a coloured badge read as one coloured half and one plain half.
+  // `paint` no-ops when `color` is false, so this changes nothing about the
+  // color:false output the exact-string tests above assert byte-for-byte.
   const parts = [head];
   if (reasonCodes.length > 0) {
-    parts.push(`reason_codes=[${reasonCodes.join(", ")}]`);
+    parts.push(paint(`reason_codes=[${reasonCodes.join(", ")}]`, DIM, color));
   }
   if (references.length > 0) {
-    parts.push(`policy_references=[${references.join(", ")}]`);
+    parts.push(paint(`policy_references=[${references.join(", ")}]`, DIM, color));
   }
   return parts.join("  ");
 }

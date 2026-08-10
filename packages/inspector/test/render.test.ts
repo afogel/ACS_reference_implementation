@@ -65,6 +65,22 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badge).not.toBe(renderDecisionBadge(response({ decision: "allow" })));
   });
 
+  // Pins current behaviour (backlog item H): ACS's schemas do not require
+  // `rule_id` on a policy_reference, so this is a real shape, not a
+  // hypothetical one. Dropping to the bare policy_id here is a deliberate
+  // degradation, not a bug -- this test exists so a future change to it is
+  // a decision, not an accident.
+  it("renders a policy_reference with no rule_id as the bare policy_id", () => {
+    const badge = renderDecisionBadge(
+      response({
+        decision: "deny",
+        policy_references: [{ policy_id: "agt_stock" }],
+      }),
+    );
+
+    expect(badge).toBe("● DENY  policy_references=[agt_stock]");
+  });
+
   it("badges modify, ask, and defer", () => {
     expect(renderDecisionBadge(response({ decision: "modify" }))).toBe("◆ MODIFY");
     expect(renderDecisionBadge(response({ decision: "ask" }))).toBe("◆ ASK");
@@ -86,6 +102,25 @@ describe("renderDecisionBadge (U21)", () => {
     expect(plain).toBe("● DENY");
     expect(coloured).toContain("\u001b[");
     expect(coloured).toContain("DENY");
+  });
+
+  // Backlog item I: with color:true, only the glyph and decision label used
+  // to be painted, so a coloured badge read as one coloured half and one
+  // plain half. The appended segments are painted dim so the whole badge
+  // reads as one unit; color:false stays byte-identical (asserted by the
+  // exact-string tests above, which are unchanged).
+  it("paints the appended reason_codes/policy_references segments dim when coloured", () => {
+    const coloured = renderDecisionBadge(
+      response({
+        decision: "deny",
+        reason_codes: ["destructive_shell_command_blocked"],
+        policy_references: [{ policy_id: "agt_stock", rule_id: "destructive_shell_command_blocked" }],
+      }),
+      { color: true },
+    );
+
+    expect(coloured).toContain("\u001b[2mreason_codes=[destructive_shell_command_blocked]\u001b[0m");
+    expect(coloured).toContain("\u001b[2mpolicy_references=[agt_stock#destructive_shell_command_blocked]\u001b[0m");
   });
 });
 
