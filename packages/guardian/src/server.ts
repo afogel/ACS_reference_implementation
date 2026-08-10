@@ -83,6 +83,28 @@ const ACS_PATH = "/acs";
  * so the name would make which interfaces are listening a property of the
  * machine's resolver rather than of this line. */
 const LOOPBACK_ONLY = "127.0.0.1";
+// This tree's own absolute root -- `packages/guardian/src` is always three
+// directories under it, the same relationship MAPPING_PATH above relies on.
+// Used only to redact it out of error text before that text leaves the
+// Guardian; see toRepoRelativeMessage below.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url)).replace(/[/\\]+$/, "");
+const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[/\\\\]?`, "g");
+
+/**
+ * Both catches in this module (the outer net in handleAcsRequest and the
+ * evaluation-failure catch in dispatch) surface a real error's `.message`
+ * to the ACS client and, via the tap, into S6 -- and a real error's message
+ * (an ENOENT out of a missing schema directory, say) carries this
+ * machine's absolute filesystem path, e.g.
+ * `/Users/you/.../ACS_reference_implementation/packages/spec/acs/...`.
+ * That is diagnostic in a way this demo's value depends on, so the fix is
+ * not to replace it with something generic -- it is to remove only the
+ * part of it that discloses where this tree sits on disk, leaving the
+ * repo-relative remainder (`packages/spec/acs/...`) intact.
+ */
+function toRepoRelativeMessage(message: string): string {
+  return message.replace(REPO_ROOT_PATTERN, "");
+}
 
 /**
  * ACS reserves -32000..-32099 for application errors (Specification §17),
@@ -217,7 +239,7 @@ async function handleAcsRequest(
     // JSON-RPC error, not an ACS `deny`: N27 stays V3's call. What this
     // buys is that the client can parse the answer at all, and that S6
     // holds a response line paired with the request line above it.
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toRepoRelativeMessage(error instanceof Error ? error.message : String(error));
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
   tap.write("response", response, method);
@@ -274,7 +296,7 @@ async function dispatch(
       // See the module header. Deliberately a bare JSON-RPC error rather than
       // an ACS `deny` decision -- all this guarantees is that the client gets
       // a parseable envelope back instead of an HTML 500.
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toRepoRelativeMessage(error instanceof Error ? error.message : String(error));
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }
   }
@@ -307,7 +329,7 @@ function errorResponse(
  * successful response always uses the schema-validated envelope's id. */
 function extractId(raw: unknown): string | number | null {
   if (typeof raw === "object" && raw !== null && "id" in raw) {
-    const id = (raw as { id: unknown }).id;
+    const id = raw.id;
     if (typeof id === "string" || typeof id === "number") {
       return id;
     }

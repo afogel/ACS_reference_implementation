@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -137,24 +137,38 @@ describe("Guardian envelope tap wiring (N26 x N20)", () => {
 
   // Global constraint 8, end to end: the tap is on the decision path, so
   // this is the test that says a broken tap cannot become a fail-open.
+  //
+  // No `onError` is passed here, so this exercises the tap's *default*
+  // reporter -- a single `console.error` line -- rather than the
+  // onError-captured path envelope-tap.test.ts's "reports once, then goes
+  // quiet" test covers. Spied and silenced so a deliberately-broken tap
+  // does not print real stderr into a clean `bun test` run, and asserted
+  // on so "reports once" is checked at the call site instead of merely
+  // claimed.
   it("still denies rm -rf / when every tap write fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-tap-broken-"));
     const blocker = join(dir, "blocker");
     writeFileSync(blocker, "");
-    const guardian = await startGuardian({
-      port: 0,
-      manifestPath: "policy/manifest.yaml",
-      envelopeLogPath: join(blocker, "nested", "envelopes.jsonl"),
-    });
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
     try {
-      const response = (await postRaw(guardian.url, JSON.stringify(toolCallEnvelope("rm -rf /")))) as {
-        result?: { decision?: string };
-        error?: unknown;
-      };
-      expect(response.error).toBeUndefined();
-      expect(response.result?.decision).toBe("deny");
+      const guardian = await startGuardian({
+        port: 0,
+        manifestPath: "policy/manifest.yaml",
+        envelopeLogPath: join(blocker, "nested", "envelopes.jsonl"),
+      });
+      try {
+        const response = (await postRaw(guardian.url, JSON.stringify(toolCallEnvelope("rm -rf /")))) as {
+          result?: { decision?: string };
+          error?: unknown;
+        };
+        expect(response.error).toBeUndefined();
+        expect(response.result?.decision).toBe("deny");
+        expect(errorSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        await guardian.close();
+      }
     } finally {
-      await guardian.close();
+      errorSpy.mockRestore();
       unlinkSync(blocker);
       rmdirSync(dir);
     }

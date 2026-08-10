@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -190,6 +190,30 @@ const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const GUARDIAN_PKG = join(REPO_ROOT, "packages", "guardian");
 
 /**
+ * A stable, predictable name rather than an `mkdtempSync` random one
+ * (backlog item C). This tree has to live *inside* `packages/guardian/` --
+ * not under a repo-wide temp directory -- because it is a relative-path
+ * trick: `validate-envelope.ts` resolves its schema root three directories
+ * up from its own `import.meta.url`, so the copy has to sit at the same
+ * depth under `packages/guardian/` for that resolution to land one level
+ * short, on purpose (see the doc comment below). Bun's workspace module
+ * resolution for the copy's own `import`s (`agt-bridge`, etc.) also
+ * resolves relative to where the copy physically sits, which only works
+ * predictably inside the real package tree.
+ *
+ * A fixed name means a killed run's leftover copy is not a fresh, unignored
+ * directory tsc has never heard of: it is *this* directory, already covered
+ * by `.gitignore` and by `tsconfig.json`'s `exclude`, so it cannot make
+ * `bun run typecheck` see a stray duplicate of the Guardian's own source. A
+ * run that starts while a previous killed run's copy is still here fails
+ * loudly (`mkdirSync` on an existing directory throws) rather than quietly
+ * reusing stale files -- the cure for that is deleting the leftover
+ * directory by hand, not adding recovery logic that would have to guess
+ * whether stale contents are safe to remove.
+ */
+const SCHEMALESS_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-schemaless-scratch");
+
+/**
  * Runs `body` against a Guardian whose `validate-envelope.ts` cannot find the
  * ACS schemas -- the tree-cloned-without-`--recurse-submodules` case, which is
  * what makes the whole-branch review's finding 1 reachable rather than
@@ -197,29 +221,30 @@ const GUARDIAN_PKG = join(REPO_ROOT, "packages", "guardian");
  *
  * It is reproduced by *relocation*, not by mocking and not by touching
  * `spec/`. `validate-envelope.ts` derives SCHEMA_ROOT from its own
- * `import.meta.url` as `../../../spec/specification/...`, so an identical copy
- * of `packages/guardian/src` placed one directory deeper resolves that path to
- * `packages/spec/...`, which does not exist. Every line of Guardian code that
- * then runs is the real, current source -- the files are copied at test time,
- * so they cannot drift from `src/` -- and the failure it produces is a real
- * ENOENT out of `readdirSync`, thrown at request time because `buildAjv()` is
- * lazy. The copy also gets its own module instance, so it cannot poison the
- * Ajv registry the rest of this suite shares.
+ * `import.meta.url` as `../../../spec/acs/specification/...`, so an identical
+ * copy of `packages/guardian/src` placed one directory deeper resolves that
+ * path to `packages/spec/acs/...`, which does not exist. Every line of
+ * Guardian code that then runs is the real, current source -- the files are
+ * copied at test time, so they cannot drift from `src/` -- and the failure it
+ * produces is a real ENOENT out of `readdirSync`, thrown at request time
+ * because `buildAjv()` is lazy. The copy also gets its own module instance,
+ * so it cannot poison the Ajv registry the rest of this suite shares.
  *
  * Deletions here are explicit per file (repo constraint: nothing recursive).
  */
 async function withSchemalessGuardian(
   body: (guardian: { url: string; logPath: string }) => Promise<void>,
 ): Promise<void> {
-  const root = mkdtempSync(join(GUARDIAN_PKG, "tmp-schemaless-"));
+  const root = SCHEMALESS_SCRATCH_DIR;
   const srcDir = join(root, "src");
   const logPath = join(root, "envelopes.jsonl");
   const copied = readdirSync(join(GUARDIAN_PKG, "src")).filter((f) => f.endsWith(".ts"));
   let guardian: { close(): Promise<void> } | undefined;
 
-  // Everything after mkdtempSync is inside the try: a failure while copying,
-  // importing, or booting would otherwise leave a directory of stray .ts
-  // files sitting inside packages/guardian.
+  // Everything after this mkdirSync is inside the try: a failure while
+  // copying, importing, or booting would otherwise leave a directory of
+  // stray .ts files sitting inside packages/guardian.
+  mkdirSync(root);
   try {
     mkdirSync(srcDir);
     for (const file of copied) {
@@ -285,6 +310,32 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
       expect(response.error).toBeDefined();
       expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
       expect(response.error?.code).toBeLessThanOrEqual(-32000);
+    });
+  });
+
+  // Backlog item B. The real ENOENT `withSchemalessGuardian` provokes names
+  // this machine's absolute path in full (`readdirSync` on a schema
+  // directory that does not exist at the relocated copy's resolved path):
+  // before the fix, that absolute path -- this repo's own root, in
+  // particular -- rode straight through to the client and into S6
+  // unredacted. The fix strips only the repo-root prefix, so the
+  // diagnostic remainder (the ENOENT text and the repo-relative path) is
+  // still there for a real reader to use.
+  it("strips this repo's absolute root out of a real error message before it reaches the client", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const response = await postAcs(url, toolCallEnvelope("ls -la"));
+
+      expect(response.error).toBeDefined();
+      const message = response.error?.message ?? "";
+      expect(message).not.toContain(REPO_ROOT);
+      expect(message).toContain("ENOENT");
+      // The diagnostic remainder: which schema directory was missing,
+      // relative rather than absolute. (Relative to the *relocated* copy's
+      // own root, one level shallower than this file's REPO_ROOT above --
+      // see withSchemalessGuardian's doc comment -- so no "packages/"
+      // prefix here; that is this test harness's relocation depth, not a
+      // second absolute-path leak.)
+      expect(message).toContain("spec/acs/specification/v0.1.0");
     });
   });
 

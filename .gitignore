@@ -19,5 +19,8 @@ __pycache__/
 # identical copy of packages/guardian/src, placed one directory deeper so its
 # schema path resolves to nothing. The test removes it in a `finally`; this
 # line only covers a run killed mid-test, so a stray copy of the Guardian's
-# source can never be committed as if it were source.
-packages/guardian/tmp-schemaless-*/
+# source can never be committed as if it were source. Also excluded from
+# tsconfig.json, for the same reason: a killed run's leftover copy must not
+# make `bun run typecheck` see a stray duplicate of the Guardian's own
+# source. Fixed name (not mkdtemp's random one), so this one line covers it.
+packages/guardian/tmp-schemaless-scratch/

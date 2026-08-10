@@ -70,7 +70,7 @@ export const NULL_TAP: EnvelopeTap = {
  * carry `id` at the top level, so one extractor serves both directions. */
 export function extractRpcId(envelope: unknown): string | number | null {
   if (typeof envelope === "object" && envelope !== null && "id" in envelope) {
-    const id = (envelope as { id: unknown }).id;
+    const id = envelope.id;
     if (typeof id === "string" || typeof id === "number") {
       return id;
     }
