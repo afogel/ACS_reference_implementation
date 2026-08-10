@@ -65,8 +65,12 @@ describe("tailAuditLog (N51)", () => {
       writeFileSync(path, "");
       const controller = new AbortController();
       const tail = tailAuditLog({ path, pollMs: POLL_MS, signal: controller.signal });
-      // Give the (lazily-started) timer a poll to record its starting offset
-      // before the appends land, which is the behaviour under test.
+      // No poll runs during this sleep -- nobody has called .next() yet, so
+      // the (lazily-started) timer has not started either. The starting
+      // offset (0, since the file above was empty) was already captured
+      // synchronously above, at call time. This sleep just puts real time
+      // between construction and the appends below, before consumption ever
+      // begins.
       await Bun.sleep(POLL_MS * 3);
       appendFileSync(path, entryLine(1) + entryLine(2));
 
@@ -192,6 +196,113 @@ describe("tailAuditLog (N51)", () => {
       writeFileSync(path, entryLine(9));
       const entries = await collect(tail, 1, controller);
       expect(entries.map((e) => e.seq)).toEqual([9]);
+    });
+  });
+
+  // Fix round: a log that has never existed is the healthy default -- a
+  // session with zero fail-open bypasses never causes the sink on the other
+  // side to create the file at all. Before the fix, every tick against a
+  // missing path reported through onPollError regardless of whether the
+  // path had ever existed, which meant this ordinary case printed a poll
+  // error every `pollMs` for as long as the Inspector ran.
+  it("never calls onPollError for a log that has never existed", async () => {
+    await withTempDir(async (_dir, path) => {
+      const pollErrors: unknown[] = [];
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onPollError: (error) => pollErrors.push(error),
+      });
+
+      // next() runs the generator body up to its first await, which is what
+      // starts the (lazily-started) timer -- so the sleep below is
+      // guaranteed to cover several real ticks against a path that has
+      // never been created, not zero.
+      const pending = tail.next();
+      await Bun.sleep(POLL_MS * 5);
+      controller.abort();
+      await pending;
+
+      expect(pollErrors).toEqual([]);
+    });
+  });
+
+  // Fix round: the opposite case -- a log that existed and then vanished --
+  // must still be reported, but exactly once for the whole gap, not once
+  // per tick. Also confirms the offset reset that recreation depends on:
+  // without it, a same-length replacement file landing at the already-
+  // consumed offset would read as no growth at all.
+  it("reports a vanished log exactly once across several ticks, then delivers again once it returns", async () => {
+    await withTempDir(async (_dir, path) => {
+      writeFileSync(path, entryLine(1));
+      const pollErrors: unknown[] = [];
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onPollError: (error) => pollErrors.push(error),
+      });
+
+      const { value: first } = await tail.next();
+      expect(first?.seq).toBe(1);
+
+      unlinkSync(path);
+      // Several poll intervals elapse while the log stays gone. The report
+      // must land on the first tick of the gap and nowhere after.
+      await Bun.sleep(POLL_MS * 8);
+      expect(pollErrors).toHaveLength(1);
+
+      writeFileSync(path, entryLine(9));
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([9]);
+      // Recreation must not itself count as a second gap report.
+      expect(pollErrors).toHaveLength(1);
+    });
+  });
+
+  // Fix round, mirroring tail-envelope-log.test.ts's own mid-codepoint case.
+  // The split below lands inside the emoji's 4-byte UTF-8 sequence, so
+  // neither chunk on its own is valid UTF-8 -- exactly what a `pending` that
+  // decoded each poll's bytes to a string before concatenating would
+  // corrupt into a replacement character. Built as a Buffer sliced at a
+  // chosen byte offset, not a JS string sliced by character index, because
+  // only the former can land mid-byte-sequence on disk.
+  it("reassembles a line whose split lands mid-codepoint, without corrupting the multi-byte character", async () => {
+    await withTempDir(async (_dir, path) => {
+      const note = "🎉café";
+      const entry: AuditEntry = {
+        seq: 7,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: note,
+        method: "steps/toolCallRequest",
+        rpc_id: 7,
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "proceeded",
+        failure: { kind: "timeout", message: "no decision within 5000ms" },
+      };
+      const line = `${JSON.stringify(entry)}\n`;
+      const bytes = Buffer.from(line, "utf8");
+      const emojiStart = bytes.indexOf(Buffer.from("🎉", "utf8"));
+      const splitAt = emojiStart + 2;
+      writeFileSync(path, "");
+      const controller = new AbortController();
+      const tail = tailAuditLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
+
+      appendFileSync(path, bytes.subarray(0, splitAt));
+      const collecting = collect(tail, 1, controller);
+      await Bun.sleep(POLL_MS * 5);
+      appendFileSync(path, bytes.subarray(splitAt));
+
+      const entries = await collecting;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.session_id).toBe(note);
+      expect(entries[0]).toEqual(entry);
     });
   });
 });

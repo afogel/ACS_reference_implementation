@@ -20,18 +20,25 @@
  * incidental: there, a log file that does not exist yet is ordinary --
  * nothing has written to it, and `sizeOf` reports that as size zero with no
  * complaint. Here, a log that *existed and then went missing* is reported
- * through `onPollError` instead of silently read as size zero. A file that
- * was never created is still treated as size zero without comment -- this
- * log recording nothing yet is the good outcome, the one where no bypass
- * has happened -- but a file that vanished after this tailer had already
- * read from it is exactly the kind of thing a reader of this audit trail
- * should be told about rather than have quietly reinterpreted as "back to
- * empty". Because the poll after recreation must not assume whatever is on
- * disk now continues what was read before -- an unlink-and-recreate can
- * land a same-length replacement at the very offset already consumed, which
- * a size-only comparison would then read as no growth at all -- the offset
- * is reset once, on the tick the file is seen to exist again, rather than
- * left to a same-length coincidence.
+ * through `onPollError` instead of silently read as size zero -- but a log
+ * that has never yet appeared is still treated as size zero without
+ * comment, exactly like tail-envelope-log.ts. That distinction matters
+ * because a session with zero fail-open bypasses never creates S14 at all
+ * (the sink on the other side of the wire creates its file lazily, on its
+ * first write) -- that is the *healthy* outcome, and it must not read as an
+ * error repeated on every tick for as long as the Inspector runs. A log
+ * that vanishes after this tailer had already read from it is a different,
+ * genuinely reportable event -- but reported once, on the tick the absence
+ * is first observed, not on every tick it remains absent: a human watching
+ * this stream needs to be told the log went away, not shown the same line
+ * once a poll interval forever.
+ *
+ * Because the poll after recreation must not assume whatever is on disk now
+ * continues what was read before -- an unlink-and-recreate can land a
+ * same-length replacement at the very offset already consumed, which a
+ * size-only comparison would then read as no growth at all -- the offset is
+ * still reset once, on the tick the file is seen to exist again, whether or
+ * not its absence was ever reported.
  */
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
@@ -109,11 +116,15 @@ export function tailAuditLog({
   // Bytes, not a string: a poll can land mid-line and, worse, mid-codepoint.
   // Decoding only complete lines keeps multi-byte UTF-8 intact.
   let pending = Buffer.alloc(0);
-  // True once the log has been seen to exist and then, on some later tick,
-  // has not. Consulted (and cleared) the moment existence is seen again, so
-  // that tick resets `offset` unconditionally rather than trusting a
-  // same-length-or-longer coincidence to look like ordinary growth.
-  let wasMissing = false;
+  // Becomes true the first tick the log is seen to exist, and stays true
+  // forever after -- it is what tells a later "the log is gone" tick that
+  // this is a real disappearance and not just "still hasn't been created".
+  let everExisted = false;
+  // True from the tick absence is first observed until the tick the log is
+  // seen to exist again. Doubles as the report-once guard (checked, and set,
+  // only on the *first* tick of a gap -- see the comment at its use below)
+  // and as the reset-once trigger consulted the moment existence returns.
+  let missingSinceLastSeen = false;
 
   // Entries the timer has parsed but nobody has consumed yet, and the
   // wake-up the drain loop below is currently parked on while that queue is
@@ -129,21 +140,30 @@ export function tailAuditLog({
     }
     try {
       if (!existsSync(path)) {
-        wasMissing = true;
-        throw new Error(`audit log not found at ${path}`);
+        if (everExisted && !missingSinceLastSeen) {
+          // First tick of a real gap -- the log existed a moment ago and
+          // does not now. Reported here, once; every tick after this one,
+          // for as long as the gap continues, takes the `missingSinceLastSeen`
+          // branch above instead and reports nothing further.
+          missingSinceLastSeen = true;
+          reportPollError(onPollError, new Error(`audit log not found at ${path}`));
+        }
+        // A log that has never existed at all is not a gap and is not
+        // reported -- see the module doc: this is the healthy "no bypass
+        // yet" case, and it must stay silent for as long as it lasts.
+        return;
       }
-      const size = statSync(path).size;
 
-      if (wasMissing) {
-        // The log just came back (or this is the first tick to see it at
-        // all, if it was never created before `fromStart` forced offset to
-        // 0 -- in which case this is a no-op). Whatever is on disk now is
-        // not assumed to be a continuation of what "offset" already
-        // accounts for.
-        wasMissing = false;
+      if (missingSinceLastSeen) {
+        // The log just came back. Whatever is on disk now is not assumed
+        // to be a continuation of what "offset" already accounts for.
+        missingSinceLastSeen = false;
         offset = 0;
         pending = Buffer.alloc(0);
       }
+      everExisted = true;
+
+      const size = statSync(path).size;
 
       if (size < offset) {
         // Truncated or rotated underneath us (`: > .acs/audit.jsonl`).

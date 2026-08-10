@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { createAuditSink } from "host-adapter";
 // Not a bare "inspector" specifier: that string is a Node/Bun built-in
 // module name (`node:inspector`), which core-module resolution picks over
-// any workspace package of the same name with no way for us to override
-// it -- test/envelope-tap-roundtrip.test.ts sidesteps the same problem the
-// same way for this same package.
-import { tailAuditLog } from "../packages/inspector/src/index.ts";
+// any workspace package of the same name with no way for us to override it.
+// test/envelope-tap-roundtrip.test.ts sidesteps the same collision for the
+// same package by importing the specific submodule directly rather than
+// through the barrel; this file does the same.
+import { tailAuditLog } from "../packages/inspector/src/tail-audit-log.ts";
 
 /**
  * The contract test that keeps two independent AuditEntry declarations
