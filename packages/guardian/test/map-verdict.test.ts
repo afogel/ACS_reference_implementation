@@ -33,12 +33,24 @@ describe("mapVerdict", () => {
 
   it("maps escalate to ask and transform to modify", () => {
     expect(mapVerdict({ decision: "escalate", reason: "approval_required" }, m).decision).toBe("ask");
-    expect(mapVerdict({ decision: "transform", reason: "redacted" }, m).decision).toBe("modify");
+    expect(
+      mapVerdict(
+        { decision: "transform", reason: "redacted", transform: { path: "$policy_target", value: "x" } },
+        m,
+      ).decision,
+    ).toBe("modify");
   });
 
   it("emits only lowercase decisions", () => {
     for (const dec of ["allow", "deny", "warn", "escalate", "transform"] as const) {
-      const out = mapVerdict({ decision: dec, reason: "r" }, m).decision;
+      // transform maps to a MODIFY, which requires a transform object (R1.6)
+      // -- this loop's own point is decision casing, not that shape, so it
+      // supplies one for the one decision that needs it.
+      const verdict =
+        dec === "transform"
+          ? { decision: dec, reason: "r", transform: { path: "$policy_target", value: "x" } }
+          : { decision: dec, reason: "r" };
+      const out = mapVerdict(verdict, m).decision;
       expect(out.toLowerCase()).toBe(out);
     }
   });
@@ -144,5 +156,53 @@ describe("resolveInterventionPoint", () => {
     expect(() => resolveInterventionPoint("steps/toolCallRequest", tableless)).toThrow(
       /no intervention_points table/,
     );
+  });
+});
+
+describe("mapVerdict — transform becomes a MODIFY that carries modifications (R1.6)", () => {
+  it("synthesizes parameter_overrides from the transform's $policy_target value", () => {
+    const decision = mapVerdict(
+      {
+        decision: "transform",
+        reason: "redaction_applied",
+        transform: { path: "$policy_target", value: "echo [REDACTED]" },
+      },
+      m,
+    );
+    expect(decision.decision).toBe("modify");
+    expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
+  });
+
+  it("keeps the synthesized reason_codes and policy_references a MODIFY still needs", () => {
+    const decision = mapVerdict(
+      { decision: "transform", reason: "redaction_applied", transform: { path: "$policy_target", value: "x" } },
+      m,
+    );
+    expect(decision.reason_codes).toEqual(["redaction_applied"]);
+    expect(decision.policy_references).toEqual([{ policy_id: "agt_stock", rule_id: "redaction_applied" }]);
+  });
+
+  // A MODIFY with no modifications is invalid per §6, and silently emitting
+  // one would make the host apply nothing while reporting a rewrite. Fail loudly.
+  it("throws when a transform verdict carries no transform object", () => {
+    expect(() => mapVerdict({ decision: "transform", reason: "redaction_applied" }, m)).toThrow(
+      /transform/,
+    );
+  });
+
+  it("throws when the transform names a path this mapping cannot express", () => {
+    expect(() =>
+      mapVerdict(
+        { decision: "transform", reason: "x", transform: { path: "$.some.other.leaf", value: "y" } },
+        m,
+      ),
+    ).toThrow(/\$policy_target/);
+  });
+
+  it("leaves every other verdict's shape untouched", () => {
+    expect(mapVerdict({ decision: "allow" }, m).modifications).toBeUndefined();
+    expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m).modifications).toBeUndefined();
+    expect(mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m).decision)
+      .toBe("ask");
   });
 });

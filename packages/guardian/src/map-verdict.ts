@@ -1,11 +1,18 @@
 import { readFileSync } from "node:fs";
 import type { AgtVerdict } from "agt-bridge";
 
+export type AcsModifications = {
+  modified_content?: string;
+  redactions?: { path: string; replacement?: string }[];
+  parameter_overrides?: Record<string, unknown>;
+};
+
 export type AcsDecision = {
   decision: "allow" | "deny" | "modify" | "ask" | "defer";
   reasoning?: string;
   reason_codes?: string[];
   policy_references?: { policy_id: string; policy_version?: string; rule_id: string }[];
+  modifications?: AcsModifications;
 };
 
 type VerdictRule = {
@@ -25,6 +32,16 @@ type FieldLiteral = { literal: string };
 /** The wrap modes this mapping can express. Named as a set so `applyWrap`
  * can refuse everything outside it. */
 type WrapMode = "array";
+/** The mapping's declaration of how an AGT transform becomes ACS
+ * modifications. `when_path` is the only transform path this mapping can
+ * express; anything else is a mapping gap and must fail loudly rather than
+ * silently drop a rewrite. */
+type ModificationsRule = {
+  from: string;
+  when_path: string;
+  into: "parameter_overrides";
+  policy_target_argument: string;
+};
 
 export type Mapping = {
   acs_version: string;
@@ -38,6 +55,7 @@ export type Mapping = {
       rule_id: FieldSource;
       policy_id: FieldLiteral;
     };
+    modifications: ModificationsRule;
   };
 };
 
@@ -116,6 +134,36 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
   return [value];
 }
 
+/**
+ * R1.6 -- the $policy_target bound survives as ACS modifications.
+ *
+ * AGT's transform names the leaf it rewrote by the literal "$policy_target",
+ * resolved against the manifest's intervention point. ACS expresses a
+ * rewritten tool argument as parameter_overrides keyed by argument name, so
+ * the mapping declares which argument that is and this copies the value in.
+ *
+ * Note what is NOT here: re-applying the substitution. The SDK already
+ * returns the transformed value (verified: transformedPolicyTarget carries
+ * the applied string alongside the verdict), so this moves a value rather
+ * than recomputing one.
+ */
+function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): AcsModifications {
+  const transform = verdict.transform;
+  if (!transform || typeof transform !== "object") {
+    throw new Error(
+      `mapping.yaml maps this verdict to ACS "modify", which requires modifications, ` +
+        `but the verdict carries no ${rule.from}`,
+    );
+  }
+  if (transform.path !== rule.when_path) {
+    throw new Error(
+      `mapping.yaml can express a transform of ${JSON.stringify(rule.when_path)} only, ` +
+        `but the verdict rewrote ${JSON.stringify(transform.path)}`,
+    );
+  }
+  return { parameter_overrides: { [rule.policy_target_argument]: transform.value } };
+}
+
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
@@ -145,6 +193,10 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
       `mapping.yaml declares require_policy_references for AGT decision "${verdict.decision}", ` +
         `but no policy_references could be synthesized (verdict.reason was empty)`,
     );
+  }
+
+  if (rule.decision === "modify") {
+    out.modifications = synthesizeModifications(verdict, fs.modifications);
   }
 
   return out;
