@@ -97,12 +97,14 @@ export type BuildManifestOptions = {
  * this file up too. Returns the manifest's path.
  *
  * `bundle:` is written as `bundleDir`'s own absolute path, not `"."`.
- * Confirmed empirically (this fixture's design work, not guesswork): a
- * relative `"."` silently resolves to an empty bundle -- AGT's evaluation
- * then falls through to the Rego library's own hardcoded default (`allow`)
- * with no error at all, exactly the kind of silent fail-open C2's `/./`
- * landmine warns about elsewhere in this project. An absolute path loads
- * correctly, so that is what this writes.
+ * Confirmed empirically during this fixture's design: a relative `"."`
+ * resolves to an empty bundle directory, and with no rules loaded the Rego
+ * library's own `default verdict := {"decision": "allow"}` is the only rule
+ * left to apply -- so evaluation returns `allow` and nothing is wrong from
+ * the engine's point of view. That is Rego's default-rule semantics doing
+ * exactly what they say, not a defect: the risk lives entirely in the
+ * bundle path, which is why this writes an absolute one. The project
+ * records the same class of path risk at C2.
  */
 export function buildManifest({ bundleDir, annotator = false }: BuildManifestOptions): string {
   const manifestPath = join(bundleDir, "manifest.yaml");
