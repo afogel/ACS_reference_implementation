@@ -28,20 +28,27 @@
  * policy deny is expressed, so getting this wrong would make a deny look
  * like a crash.
  *
- * ON FAILURE, PAST THE POINT A HOOK PAYLOAD HAS PARSED (V3, replacing a V1
- * placeholder): there are exactly three exit shapes past that point, never
- * a fourth.
+ * ON FAILURE (V3, replacing a V1 placeholder): there are exactly two exit
+ * shapes, never a third.
  *
- *   - Exit 1 ("non-blocking error"), empty stdout: ONLY before a hook
- *     payload has parsed at all -- stdin is not JSON, or is missing a
- *     string `hook_event_name`/`session_id`. Nothing has been promised to
- *     Claude Code yet.
- *   - Exit 2 ("blocking error"), stderr only: once the payload has parsed,
- *     but before this shim can trust its own configuration enough to make
- *     a governed decision at all -- the hookmap fails to load, or
- *     `session_id` is unsafe to use as a path segment (constraint 9). Both
- *     are a broken deployment, not a policy question, and a loud, blocking
- *     stop beats a silent, ungoverned proceed.
+ *   - Exit 2 ("blocking error"), stderr only, empty stdout: this shim
+ *     cannot trust its own input or its own configuration enough to make a
+ *     governed decision at all -- stdin is not JSON, the payload is missing
+ *     a string `hook_event_name`/`session_id`, the hookmap fails to load,
+ *     or `session_id` is unsafe to use as a path segment (constraint 9).
+ *     Every one of those is a broken deployment, not a policy question, and
+ *     a loud, blocking stop beats a silent, ungoverned proceed.
+ *
+ *     There used to be a third shape here, and retiring it is the whole
+ *     point of this paragraph: a payload that parsed but carried no usable
+ *     `session_id` exited 1 ("non-blocking error"), which Claude Code reads
+ *     as "the hook did not fire" and proceeds on -- ungoverned and
+ *     unaudited. That put two members of one class ("this deployment's
+ *     `session_id` cannot be used") on opposite sides of the fail
+ *     open/closed line, since a `session_id` that is present but *unsafe*
+ *     already blocked. A governance hook that cannot read its own input has
+ *     no honest reason to prefer "proceed" to "block", so exit 1 is gone
+ *     entirely -- including for anything unexpected that escapes `main`.
  *   - Exit 0, a decision on stdout: every remaining case, with no
  *     exception. A Guardian that is down, a response carrying an error
  *     instead of a decision, a request that times out, or a decision this
@@ -61,17 +68,16 @@
  *
  * V1's own version of this paragraph described a placeholder, not a
  * considered posture: it caught nothing, wrote the error to stderr only,
- * and exited 1 with empty stdout for every failure past this point,
- * including a broken deployment. Claude Code reads exit 1 as "non-blocking
- * error" and proceeds as though the hook had never fired -- so a thrown
- * error (the Guardian down, a malformed response, a lazy validator
- * failing) let the tool call run ungoverned, unaudited, and undeclared.
- * That fail-open recurred five more times elsewhere in this project before
- * this rewrite closed this, its origin. It is gone: every one of the
- * throws that used to reach V1's placeholder now flows into either exit 2
- * (a broken deployment, loud and blocking) or `applyFailurePosture` (every
- * other case, which always returns a decision and always audits taking
- * it).
+ * and exited 1 with empty stdout for every failure, including a broken
+ * deployment. Claude Code reads exit 1 as "non-blocking error" and proceeds
+ * as though the hook had never fired -- so a thrown error (the Guardian
+ * down, a malformed response, a lazy validator failing) let the tool call
+ * run ungoverned, unaudited, and undeclared. That fail-open recurred five
+ * more times elsewhere in this project before this rewrite closed this, its
+ * origin. It is gone: every one of the throws that used to reach V1's
+ * placeholder now flows into either exit 2 (a broken deployment, loud and
+ * blocking) or `applyFailurePosture` (every other case, which always
+ * returns a decision and always audits taking it).
  */
 import { fileURLToPath } from "node:url";
 import {
@@ -155,14 +161,18 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
 }
 
 /**
- * Thrown when this shim cannot trust its own configuration enough to make
- * a governed decision at all -- a hookmap that fails to load, or a
- * `session_id` unsafe to use as a path segment. Distinct from a step-1
- * parse failure (a bare throw, still exit 1): both of these happen only
- * after a hook payload HAS parsed, so Claude Code must not read them as
- * "the hook didn't fire" the way it reads exit 1 -- `main().catch` below
- * exits 2 ("blocking error") for this class specifically, which stops the
- * tool call and surfaces stderr instead of silently letting it through.
+ * Thrown when this shim cannot trust its own input or its own configuration
+ * enough to make a governed decision at all -- stdin that is not a hook
+ * payload, a payload missing a usable `hook_event_name`/`session_id`, a
+ * hookmap that fails to load, or a `session_id` unsafe to use as a path
+ * segment. `main().catch` below exits 2 ("blocking error") for all of it,
+ * which stops the tool call and surfaces stderr instead of silently letting
+ * it through.
+ *
+ * This class no longer selects the exit code -- exit 2 is now the only
+ * non-zero code this shim produces -- but it still names the class
+ * deliberately, so a future edit that adds a failure here has to decide
+ * whether it belongs to it rather than inheriting a default by accident.
  */
 class BlockingConfigurationError extends Error {
   constructor(cause: unknown) {
@@ -172,27 +182,36 @@ class BlockingConfigurationError extends Error {
 }
 
 async function main(): Promise<void> {
-  const input = await Bun.stdin.text();
-  const payload = JSON.parse(input) as Record<string, unknown>;
-
-  // Step 1: nothing has been promised to Claude Code yet, so a failure here
-  // still throws and exits 1 -- there is no hook to decide about.
-  const hookEventName = payload.hook_event_name;
-  if (typeof hookEventName !== "string") {
-    throw new Error('acs-hook: stdin payload is missing a string "hook_event_name" field');
+  // Step 1: read the hook payload. A hook fired, so something governs this
+  // tool call or nothing does -- and a shim that cannot read its own input
+  // is in no position to say which. Unparseable stdin and a payload with no
+  // usable `hook_event_name`/`session_id` are the same broken deployment as
+  // an unloadable hookmap below, and they block the same way (exit 2), not
+  // with the exit-1 "the hook didn't fire" that let the call through.
+  let payload: Record<string, unknown>;
+  let hookEventName: string;
+  let sessionId: string;
+  try {
+    payload = JSON.parse(await Bun.stdin.text()) as Record<string, unknown>;
+    if (typeof payload?.hook_event_name !== "string") {
+      throw new Error('acs-hook: stdin payload is missing a string "hook_event_name" field');
+    }
+    if (typeof payload.session_id !== "string") {
+      throw new Error('acs-hook: stdin payload is missing a string "session_id" field');
+    }
+    hookEventName = payload.hook_event_name;
+    sessionId = payload.session_id;
+  } catch (error) {
+    throw new BlockingConfigurationError(error);
   }
-  const sessionId = payload.session_id;
-  if (typeof sessionId !== "string") {
-    throw new Error('acs-hook: stdin payload is missing a string "session_id" field');
-  }
 
-  // Step 2: from here on, a hook payload HAS parsed. A hookmap that fails
-  // to load, or an unsafe session_id, both make a governed decision
-  // impossible -- a broken deployment, not a policy question -- so both
-  // become a BlockingConfigurationError and exit 2, not the silent exit-1
-  // proceed a bare throw would produce. Nothing is written anywhere before
-  // this succeeds (constraint 4): createFileSessionConfigStore's
-  // InvalidSessionIdError throws synchronously, before its first write.
+  // Step 2: a hookmap that fails to load, or an unsafe session_id, both make
+  // a governed decision impossible -- a broken deployment, not a policy
+  // question -- so both become a BlockingConfigurationError and exit 2, not
+  // the silent proceed a non-blocking exit code would produce. Nothing is
+  // written anywhere before this succeeds (constraint 4):
+  // createFileSessionConfigStore's InvalidSessionIdError throws
+  // synchronously, before its first write.
   let hookmap: Hookmap;
   let store: SessionConfigStore;
   try {
@@ -314,5 +333,11 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(error instanceof BlockingConfigurationError ? 2 : 1);
+  // Exit 2 ("blocking error") for everything, with no second tier. Anything
+  // that reaches here is either a BlockingConfigurationError (this shim
+  // cannot trust its input or its configuration) or something unforeseen
+  // escaping `main` -- and in both cases the honest answer to "should this
+  // tool call run?" is "this hook cannot say", which Claude Code must read
+  // as a block, not as the hook never having fired.
+  process.exit(2);
 });

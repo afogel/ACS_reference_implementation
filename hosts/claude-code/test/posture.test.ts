@@ -242,10 +242,47 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  it("still fails loudly on a payload that is not a hook payload at all", async () => {
+  // The three members of "this shim cannot read its own input", all of which
+  // used to exit 1 -- "non-blocking error", which Claude Code reads as "the
+  // hook did not fire" and proceeds past, ungoverned and unaudited. A
+  // governance hook that cannot read its own input has no honest reason to
+  // prefer proceed to block, and the sibling case (a session_id that IS
+  // present but unsafe) already blocked, so the two halves of one class sat
+  // on opposite sides of the fail-open line.
+  it("exits 2 (blocking) on a payload that is not JSON at all", async () => {
     const out = await runShim("{not json", { ACS_SESSION_DIR: scratch() });
-    expect(out.exitCode).toBe(1);
+    expect(out.exitCode).toBe(2);
     expect(out.stdout).toBe("");
+    expect(out.stderr.length).toBeGreaterThan(0);
+  });
+
+  it("exits 2 (blocking) on a payload with no session_id", async () => {
+    const out = await runShim(
+      JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf /" } }),
+      { ACS_SESSION_DIR: scratch() },
+    );
+    expect(out.exitCode).toBe(2);
+    expect(out.stdout).toBe("");
+    expect(out.stderr).toContain("session_id");
+  });
+
+  it("exits 2 (blocking) on a session_id that is not a string", async () => {
+    const out = await runShim(
+      JSON.stringify({ session_id: 17, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {} }),
+      { ACS_SESSION_DIR: scratch() },
+    );
+    expect(out.exitCode).toBe(2);
+    expect(out.stdout).toBe("");
+    expect(out.stderr).toContain("session_id");
+  });
+
+  it("exits 2 (blocking) on a payload with no hook_event_name", async () => {
+    const out = await runShim(JSON.stringify({ session_id: "sess-1", tool_name: "Bash", tool_input: {} }), {
+      ACS_SESSION_DIR: scratch(),
+    });
+    expect(out.exitCode).toBe(2);
+    expect(out.stdout).toBe("");
+    expect(out.stderr).toContain("hook_event_name");
   });
 
   it("rejects a traversal-shaped session_id without writing outside the session dir, exiting 2 (blocking) not 1", async () => {
