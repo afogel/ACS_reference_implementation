@@ -38,3 +38,10 @@ export {
   type SessionConfigStore,
   type CreateFileSessionConfigStoreOptions,
 } from "./session-config.ts";
+export {
+  createAuditSink,
+  NULL_AUDIT_SINK,
+  type AuditEntry,
+  type AuditSink,
+  type CreateAuditSinkOptions,
+} from "./audit-sink.ts";
