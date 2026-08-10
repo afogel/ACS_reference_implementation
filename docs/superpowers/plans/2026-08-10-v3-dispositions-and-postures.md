@@ -119,11 +119,11 @@ Every task is bound by these. They are the reviewer's attention lens.
 
 | From the slice | Handled by | Note |
 |---|---|---|
-| U23 inspector posture badge | Task 8 | Negotiated posture + fail-open proceed count |
+| U23 inspector posture badge | Task 9 | Negotiated posture + fail-open proceed count |
 | N6 `applyFailurePosture()` | Task 4 | Needs the client timeout added in the same task |
 | N7 `validateDecision()` | Task 6 | Plus `applyModifications` — see Scope added |
 | N27 `denyOnInvalidEnvelope()` | Task 7 | Replaces `dispatch`'s error branches |
-| N51 `tailAuditSinks()` | Task 8 | Inspector declares its own `AuditEntry` |
+| N51 `tailAuditSinks()` | Task 9 | Inspector declares its own `AuditEntry` |
 | S14 audit sink | Task 3 | Total by construction |
 | ⚠️ Blocker: S13 has no home across processes | Task 2 | Resolved as P1 — session-keyed file |
 | Watch-for: two failure domains kept separate | Global Constraint 1; asserted in Tasks 4, 7, 9 | |
@@ -131,11 +131,11 @@ Every task is bound by these. They are the reviewer's attention lens.
 | Watch-for: wire N21's error branch to N27 | Task 7 | |
 | Watch-for: wire N4's return through N7 | Task 7 | |
 | Parked from V1: hookmap `defer → permissionDecision: deny` | Task 6 | Kept, with the reason restated; `defer` is unreachable from AGT (P2) so it stays a guard, not a path |
-| R1.5 AGT `deny` honoured regardless of posture | Task 4 (posture cannot override), Task 9 (end to end) | |
+| R1.5 AGT `deny` honoured regardless of posture | Task 4 (posture cannot override), Task 8 (end to end) | |
 | R1.6 `transform`'s `$policy_target` survives as ACS `modify` | Task 5 (Guardian side), Task 6 (host side) | |
-| R1.7 delivery failure applies the negotiated posture, every proceed audited | Task 4, Task 7 | |
+| R1.7 delivery failure applies the negotiated posture, every proceed audited | Task 4, Task 8 | |
 | R1.8 three mandatory fail-closed cases | Task 6 | Malformed `modifications`, DEFER expiry, ASK expiry |
-| R1.2 five verdicts, live rather than unit-tested | Task 9 | Includes `warn` via P4 |
+| R1.2 five verdicts, live rather than unit-tested | Task 10 | Includes `warn` via P4 |
 
 ## Cross-slice work in this plan
 
@@ -143,7 +143,7 @@ Every task is bound by these. They are the reviewer's attention lens.
 |---|---|---|
 | Task 7 updates `docs/demos/v2-runbook.md` and `README.md` | V2 | N27 changes what V2's Inspector renders for a schema-invalid envelope: `✖ ERROR -32010` becomes `● DENY`. Both documents quote the old output as *captured* output. V2's own watch-for predicted this ("The Inspector is where that change will become visible"), so leaving them stale would make two documents lie about a run. |
 | Task 5 extends `mapping.yaml` | V7 | `mapping.yaml` has two consumers that must never disagree — the runtime and V7's harness. A `modifications` synthesis added only in code would make V7 publish an incomplete table. |
-| Task 8 widens the R5.2 gate in `test/invariants.test.ts` | V2 | The gate is V2's. S14 is a host-side artifact the Inspector now reads, so the gate must forbid importing `host-adapter` too, or R5.2 quietly weakens the moment N51 lands. |
+| Task 9 widens the R5.2 gate in `test/invariants.test.ts` | V2 | The gate is V2's. S14 is a host-side artifact the Inspector now reads, so the gate must forbid importing `host-adapter` too, or R5.2 quietly weakens the moment N51 lands. |
 
 ## Scope added during planning
 
@@ -153,9 +153,9 @@ Every task is bound by these. They are the reviewer's attention lens.
 | `guardianClient.post` gains a timeout (Task 4) | §6.4 defines decision failure as "no usable decision **within the negotiated timeout**". V1's client has no timeout, so a silent Guardian hangs the hook forever and N6 can never fire | New row under §V3 |
 | `applyModifications` + hookmap change (Task 6) | V1's hookmap copies the raw ACS `modifications` object into Claude Code's `updatedInput`. Claude Code expects a `tool_input` shape, so the "rewritten tool call" in the demo would arrive as an unusable object. R1.6 is not satisfied by carrying `modifications` — it is satisfied by the rewrite taking effect | §V3 gains a structure row, correcting "data, not structure" |
 | `mapping.yaml` gains `modifications` synthesis (Task 5) | `mapVerdict` currently emits `decision: modify` with **no** `modifications` field, which §6 makes invalid (MODIFY requires it) | New row under §V3; noted for V7 |
-| R5.2 gate widened to `host-adapter` (Task 8) | Keeps the Inspector wire-only now that it reads a host-side artifact | §V2 scope-added row gains a line |
-| Per-config bundle helper, test-only (Task 9) | P3: config lives in the bundle directory and the SDK exposes no data push, so covering five verdict classes means five config documents | New row under §V3 |
-| `policy/manifest.drift.yaml` + optional annotator dispatcher (Task 9) | P4: `warn` is otherwise unreachable, leaving R1.2 unit-tested only | New row under §V3 |
+| R5.2 gate widened to `host-adapter` (Task 9) | Keeps the Inspector wire-only now that it reads a host-side artifact | §V2 scope-added row gains a line |
+| Per-config bundle helper, test-only (Task 10) | P3: config lives in the bundle directory and the SDK exposes no data push, so covering five verdict classes means five config documents | New row under §V3 |
+| `policy/manifest.drift.yaml` + optional annotator dispatcher (Task 10) | P4: `warn` is otherwise unreachable, leaving R1.2 unit-tested only | New row under §V3 |
 
 ---
 
@@ -2258,16 +2258,35 @@ Read `packages/inspector/src/tail-envelope-log.ts` before writing the tailer. It
 
 - [ ] **Step 1: Write the failing test**
 
-```ts
-// packages/inspector/test/tail-audit-log.test.ts — the shape checks and
-// truncation/partial-line cases mirror tail-envelope-log.test.ts. At minimum:
-//   - yields entries appended after the tail starts
-//   - --from-start replays existing entries
-//   - a partial line written in two chunks is reassembled
-//   - a line that parses but is not an AuditEntry goes to onMalformedLine, not the stream
-//   - truncation resets the offset without losing entries parsed before it
-//   - a poll error is reported and does not kill the generator
-```
+`packages/inspector/test/tail-audit-log.test.ts` must cover exactly these six
+cases, each with the same structure `tail-envelope-log.test.ts` uses for its
+equivalent (read that file and mirror it — the helpers, the scratch-dir
+handling, and the named cleanup are all established there):
+
+1. **Streams what arrives after the tail starts.** Start the tail on an empty
+   file, append two entries, assert both are yielded in order with their
+   `seq` intact.
+2. **`fromStart` replays what is already there.** Write two entries first,
+   then start the tail with `fromStart: true`, assert both arrive.
+   Without `fromStart`, assert neither does.
+3. **A partial line written in two chunks is reassembled.** Append the first
+   half of an entry's JSON (no newline), pull once with a poll in between,
+   append the rest plus the newline, and assert exactly one entry is yielded
+   with every field correct. **Mutation-test this one**: temporarily make the
+   tailer decode `pending` as a string instead of a `Buffer`, or drop the
+   partial-line buffer entirely, and confirm the test fails. A partial-line
+   test that passes against a tailer with no reassembly is worth nothing —
+   V2's Task 3 shipped exactly that regression and it took two fix rounds.
+4. **A line that parses but is not an `AuditEntry` is routed, not yielded.**
+   Append `{"seq":1}` and `{"not":"an entry"}` and `[]`; assert
+   `onMalformedLine` is called once per line with the raw text, and that the
+   stream yields nothing.
+5. **Truncation resets the offset without losing what was already parsed.**
+   Append one entry, pull it, truncate the file to zero, append a different
+   entry, and assert the second arrives and the first is not re-delivered.
+6. **A poll error does not kill the generator.** Unlink the file mid-tail,
+   assert the reported error reaches the `onPollError` callback and that a
+   subsequent append (after recreating the file) is still delivered.
 
 ```ts
 // added to packages/inspector/test/render.test.ts
@@ -2342,10 +2361,88 @@ describe("renderAuditEntry — N51", () => {
 ```
 
 ```ts
-// test/audit-sink-roundtrip.test.ts — the contract test that keeps the two
-// AuditEntry declarations honest, exactly as envelope-tap-roundtrip.test.ts
-// does for TapEntry. Write with createAuditSink (host-adapter), read with
-// tailAuditLog (inspector), assert every field survives for both outcomes.
+// test/audit-sink-roundtrip.test.ts
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createAuditSink } from "host-adapter";
+import { tailAuditLog } from "inspector";
+
+/**
+ * The contract test that keeps two independent AuditEntry declarations
+ * honest -- the same job test/envelope-tap-roundtrip.test.ts does for
+ * TapEntry, and the reason the R5.2 import gate is meaningful rather than
+ * merely inconvenient. The Inspector declares its own type BECAUSE it must
+ * not import the adapter's; that duplication is only safe while something
+ * fails when the two drift.
+ *
+ * This file is the only place in the tree that imports both sides.
+ */
+const dirs: string[] = [];
+function scratch(): string {
+  const dir = mkdtempSync(join(tmpdir(), "acs-audit-rt-"));
+  dirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  while (dirs.length > 0) {
+    const dir = dirs.pop() as string;
+    for (const entry of readdirSync(dir)) unlinkSync(join(dir, entry));
+    rmdirSync(dir);
+  }
+});
+
+describe("S14 write -> N51 read: every field survives", () => {
+  for (const outcome of ["proceeded", "blocked"] as const) {
+    it(`round-trips a ${outcome} entry`, async () => {
+      const path = join(scratch(), "audit.jsonl");
+      createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") }).write({
+        session_id: "sess-1",
+        method: "steps/toolCallRequest",
+        rpc_id: outcome === "proceeded" ? "req-1" : 7,
+        posture: outcome === "proceeded" ? "proceed" : "deny",
+        outcome,
+        failure: { kind: "timeout", message: "no decision within 5000ms" },
+      });
+
+      const read = [];
+      for await (const entry of tailAuditLog({ path, fromStart: true })) {
+        read.push(entry);
+        break;
+      }
+
+      // toEqual, not toMatchObject: an extra field on either side is drift,
+      // and drift is exactly what this test exists to catch.
+      expect(read[0]).toEqual({
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallRequest",
+        rpc_id: outcome === "proceeded" ? "req-1" : 7,
+        posture: outcome === "proceeded" ? "proceed" : "deny",
+        outcome,
+        failure: { kind: "timeout", message: "no decision within 5000ms" },
+      });
+    });
+  }
+
+  it("survives a null rpc_id, which an unpaired failure produces", async () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path }).write({
+      session_id: "s",
+      method: "steps/toolCallRequest",
+      rpc_id: null,
+      posture: "proceed",
+      outcome: "proceeded",
+      failure: { kind: "transport", message: "gone" },
+    });
+    for await (const entry of tailAuditLog({ path, fromStart: true })) {
+      expect(entry.rpc_id).toBeNull();
+      break;
+    }
+  });
+});
 ```
 
 And in `test/invariants.test.ts`, widen the R5.2 import gate from `["guardian", "agt-bridge"]` to `["guardian", "agt-bridge", "host-adapter"]`, with a comment stating why: the Inspector now reads a host-side artifact (S14), and without the third entry R5.2 would quietly weaken the moment N51 landed.
