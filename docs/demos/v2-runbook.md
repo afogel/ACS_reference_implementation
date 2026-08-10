@@ -238,11 +238,16 @@ and R5.2 keeps it clear of policy-runtime vocabulary; a string on screen carries
 vocabulary further than an identifier does. The badge now says only what ACS says
 happened — a policy fired, and the action was allowed.
 
-## The honest boundary: a schema-invalid envelope is an error, not a deny
+## The honest boundary: a schema-invalid steps/* envelope is a deny decision
 
 The request is recorded **before** validation, so an envelope that fails the schema is
-visible rather than swallowed. What comes back, though, is a JSON-RPC **error** — not an
-ACS `deny` decision.
+visible rather than swallowed. What comes back is now an honoured ACS **`deny`**
+decision — `N27 denyOnInvalidEnvelope()` (slice V3, defined in
+[`docs/shaping/acs-reference-impl-slices.md`](../shaping/acs-reference-impl-slices.md)
+§V3) turns a Guardian-side failure (a schema mismatch, or evaluation itself throwing)
+into a decision the host's decision path honours regardless of its negotiated failure
+posture, instead of a bare JSON-RPC error a fail-open posture could otherwise let
+through unnoticed.
 
 ```bash
 curl -s -X POST http://localhost:8787/acs \
@@ -250,10 +255,11 @@ curl -s -X POST http://localhost:8787/acs \
   -d '{"jsonrpc":"2.0","method":"steps/toolCallRequest","id":"1","params":{"acs_version":"0.1.0"}}'
 ```
 
-Captured, from terminal 2, verbatim:
+Captured, from terminal 2, verbatim (re-run against this branch on a freshly restarted
+Guardian, which is why its `seq` starts at `#1`):
 
 ```
-── #5  20:44:57.829  → REQUEST   steps/toolCallRequest  id=1
+── #1  09:55:58.247  → REQUEST   steps/toolCallRequest  id=1
 {
   "jsonrpc": "2.0",
   "method": "steps/toolCallRequest",
@@ -263,36 +269,84 @@ Captured, from terminal 2, verbatim:
   }
 }
 
-── #6  20:44:57.829  ← RESPONSE  steps/toolCallRequest  id=1
-✖ ERROR -32010  ACS envelope failed schema validation at /params/request_id: must have required property 'request_id'
+── #2  09:55:58.291  ← RESPONSE  steps/toolCallRequest  id=1
+● DENY  reason_codes=[envelope_invalid]
 {
   "jsonrpc": "2.0",
   "id": "1",
+  "result": {
+    "type": "final",
+    "acs_version": "0.1.0",
+    "request_id": "1",
+    "decision": "deny",
+    "reasoning": "ACS envelope failed schema validation at /params/request_id: must have required property 'request_id'",
+    "reason_codes": [
+      "envelope_invalid"
+    ],
+    "policy_references": []
+  }
+}
+```
+
+**The bare badge line, explained.** No `policy_references=[...]` segment appears beside
+`● DENY` because `policy_references` is empty — deliberately: R1.2 makes a *non-empty*
+`policy_references` the marker of a policy that actually fired (AGT's "warn," rendered
+as `deny`'s allow-with-a-fired-policy cousin). A Guardian-side failure fired no policy at
+all, so `denyOnInvalidEnvelope` leaves the array empty rather than inventing a reference
+for it. `request_id` echoes `"1"` — the envelope carried no `params.request_id` of its
+own (that is exactly what failed validation), so the deny decision falls back to the
+JSON-RPC `id`, per the addressability rule: `params.request_id` when it is usable,
+otherwise the JSON-RPC `id`, otherwise the response stays a bare JSON-RPC error rather
+than invent one. The two cases below are where that "otherwise" still applies.
+
+**Unaddressable stays an error (constraint 10).** An envelope naming neither a usable
+`params.request_id` nor a JSON-RPC `id` gives `denyOnInvalidEnvelope` nothing to address
+a decision to, so it reports back that the envelope is unaddressable and the Guardian
+answers with a bare JSON-RPC error instead of inventing an id. Captured, from terminal 2,
+verbatim, on a freshly restarted Guardian:
+
+```bash
+curl -s -X POST http://localhost:8787/acs \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"steps/toolCallRequest","params":{"acs_version":"0.1.0"}}'
+```
+
+```
+── #1  09:57:16.188  → REQUEST   steps/toolCallRequest  (unpaired)
+{
+  "jsonrpc": "2.0",
+  "method": "steps/toolCallRequest",
+  "params": {
+    "acs_version": "0.1.0"
+  }
+}
+
+── #2  09:57:16.243  ← RESPONSE  steps/toolCallRequest  (unpaired)
+✖ ERROR -32010  ACS envelope failed schema validation at /id: must have required property 'id'
+{
+  "jsonrpc": "2.0",
+  "id": null,
   "error": {
     "code": -32010,
-    "message": "ACS envelope failed schema validation at /params/request_id: must have required property 'request_id'",
+    "message": "ACS envelope failed schema validation at /id: must have required property 'id'",
     "data": {
-      "pointer": "/params/request_id"
+      "pointer": "/id"
     }
   }
 }
 ```
 
-**This is a real limitation of V2, stated plainly.** `✖ ERROR -32010` is what a
-Guardian-side failure looks like today. It is *not* a decision, so it is not something
-the host's decision path honours the way it honours a `deny`.
-`N27 denyOnInvalidEnvelope()` — the affordance that turns schema and bridge failures
-into explicit ACS `deny` **decisions** — is **slice V3**, defined in
-[`docs/shaping/acs-reference-impl-slices.md`](../shaping/acs-reference-impl-slices.md)
-§V3, alongside `N6 applyFailurePosture()` and `N7 validateDecision()`. The Inspector is
-where that change will become visible: the same request will come back with a badge
-instead of an error line.
+This envelope has no top-level `id` at all (also, itself, a schema failure — `id` is
+required by `request-envelope.json`), so both lines show `(unpaired)` even though the
+method name is known on both: `(unpaired)` is what the renderer prints whenever
+`rpc_id: null`, independently of whether `method` is known.
 
-A body that will not parse as JSON at all goes further: there is no request entry to
-pair with, because there was never a parseable request. The Inspector renders the lone
-response rather than hiding it. Captured from `curl -d 'this is not json'`, verbatim —
-this one was taken against a freshly restarted Guardian, which is why its `seq` is `#1`
-rather than continuing the run above:
+**No envelope at all stays an error too — there is nothing to decide about.** A body
+that will not parse as JSON goes further still: there is no request entry to pair with,
+because there was never a parseable request. The Inspector renders the lone response
+rather than hiding it. Captured from `curl -d 'this is not json'`, verbatim — this one
+was taken against a freshly restarted Guardian, which is why its `seq` is `#1` rather
+than continuing the run above:
 
 ```
 ── #1  20:51:47.882  ← RESPONSE  (no method)  (unpaired)
@@ -307,8 +361,9 @@ rather than continuing the run above:
 }
 ```
 
-`(no method)` and `(unpaired)` are what the renderer prints for `method: null` and
-`rpc_id: null`. Both are real states on this wire, so both are shown.
+`(no method)` is what the renderer prints for `method: null` — there is no envelope to
+read a method name out of at all, which is the one respect in which this case is even
+less known than the unaddressable one above.
 
 ## S6 carries raw tool arguments
 

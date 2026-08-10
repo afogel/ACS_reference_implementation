@@ -29,8 +29,14 @@
  *     writes the failure response through the same envelope-log call as any
  *     other response.
  *
- * Neither catch turns the failure into an ACS `deny` decision: which
- * disposition a Guardian-side failure should carry is a separate question.
+ * Two DIFFERENT catches inside `dispatch` -- the evaluation catch above and
+ * dispatch's own EnvelopeValidationError catch, around `validateEnvelope` --
+ * now turn a steps/* failure into an honoured ACS `deny` decision instead
+ * of a bare error, via N27 (denyOnInvalidEnvelope): see the module comment
+ * on `dispatch` below. The outer net here is deliberately untouched by N27:
+ * it exists for a `dispatch` rethrow -- a bug in the Guardian itself (e.g. a
+ * missing schema directory), not an invalid envelope -- so it stays a bare
+ * JSON-RPC error.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -51,6 +57,7 @@ import { fileURLToPath } from "node:url";
 import { createBridge, type PolicyBridge } from "agt-bridge";
 import { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
+import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
 import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
@@ -236,10 +243,13 @@ export async function startGuardian({
 
 /**
  * Three phases, in order: parse, record the request, dispatch, record the
- * response. The envelope-log writes live here and only here: `dispatch`
- * below leaves by six routes (five `return`s and one rethrow), and future
- * dispatch outcomes will add more, so writing to the envelope log inside it
- * would make totality something a future change has to remember rather than
+ * response. The envelope-log writes live here and only here -- `dispatch`
+ * below leaves by eight routes now (seven `return`s and one rethrow). V1/V2
+ * left six (five `return`s and one rethrow); N27 (V3) added two more, not
+ * one -- both dispatch's EnvelopeValidationError catch and its evaluation
+ * catch gained a second `return`, for the deny-decision case, beside the
+ * bare-error `return` each already had. Writing S6 inside `dispatch` would
+ * make totality something a future task has to remember rather than
  * something the structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
@@ -280,11 +290,13 @@ async function handleAcsRequest(
   try {
     response = await dispatch(raw, bridge, mapping);
   } catch (error) {
-    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`
-    // decision -- turning a validation failure into an explicit deny is a
-    // separate concern. What this buys is that the client can parse the
-    // answer at all, and that the envelope log holds a response line paired
-    // with the request line above it.
+    // The outer net (whole-branch review, finding 1). Deliberately a bare
+    // JSON-RPC error, not an ACS `deny`: this route is `dispatch` rethrowing
+    // past N27 entirely -- a bug in the Guardian itself (e.g. a missing
+    // schema directory), not an invalid envelope, so denyOnInvalidEnvelope
+    // never runs here. What this buys is that the client can parse the
+    // answer at all, and that S6 holds a response line paired with the
+    // request line above it.
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
@@ -301,14 +313,26 @@ async function dispatch(
 
   let envelope: AcsRequestEnvelope;
   try {
-    // validateEnvelope checks the general request-envelope.json shape for
-    // every method, plus -- only for steps/toolCallRequest -- the
-    // hook-specific payload schema. Failure is a thrown typed error, never a
-    // decision: we turn it into a bare JSON-RPC error below, rather than into
-    // {decision: "deny"}.
+    // validateEnvelope (N21) checks the general request-envelope.json shape
+    // for every method, plus -- only for steps/toolCallRequest -- the
+    // hook-specific payload schema. Failure is a THROWN typed error, never
+    // a decision itself -- validateEnvelope stays total to its own contract
+    // (see its doc comment) -- but the catch below (N27,
+    // denyOnInvalidEnvelope) turns a steps/* failure into an honoured ACS
+    // `deny` decision rather than a bare JSON-RPC error, since there is an
+    // identifiable step to answer for. A handshake failure and an
+    // undispatched method are not steps/*, so they always fall through to
+    // the JSON-RPC error unchanged.
     envelope = validateEnvelope(raw);
   } catch (error) {
     if (error instanceof EnvelopeValidationError) {
+      if (isStepMethod(raw)) {
+        const denial = denyOnInvalidEnvelope(raw, { reasonCode: "envelope_invalid", message: error.message });
+        const decisionResponse = asDecisionResponse(rpcId, denial);
+        if (decisionResponse) {
+          return decisionResponse;
+        }
+      }
       return errorResponse(rpcId, ENVELOPE_INVALID_CODE, error.message, { pointer: error.pointer });
     }
     throw error;
@@ -339,10 +363,18 @@ async function dispatch(
 
       return successResponse(envelope.id, finalResult(envelope.params, decision));
     } catch (error) {
-      // See the module header. Deliberately a bare JSON-RPC error rather than
-      // an ACS `deny` decision -- all this guarantees is that the client gets
-      // a parseable envelope back instead of an HTML 500.
+      // Fix wave finding 1 -- see the module-level comment above -- made
+      // this a parseable JSON-RPC error instead of an HTML 500. N27
+      // (denyOnInvalidEnvelope) goes one step further: AGT's evaluation
+      // layer fails CLOSED (R1.5), and this catch is where that failure
+      // surfaces, so it is delivered as an honoured `deny` decision rather
+      // than a bare error, keeping it in §6.4's honoured path.
       const message = toRepoRelativeMessage(error);
+      const denial = denyOnInvalidEnvelope(raw, { reasonCode: "evaluation_failed", message });
+      const decisionResponse = asDecisionResponse(rpcId, denial);
+      if (decisionResponse) {
+        return decisionResponse;
+      }
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }
   }
@@ -391,6 +423,40 @@ function extractMethod(raw: unknown): string | null {
     if (typeof method === "string") {
       return method;
     }
+  }
+  return null;
+}
+
+/** Whether the raw envelope names a `steps/*` method -- read before
+ * validation, so it is a string test and nothing more. N27 only turns a
+ * schema-validation failure into a deny decision for steps/*: a handshake
+ * failure is not a governance decision (there is no step to decide about),
+ * and an undispatched method is answered separately, below. */
+function isStepMethod(raw: unknown): boolean {
+  const method = extractMethod(raw);
+  return typeof method === "string" && method.startsWith("steps/");
+}
+
+/**
+ * Turns a `denyOnInvalidEnvelope` result into a JSON-RPC success response,
+ * or `null` when it cannot be delivered as one -- in which case the caller
+ * falls back to its own JSON-RPC error response instead.
+ *
+ * Two distinct reasons produce `null`, not one:
+ *   - `denial.kind === "unaddressable"` -- denyOnInvalidEnvelope found no
+ *     request_id and no usable JSON-RPC id anywhere on the envelope.
+ *   - `denial.kind === "decision"` but `rpcId` is `null` -- the decision
+ *     found an id (via `params.request_id`), but that id did not come from
+ *     the envelope's own JSON-RPC `id`. `successResponse` requires a
+ *     non-null id for the *response*, and a JSON-RPC response with a null
+ *     id cannot be correlated by the client either -- so this is not a
+ *     cast to paper over (`rpcId as string | number`), it is a real case
+ *     the addressability rule exists for, and it is handled the same way
+ *     `unaddressable` is: by falling back to the error response.
+ */
+function asDecisionResponse(rpcId: string | number | null, denial: DenyOnInvalidEnvelopeResult): JsonRpcSuccess | null {
+  if (denial.kind === "decision" && (typeof rpcId === "string" || typeof rpcId === "number")) {
+    return successResponse(rpcId, denial.result);
   }
   return null;
 }
