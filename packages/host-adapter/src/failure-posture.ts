@@ -33,6 +33,37 @@ export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decis
 type ErrorLike = { code?: unknown; message?: unknown };
 
 /**
+ * Connection-level `.code` values fetch can throw with, confirmed against
+ * THIS runtime (Bun) rather than assumed from the WHATWG fetch spec -- see
+ * the correction below, fix round 2 of Task 8's review. Bun's fetch throws
+ * a plain `Error` (name "Error", not "TypeError") carrying one of these on
+ * `.code` for a failure below the HTTP layer: refused, closed, never
+ * opened, or a DNS lookup or TLS handshake that failed. Confirmed two ways:
+ * reading Bun's own src/http/error.rs (the `Error` enum's `.name()` is what
+ * becomes `.code`), and, for `ConnectionRefused` specifically, provoking it
+ * directly (`fetch` against a reliably-refused port, port 1) and
+ * inspecting the thrown value.
+ *
+ * Deliberately NOT exhaustive: Bun's TLS certificate-validation failures
+ * fan out into a further ~70 more specific X.509 codes (a nested
+ * `CertError` enum -- `CERT_HAS_EXPIRED`, `UNABLE_TO_GET_ISSUER_CERT`, and
+ * so on) not enumerated here, because which of those actually surface as a
+ * flat `.code` string (versus some other shape) is not confirmed --
+ * enumerating them anyway would be exactly the mistake this fix undoes.
+ * `ERR_TLS_CERT_ALTNAME_INVALID` is the one TLS-related code confirmed as
+ * its own top-level enum member, so it is the one line "the TLS
+ * equivalent" below commits to.
+ */
+const TRANSPORT_ERROR_CODES = new Set([
+  "ConnectionRefused",
+  "ConnectionClosed",
+  "FailedToOpenSocket",
+  "DNSResolveFailed",
+  "DNSResolutionFailed",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+/**
  * Names which of §6.4's failure modes happened, for the audit entry. Total:
  * an unrecognised shape is "unknown", never a throw -- this runs while the
  * host is already handling a failure.
@@ -43,10 +74,19 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
       return { kind: "timeout", message: failure.message };
     }
     if (failure instanceof Error) {
-      // fetch rejects with a TypeError for a refused connection, DNS
-      // failure, or TLS failure -- §6.4's "the transport fails".
-      const kind: DeliveryFailureKind = failure instanceof TypeError ? "transport" : "unknown";
-      return { kind, message: failure.message };
+      // Two independent routes to "transport", because no single one is
+      // reliable across runtimes -- Task 4's original assumption (that
+      // fetch always throws a TypeError for this) was wrong for the
+      // runtime this project actually runs on:
+      //   1. The WHATWG fetch spec's own route: a TypeError for a network
+      //      error. Other runtimes take this one, and a future Bun might.
+      //   2. This runtime's actual route: a plain Error whose `.code`
+      //      names a connection-level failure. Read defensively --
+      //      `.code` is not a property of the `Error` type.
+      const code = (failure as { code?: unknown }).code;
+      const isTransport =
+        failure instanceof TypeError || (typeof code === "string" && TRANSPORT_ERROR_CODES.has(code));
+      return { kind: isTransport ? "transport" : "unknown", message: failure.message };
     }
     if (typeof failure === "object" && failure !== null && "code" in failure) {
       const { code, message } = failure as ErrorLike;

@@ -93,7 +93,11 @@ import {
   type SessionConfigStore,
 } from "host-adapter";
 
-const HOOKMAP_PATH = fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
+// Override with ACS_HOOKMAP_PATH to point this shim at a different hookmap
+// -- e.g. a test proving the exit-2 path for a hookmap that fails to load,
+// without touching the real file every other test and the real deployment
+// read off this default.
+const HOOKMAP_PATH = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
 
 // Matches packages/guardian/src/main.ts's own default port -- the runbook
 // and this shim agree on 8787 without either hardcoding the other's value.

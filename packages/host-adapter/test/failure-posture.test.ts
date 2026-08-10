@@ -109,7 +109,34 @@ describe("classifyDeliveryFailure — §6.4's three failure modes", () => {
     expect(classifyDeliveryFailure(new GuardianTimeoutError(5000)).kind).toBe("timeout");
   });
 
-  it("classifies a dead transport", () => {
+  // MUST NOT be replaced with a synthetic error. This is the test that
+  // catches a wrong assumption about what THIS runtime actually throws --
+  // which is exactly what happened in fix round 1's review: Task 4's own
+  // test hand-built `new TypeError(...)`, which only ever proved
+  // classifyDeliveryFailure handles a TypeError correctly, never that a
+  // real refused connection produces one. It doesn't, on Bun (a plain
+  // Error with `.code: "ConnectionRefused"`, not a TypeError) -- so that
+  // test passed while the runtime's actual dead-transport case classified
+  // as "unknown". Driving a real rejection here is what would have caught
+  // it. Port 1 is a reliably refused connection: no service binds it
+  // without root, and this sandbox has none listening there either way.
+  it("classifies a real refused connection (this runtime's actual route, not a spec-conformant guess)", async () => {
+    let failure: unknown;
+    try {
+      await fetch("http://127.0.0.1:1/acs", { method: "POST", body: "{}" });
+      throw new Error("expected fetch to reject");
+    } catch (error) {
+      failure = error;
+    }
+    expect(classifyDeliveryFailure(failure).kind).toBe("transport");
+  });
+
+  // The WHATWG fetch spec's own route (a TypeError for a network error) --
+  // this runtime does not take it for a refused connection, but another
+  // runtime, or a future Bun, might. Kept as a synthetic case specifically
+  // because there is no way to provoke a real TypeError-shaped network
+  // failure on THIS runtime to drive it with instead.
+  it("classifies a spec-conformant TypeError network error, covering other runtimes", () => {
     expect(classifyDeliveryFailure(new TypeError("Unable to connect. Is the computer able to access the url?")).kind)
       .toBe("transport");
   });

@@ -133,6 +133,11 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ session_id: "sess-1", posture: "proceed", outcome: "proceeded" });
+    // The assertion fix round 2 adds: a dead Guardian is §6.4's commonest
+    // delivery failure, and classifyDeliveryFailure's own fix (Task 4's
+    // TypeError assumption did not hold on this runtime) is only real if
+    // the durable record actually says "transport" here, not "unknown".
+    expect(audit[0].failure.kind).toBe("transport");
   });
 
   it("blocks when the Guardian is gone under the deny posture", async () => {
@@ -257,5 +262,26 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(2);
     expect(out.stdout).toBe("");
     expect(existsSync(join(dir, "escape.json"))).toBe(false);
+  });
+
+  it("exits 2 (blocking) when the hookmap itself fails to load, with a message on stderr and nothing on stdout", async () => {
+    const dir = scratch();
+    // The same exit-2 mechanism as the session_id case above, reached from
+    // a different throw site: loadHookmap (not createFileSessionConfigStore)
+    // fails first here, before this shim can trust its own configuration
+    // enough to make a governed decision at all. ACS_HOOKMAP_PATH points at
+    // a file that does not exist -- no separate fixture needed.
+    const out = await runShim(payload("ls -la"), {
+      ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+      ACS_SESSION_DIR: join(dir, "sessions"),
+      ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      ACS_HOOKMAP_PATH: join(dir, "does-not-exist.yaml"),
+    });
+    expect(out.exitCode).toBe(2);
+    expect(out.stdout).toBe("");
+    expect(out.stderr.length).toBeGreaterThan(0);
+    // Nothing was written either -- the hookmap failed before the session
+    // store was ever built.
+    expect(existsSync(join(dir, "sessions"))).toBe(false);
   });
 });
