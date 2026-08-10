@@ -88,21 +88,57 @@ const LOOPBACK_ONLY = "127.0.0.1";
 // Used only to redact it out of error text before that text leaves the
 // Guardian; see toRepoRelativeMessage below.
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url)).replace(/[/\\]+$/, "");
-const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[/\\\\]?`, "g");
+// The lookahead requires the root to be followed by a path separator or the
+// end of the string, before the optional `[/\\]?` consumes one such
+// separator. Without it, a *sibling* directory whose name merely extends
+// the root (`ACS_reference_implementation_old`) matched too: the literal
+// text of REPO_ROOT is a prefix of that name, so it stripped, leaving a
+// misleading `_old/packages/spec` behind -- not a disclosure of this tree's
+// own location, since it's a different directory entirely, but a
+// diagnostic that then reads as if it were one. The lookahead makes that
+// prefix match fail outright, so a message naming the sibling is left
+// alone, in full.
+const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[/\\\\]|$)[/\\\\]?`, "g");
 
 /**
  * Both catches in this module (the outer net in handleAcsRequest and the
- * evaluation-failure catch in dispatch) surface a real error's `.message`
- * to the ACS client and, via the tap, into S6 -- and a real error's message
- * (an ENOENT out of a missing schema directory, say) carries this
- * machine's absolute filesystem path, e.g.
+ * evaluation-failure catch in dispatch) surface a real error to the ACS
+ * client and, via the tap, into S6 -- and a real error's message (an ENOENT
+ * out of a missing schema directory, say) carries this machine's absolute
+ * filesystem path, e.g.
  * `/Users/you/.../ACS_reference_implementation/packages/spec/acs/...`.
  * That is diagnostic in a way this demo's value depends on, so the fix is
  * not to replace it with something generic -- it is to remove only the
  * part of it that discloses where this tree sits on disk, leaving the
  * repo-relative remainder (`packages/spec/acs/...`) intact.
+ *
+ * Takes the caught value itself, as `unknown`, rather than a pre-extracted
+ * string. Both call sites already had to guard with
+ * `error instanceof Error ? error.message : String(error)` because a catch
+ * clause's binding is `unknown` -- but an earlier version of this helper
+ * took that guard's *result* and assumed it was a string, which is true of
+ * every message this tree's own code happens to produce, not something
+ * `instanceof Error` guarantees: nothing stops `.message` from being
+ * reassigned to `undefined`, a number, or anything else after construction.
+ * That earlier version threw `TypeError: undefined is not an object
+ * (evaluating 'message.replace')` on exactly such an Error -- reachable
+ * only from the outer catch, since the inner catch's own throw is itself
+ * caught by the outer one, but reachable there with nothing above
+ * `handleAcsRequest` to catch it: the untapped HTML-500 fail-open this
+ * module's header exists to prevent. `String()` on the whole caught value
+ * keeps this helper total for any `unknown`, matching what a catch clause
+ * can actually hand it.
+ *
+ * Exported (unlike this module's other internals -- `dispatch`,
+ * `extractId`, `extractMethod`, `errorResponse`) so the anchor behaviour
+ * above and this function's totality for non-`Error`, non-string-message,
+ * and otherwise-shaped `unknown` values can be asserted directly, rather
+ * than only through a real Guardian and an HTTP round trip. The blocking
+ * regression this exists to prevent is still covered end to end, separately
+ * -- see server.test.ts's `withNonStringMessageGuardian` test.
  */
-function toRepoRelativeMessage(message: string): string {
+export function toRepoRelativeMessage(error: unknown): string {
+  const message = String(error instanceof Error ? error.message : error);
   return message.replace(REPO_ROOT_PATTERN, "");
 }
 
@@ -239,7 +275,7 @@ async function handleAcsRequest(
     // JSON-RPC error, not an ACS `deny`: N27 stays V3's call. What this
     // buys is that the client can parse the answer at all, and that S6
     // holds a response line paired with the request line above it.
-    const message = toRepoRelativeMessage(error instanceof Error ? error.message : String(error));
+    const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
   tap.write("response", response, method);
@@ -296,7 +332,7 @@ async function dispatch(
       // See the module header. Deliberately a bare JSON-RPC error rather than
       // an ACS `deny` decision -- all this guarantees is that the client gets
       // a parseable envelope back instead of an HTML 500.
-      const message = toRepoRelativeMessage(error instanceof Error ? error.message : String(error));
+      const message = toRepoRelativeMessage(error);
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }
   }
@@ -341,7 +377,7 @@ function extractId(raw: unknown): string | number | null {
  * `dispatch` reads the schema-validated envelope's own `method`. */
 function extractMethod(raw: unknown): string | null {
   if (typeof raw === "object" && raw !== null && "method" in raw) {
-    const method = (raw as { method: unknown }).method;
+    const method = raw.method;
     if (typeof method === "string") {
       return method;
     }

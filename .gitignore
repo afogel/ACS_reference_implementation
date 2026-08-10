@@ -24,3 +24,8 @@ __pycache__/
 # make `bun run typecheck` see a stray duplicate of the Guardian's own
 # source. Fixed name (not mkdtemp's random one), so this one line covers it.
 packages/guardian/tmp-schemaless-scratch/
+
+# Same reasoning, a second scratch tree: server.test.ts's non-string-message
+# test double for validate-envelope.ts, alongside a real, unmodified copy of
+# every other file in packages/guardian/src.
+packages/guardian/tmp-nonstring-message-scratch/

@@ -12,6 +12,10 @@
     // test's doc comment). A killed run can leave this behind; excluded so
     // it can never look like a second, drifted copy of the Guardian's
     // source to `bun run typecheck`.
-    "packages/guardian/tmp-schemaless-scratch"
+    "packages/guardian/tmp-schemaless-scratch",
+    // Same reasoning: server.test.ts's non-string-message test double for
+    // validate-envelope.ts, copied here alongside the rest of
+    // packages/guardian/src at test time.
+    "packages/guardian/tmp-nonstring-message-scratch"
   ]
 }
