@@ -39,15 +39,14 @@ hooks:
 # no reasoning at all. It is where the old `reason_from` rule's own
 # `typeof === "string"` check went, now declared rather than hardcoded.
 #
-# WHAT IS DELIBERATELY UNCHANGED HERE. `allow` and `modify` still name no
-# reason field, so an allow or a policy-ordered rewrite that carries
-# `reasoning` says nothing in the transcript a human reads, and `modify`
-# still hands `updatedInput` ACS's raw `modifications` object rather than a
-# tool input Claude Code can apply. Both are real gaps and both belong to the
-# slice that owns dispositions (V3, N27/N6/N7); this change moves where the
-# field names live and changes no rendering.
+# TWO GAPS PR #10's REVIEW LEFT OPEN, BOTH CLOSED BY V3. `allow` named no
+# reason field, so a fail-open proceed said nothing in the transcript a human
+# reads; and `modify` handed `updatedInput` ACS's raw `modifications` object
+# rather than a tool input Claude Code can apply. Both belonged to the slice
+# that owns dispositions, and both are fixed in the entries below -- `allow`
+# gains a reason path, and `modify` names `applied_input`, the post-N7 field.
 # hosts/claude-code/test/wire-shape.test.ts pins every one of these outputs
-# as a literal, so whichever slice fixes them has to say so there.
+# as a literal, which is why the change had to be stated there too.
 #
 # Fix wave finding 5: Claude Code's PreToolUse output only accepts
 # permissionDecision "allow" | "deny" | "ask" (see Claude Code's own hook
@@ -66,9 +65,16 @@ hooks:
 # stays a guard for a Guardian that emits one rather than a path this
 # deployment exercises.
 decisions:
+  # V3: `allow` gains a reason field. A genuine Guardian allow only rarely
+  # carries a `reasoning` string, but applyFailurePosture (N6) always sets
+  # one -- a fail-open proceed (the audited bypass Global Constraint 3
+  # requires) renders as a plain allow, and this is the only way its
+  # reasoning ("no decision arrived...") reaches the transcript a human
+  # reads.
   allow:
     output:
       hookSpecificOutput.permissionDecision:       { value: allow }
+      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
   deny:
     output:
       hookSpecificOutput.permissionDecision:       { value: deny }

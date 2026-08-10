@@ -18,6 +18,7 @@
  * needs a routable one says so, since env is this process's configuration
  * surface and server.ts reads none itself.
  */
+import { handshakeResponder } from "./handshake.ts";
 import { startGuardian } from "./server.ts";
 
 const DEFAULT_PORT = 8787;
@@ -31,4 +32,14 @@ const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 
 const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
 console.log(`Guardian listening at ${guardian.url}`);
-console.log(`Envelope log: ${envelopeLogPath}`);
+console.log(`Envelope log (S6): ${envelopeLogPath}`);
+// Not the audit sink's path (S14): that file is the host's, written by the
+// hook, not by this process, so this Guardian has no way to know it. What
+// this process does know -- and is about to declare to every session that
+// handshakes -- is the posture. Calling handshakeResponder() with no
+// argument here reads the same `process.env.ACS_ON_DECISION_FAILURE` a real
+// handshake would, so this line and the first handshake always agree, and a
+// bad override value is caught at boot rather than on the first hook.
+console.log(
+  `Failure posture (D8): ${handshakeResponder().on_decision_failure}   (override with ACS_ON_DECISION_FAILURE=deny)`,
+);

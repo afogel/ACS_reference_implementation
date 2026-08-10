@@ -205,6 +205,16 @@ export type StartGuardianOptions = {
    * working tree. `packages/guardian/src/main.ts` -- the demo path --
    * passes it. */
   envelopeLogPath?: string;
+  /** Overrides the declared `on_decision_failure` posture this Guardian's
+   * ServerHello carries, bypassing `handshakeResponder`'s own
+   * `process.env.ACS_ON_DECISION_FAILURE` read entirely. Explicit rather
+   * than an env-shaped bag on purpose: a test that needs a Guardian
+   * declaring `deny` can pass one here instead of mutating `process.env`,
+   * which would leak into every other test sharing that process (plan Risk
+   * 7). Omitted means the real deployment path: `handshakeResponder()` is
+   * called with no argument and reads the actual environment, exactly as
+   * `packages/guardian/src/main.ts` needs it to. */
+  onDecisionFailure?: "proceed" | "deny";
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
@@ -214,6 +224,7 @@ export async function startGuardian({
   manifestPath,
   mappingPath,
   envelopeLogPath,
+  onDecisionFailure,
 }: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
@@ -228,7 +239,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure);
       return Response.json(response);
     },
   });
@@ -268,6 +279,7 @@ async function handleAcsRequest(
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   envelopeLog: EnvelopeLogSink,
+  onDecisionFailure?: "proceed" | "deny",
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;
   try {
@@ -288,7 +300,7 @@ async function handleAcsRequest(
 
   let response: JsonRpcSuccess | JsonRpcFailure;
   try {
-    response = await dispatch(raw, bridge, mapping);
+    response = await dispatch(raw, bridge, mapping, onDecisionFailure);
   } catch (error) {
     // The outer net (whole-branch review, finding 1). Deliberately a bare
     // JSON-RPC error, not an ACS `deny`: this route is `dispatch` rethrowing
@@ -308,6 +320,7 @@ async function dispatch(
   raw: unknown,
   bridge: ReturnType<typeof createBridge>,
   mapping: Mapping,
+  onDecisionFailure?: "proceed" | "deny",
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
@@ -339,7 +352,8 @@ async function dispatch(
   }
 
   if (envelope.method === HANDSHAKE_METHOD) {
-    return successResponse(envelope.id, buildServerHello());
+    const env = onDecisionFailure === undefined ? undefined : { ACS_ON_DECISION_FAILURE: onDecisionFailure };
+    return successResponse(envelope.id, buildServerHello(env));
   }
 
   // `isToolCallRequest`, not a method comparison spelled out again here: the
