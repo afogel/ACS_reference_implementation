@@ -55,6 +55,32 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     const out = validateDecision({ decision: "modify", reasoning: "r" }, { ...FRESH, originalArguments: ARGS });
     expect(out.decision).toBe("deny");
   });
+
+  // Fix round 1, item 4: an empty path segment list ("" or "/") addresses
+  // no field. Applying it would report a successful modify while redacting
+  // nothing -- a policy that fired and did not take effect -- so this fails
+  // closed the same as any other unusable modifications object.
+  it("denies a redaction with an empty path -- it would redact nothing while reporting success", () => {
+    expect(validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "" }] } },
+      { ...FRESH, originalArguments: ARGS },
+    ).decision).toBe("deny");
+    expect(validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/" }] } },
+      { ...FRESH, originalArguments: ARGS },
+    ).decision).toBe("deny");
+  });
+
+  // Fix round 1, item 5: a malformed redactions entry must be denied
+  // whether or not parameter_overrides is also present -- the overlap
+  // check alone used to be the only thing validating a path's shape, and
+  // it only ran when overrides existed too.
+  it("denies a redaction with a missing or non-string path even with no parameter_overrides present", () => {
+    expect(validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{}] } },
+      { ...FRESH, originalArguments: ARGS },
+    ).decision).toBe("deny");
+  });
 });
 
 describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
@@ -94,8 +120,60 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     expect(out.decision).toBe("deny");
   });
 
+  // Fix round 1, item 2: every other ASK test here produces the same verdict
+  // whether or not the timeout_seconds -> ms conversion happens at all
+  // (1s/2000ms reads "expired" either way; 60s/10ms reads "not expired"
+  // either way), so the `* 1000` was unverified. timeout_seconds: 1 is
+  // 1000ms; elapsedMs: 500 is under that and so correctly NOT expired --
+  // but if the conversion were dropped (comparing 500 against the bare
+  // "1"), this would wrongly read as expired. Kept as its own case so a
+  // future "simplification" that drops the multiply cannot pass unnoticed.
+  it("does not expire an ask at 500ms against a 1-second timeout -- the case that catches a dropped seconds->ms conversion", () => {
+    const out = validateDecision(
+      {
+        decision: "ask",
+        reasoning: "approval required",
+        ask_details: { approver: { type: "user" }, question: "ok?", timeout_seconds: 1 },
+      },
+      { elapsedMs: 500, originalArguments: ARGS },
+    );
+    expect(out.decision).toBe("ask");
+  });
+
+  // Fix round 1, item 1: pins the exact boundary (strict `>`, per the
+  // module's own comment) so a regression to `>=` would fail here even
+  // though every other ASK test above sits far past the boundary.
+  // timeout_seconds: 1 -> timeoutMs 1000. Below, exactly at, and just past.
+  it("expires an ask strictly after its timeout, not at or before it", () => {
+    const askDetails = { approver: { type: "user" }, question: "ok?", timeout_seconds: 1 };
+    expect(
+      validateDecision(
+        { decision: "ask", reasoning: "r", ask_details: askDetails },
+        { elapsedMs: 999, originalArguments: ARGS },
+      ).decision,
+    ).toBe("ask");
+    expect(
+      validateDecision(
+        { decision: "ask", reasoning: "r", ask_details: askDetails },
+        { elapsedMs: 1_000, originalArguments: ARGS },
+      ).decision,
+    ).toBe("ask");
+    expect(
+      validateDecision(
+        { decision: "ask", reasoning: "r", ask_details: askDetails },
+        { elapsedMs: 1_001, originalArguments: ARGS },
+      ).decision,
+    ).not.toBe("ask");
+  });
+
   it("substitutes an expired defer with its timeout_decision, defaulting to deny", () => {
     const details = { reason: "low_confidence", resolution_method: "timeout", resolution_timeout_ms: 50 };
+    // This pair already discriminates resolution_timeout_ms's own unit
+    // (milliseconds, no conversion): 500 is past a 50ms timeout only because
+    // 50 is read as milliseconds, not, say, mistakenly multiplied up as if
+    // it were seconds (which would put the timeout at 50000ms and make 500
+    // read as not-expired instead). No separate conversion case needed here
+    // the way ASK needed one above.
     expect(
       validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 500, originalArguments: ARGS })
         .decision,
@@ -104,6 +182,30 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
       validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 10, originalArguments: ARGS })
         .decision,
     ).toBe("defer");
+  });
+
+  // Fix round 1, item 1: DEFER's own boundary, pinned the same way as ASK's
+  // above. resolution_timeout_ms: 50 -- below, exactly at, and just past.
+  it("expires a defer strictly after its resolution_timeout_ms, not at or before it", () => {
+    const deferDetails = { reason: "low_confidence", resolution_method: "timeout", resolution_timeout_ms: 50 };
+    expect(
+      validateDecision(
+        { decision: "defer", reasoning: "r", defer_details: deferDetails },
+        { elapsedMs: 49, originalArguments: ARGS },
+      ).decision,
+    ).toBe("defer");
+    expect(
+      validateDecision(
+        { decision: "defer", reasoning: "r", defer_details: deferDetails },
+        { elapsedMs: 50, originalArguments: ARGS },
+      ).decision,
+    ).toBe("defer");
+    expect(
+      validateDecision(
+        { decision: "defer", reasoning: "r", defer_details: deferDetails },
+        { elapsedMs: 51, originalArguments: ARGS },
+      ).decision,
+    ).not.toBe("defer");
   });
 
   it("denies an ask or defer whose details are missing entirely", () => {
@@ -151,8 +253,39 @@ describe("applyModifications — §6.3", () => {
     expect(original).toEqual({ command: "keep me" });
   });
 
+  // Fix round 1, item 3: the only multi-segment path used elsewhere in this
+  // suite ("/env/TOKEN") sits in a disjointness test that denies, so it
+  // never reaches the apply loop -- setAtPath's recursive clone was correct
+  // on trace but unexercised. This applies a depth-2 redaction for real and
+  // checks both halves: the new value, and that the nested object it
+  // descended into is left alone -- the half a shallow clone would break.
+  it("applies a depth-2 redaction without mutating the nested object it descends into", () => {
+    const original = { env: { TOKEN: "secret", OTHER: "keep" } };
+    const result = applyModifications(original, { redactions: [{ path: "/env/TOKEN" }] });
+
+    expect(result).toEqual({ env: { TOKEN: "[REDACTED]", OTHER: "keep" } });
+    expect(original).toEqual({ env: { TOKEN: "secret", OTHER: "keep" } });
+    expect(original.env).not.toBe(result.env);
+  });
+
   it("throws on a modifications object that violates §6.3", () => {
     expect(() => applyModifications(ARGS, { modified_content: "x", redactions: [{ path: "/command" }] }))
       .toThrow(ModificationsInvalidError);
+  });
+
+  // Fix round 1, item 4: same rule as validateDecision's test above, at the
+  // applyModifications level directly.
+  it("throws on a redaction with an empty path", () => {
+    expect(() => applyModifications(ARGS, { redactions: [{ path: "" }] })).toThrow(ModificationsInvalidError);
+    expect(() => applyModifications(ARGS, { redactions: [{ path: "/" }] })).toThrow(ModificationsInvalidError);
+  });
+
+  // Fix round 1, item 5: a missing/non-string path must fail closed with a
+  // clean ModificationsInvalidError, not a bare JS error surfaced from deep
+  // inside the apply loop -- regardless of whether parameter_overrides is
+  // also present.
+  it("throws a clean ModificationsInvalidError on a missing or non-string redaction path, not raw JS error text", () => {
+    expect(() => applyModifications(ARGS, { redactions: [{}] })).toThrow(ModificationsInvalidError);
+    expect(() => applyModifications(ARGS, { redactions: [{ path: 42 }] })).toThrow(ModificationsInvalidError);
   });
 });

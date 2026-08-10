@@ -82,6 +82,35 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
 }
 
 /**
+ * Validates a single redaction's `path` and returns it split into segments.
+ * Runs unconditionally for every redaction entry -- fix round 1, item 5:
+ * this used to run only inside the overlap loop below, which only executes
+ * when `parameter_overrides` is also present, so a redactions-only
+ * `modifications` with a missing or non-string `path` passed validation
+ * here and only blew up later, inside `applyModifications`'s apply loop,
+ * as a bare `TypeError` stringified into the deny's `reasoning`. Still
+ * fail-closed, but an unusable audit message and an asymmetric validation
+ * path -- both fixed by validating every redaction the same way regardless
+ * of what else is present.
+ *
+ * A path that survives the split as `[]` -- `""` or `"/"` -- addresses no
+ * field. Applying it would report a successful `modify` while redacting
+ * nothing: a policy that fired and the host did not carry out, the exact
+ * fail-open shape this project exists to catch (fix round 1, item 4). That
+ * case fails closed here too, not silently as a no-op apply.
+ */
+function assertValidRedactionPath(path: unknown): string[] {
+  if (typeof path !== "string") {
+    throw new ModificationsInvalidError(`redaction path must be a string JSON pointer, got ${JSON.stringify(path)}`);
+  }
+  const segments = pointerSegments(path);
+  if (segments.length === 0) {
+    throw new ModificationsInvalidError(`redaction path ${JSON.stringify(path)} addresses no field`);
+  }
+  return segments;
+}
+
+/**
  * §6.3's mandatory rules, checked in full before anything is applied.
  * Throws `ModificationsInvalidError` on the first violation found; never
  * partially validates. Returns the validated object (narrowed from
@@ -117,11 +146,16 @@ function assertValidModifications(modifications: unknown): Modifications {
     );
   }
 
+  // Every redaction's path is validated here, unconditionally -- whether or
+  // not parameter_overrides is present (item 5 above).
+  const redactionTargets = hasRedactions
+    ? (mods.redactions ?? []).map((redaction) => assertValidRedactionPath(redaction.path))
+    : [];
+
   if (!hasRedactions || !hasOverrides) {
     return mods;
   }
 
-  const redactionTargets = (mods.redactions ?? []).map((redaction) => pointerSegments(redaction.path));
   const overrideTargets = Object.keys(mods.parameter_overrides ?? {}).map((key) => [key]);
 
   for (const redactionTarget of redactionTargets) {
