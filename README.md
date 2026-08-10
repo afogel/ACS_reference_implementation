@@ -26,7 +26,8 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 
 | Claim | Slice |
 |---|---|
-| AGT is completely expressible in ACS: a machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell | V7 |
+| A machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell — every cell resolved, green where ACS v0.1.0 expresses AGT and red with a named reason where it does not. Four are already known red: the two model-call points have no v0.1.0 hook, and two attributes the Trace pillar marks required have no source on the wire | V7 |
+| Which ACS profiles and pillars this implementation claims, and which it does not — the matrix is the declaration. Trace is a measured non-claim, not a silence | V7 |
 | The same policy governs two structurally different coding agents, with the second host costing zero added AGT code | V5 |
 | A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
 

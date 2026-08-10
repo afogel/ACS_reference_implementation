@@ -20,7 +20,7 @@ Every slice ends in something demo-able.
 | V4 | Output redaction on Claude Code | C3 | "AGT's own package documents that Claude Code cannot redact tool output. Here it is, redacted, by AGT's stock `redact` policy." |
 | V5 | Second host, zero AGT changes | C3 | "Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT." |
 | V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried by ACS provenance." |
-| V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case." |
+| V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
 | V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
 
 **Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but it can only be green once V1–V6 exist to be measured. V8 is what keeps V7 true after upstream moves.
@@ -195,25 +195,43 @@ Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
 
 ## V7: Conformance matrix
 
-**Demo:** Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case.
+**Demo:** Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim.
+
+**⚠️ Demo corrected (was "all green").** The original sentence was already contradicted by this slice's own body, which has expected two honestly-red model-call cells since shaping; D10 adds two more. A matrix that must be all green to count is a matrix under pressure to redefine the claim, which is the opposite of what C2 is for. The demo now asks for every cell *resolved*, which is achievable and is the stronger deliverable.
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
 | U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 verdicts | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
+| U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
 | N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
-| N47 | P5 | conformance | `renderMatrix()` | call | → U30 | — |
+| N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas | call | — | → N47 |
+| N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U33 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 
 **⚠️ Gap discovered in V1 — the Guardian's outbound envelopes are validated by nothing.** Inbound requests get Ajv against all 43 v0.1.0 schemas (N21), but responses are hand-built objects checked by no schema. The conformance harness would therefore measure a wire format that was never itself contract-checked — which quietly weakens exactly the claim C2 exists to prove. Add response validation before the matrix is published. Related: V1 found that `response-envelope.json`'s `result` unconditionally `$ref`s `AcsResult`, which requires `decision` — a ServerHello has no such field, so a handshake response cannot satisfy it. That looks like a genuine v0.1.0 spec gap (no discriminated union for non-decision methods) and is worth an upstream ACS issue, not just a red cell.
 
-**Expect two cells to be honestly red.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target — see D4. Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` in v0.2.
+**⚠️ The Trace pillar lands here too (D10), and two of its cells are already known red.** `trace/otel-mapping.json` is normative — a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim. Measured against the pinned schemas after V2 shipped:
 
-R5.3 lands here: the matrix *is* the profile declaration.
+| Required by the mapping | Source in v0.1.0 | Cell |
+|---|---|---|
+| `gen_ai.tool.name` on `gen_ai.tool.call` | `payload.tool.name`, `required` | 🟢 |
+| `acs.capability` on `gen_ai.tool.call` | `payload.capability`, **optional** — `hooks/tool-call-request.json` requires only `tool` and `arguments` | 🔴 a conformant envelope may omit it |
+| `acs.decision` on the `acs.decision` span event | `AcsResult.decision`, `required` | 🟢 |
+| `acs.evaluator` on the `acs.decision` span event | **none** — `AcsResult` has no such field | 🔴 no wire source |
+| `acs.confidence`, `acs.evaluator_version`, `acs.model_id` (required "when present in the decision envelope") | **none** — no such fields in `AcsResult` | 🔴 can never be present |
+
+`N49` is what turns that table into measured cells rather than this prose, and `U33` renders it. The finding worth publishing is not the missing fields but their consequence: **a downstream consumer of the ACS wire cannot emit a conformant trace** — only the Guardian can, from process-local knowledge the contract does not carry. That cuts directly against R5.1/R5.2 and against V2's design, where S6 is readable by anything and the Inspector proves it by importing nothing. An OTel exporter reading S6 hits the same wall.
+
+**Scope boundary:** V7 *measures* the Trace pillar. It does not build an exporter. If an exporter is ever wanted it has to live in the Guardian for the reason above, and that is a slice of its own, not V7 scope.
+
+**Expect two cells to be honestly red — now four.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target (D4), and the two Trace attributes above have no wire source (D10). Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` and for an `evaluator` field on `AcsResult` in v0.2.
+
+R5.3 lands here: the matrix *is* the profile declaration — including the Trace pillar, which this implementation declares it does **not** claim, with the measured reason attached.
 
 ---
 
@@ -259,7 +277,7 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | D5 | Determinism of the demo | V1 onward |
 | ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
 | D8 | 🟡 Which `on_decision_failure` ships as default — V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6). Leaning to the spec default `proceed`, paired with U23's audit count | V3 |
-| D10 | 🔴 ⚠️ **Sharpened after V2 shipped — two required span attributes have no wire source.** `acs.evaluator` (required on the `acs.decision` span event) does not exist as a field in `AcsResult` at all, and `acs.capability` (required on `gen_ai.tool.call`) maps to `payload.capability`, which `hooks/tool-call-request.json` leaves optional. So a **downstream consumer of the ACS wire cannot emit a conformant trace** — only the Guardian can, from process-local knowledge the contract does not carry, which cuts against R5.1/R5.2 and V2's whole "S6 is readable by anything" design. Full evidence table in the shaping doc under D10. **The ACS Trace pillar is unclaimed by any slice.** `specification/v0.1.0/trace/otel-mapping.json` and `trace/ocsf-mapping.json` are *normative* — the OTel mapping states that a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it names `steps/toolCallRequest` → `gen_ai.tool.call` explicitly. V2's S6 is deliberately a raw envelope log, **not** an OTel or OCSF export, so this implementation currently claims neither. R5.3 says we declare what we claim and what we do not — so either V7 measures the Trace pillar as an explicit non-claim, or a slice picks it up. Surfaced during V2 planning; nothing depends on it yet | V7 scope |
+| ~~D10~~ | ✅ **Closed: V7 owns it, as a measured non-claim.** The ACS Trace pillar (`trace/otel-mapping.json`, `trace/ocsf-mapping.json`) is normative and was unclaimed by any slice. It now lands in V7 as `N49`/`U33` — V7 *measures* the pillar rather than emitting it, and the matrix declares it as a pillar this implementation does not claim, with the reason attached. Two required attributes already measure red: `acs.evaluator` has no field in `AcsResult` at all, and `acs.capability` maps to an optional payload field. The consequence is the publishable part — **a downstream consumer of the ACS wire cannot emit a conformant trace**, only the Guardian can, from knowledge the contract does not carry. Building an exporter would be a slice of its own, not V7 scope. Evidence tables in §V7 and in the shaping doc under D10 | `specification/v0.1.0/trace/otel-mapping.json` and `trace/ocsf-mapping.json` are *normative* — the OTel mapping states that a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it names `steps/toolCallRequest` → `gen_ai.tool.call` explicitly. V2's S6 is deliberately a raw envelope log, **not** an OTel or OCSF export, so this implementation currently claims neither. R5.3 says we declare what we claim and what we do not. Surfaced during V2 planning, measured after V2 shipped, and settled into V7 | V7 (N49, U33) |
 
 **Correction log.** V1 planning verified the AGT surface by running it rather than reading it, and produced ten corrections — the SDK choice, the `./` landmine, config-inside-the-bundle, the absent stock shell patterns, the leaf `policy_target`, AGT's missing `rule_id`/`reason_codes`/`reasoning`, lowercase wire decisions, `steps/toolCallRequest` and the 19-hook count, the retired `opa` setup cost, and the Python identity collapse. Each is recorded above at the row it governs, with its evidence, in `docs/superpowers/plans/2026-08-09-v1-one-host-one-hook.md`.
 
