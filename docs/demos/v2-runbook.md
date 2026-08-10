@@ -317,7 +317,14 @@ host, so an `arguments` object containing both `"0"` and `"a"` is a real possibi
 rather than a contrived one — and it would render with `"0"` first regardless of send
 order. If you need the literal bytes a host sent, capture them at the transport; S6 is
 the parsed envelope. What S6 does guarantee is that nothing between the parse and the
-file removed, rewrote, or hid any part of it.
+file removed, rewrote, or hid any part of it — with two named exceptions, both on the
+*stringify* side rather than the parse side, since a stringify happens every time S6's
+line is written and again every time the Inspector pretty-prints it. A number literal
+too large for a JS `double` (`1e400`) parses fine, as `Infinity`, but `JSON.stringify`
+writes `Infinity` as `null` — the field survives; its value does not. `-0` survives the
+parse with its sign intact and loses it the same way: `JSON.stringify(-0)` is `"0"`.
+Neither is something this project decided; both are `JSON.stringify`'s own behaviour,
+wherever it runs.
 
 The consequence is direct: **the log contains whatever your tool calls contained** —
 file paths, command lines, and anything else that rode along in `arguments`. That is why
