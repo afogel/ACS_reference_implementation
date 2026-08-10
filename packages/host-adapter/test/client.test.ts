@@ -382,6 +382,39 @@ describe("negotiateSessionConfig (N5)", () => {
   });
 });
 
+describe("handshake (N5) — the negotiated timeout (§6.4)", () => {
+  it("throws GuardianTimeoutError when the Guardian accepts the connection and never answers, and stores nothing", async () => {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        // Tied to the request's own signal, not a bare setTimeout -- see
+        // guardianClient.post's own timeout test above for why: without
+        // this, the timer outlives the client's abort and this test's
+        // `finally` force-stop, keeping the event loop alive for 5 extra
+        // seconds on every run.
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 5_000);
+          req.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        return Response.json({ jsonrpc: "2.0", id: "1", result: {} });
+      },
+    });
+    try {
+      const store = createSessionConfigStore();
+      const url = `http://localhost:${server.port}/acs`;
+      await expect(
+        handshake({ url, agentId: "claude-code", sessionId: crypto.randomUUID(), timeoutMs: 25 }, store),
+      ).rejects.toThrow(GuardianTimeoutError);
+      expect(store.get()).toBeUndefined();
+    } finally {
+      await server.stop(true);
+    }
+  });
+});
+
 describe("host -> wire -> policy -> host, end to end", () => {
   it("a real rm -rf / tool call denies through the real Guardian, and renders with the reasoning in permissionDecisionReason", async () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload("rm -rf /"), hookmap);

@@ -34,6 +34,14 @@
  * `decisions.allow` entry a plain allow is: still one dispatch path, still
  * driven by the hookmap alone.
  *
+ * V3: `decisions.allow` now also declares a reason field, so a plain allow and
+ * an observe-only allow are no longer indistinguishable on the way out -- the
+ * latter typically carries a `reasoning` string synthesized for it upstream,
+ * and that string now reaches the host field the hookmap names for it, where a
+ * plain allow's absent `reasoning` leaves the field off entirely (pinned in
+ * render-decision.test.ts). Still one dispatch path, still driven by the
+ * hookmap alone -- only the rendered shape can now differ.
+ *
  * V3: the decision this module renders now arrives via N7's
  * validateDecision (validate-decision.ts), which resolves §6.3's
  * modifications and any ASK/DEFER expiry before this module ever sees the

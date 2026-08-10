@@ -28,32 +28,49 @@
  * policy deny is expressed, so getting this wrong would make a deny look
  * like a crash.
  *
- * ON GUARDIAN-UNREACHABLE HANDLING (V3, replacing a V1 placeholder): once
- * this shim has parsed a hook payload -- a valid `hook_event_name` and
- * `session_id` off stdin, and a session store it was safe to open for that
- * `session_id` -- it always exits 0 with a decision on stdout. There is no
- * remaining path past that point that exits non-zero with nothing written.
- * A Guardian that is down, a response that carries an error instead of a
- * decision, or a request that times out are all delivery failures, not
- * decisions, and Global Constraint 1's two failure domains never merge: a
- * `deny` that arrives is honoured regardless of what follows, and a
- * delivery failure never gets dressed up as one. Every such failure is
- * resolved by the deployment's own negotiated `on_decision_failure`
- * posture (`applyFailurePosture`, N6) -- proceed or deny -- and every
- * fail-open `proceed` taken this way is written to the audit sink (S14)
- * first, so the bypass is visible rather than silent.
+ * ON FAILURE, PAST THE POINT A HOOK PAYLOAD HAS PARSED (V3, replacing a V1
+ * placeholder): there are exactly three exit shapes past that point, never
+ * a fourth.
+ *
+ *   - Exit 1 ("non-blocking error"), empty stdout: ONLY before a hook
+ *     payload has parsed at all -- stdin is not JSON, or is missing a
+ *     string `hook_event_name`/`session_id`. Nothing has been promised to
+ *     Claude Code yet.
+ *   - Exit 2 ("blocking error"), stderr only: once the payload has parsed,
+ *     but before this shim can trust its own configuration enough to make
+ *     a governed decision at all -- the hookmap fails to load, or
+ *     `session_id` is unsafe to use as a path segment (constraint 9). Both
+ *     are a broken deployment, not a policy question, and a loud, blocking
+ *     stop beats a silent, ungoverned proceed.
+ *   - Exit 0, a decision on stdout: every remaining case, with no
+ *     exception. A Guardian that is down, a response carrying an error
+ *     instead of a decision, a request that times out, or a decision this
+ *     host cannot even render (an unrecognised decision string, or a
+ *     hookmap gap) are all delivery failures, not decisions, and Global
+ *     Constraint 1's two failure domains never merge: a `deny` that
+ *     arrives is honoured regardless of what follows, and a delivery
+ *     failure never gets dressed up as one. Every such failure is resolved
+ *     by the deployment's own negotiated `on_decision_failure` posture
+ *     (`applyFailurePosture`, N6) -- proceed or deny -- and every fail-open
+ *     `proceed` taken this way is written to the audit sink (S14) first,
+ *     so the bypass is visible rather than silent. The posture's own
+ *     "allow"/"deny" is guaranteed renderable (loadHookmap enforces that
+ *     both exist in every hookmap's `decisions` block), so this tier can
+ *     never recurse into itself.
  *
  * V1's own version of this paragraph described a placeholder, not a
  * considered posture: it caught nothing, wrote the error to stderr only,
- * and exited 1 with empty stdout. Claude Code reads exit 1 as "non-blocking
+ * and exited 1 with empty stdout for every failure past this point,
+ * including a broken deployment. Claude Code reads exit 1 as "non-blocking
  * error" and proceeds as though the hook had never fired -- so a thrown
  * error (the Guardian down, a malformed response, a lazy validator
  * failing) let the tool call run ungoverned, unaudited, and undeclared.
  * That fail-open recurred five more times elsewhere in this project before
  * this rewrite closed this, its origin. It is gone: every one of the
- * throws that used to reach V1's placeholder now flows into
- * `applyFailurePosture` instead, which always returns a decision and
- * always audits taking it.
+ * throws that used to reach V1's placeholder now flows into either exit 2
+ * (a broken deployment, loud and blocking) or `applyFailurePosture` (every
+ * other case, which always returns a decision and always audits taking
+ * it).
  */
 import { fileURLToPath } from "node:url";
 import {
@@ -67,10 +84,13 @@ import {
   negotiateSessionConfig,
   renderDecision,
   toSessionUuid,
+  unwrapArguments,
   validateDecision,
   type AcsDecision,
   type AcsRequestEnvelope,
+  type Hookmap,
   type HostOutput,
+  type SessionConfigStore,
 } from "host-adapter";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
@@ -129,22 +149,21 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
   return { ...rendered, [HOOK_SPECIFIC_OUTPUT]: { hookEventName, ...(wrapper as Record<string, unknown>) } };
 }
 
-/**
- * Turns whatever stood in for a decision into one line of stderr. `failure` is
- * `unknown` by design -- it is a throw from the wire, a JSON-RPC `error`
- * object, or an Error this shim never constructed -- so this formats all three
- * rather than assuming any one of them.
+ * Thrown when this shim cannot trust its own configuration enough to make
+ * a governed decision at all -- a hookmap that fails to load, or a
+ * `session_id` unsafe to use as a path segment. Distinct from a step-1
+ * parse failure (a bare throw, still exit 1): both of these happen only
+ * after a hook payload HAS parsed, so Claude Code must not read them as
+ * "the hook didn't fire" the way it reads exit 1 -- `main().catch` below
+ * exits 2 ("blocking error") for this class specifically, which stops the
+ * tool call and surfaces stderr instead of silently letting it through.
  */
-function describeFailure(failure: unknown): string {
-  if (failure instanceof Error) {
-    return failure.message;
+class BlockingConfigurationError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "BlockingConfigurationError";
   }
-  return typeof failure === "string" ? failure : JSON.stringify(failure);
 }
-
-/** This Observed Agent's identity on the wire (ACS metadata.agent_id) --
- * matches claude-code.hookmap.yaml's own `host` field. */
-const AGENT_ID = "claude-code";
 
 async function main(): Promise<void> {
   const input = await Bun.stdin.text();
@@ -161,16 +180,24 @@ async function main(): Promise<void> {
     throw new Error('acs-hook: stdin payload is missing a string "session_id" field');
   }
 
-  const hookmap = loadHookmap(HOOKMAP_PATH);
-
-  // Step 2: an unsafe session_id is a broken host, not a policy question.
-  // createFileSessionConfigStore throws InvalidSessionIdError synchronously,
-  // before this shim writes anywhere; left uncaught here, it propagates to
-  // main().catch below and exits 1.
-  const store = createFileSessionConfigStore({
-    dir: process.env.ACS_SESSION_DIR ?? ".acs/sessions",
-    sessionId,
-  });
+  // Step 2: from here on, a hook payload HAS parsed. A hookmap that fails
+  // to load, or an unsafe session_id, both make a governed decision
+  // impossible -- a broken deployment, not a policy question -- so both
+  // become a BlockingConfigurationError and exit 2, not the silent exit-1
+  // proceed a bare throw would produce. Nothing is written anywhere before
+  // this succeeds (constraint 4): createFileSessionConfigStore's
+  // InvalidSessionIdError throws synchronously, before its first write.
+  let hookmap: Hookmap;
+  let store: SessionConfigStore;
+  try {
+    hookmap = loadHookmap(HOOKMAP_PATH);
+    store = createFileSessionConfigStore({
+      dir: process.env.ACS_SESSION_DIR ?? ".acs/sessions",
+      sessionId,
+    });
+  } catch (error) {
+    throw new BlockingConfigurationError(error);
+  }
 
   // Step 3: the audit sink (S14) -- total by construction, so building it
   // cannot itself throw, and a write to it never happens unless a fail-open
@@ -181,25 +208,38 @@ async function main(): Promise<void> {
   const guardian = createGuardianClient(guardianUrl);
 
   // Step 4: negotiate once per session. A handshake failure decides nothing
-  // by itself -- it is only a candidate delivery failure, used below only
-  // if the step call that follows also fails to produce a decision. The
-  // step call may still succeed on its own (a Guardian that answers
-  // `steps/toolCallRequest` but is slow, or briefly refused, to answer
-  // `handshake/hello`), and if it does, its decision stands untouched
-  // (Global Constraint 2: the posture must never touch an arriving
-  // decision).
-  let handshakeFailure: unknown;
+  // by itself, and is not carried forward into whatever the step call
+  // below reports: the two are different requests that can fail for
+  // unrelated reasons, and the audited entry (if one is written at all)
+  // must classify the failure of the request it is filed against
+  // (steps/toolCallRequest), not this one. `posture_source: "default"`
+  // already records, durably, that no handshake ever completed for this
+  // session -- that is the fact that matters, not which error this
+  // particular attempt raised. The step call may still succeed even after
+  // this fails (Global Constraint 2: the posture must never touch an
+  // arriving decision).
   if (store.get() === undefined) {
     try {
       // metadata.session_id is schema-constrained to "uuid" (same rule
       // buildEnvelope's own toSessionUuid honours below); the store itself
-      // keys on the raw host session_id, per S13's own contract.
+      // keys on the raw host session_id, per S13's own contract. agentId
+      // is the hookmap's own `host` field -- the same identity buildEnvelope
+      // sends for the step call below, so the two never diverge. Bounded by
+      // the ACS default timeout: there is no negotiated timeout yet, since
+      // negotiating one is what this call is for -- without a bound, a
+      // Guardian that accepts the connection and never answers would hang
+      // this hook until Claude Code's own hook timeout kills the process.
       await negotiateSessionConfig(
-        { url: guardianUrl, agentId: AGENT_ID, sessionId: toSessionUuid(sessionId) },
+        {
+          guardian,
+          agentId: hookmap.host,
+          sessionId: toSessionUuid(sessionId),
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+        },
         store,
       );
-    } catch (error) {
-      handshakeFailure = error;
+    } catch {
+      // Not fatal, and not carried forward -- see the comment above.
     }
   }
 
@@ -207,12 +247,17 @@ async function main(): Promise<void> {
   const sessionConfig = store.get();
   const timeoutMs = sessionConfig?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
-  // Step 6: buildEnvelope -> requestDecision, both inside one try. Two
-  // outcomes: a decision arrived and goes to validateDecision (N7); no
-  // decision arrived -- for any reason, including a JSON-RPC error response,
-  // a timeout, or a throw from either call -- and that goes to
-  // applyFailurePosture (N6). There is no other way out of this shim once
-  // steps 1-3 above have succeeded.
+  // Steps 6-7, one guard: buildEnvelope -> requestDecision -> render, all
+  // inside the same try. Rendering has to be in here too: a decision this
+  // host cannot even render (an unrecognised decision string that
+  // validateDecision passed through unchanged, or a hookmap gap) is exactly
+  // as undeliverable as a timeout or a JSON-RPC error, and must be answered
+  // by the posture the same way, not left to escape as a bare throw. The
+  // fallback render in the catch cannot itself fail: loadHookmap already
+  // guaranteed `allow` and `deny` both exist in `hookmap.decisions`,
+  // applyFailurePosture never returns any decision but those two, and both
+  // of their hookmap entries declare a path under the wrapper that
+  // asClaudeCodeOutput requires.
   //
   // `requestDecision` answers the one question that matters here and never
   // throws for a delivery failure (PR #10 review, Important). This shim does
@@ -221,55 +266,46 @@ async function main(): Promise<void> {
   // arriving alongside a malformed `error` must still be honoured, which is
   // the case a copy of that inspection gets wrong.
   let envelope: AcsRequestEnvelope | undefined;
-  let decision: AcsDecision;
+  let hostOutput: HostOutput;
   const startedAt = performance.now();
   try {
     envelope = buildEnvelope(hookEventName, payload, hookmap);
-
     // The same values that just went out on the wire, unwrapped from ACS's
     // `{value, provenance?}` argument shape -- so a `modify` decision's
-    // `parameter_overrides` apply lands on exactly what the Guardian saw,
-    // not on the raw host payload.
-    const originalArguments: Record<string, unknown> = {};
-    for (const [key, argument] of Object.entries(envelope.params.payload.arguments)) {
-      originalArguments[key] = argument.value;
-    }
+    // `parameter_overrides` apply lands on exactly what the Guardian saw.
+    const originalArguments = unwrapArguments(envelope);
 
     const answer = await guardian.requestDecision(envelope, { timeoutMs });
     const elapsedMs = performance.now() - startedAt;
 
-    decision = answer.decisionArrived
+    const decision: AcsDecision = answer.decisionArrived
       ? validateDecision(answer.decision, { elapsedMs, originalArguments })
       : applyFailurePosture({
-          // Same preference as the catch below, for the same reason.
-          failure: handshakeFailure ?? answer.failure,
+          failure: answer.failure,
           sessionConfig,
           sessionId,
           method: envelope.method,
           rpcId: envelope.id,
           audit,
         });
+
+    hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
   } catch (error) {
-    decision = applyFailurePosture({
-      // Prefers the handshake's own failure when the step call also could
-      // not produce a decision: both failed against the same Guardian, on
-      // the same connection, for the same underlying reason, and the
-      // handshake attempt is the earlier, root-cause signal.
-      failure: handshakeFailure ?? error,
+    const decision = applyFailurePosture({
+      failure: error,
       sessionConfig,
       sessionId,
       method: envelope?.method ?? hookEventName,
       rpcId: envelope?.id ?? null,
       audit,
     });
+    hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
   }
 
-  // Step 7.
-  const rendered = renderDecision(decision, hookmap);
-  process.stdout.write(JSON.stringify(asClaudeCodeOutput(rendered, hookEventName)));
+  process.stdout.write(JSON.stringify(hostOutput));
 }
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  process.exit(error instanceof BlockingConfigurationError ? 2 : 1);
 });

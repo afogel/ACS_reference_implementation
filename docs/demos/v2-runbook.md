@@ -51,6 +51,7 @@ Captured:
 ```
 Guardian listening at http://localhost:8787/acs
 Envelope log (S6): .acs/envelopes.jsonl
+Failure posture (D8): proceed   (override with ACS_ON_DECISION_FAILURE=deny)
 ```
 
 **Why this one starts first: it creates `.acs/`.** The sink calls

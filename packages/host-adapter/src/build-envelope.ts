@@ -59,9 +59,52 @@ export type AcsRequestEnvelope = {
 
 const ACS_VERSION = "0.1.0";
 
-/** Loads and parses a hookmap YAML file, e.g. claude-code.hookmap.yaml. */
+/**
+ * A hookmap's `decisions` block must at minimum know how to render `allow`
+ * and `deny` -- the only two decisions a delivery-failure posture
+ * (applyFailurePosture, N6) ever produces. Without this guarantee, a shim
+ * that falls back to the posture because the *original* decision could not
+ * be rendered (an unrecognised decision string, or a hookmap gap) would
+ * have no guarantee the posture's own "allow"/"deny" can be rendered
+ * either -- trusted, not impossible, which is exactly the gap this checks
+ * closes. Enforced once, at load time, so every later renderDecision call
+ * against this hookmap for `allow` or `deny` is a guarantee, not a hope.
+ */
+function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
+  const decisions = hookmap.decisions;
+  if (typeof decisions !== "object" || decisions === null) {
+    throw new Error(`loadHookmap: ${path} has no "decisions" block`);
+  }
+  for (const required of ["allow", "deny"] as const) {
+    if (!(required in decisions)) {
+      throw new Error(`loadHookmap: ${path}'s "decisions" block has no "${required}" entry`);
+    }
+  }
+}
+
+/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
+ * Throws if `decisions` is missing `allow` or `deny` -- see
+ * assertRenderableDecisions. */
 export function loadHookmap(path: string): Hookmap {
-  return Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
+  const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
+  assertRenderableDecisions(hookmap, path);
+  return hookmap;
+}
+
+/**
+ * Unwraps ACS's `{value, provenance?}` argument shape back into a plain
+ * `{argName: value}` bag -- the same values `buildEnvelope` just put on the
+ * wire. Knowledge of the ACS argument wrapper belongs here, next to the
+ * type that defines it, not duplicated in every host shim that needs the
+ * unwrapped form (e.g. to hand a `modify` decision's `parameter_overrides`
+ * something to apply against, per N7's `validateDecision`).
+ */
+export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, unknown> {
+  const originalArguments: Record<string, unknown> = {};
+  for (const [key, argument] of Object.entries(envelope.params.payload.arguments)) {
+    originalArguments[key] = argument.value;
+  }
+  return originalArguments;
 }
 
 /**

@@ -10,6 +10,7 @@ export {
   buildEnvelope,
   loadHookmap,
   toSessionUuid,
+  unwrapArguments,
   type Hookmap,
   type HookmapHookEntry,
   type AcsRequestEnvelope,

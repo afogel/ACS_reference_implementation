@@ -186,20 +186,76 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(0);
   });
 
+  it("still exits 0 with a decision when the Guardian returns a decision this hookmap cannot render (CRITICAL fix)", async () => {
+    const dir = scratch();
+    // A stub, not a real Guardian: answers handshake/hello honestly (so
+    // this hook negotiates a real "proceed" posture), then answers
+    // steps/toolCallRequest with a decision no hookmap entry names.
+    // validateDecision passes an unrecognised decision through unchanged,
+    // so without the fix this makes renderDecision throw *after* the
+    // shim's last try/catch, main().catch exits 1 with empty stdout, and
+    // Claude Code proceeds -- ungoverned and unaudited. Same shape as
+    // every other fail-open this project has found.
+    const stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number; method: string };
+        if (body.method === "handshake/hello") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              negotiated_version: "0.1.0",
+              methods_evaluated: ["steps/toolCallRequest"],
+              selected_transport: "http",
+              timeout_config: { default_ms: 5000 },
+              on_decision_failure: "proceed",
+            },
+          });
+        }
+        return Response.json({ jsonrpc: "2.0", id: body.id, result: { decision: "quarantine" } });
+      },
+    });
+    try {
+      const out = await runShim(payload("ls -la"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      expect(out.exitCode).toBe(0);
+      expect(out.stdout.length).toBeGreaterThan(0);
+      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      // The negotiated posture was "proceed", so the undeliverable decision
+      // resolves to a plain allow, and it is audited like any other
+      // fail-open proceed (§6.4's MUST).
+      expect(hook.permissionDecision).toBe("allow");
+      const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
+    } finally {
+      stub.stop(true);
+    }
+  });
+
   it("still fails loudly on a payload that is not a hook payload at all", async () => {
     const out = await runShim("{not json", { ACS_SESSION_DIR: scratch() });
     expect(out.exitCode).toBe(1);
     expect(out.stdout).toBe("");
   });
 
-  it("rejects a traversal-shaped session_id without writing outside the session dir", async () => {
+  it("rejects a traversal-shaped session_id without writing outside the session dir, exiting 2 (blocking) not 1", async () => {
     const dir = scratch();
     const out = await runShim(payload("ls -la", "../escape"), {
       ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
       ACS_SESSION_DIR: join(dir, "sessions"),
       ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
     });
-    expect(out.exitCode).toBe(1);
+    // Exit 2 ("blocking error"), not 1: a hook payload DID parse here, so
+    // this must not read to Claude Code as the non-blocking "hook didn't
+    // fire" that exit 1 means -- an unsafe session_id is a broken
+    // deployment, and stops the tool call loudly instead.
+    expect(out.exitCode).toBe(2);
+    expect(out.stdout).toBe("");
     expect(existsSync(join(dir, "escape.json"))).toBe(false);
   });
 });

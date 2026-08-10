@@ -177,6 +177,34 @@ describe("renderDecision", () => {
     expect(() => renderDecision({ decision: "allow" }, reserved)).toThrow(/addresses no field/);
   });
 
+  it("pins the real hookmap's rendering of a warn-derived allow: reasoning now surfaces (V3 fix round 1)", () => {
+    // V3 added reason_from: reasoning to the real hookmap's allow entry
+    // (claude-code.hookmap.yaml), which the local `hookmap` fixture above
+    // deliberately does not carry -- this test locks in the REAL file's
+    // now-different behaviour so Task 10's five-verdicts work does not have
+    // to guess it. Shape matches what an observe-only upstream signal
+    // (mapping.yaml's warn -> allow, require_policy_references: true)
+    // actually produces: `reasoning` and `policy_references` both set.
+    const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+
+    const { hookSpecificOutput } = renderDecision(
+      "PreToolUse",
+      {
+        decision: "allow",
+        reasoning: "drift_score 0.9 reached threshold 0.5",
+        reason_codes: ["drift_detected"],
+        policy_references: [{ policy_id: "agt_stock", rule_id: "drift_detected" }],
+      },
+      real,
+    );
+
+    expect(hookSpecificOutput).toEqual({
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      permissionDecisionReason: "drift_score 0.9 reached threshold 0.5",
+    });
+  });
+
   it("loads the real claude-code.hookmap.yaml and renders a deny end to end", () => {
     const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
 

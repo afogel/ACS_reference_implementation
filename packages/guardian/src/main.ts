@@ -30,16 +30,19 @@ const hostname = process.env.ACS_GUARDIAN_HOST;
 const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
 const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 
+// Read and validate the posture BEFORE starting the server. Not the audit
+// sink's path (S14): that file is the host's, written by the hook, not by
+// this process, so this Guardian has no way to know it. What this process
+// does know -- and is about to declare to every session that handshakes --
+// is the posture. Calling handshakeResponder() with no argument here reads
+// the same `process.env.ACS_ON_DECISION_FAILURE` a real handshake would, so
+// this line and the first handshake always agree. Reading it first, not
+// last, means an invalid override value throws before "Guardian listening"
+// ever prints -- an operator watching the terminal sees a crash, never a
+// healthy start immediately followed by one.
+const posture = handshakeResponder().on_decision_failure;
+
 const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
 console.log(`Guardian listening at ${guardian.url}`);
 console.log(`Envelope log (S6): ${envelopeLogPath}`);
-// Not the audit sink's path (S14): that file is the host's, written by the
-// hook, not by this process, so this Guardian has no way to know it. What
-// this process does know -- and is about to declare to every session that
-// handshakes -- is the posture. Calling handshakeResponder() with no
-// argument here reads the same `process.env.ACS_ON_DECISION_FAILURE` a real
-// handshake would, so this line and the first handshake always agree, and a
-// bad override value is caught at boot rather than on the first hook.
-console.log(
-  `Failure posture (D8): ${handshakeResponder().on_decision_failure}   (override with ACS_ON_DECISION_FAILURE=deny)`,
-);
+console.log(`Failure posture (D8): ${posture}   (override with ACS_ON_DECISION_FAILURE=deny)`);

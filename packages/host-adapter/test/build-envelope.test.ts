@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { validateEnvelope } from "guardian";
-import { buildEnvelope, loadHookmap, toSessionUuid, type Hookmap } from "../src/build-envelope.ts";
+import { buildEnvelope, loadHookmap, toSessionUuid, unwrapArguments, type Hookmap } from "../src/build-envelope.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -133,5 +136,78 @@ describe("buildEnvelope", () => {
 
     expect(envelope.method).toBe("steps/toolCallRequest");
     expect(() => validateEnvelope(envelope)).not.toThrow();
+  });
+
+  describe("loadHookmap — decisions.allow and decisions.deny must both be renderable (V3 fix round 1, item 1)", () => {
+    // Guards against the residual case a shim could otherwise only trust:
+    // applyFailurePosture (N6) never returns anything but "allow" or
+    // "deny", so a shim falling back to the posture because the ORIGINAL
+    // decision could not be rendered needs the posture's own output to be
+    // guaranteed renderable too, or the fallback itself can throw. Enforced
+    // once, at load time, so every hookmap this project ships is checked
+    // the same way, not trusted by convention.
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+
+    it("throws when the decisions block is missing entirely", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/decisions/);
+        },
+      );
+    });
+
+    it("throws when decisions is missing deny (allow alone is not enough)", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/deny/);
+        },
+      );
+    });
+
+    it("throws when decisions is missing allow (deny alone is not enough)", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).toThrow(/allow/);
+        },
+      );
+    });
+
+    it("accepts decisions with at least allow and deny, extra entries and all", () => {
+      withHookmapFile(
+        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+        (path) => {
+          expect(() => loadHookmap(path)).not.toThrow();
+        },
+      );
+    });
+  });
+
+  describe("unwrapArguments (V3 fix round 1, item 6)", () => {
+    it("unwraps the {value, provenance?} shape buildEnvelope just wrote, keyed by argument name", () => {
+      const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload, parsed);
+
+      expect(unwrapArguments(envelope)).toEqual({ command: "rm -rf /", description: "clean up" });
+    });
+
+    it("returns an empty object for an envelope with no arguments", () => {
+      const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+      const envelope = buildEnvelope("PreToolUse", { ...preToolUsePayload, tool_input: {} }, parsed);
+
+      expect(unwrapArguments(envelope)).toEqual({});
+    });
   });
 });
