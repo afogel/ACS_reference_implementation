@@ -302,6 +302,30 @@ function assertValidModifications(
     }
   }
 
+  // Two redactions must be disjoint from EACH OTHER as well. §6.3 spells out
+  // only the redaction-vs-override rule, but the reason it gives -- that
+  // overlapping edits have no apply order the Guardian can observe -- applies
+  // identically here, and the consequence of not checking is the same
+  // reported-as-applied partial rewrite the existence check above rejects.
+  //
+  // Concretely, before this check `{a: {b: 1, keep: "x"}}` with redactions
+  // `/a` then `/a/b` yielded `{a: {b: "[REDACTED]"}}`: the first redaction
+  // was discarded, `keep` was silently dropped from the arguments the host
+  // was about to run, and the decision still rendered as an applied `modify`.
+  // Losing an argument is worse than not redacting one, and both are worse
+  // than a deny.
+  for (let i = 0; i < redactionTargets.length; i += 1) {
+    for (let j = i + 1; j < redactionTargets.length; j += 1) {
+      const [first, second] = [redactionTargets[i] as string[], redactionTargets[j] as string[]];
+      if (segmentsOverlap(first, second)) {
+        throw new ModificationsInvalidError(
+          `redaction paths "/${first.join("/")}" and "/${second.join("/")}" ` +
+            "are not disjoint (equal, ancestor, or descendant)",
+        );
+      }
+    }
+  }
+
   // Last, because it is the only rule that needs the wire's own arguments:
   // every target must already be there. See assertTargetExists.
   for (const redactionTarget of redactionTargets) {
@@ -322,9 +346,17 @@ function assertValidModifications(
  * (Global Constraint 4).
  *
  * Every path reaching here has been checked against these same arguments by
- * `assertTargetExists`, so the `{}` fallback below is unreachable in
- * practice; it stays because this function is total by construction and a
- * future caller must not be able to make it throw.
+ * `assertTargetExists`, and every pair of paths has been checked against each
+ * other for overlap, so within one `applyModifications` call nothing should
+ * reach the `{}` fallback below.
+ *
+ * That is a statement about the current callers, NOT a guarantee about this
+ * function. An earlier version of this comment claimed the fallback was
+ * unreachable while two overlapping redaction paths reached it and produced a
+ * partial rewrite reported as applied -- the exact shape this module exists
+ * to reject. The fallback stays because this function is total by
+ * construction and a future caller must not be able to make it throw; do not
+ * upgrade this note back into a guarantee without a check that earns it.
  */
 function setAtPath(target: Record<string, unknown>, segments: string[], value: unknown): Record<string, unknown> {
   const [head, ...rest] = segments;

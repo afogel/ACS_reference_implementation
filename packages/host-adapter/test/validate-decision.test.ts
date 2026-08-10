@@ -39,6 +39,39 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     expect(out.decision).toBe("deny");
   });
 
+  // Two redactions must be disjoint from each other, not only from the
+  // overrides. Before this check, `/a` then `/a/b` yielded
+  // `{a: {b: "[REDACTED]"}}`: the first redaction discarded, `keep` silently
+  // gone from the arguments the host was about to run, and the decision still
+  // rendered as an applied modify. Losing an argument is worse than failing to
+  // redact one, and both are worse than a deny.
+  it("denies two redaction paths that overlap each other", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/a/b" }] } },
+      { elapsedMs: 10, originalArguments: { a: { b: 1, keep: "important" } } },
+    );
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.reasoning).toMatch(/not disjoint/);
+  });
+
+  it("denies two identical redaction paths", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/a" }] } },
+      { elapsedMs: 10, originalArguments: { a: "x" } },
+    );
+    expect(out.decision).toBe("deny");
+  });
+
+  it("still allows two redactions on genuinely disjoint paths", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/b" }] } },
+      { elapsedMs: 10, originalArguments: { a: "x", b: "y", c: "keep" } },
+    );
+    expect(out.decision).toBe("modify");
+    expect(out.applied_input).toEqual({ a: "[REDACTED]", b: "[REDACTED]", c: "keep" });
+  });
+
   it("denies on ancestor/descendant overlap, not just exact equality", () => {
     const out = validateDecision(
       {
