@@ -18,12 +18,14 @@ export {
   createGuardianClient,
   GuardianResponseMismatchError,
   GuardianResultCorrelationError,
+  GuardianTimeoutError,
   type DecisionOrFailure,
   type GuardianClient,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type JsonRpcSuccessResponse,
   type JsonRpcErrorResponse,
+  type PostOptions,
 } from "./guardian-client.ts";
 export { renderDecision, type HostOutput } from "./render-decision.ts";
 export { type AcsDecision } from "./decision-message.ts";
@@ -45,3 +47,12 @@ export {
   type AuditSink,
   type CreateAuditSinkOptions,
 } from "./audit-sink.ts";
+export {
+  applyFailurePosture,
+  classifyDeliveryFailure,
+  DEFAULT_POSTURE,
+  DEFAULT_TIMEOUT_MS,
+  type ApplyFailurePostureInput,
+  type DeliveryFailureKind,
+  type PostureDecision,
+} from "./failure-posture.ts";

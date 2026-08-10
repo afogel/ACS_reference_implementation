@@ -95,6 +95,23 @@ export class GuardianResultCorrelationError extends Error {
   }
 }
 
+/** Thrown when the negotiated timeout elapses with no response (§6.4). */
+export class GuardianTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`guardianClient.post: no decision within ${timeoutMs}ms`);
+    this.name = "GuardianTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export type PostOptions = {
+  /** The negotiated `timeout_config` value for this method. Omitted means no
+   * timeout, which is how V1 called this and how the handshake calls it --
+   * the handshake has no negotiated timeout yet, by definition. */
+  timeoutMs?: number;
+};
+
 /**
  * What came back when a decision was asked for. Exactly one of the two cases,
  * discriminated by the only question that matters at this seam: did a decision
@@ -126,7 +143,7 @@ export type GuardianClient = {
    * this method are ACS's vocabulary, and JSON-RPC is the transport it happens to
    * travel over (see JsonRpcRequest).
    */
-  requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure>;
+  requestDecision(envelope: AcsRequestEnvelope, options?: PostOptions): Promise<DecisionOrFailure>;
   /**
    * The wire primitive: POSTs `envelope` as JSON, parses the JSON-RPC
    * response, and returns it once it is confirmed to answer this request --
@@ -138,17 +155,30 @@ export type GuardianClient = {
    * decision uses `requestDecision` instead, and no caller in this package
    * inspects a response for one.
    */
-  post(envelope: JsonRpcRequest): Promise<JsonRpcResponse>;
+  post(envelope: JsonRpcRequest, options?: PostOptions): Promise<JsonRpcResponse>;
 };
 
 /** Binds a Guardian's ACS endpoint and returns the client role for it. */
 export function createGuardianClient(url: string): GuardianClient {
-  async function post(envelope: JsonRpcRequest): Promise<JsonRpcResponse> {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(envelope),
-    });
+  async function post(envelope: JsonRpcRequest, options: PostOptions = {}): Promise<JsonRpcResponse> {
+    const { timeoutMs } = options;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(envelope),
+        // §6.4: the negotiated timeout bounds every failure mode. An
+        // unambiguous failure (a refused connection) still rejects
+        // immediately -- fetch does not wait out the clock for those.
+        signal: timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      if (timeoutMs !== undefined && error instanceof Error && error.name === "TimeoutError") {
+        throw new GuardianTimeoutError(timeoutMs);
+      }
+      throw error;
+    }
 
     const response = (await res.json()) as JsonRpcResponse;
 
@@ -171,12 +201,13 @@ export function createGuardianClient(url: string): GuardianClient {
   return {
     post,
 
-    async requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure> {
+    async requestDecision(envelope: AcsRequestEnvelope, options: PostOptions = {}): Promise<DecisionOrFailure> {
       let response: JsonRpcResponse;
       try {
-        response = await post(envelope);
+        response = await post(envelope, options);
       } catch (failure) {
-        // A dead transport, an uncorrelated response, a body that is not JSON.
+        // A timeout, a dead transport, an uncorrelated response, a body that is
+        // not JSON.
         // None of them carry a decision, so all of them are the same answer --
         // and turning the throw into that answer here is what stops a caller's
         // catch block from having to work out which stage of its own sequence

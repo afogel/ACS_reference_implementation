@@ -5,7 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 // see build-envelope.test.ts for the same arrangement.
 import { startGuardian, type StartedGuardian } from "guardian";
 import { buildEnvelope, loadHookmap, type Hookmap } from "../src/build-envelope.ts";
-import { createGuardianClient, GuardianResultCorrelationError } from "../src/guardian-client.ts";
+import {
+  createGuardianClient,
+  GuardianResultCorrelationError,
+  GuardianTimeoutError,
+} from "../src/guardian-client.ts";
 import { negotiateSessionConfig } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
 import { createSessionConfigStore } from "../src/session-config.ts";
@@ -264,8 +268,68 @@ describe("GuardianClient.requestDecision", () => {
   });
 });
 
-describe("negotiateSessionConfig", () => {
-  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store", async () => {
+describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
+  it("throws GuardianTimeoutError when no response arrives in time", async () => {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        // Tied to the request's own signal, not a bare setTimeout: once the
+        // client times out and this test's `finally` force-stops the server,
+        // Bun aborts the in-flight request and this listener clears the
+        // 5-second timer. Without it, the timer would keep the process's
+        // event loop alive and the suite would hang for 5 extra seconds on
+        // every run of this test.
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 5_000);
+          req.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        return Response.json({ jsonrpc: "2.0", id: "1", result: {} });
+      },
+    });
+    try {
+      const url = `http://localhost:${server.port}/acs`;
+      const envelope = { jsonrpc: "2.0" as const, method: "steps/toolCallRequest", id: "1", params: {} };
+      await expect(createGuardianClient(url).post(envelope, { timeoutMs: 25 })).rejects.toThrow(GuardianTimeoutError);
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it("returns normally when the response beats the timeout", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ jsonrpc: "2.0", id: "1", result: { decision: "allow" } }),
+    });
+    try {
+      const url = `http://localhost:${server.port}/acs`;
+      const envelope = { jsonrpc: "2.0" as const, method: "steps/toolCallRequest", id: "1", params: {} };
+      const response = await createGuardianClient(url).post(envelope, { timeoutMs: 5000 });
+      expect(response.result).toEqual({ decision: "allow" });
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it("still works with no timeout given, exactly as V1 called it", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => Response.json({ jsonrpc: "2.0", id: "1", result: { decision: "allow" } }),
+    });
+    try {
+      const url = `http://localhost:${server.port}/acs`;
+      const envelope = { jsonrpc: "2.0" as const, method: "steps/toolCallRequest", id: "1", params: {} };
+      expect((await createGuardianClient(url).post(envelope)).result).toEqual({ decision: "allow" });
+    } finally {
+      await server.stop(true);
+    }
+  });
+});
+
+describe("negotiateSessionConfig (N5)", () => {
+  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store (S13)", async () => {
     const store = createSessionConfigStore();
     expect(store.get()).toBeUndefined();
 
