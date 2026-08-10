@@ -32,14 +32,25 @@ type FieldLiteral = { literal: string };
 /** The wrap modes this mapping can express. Named as a set so `applyWrap`
  * can refuse everything outside it. */
 type WrapMode = "array";
+
+/** modifications.json's three fields -- the complete key set an AGT
+ * transform's rewritten value can land in. `ModificationsRule.into` is
+ * typed from this array (not the reverse) so the type and the runtime
+ * membership check in synthesizeModifications can never drift apart. */
+const MODIFICATIONS_FIELDS = ["parameter_overrides", "redactions", "modified_content"] as const;
+
 /** The mapping's declaration of how an AGT transform becomes ACS
  * modifications. `when_path` is the only transform path this mapping can
  * express; anything else is a mapping gap and must fail loudly rather than
- * silently drop a rewrite. */
+ * silently drop a rewrite. `into` picks which modifications.json field the
+ * rewrite lands in -- read from the mapping, not hardcoded, so an edit to
+ * mapping.yaml's `into` changes runtime behavior instead of being silently
+ * ignored (loadMapping validates nothing at runtime: it casts the parsed
+ * YAML with `as Mapping`). */
 type ModificationsRule = {
   from: string;
   when_path: string;
-  into: "parameter_overrides";
+  into: (typeof MODIFICATIONS_FIELDS)[number];
   policy_target_argument: string;
 };
 
@@ -142,6 +153,14 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * rewritten tool argument as parameter_overrides keyed by argument name, so
  * the mapping declares which argument that is and this copies the value in.
  *
+ * The output key comes from rule.into, not a hardcoded literal, so this
+ * stays genuinely declaration-driven: mapping.yaml and this function can
+ * never quietly disagree about which modifications.json field the rewrite
+ * lands in. rule.into is checked against MODIFICATIONS_FIELDS before use
+ * because loadMapping validates nothing at runtime -- the same reason
+ * transform.path is checked against rule.when_path above rather than
+ * trusted.
+ *
  * Note what is NOT here: re-applying the substitution. The SDK already
  * returns the transformed value (verified: transformedPolicyTarget carries
  * the applied string alongside the verdict), so this moves a value rather
@@ -161,7 +180,13 @@ function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): 
         `but the verdict rewrote ${JSON.stringify(transform.path)}`,
     );
   }
-  return { parameter_overrides: { [rule.policy_target_argument]: transform.value } };
+  if (!MODIFICATIONS_FIELDS.includes(rule.into)) {
+    throw new Error(
+      `mapping.yaml declares field_synthesis.modifications.into as ${JSON.stringify(rule.into)}, ` +
+        `but modifications.json defines no such field`,
+    );
+  }
+  return { [rule.into]: { [rule.policy_target_argument]: transform.value } } as AcsModifications;
 }
 
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {

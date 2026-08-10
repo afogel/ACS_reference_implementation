@@ -205,4 +205,30 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications (
     expect(mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m).decision)
       .toBe("ask");
   });
+
+  // Fix round 1 finding -- into was declared, typed, and read by nobody:
+  // synthesizeModifications hardcoded the literal key "parameter_overrides"
+  // instead of consulting rule.into. This mapping still ships
+  // into: parameter_overrides, so the hardcoded literal happened to agree
+  // with it; this test disagrees with it on purpose.
+  it("uses the mapping's declared into as the output key, not a hardcoded parameter_overrides", () => {
+    const withDifferentInto: Mapping = {
+      ...m,
+      field_synthesis: {
+        ...m.field_synthesis,
+        modifications: { ...m.field_synthesis.modifications, into: "redactions" },
+      },
+    };
+    const decision = mapVerdict(
+      { decision: "transform", reason: "x", transform: { path: "$policy_target", value: "y" } },
+      withDifferentInto,
+    );
+    // AcsModifications types `redactions` as an array (the real ACS shape).
+    // This test deliberately declares an into this mapping doesn't ship,
+    // to prove the key is read from the mapping rather than hardcoded, so
+    // the result is inspected as a plain record instead of asserted
+    // against that stricter shape, which no rule in mapping.yaml uses.
+    const modifications: Record<string, unknown> | undefined = decision.modifications;
+    expect(modifications).toEqual({ redactions: { command: "y" } });
+  });
 });
