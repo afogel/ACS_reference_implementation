@@ -3,13 +3,15 @@
  * handshake.json's ServerHello $def
  * (spec/acs/specification/v0.1.0/handshake.json).
  *
- * `build`, not `negotiate`: this function never reads the incoming
- * ClientHello. The host really does send one, but every field below is a
- * constant returned unconditionally, so `negotiated_version` and
- * `selected_transport` are DECLARED by this Guardian rather than agreed
- * against what the client proposed. Real negotiation -- reading the
- * ClientHello, picking a mutually supported version and transport, rejecting
- * what isn't -- is future work; see docs/demos/v1-runbook.md.
+ * V1 scope:
+ *   - `methods_evaluated` is exactly the set this Guardian actually wires
+ *     up, per the V1 watch-for ("only pre_tool_call is wired").
+ *   - `on_decision_failure` ships the spec default, "proceed" (fail-open).
+ *     D8 closes on "proceed" as the default. This responder is now deployment-
+ *     configurable (N28): one binary can demo both halves of V3 without a rebuild.
+ *     Applying the declared posture (N6/N7) is V3 work. A value that is neither
+ *     posture throws rather than falling back -- guessing which posture a typo
+ *     meant is the silent bypass this slice removes.
  *
  * `methods_evaluated` is exactly the set this Guardian wires up.
  * `on_decision_failure` ships the spec default, "proceed" (fail-open). This
@@ -38,12 +40,40 @@ const METHODS_EVALUATED = ["steps/toolCallRequest"];
  */
 const DEFAULT_TIMEOUT_MS = 5000;
 
-export function buildServerHello(): ServerHello {
+/** The two postures §6.4 defines. Anything else is a broken deployment. */
+const POSTURES = ["proceed", "deny"] as const;
+type Posture = (typeof POSTURES)[number];
+
+/**
+ * The deployment's declared posture. D8 closed on the spec default
+ * (`proceed`, per handshake.json's own `default` and R1.7); this makes it
+ * configurable so one binary can demo both halves of V3 without a rebuild.
+ *
+ * A value that is neither posture THROWS rather than falling back. Falling
+ * back to fail-open on a typo is exactly the silent-bypass shape this slice
+ * exists to remove: the deployment asked for something, and guessing which
+ * posture it meant is not available to us.
+ */
+function readPosture(env: Record<string, string | undefined>): Posture {
+  const raw = env.ACS_ON_DECISION_FAILURE;
+  if (raw === undefined) {
+    return "proceed";
+  }
+  if ((POSTURES as readonly string[]).includes(raw)) {
+    return raw as Posture;
+  }
+  throw new Error(
+    `ACS_ON_DECISION_FAILURE must be "proceed" or "deny", got ${JSON.stringify(raw)}`,
+  );
+}
+
+export function buildServerHello(env?: { ACS_ON_DECISION_FAILURE?: string }): ServerHello {
+  const actualEnv = env ?? process.env;
   return {
     negotiated_version: NEGOTIATED_VERSION,
     methods_evaluated: METHODS_EVALUATED,
     selected_transport: "http",
     timeout_config: { default_ms: DEFAULT_TIMEOUT_MS },
-    on_decision_failure: "proceed",
+    on_decision_failure: readPosture(actualEnv),
   };
 }
