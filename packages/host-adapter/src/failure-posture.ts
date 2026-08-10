@@ -10,7 +10,7 @@
  *
  * It is NOT reached when a decision arrived. A `deny` that arrives is
  * honoured regardless of posture (R1.5), and that is enforced by the caller
- * never calling this on a decision, plus the end-to-end assertions in Task 9.
+ * never calling this on a decision, plus the end-to-end assertions in Task 8.
  *
  * R3.2: nothing here knows the policy runtime behind the wire. A delivery
  * failure is a property of the wire, not of whatever evaluates policy on
@@ -91,12 +91,27 @@ export function applyFailurePosture({
   const classified = classifyDeliveryFailure(failure);
   const outcome = posture === "proceed" ? "proceeded" : "blocked";
 
+  // Computed before the audit write, and written into it: "the guardian was
+  // down for this whole session" (default) and "this deployment chose to
+  // fail open" (negotiated) are different incidents, and the durable record
+  // -- not just the ephemeral `reasoning` string below -- has to be able to
+  // tell them apart.
+  const postureSource: "negotiated" | "default" = sessionConfig === undefined ? "default" : "negotiated";
+
   // §6.4's MUST. Wrapped because the decision must survive a sink that
   // breaks its own totality contract -- the posture is the load-bearing
   // half, the record is the accountability half, and losing the record must
   // not lose the posture.
   try {
-    audit.write({ session_id: sessionId, method, rpc_id: rpcId, posture, outcome, failure: classified });
+    audit.write({
+      session_id: sessionId,
+      method,
+      rpc_id: rpcId,
+      posture,
+      posture_source: postureSource,
+      outcome,
+      failure: classified,
+    });
   } catch {
     // The sink is documented total; if it throws anyway, there is nowhere
     // left to report it that would not have the same problem.
@@ -105,7 +120,7 @@ export function applyFailurePosture({
   // Honest about where the posture came from: a negotiated deployment
   // choice reads very differently from a session that never got that far.
   const postureOrigin =
-    sessionConfig === undefined
+    postureSource === "default"
       ? `no session was ever negotiated, so the ACS default posture (${DEFAULT_POSTURE}) applies`
       : "the session's negotiated posture applies";
 

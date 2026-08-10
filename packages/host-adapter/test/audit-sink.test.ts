@@ -27,6 +27,7 @@ const EVENT = {
   method: "steps/toolCallRequest",
   rpc_id: "req-1",
   posture: "proceed",
+  posture_source: "negotiated",
   outcome: "proceeded",
   failure: { kind: "timeout", message: "no decision within 5000ms" },
 } as const;

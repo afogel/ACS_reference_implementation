@@ -29,6 +29,13 @@ export type AuditEntry = {
   rpc_id: string | number | null;
   /** The posture in force -- negotiated, or the ACS default when nothing was. */
   posture: "proceed" | "deny";
+  /** Whether `posture` was negotiated at handshake or is the ACS default
+   * because no handshake ever completed. The `reasoning` string a human
+   * reads in a transcript is ephemeral; this field carries the same
+   * distinction into the durable record, because "the guardian was down
+   * for this whole session" and "this deployment chose to fail open" are
+   * different incidents and the audit log is where that has to survive. */
+  posture_source: "negotiated" | "default";
   /** `proceeded` is the fail-open bypass §6.4 requires be recorded. */
   outcome: "proceeded" | "blocked";
   failure: { kind: string; message: string };

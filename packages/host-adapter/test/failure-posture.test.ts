@@ -35,7 +35,12 @@ describe("applyFailurePosture — R1.7", () => {
     expect(decision.decision).toBe("allow");
     expect(decision.reason_codes).toEqual(["decision_failure"]);
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ posture: "proceed", outcome: "proceeded", failure: { kind: "timeout" } });
+    expect(events[0]).toMatchObject({
+      posture: "proceed",
+      posture_source: "negotiated",
+      outcome: "proceeded",
+      failure: { kind: "timeout" },
+    });
   });
 
   it("blocks under the negotiated deny posture", () => {
@@ -47,11 +52,13 @@ describe("applyFailurePosture — R1.7", () => {
       ...CALL,
     });
     expect(decision.decision).toBe("deny");
-    expect(events[0]).toMatchObject({ posture: "deny", outcome: "blocked" });
+    expect(events[0]).toMatchObject({ posture: "deny", posture_source: "negotiated", outcome: "blocked" });
   });
 
   // The case the file exists for: no handshake ever completed (Guardian was
-  // already down at session start), so there is no negotiated posture.
+  // already down at session start), so there is no negotiated posture. The
+  // durable record has to say so -- distinct from "this deployment chose to
+  // fail open" -- not just the ephemeral `reasoning` string.
   it("applies the ACS default when nothing was negotiated, and audits it", () => {
     const { sink, events } = recordingSink();
     const decision = applyFailurePosture({
@@ -62,7 +69,7 @@ describe("applyFailurePosture — R1.7", () => {
     });
     expect(DEFAULT_POSTURE).toBe("proceed");
     expect(decision.decision).toBe("allow");
-    expect(events[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
+    expect(events[0]).toMatchObject({ posture: "proceed", posture_source: "default", outcome: "proceeded" });
   });
 
   it("names the failure in reasoning, so a human sees why the step was not governed", () => {
