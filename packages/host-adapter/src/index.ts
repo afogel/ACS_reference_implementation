@@ -30,7 +30,11 @@ export { type AcsDecision } from "./decision-message.ts";
 export { negotiateSessionConfig, type HandshakeOptions } from "./handshake.ts";
 export {
   createSessionConfigStore,
+  createFileSessionConfigStore,
   isSessionConfig,
+  InvalidSessionIdError,
+  sessionConfigPath,
   type SessionConfig,
   type SessionConfigStore,
+  type CreateFileSessionConfigStoreOptions,
 } from "./session-config.ts";
