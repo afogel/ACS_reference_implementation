@@ -66,13 +66,52 @@ describe("applyModifications — §6.3", () => {
       .toThrow(ModificationsInvalidError);
   });
 
-  // The array rule refuses descending *through* an array, not touching one:
-  // a single-segment path replaces the whole value, which is a real edit.
+  // A single-segment path still replaces the whole array wholesale; a
+  // multi-segment path now legally descends into it via a real index.
   it("still replaces an array wholesale when the path names it directly", () => {
     expect(applyModifications({ items: ["a", "b"] }, { redactions: [{ path: "/items" }] }))
       .toEqual({ items: "[REDACTED]" });
-    expect(() => applyModifications({ items: ["a", "b"] }, { redactions: [{ path: "/items/0" }] }))
-      .toThrow(ModificationsInvalidError);
+    expect(applyModifications({ items: ["a", "b"] }, { redactions: [{ path: "/items/0" }] }))
+      .toEqual({ items: ["[REDACTED]", "b"] });
+  });
+
+  it("applies a redaction addressing an array element", () => {
+    const applied = applyModifications(
+      { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] },
+      { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }] },
+    );
+    expect(applied).toEqual({ outputs: [{ value: "TOKEN=[REDACTED]" }] });
+    expect(Array.isArray((applied as { outputs: unknown }).outputs)).toBe(true);
+  });
+
+  // The reason array descent was rejected in V3: a naive setAtPath rewrites
+  // the array as {"0": …}. That is not the edit that was asked for, and it
+  // would reach the host as an object where it expects a list.
+  it("keeps an array an array, and leaves its siblings alone", () => {
+    const applied = applyModifications(
+      { outputs: [{ value: "a" }, { value: "b" }] },
+      { redactions: [{ path: "/outputs/1/value", replacement: "[REDACTED]" }] },
+    );
+    expect(applied).toEqual({ outputs: [{ value: "a" }, { value: "[REDACTED]" }] });
+  });
+
+  it("rejects an index past the end rather than growing the array", () => {
+    expect(() =>
+      applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/7/value" }] }),
+    ).toThrow(/addresses "\/outputs\/7", which is not present in the arguments this tool call sent/);
+  });
+
+  it("rejects a non-numeric segment into an array", () => {
+    expect(() =>
+      applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/value" }] }),
+    ).toThrow(/addresses "\/outputs\/value", which is not present in the arguments this tool call sent/);
+  });
+
+  // "-" is RFC 6901's append token. Appending is not redacting.
+  it("rejects the JSON-pointer append token", () => {
+    expect(() =>
+      applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/-/value" }] }),
+    ).toThrow(/addresses "\/outputs\/-", which is not present in the arguments this tool call sent/);
   });
 
   // An argument whose value is legitimately absent-looking must still be

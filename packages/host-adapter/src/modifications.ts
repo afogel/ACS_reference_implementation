@@ -11,9 +11,10 @@
  * path overlapping a `parameter_overrides` key) and, just as load-bearing,
  * every way a target can fail to be there: a pointer that addresses no field,
  * a path or override key naming an argument the Guardian never saw, a path
- * descending through an array, and a prototype-reserved segment. Each of
- * those would otherwise report a successful `modify` while the original
- * argument -- the un-redacted one -- is what the host actually runs.
+ * descending through an array at anything other than one of its real
+ * elements, and a prototype-reserved segment. Each of those would otherwise
+ * report a successful `modify` while the original argument -- the
+ * un-redacted one -- is what the host actually runs.
  *
  * This module knows ACS's `modifications` shape and a tool call's
  * arguments object, nothing else -- no policy-runtime vocabulary, and no
@@ -96,6 +97,27 @@ function assertNoReservedSegments(segments: string[], label: string): void {
 }
 
 /**
+ * A JSON-pointer segment addressing a real element of an array of `length`
+ * items: all digits, no leading zero unless the segment is exactly "0", and
+ * strictly less than `length`. RFC 6901 reserves "-" as the append token,
+ * and appending is not redacting, so it is rejected here along with any
+ * other non-canonical or out-of-range segment.
+ *
+ * This is deliberately not `Object.prototype.hasOwnProperty.call(array,
+ * segment)`. That check is true for `"length"` -- arrays own that property
+ * -- so a bare existence check would let a redaction target an array's
+ * length instead of an element, the same class of mistake as an
+ * index-shaped segment reaching a prototype property. Requiring the
+ * canonical digit form excludes it along with every other non-index own or
+ * inherited property (`"toString"`, etc.).
+ */
+const ARRAY_INDEX_PATTERN = /^(0|[1-9]\d*)$/;
+
+function isArrayIndex(segment: string, length: number): boolean {
+  return ARRAY_INDEX_PATTERN.test(segment) && Number(segment) < length;
+}
+
+/**
  * Walks `segments` through the arguments that actually went out on the wire
  * and throws unless every segment names a field that is really there.
  *
@@ -110,21 +132,27 @@ function assertNoReservedSegments(segments: string[], label: string): void {
  * §6.3 is explicit that an Observed Agent which cannot determine the
  * Guardian's intent MUST fail closed.
  *
- * Descending into an array is rejected for the same reason rather than a
- * different one: `{items: ["a", "b"]}` with `/items/0` would silently
- * rewrite the array as the object `{"0": "[REDACTED]", "1": "b"}`, which is
- * not the edit that was asked for. Replacing an array wholesale (a
- * single-segment `/items`) is still fine -- only descending *through* one
- * is refused.
+ * Descending into an array is allowed only when the segment is a real
+ * index of that array (`isArrayIndex` above); every other segment into an
+ * array -- past the end, non-numeric, or the RFC 6901 append token `"-"` --
+ * falls through to the same "not present" rejection below as any other
+ * absent target. This is what keeps `{items: ["a", "b"]}` with `/items/0`
+ * from being confused with `/items/2` or `/items/length`: only a real
+ * element is a target at all. Replacing an array wholesale (a
+ * single-segment `/items`) is separately, and still, fine.
  */
 function assertTargetExists(originalArguments: Record<string, unknown>, segments: string[], label: string): void {
   let current: unknown = originalArguments;
   for (const [index, segment] of segments.entries()) {
     if (Array.isArray(current)) {
-      throw new ModificationsInvalidError(
-        `${label} descends through the array at "/${segments.slice(0, index).join("/")}", ` +
-          "which would rewrite that array as an object rather than edit it",
-      );
+      if (!isArrayIndex(segment, current.length)) {
+        throw new ModificationsInvalidError(
+          `${label} addresses "/${segments.slice(0, index + 1).join("/")}", which is not present in the arguments ` +
+            "this tool call sent -- applying it would add a field and leave the original value in place",
+        );
+      }
+      current = current[Number(segment)];
+      continue;
     }
     if (typeof current !== "object" || current === null || !Object.prototype.hasOwnProperty.call(current, segment)) {
       throw new ModificationsInvalidError(
@@ -325,6 +353,15 @@ export function assertValidModifications(
  * Cloning every level, not just the leaf, is what keeps a depth>1 redaction
  * from mutating a nested object inside the caller's original arguments.
  *
+ * `target` may be an array at any level the path descends through --
+ * `assertTargetExists` has already confirmed every such segment is a real
+ * index. The array branch below clones with `slice()` and assigns the
+ * index, rather than spreading into `{...target}` as the object branch
+ * does: spreading an array into an object literal is exactly the
+ * `["a","b"]` → `{"0":"a","1":"b"}` rewrite this module exists to refuse,
+ * so a redaction that resolves an array-shaped target must not take the
+ * object branch.
+ *
  * Every path reaching here has been checked against these same arguments by
  * `assertTargetExists`, and every pair of paths has been checked against each
  * other for overlap, so within one `applyModifications` call nothing should
@@ -335,18 +372,27 @@ export function assertValidModifications(
  * construction and a future caller must not be able to make it throw; do
  * not promote this note to a guarantee without a check that earns it.
  */
-function setAtPath(target: Record<string, unknown>, segments: string[], value: unknown): Record<string, unknown> {
+function setAtPath(target: unknown, segments: string[], value: unknown): unknown {
   const [head, ...rest] = segments;
   if (head === undefined) {
     return target;
   }
-  const clone = { ...target };
+
+  if (Array.isArray(target)) {
+    const clone = target.slice();
+    const index = Number(head);
+    const child = clone[index];
+    clone[index] = rest.length === 0 ? value : setAtPath(typeof child === "object" && child !== null ? child : {}, rest, value);
+    return clone;
+  }
+
+  const clone: Record<string, unknown> = { ...(typeof target === "object" && target !== null ? (target as Record<string, unknown>) : {}) };
   if (rest.length === 0) {
     clone[head] = value;
     return clone;
   }
   const child = clone[head];
-  clone[head] = setAtPath(typeof child === "object" && child !== null ? (child as Record<string, unknown>) : {}, rest, value);
+  clone[head] = setAtPath(typeof child === "object" && child !== null ? child : {}, rest, value);
   return clone;
 }
 
@@ -371,15 +417,22 @@ export function applyModifications(
 
   let result: Record<string, unknown> = { ...originalArguments };
 
+  // The top-level target is always `result` itself, never an array --
+  // `originalArguments` (and so `result`) is typed as a plain arguments
+  // object above -- so `setAtPath`'s `unknown` return is always the object
+  // branch here; the cast reflects that, not a new assumption.
   if (mods.parameter_overrides) {
     for (const [key, value] of Object.entries(mods.parameter_overrides)) {
-      result = setAtPath(result, [key], value);
+      result = setAtPath(result, [key], value) as Record<string, unknown>;
     }
   }
 
   if (mods.redactions) {
     for (const redaction of mods.redactions) {
-      result = setAtPath(result, pointerSegments(redaction.path), redaction.replacement ?? "[REDACTED]");
+      result = setAtPath(result, pointerSegments(redaction.path), redaction.replacement ?? "[REDACTED]") as Record<
+        string,
+        unknown
+      >;
     }
   }
 
