@@ -334,6 +334,41 @@ describe("buildEnvelope", () => {
       expect(envelope.params.payload.arguments).toEqual({ command: { value: "ls" } });
     });
 
+    // Review finding: the early return in `unwrapArguments` that answers a
+    // result payload had no test at all, and the two that exist both feed it a
+    // PreToolUse envelope. Deleting the guard left the whole suite green while
+    // `Object.entries(undefined)` throws -- and it throws inside governStep's
+    // "delivery" try, which answers a throw with the deployment's failure
+    // posture. So the untested guard was the difference between a step going on
+    // to ask for a decision and a step resolved by posture without ever asking,
+    // which under a `proceed` posture is the fail-open the guard exists to
+    // close. Mutation-tested: with the early return removed, this case fails.
+    it("unwrapArguments answers the empty bag for a result envelope, which has no `arguments` member to unwrap", () => {
+      const envelope = buildEnvelope("PostToolUse", payload, hookmap);
+
+      expect(unwrapArguments(envelope)).toEqual({});
+    });
+
+    // Review finding: every case above builds against the hand-written fixture,
+    // so the stanza actually SHIPPED was exercised by nothing. A YAML-level
+    // divergence between the two -- indentation, `exit_status` nested one level
+    // off -- would be invisible until the shim loaded the real file, and this
+    // project has already shipped a hookmap reshape that left one gate reading
+    // the old shape. No `validateEnvelope` here on purpose: it payload-checks
+    // steps/toolCallRequest only, until Task 3 teaches it the result payload.
+    it("builds the same result payload from the shipped claude-code.hookmap.yaml, not just the fixture", () => {
+      const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+
+      const envelope = buildEnvelope("PostToolUse", payload, parsed);
+
+      expect(envelope.method).toBe("steps/toolCallResult");
+      expect(envelope.params.payload).toEqual({
+        tool: { name: "Bash" },
+        exit_status: "success",
+        outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }],
+      });
+    });
+
     // Global Constraint 4: a malformed hookmap entry throws, naming the hook.
     // Never a default method, a default payload shape, or a partial envelope --
     // each of those hands the far end a step described wrongly, and a step
@@ -373,7 +408,29 @@ describe("buildEnvelope", () => {
           exit_status: { literal: "success" },
         });
 
-        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"outputs.from"/);
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "outputs" without a non-empty "outputs\.from"/,
+        );
+      });
+
+      // Review finding: `within` was the one declared member nothing checked,
+      // while the type makes it mandatory and Global Constraint 3 makes it
+      // load-bearing. An entry missing it built a clean envelope and the gap
+      // surfaced only at render, where the consequence is the host declining the
+      // replacement and delivering the ORIGINAL, unredacted output -- a
+      // redaction reported and never landed. Same reasoning, and same place, as
+      // assertRenderableDecisions checking what renderDecision will need.
+      it("throws, naming the hook, when `outputs` carries no `within` path", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: { from: "$.tool_response.stdout" },
+          exit_status: { literal: "success" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "outputs" without a non-empty "outputs\.within"/,
+        );
       });
 
       it("throws, naming the hook, when `exit_status` names no literal", () => {
@@ -383,17 +440,21 @@ describe("buildEnvelope", () => {
           outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
         });
 
-        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"exit_status.literal"/);
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "outputs" without a non-empty "exit_status\.literal"/,
+        );
       });
 
       // Not a hookmap fault but the same fail-closed reason: an unresolved
       // `from` would put `outputs: [{}]` on the wire, and a result payload with
       // no output in it asks a redaction gate to inspect nothing -- which it
       // would find nothing wrong with.
-      it("throws when the `outputs.from` path does not resolve against this payload", () => {
+      it("throws, naming the hook, when the `outputs.from` path does not resolve against this payload", () => {
         const noResponse = { session_id: payload.session_id, hook_event_name: "PostToolUse", tool_name: "Bash" };
 
-        expect(() => buildEnvelope("PostToolUse", noResponse, hookmap)).toThrow(/did not resolve/);
+        expect(() => buildEnvelope("PostToolUse", noResponse, hookmap)).toThrow(
+          /for hook "PostToolUse" did not resolve/,
+        );
       });
     });
   });

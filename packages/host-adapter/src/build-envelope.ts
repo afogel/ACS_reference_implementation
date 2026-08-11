@@ -330,6 +330,11 @@ function buildPayload(
   }
 
   if (outputs !== undefined) {
+    // The entry's own three members are checked first and the payload after. A
+    // malformed entry is a hookmap fault and an unresolvable path is a payload
+    // fault; which of these throws is what tells an incident reviewer apart,
+    // and validating the entry as a whole first stops a broken entry being
+    // reported as a payload that was missing something.
     const from = isPlainObject(outputs) && typeof outputs.from === "string" ? outputs.from : "";
     if (from.length === 0) {
       throw new Error(
@@ -337,11 +342,23 @@ function buildPayload(
       );
     }
 
-    const value = resolvePath(payload, from);
-    if (value === undefined) {
+    // `within` is validated here even though this module never reads it, for
+    // exactly the reason assertRenderableDecisions validates a decision entry it
+    // never renders: so that "buildEnvelope accepted this entry" and "the render
+    // side can apply a replacement through it" cannot come apart. An entry
+    // naming `from` and no `within` builds a clean envelope and a correct
+    // decision comes back, and the gap surfaces only at render -- where a
+    // replacement carrying the named leaf ALONE is a shape a host may decline,
+    // and a declined replacement means the original output is delivered. A
+    // redaction that does not land is a failure, not a partial success, so an
+    // entry missing `within` is malformed and says so here, where a hookmap
+    // author can still fix it, rather than at the one moment it matters.
+    const within = isPlainObject(outputs) && typeof outputs.within === "string" ? outputs.within : "";
+    if (within.length === 0) {
       throw new Error(
-        `buildEnvelope: hookmap path "${from}" for hook "${event}" did not resolve -- a result payload ` +
-          `carrying no output would ask the far end to govern a step whose output it cannot see`,
+        `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
+          `"outputs.within" path -- a replacement applied to the named leaf alone loses every sibling ` +
+          `field beside it, and a replacement a host declines delivers the original`,
       );
     }
 
@@ -350,6 +367,14 @@ function buildPayload(
       throw new Error(
         `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
           `"exit_status.literal"`,
+      );
+    }
+
+    const value = resolvePath(payload, from);
+    if (value === undefined) {
+      throw new Error(
+        `buildEnvelope: hookmap path "${from}" for hook "${event}" did not resolve -- a result payload ` +
+          `carrying no output would ask the far end to govern a step whose output it cannot see`,
       );
     }
 
