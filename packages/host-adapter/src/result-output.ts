@@ -347,29 +347,58 @@ export function assertOutputIsReplaceable(target: HostOutputTarget): void {
  * which is the one failure the projection cannot report by failing -- because it
  * does not fail. §6.3's pointers address the whole ACS result payload, and that
  * payload has fields beside the one leaf this gate carries: a redaction of
- * `/exit_status` or `/tool/name`, or an override of either, is honourable, has a
- * real target, and applies exactly as written. `outputs[0].value` then comes back
- * untouched, the projection patches the leaf with the value already there, and
- * the replacement is the object the host is already holding. Measured: the host
- * was handed the tool's own output, secret and all, beside a decision reporting
- * a redaction and an explanation saying so.
+ * `/exit_status` or `/tool/name`, or an override of `exit_status` or of `tool`
+ * wholesale, is honourable, has a real target, and applies exactly as written.
+ * (`parameter_overrides` keys are single top-level names, never pointers, so
+ * `/tool/name` itself cannot be overridden -- only `tool` as a whole.)
+ * `outputs[0].value` then comes back untouched, the projection patches the leaf
+ * with the value already there, and the replacement is the object the host is
+ * already holding. Measured: the host was handed the tool's own output, secret
+ * and all, beside a decision reporting a redaction and an explanation saying so.
  *
  * SO THE QUESTION ASKED HERE IS WHETHER THE REWRITE REACHED THE LEAF, not
  * whether its pointer looked like the leaf's. Comparing pointers would have to
  * decide what an ANCESTOR pointer means -- an override replacing the whole
- * `outputs` array does reach the leaf, and does land -- and even then it could
- * only say the pointer covers the leaf, never that the value under it changed.
- * The comparison below asks the projection's own inputs, so it cannot drift from
- * the projection, which is `assertOutputIsReplaceable`'s argument for probing by
- * building rather than by re-stating.
+ * `outputs` array does reach the leaf, and does land (measured) -- and even then
+ * it could only say the pointer covers the leaf, never that the value under it
+ * changed, which is the half that catches an ancestor override carrying the
+ * value already there (also measured). The comparison below asks the
+ * projection's own inputs, so it cannot drift from the projection, which is
+ * `assertOutputIsReplaceable`'s argument for probing by building rather than by
+ * re-stating.
  *
- * `===` IS EXACT HERE BECAUSE THE LEAF IS PROSE. Any deployment that reaches
- * this function has passed `assertOutputIsReplaceable`, which refuses a leaf
- * `WITHHELD_OUTPUT` is not the same `typeof` as -- so the leaf is a string and
- * `===` is value equality. For a leaf that were an object it would be reference
- * equality and therefore too weak: a structurally identical replacement would
- * read as a change. A host with such a leaf needs this comparison taught about
- * its shape, the same way the projection would need teaching about arrays.
+ * WHAT IT THEREFORE DOES NOT ASK IS WHETHER *EVERY* MODIFICATION LANDED, and the
+ * difference is reachable. It asks about one leaf, so a `modifications` object
+ * BUNDLING a leaf edit with a non-leaf one passes: the leaf changed, the non-leaf
+ * edit was silently dropped, and the whole `modify` is reported applied.
+ * Measured, all four -- a leaf redaction beside a `/exit_status` redaction, beside
+ * an `exit_status` override, beside a `/tool/name` redaction, and an `outputs`
+ * override carrying a second element that nothing projects. Each of those
+ * non-leaf edits ALONE is correctly denied. No secret reaches the model (the leaf
+ * redaction did land), so what this leaves is a false audit and transcript
+ * record, not an unredacted delivery -- but it is a best-effort partial apply
+ * reported as a full one, which modifications.ts's own header forbids, reached
+ * one seam later than that header can see. Recorded rather than closed: the check
+ * that would close it is per-modification and belongs in the apply step, where
+ * both documents and every target are in hand, and it would close the request
+ * gate's identical hole at the same time (see validate-decision.ts's own note).
+ * `mapVerdict` emits exactly one redaction, so this bundle cannot produce it --
+ * the same reachability class as the case this function DOES refuse, which is
+ * exactly why neither is left to the bundle's good behaviour.
+ *
+ * `===` IS EXACT FOR A PROSE LEAF, AND THAT IS A CALL-SITE INVARIANT, not a
+ * property of this function. Every route through `governStep` passes
+ * `assertOutputIsReplaceable` -- which refuses a leaf `WITHHELD_OUTPUT` is not
+ * the same `typeof` as -- before a decision is sought, so the leaf reaching here
+ * is a string and `===` is value equality. Stated as the invariant it is because
+ * this module insists elsewhere that "some caller checked" is not a property of a
+ * function, and because of what breaking it would cost: for an object leaf `===`
+ * becomes REFERENCE equality, so a structurally identical replacement would read
+ * as a change and be reported applied -- a fail-open, not merely a weak
+ * comparison. Left stated rather than closed, the way `withResultOutput`'s
+ * modify-throw is: a host with such a leaf needs this comparison taught about its
+ * shape, the same way the projection would need teaching about arrays, and
+ * neither is machinery for a case the preflight refuses first.
  *
  * WHAT THIS REFUSES THAT A POLICY AUTHOR MIGHT NOT EXPECT: a redaction whose
  * `replacement` is the value the leaf already held. Nothing about it is

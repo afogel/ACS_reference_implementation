@@ -195,17 +195,27 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
     });
   }
 
-  // modified_content alone passed validation and then applied nothing: the
-  // apply step has no mapping from a wholesale content replacement onto an
-  // arguments object, so it returned the arguments untouched and still
-  // reported `modify`. Same shape as an absent target, one branch over.
-  it("denies a modify carrying only modified_content, which this host cannot apply to an arguments object", () => {
+  // modified_content alone passed validation and then applied nothing: it
+  // returned the arguments untouched and still reported `modify`. Same shape as
+  // an absent target, one branch over.
+  //
+  // AND THE REASON IS NOT THAT THIS APPLY STEP LACKS A MAPPING -- the sentence
+  // this comment used to carry, which the refusal itself no longer says. Both
+  // documents these pointers can address are field-addressed structures, and an
+  // opaque replacement string is a field of neither, so there is no target for it
+  // at EITHER gate. That claim is pinned at both: here for the arguments, and in
+  // the result-gate describe below for the outputs. Pinning it at one gate only
+  // would leave the word "either" resting on nothing.
+  it("denies a modify carrying only modified_content, for want of a target in an arguments object", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { modified_content: "echo [REDACTED]" } },
       { ...FRESH, originalArguments: ARGS },
     );
     expect(out.decision).toBe("deny");
     expect(out.applied_input).toBeUndefined();
+    expect(out.reasoning).toContain("the arguments it was asked to run with");
+    expect(out.reasoning).toContain("no target for it at either gate");
+    expect(out.reasoning).not.toContain("no defined mapping");
   });
 
   // Both of these fail closed either way, but the raw JS error text
@@ -686,7 +696,89 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
     expect(out.applied_output).toBeUndefined();
+    // THE CLAUSE, not merely the disposition. This test is the only evidence for
+    // the second half of the refusal's sentence, and without this assertion that
+    // half could be deleted with the whole suite still passing -- so the test
+    // would pass for a reason other than the one its name claims.
+    expect(out.reasoning).toContain("replaced that leaf with the value already there");
+    expect(out.reasoning).toContain("exactly as the step produced it");
   });
+
+  // The ancestor pointer, which is why this refusal asks whether the rewrite
+  // reached the leaf rather than comparing the pointer against `/outputs/0/value`.
+  // `parameter_overrides` replacing the whole `outputs` array is an ancestor of
+  // the leaf and genuinely LANDS -- a strict pointer comparison would refuse it,
+  // and one admitting ancestors would then have to allow the identical-value
+  // version below, which does not land. Only asking the value can do both.
+  it("applies an ancestor override that reaches the leaf, and denies the one that does not change it", () => {
+    const landed = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { parameter_overrides: { outputs: [{ value: "TOKEN=[REDACTED]" }] } },
+      },
+      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+    );
+    expect(landed.decision).toBe("modify");
+    expect(landed.applied_output).toEqual({
+      stdout: "TOKEN=[REDACTED]",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+    });
+
+    const unchanged = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { parameter_overrides: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] } },
+      },
+      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+    );
+    expect(unchanged.decision).toBe("deny");
+    expect(unchanged.reason_codes).toContain("modifications_invalid");
+  });
+
+  // RECORDED, NOT CLOSED, and the test says which. The landing check asks about
+  // one leaf, so a `modifications` object bundling a leaf edit with a non-leaf one
+  // passes: the leaf changed, the non-leaf edit was silently dropped, and the
+  // whole `modify` is reported applied. Each of these non-leaf edits ALONE is
+  // denied by the cases above -- it is the bundling that hides it.
+  //
+  // This asserts the CURRENT behaviour so that closing it is a visible change
+  // rather than a silent one, and so that a reader cannot mistake the gap for
+  // untested ground. No secret reaches the model (the leaf redaction landed), so
+  // what this pins is a false audit and transcript record: a best-effort partial
+  // apply reported as a full one, which is what modifications.ts's header forbids
+  // and what a per-modification check in the apply step would close, at both
+  // gates at once. `mapVerdict` emits exactly one redaction, so nothing in this
+  // deployment produces the shape.
+  for (const modifications of [
+    { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/exit_status" }] },
+    {
+      redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
+      parameter_overrides: { exit_status: "failure" },
+    },
+    { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/tool/name" }] },
+    { parameter_overrides: { outputs: [{ value: "TOKEN=[REDACTED]" }, { value: "nothing projects this" }] } },
+  ]) {
+    it(`reports applied for a bundle whose non-leaf half is dropped (recorded, not closed): ${JSON.stringify(modifications)}`, () => {
+      const out = validateDecision(
+        { decision: "modify", reasoning: "redaction_applied", modifications },
+        { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      );
+
+      expect(out.decision).toBe("modify");
+      // The leaf edit DID land, which is why nothing leaks -- and why the leaf
+      // comparison cannot see the other half.
+      expect(out.applied_output).toEqual({
+        stdout: "TOKEN=[REDACTED]",
+        stderr: "",
+        interrupted: false,
+        isImage: false,
+      });
+    });
+  }
 
   // The other refusal Task 8 owns, at THIS gate. It is already refused before
   // any target is consulted (`assertValidModifications`), which is why this pins
