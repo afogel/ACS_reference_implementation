@@ -109,7 +109,7 @@ cp hosts/claude-code/settings.json .claude/settings.json
 
 This registers `hosts/claude-code/acs-hook.ts` against **two** of Claude Code's hook events, both running the same command: `PreToolUse` — the "one hook" of V1's name, which decides whether the call runs — and `PostToolUse` (added by V4), which sees what the call produced and can redact it before the model does.
 
-Both entries are scoped to the `Bash` tool, and the matcher is written **anchored**: `^Bash$`, not `Bash`. That matches the tools `policy/manifest.yaml` registers rather than intercepting every tool call, and the anchor is load-bearing — an unanchored `Bash` also selects `BashOutput` and `KillShell`, whose output shape this hookmap's result gate cannot project. [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) Step 2 states why, and what the second entry changes about a live session.
+Both entries are scoped to the `Bash` tool, and the matcher is written **anchored**: `^Bash$`, not `Bash`. That matches the tools `policy/manifest.yaml` registers rather than intercepting every tool call. The anchor is load-bearing, and what it buys is that a question nobody here has verified stops mattering: `matcher` is a regular expression, so whether a bare `Bash` would *also* select `BashOutput` and `KillShell` depends on matching semantics this project has not measured — and `^Bash$` selects the one registered tool either way. [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) Step 2 states what the unanchored form would have exposed, and what the second entry changes about a live session.
 
 **5. Run Claude Code with the hook.**
 
