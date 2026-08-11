@@ -286,7 +286,22 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
     const parsed = JSON.parse(out.stdout) as { decision: string; reason: string; hookSpecificOutput: Record<string, unknown> };
     expect(parsed.decision).toBe("block");
-    expect(parsed.reason).toContain("modifications");
+
+    // THE STATED REASON, not merely that there is one. `reason` is what Claude
+    // Code shows in the transcript and what the audit trail records, and this
+    // assertion used to be `toContain("modifications")` -- which passed while the
+    // sentence read "not present in the arguments this tool call sent". There are
+    // no arguments at a gate where the step has already run, and the pointer that
+    // failed was never about one: a deny is only as useful as its stated reason,
+    // so the reason is pinned rather than the fact of one.
+    expect(parsed.reason).toContain('redaction path "/outputs/9/value" addresses "/outputs/9"');
+    expect(parsed.reason).toContain("this step's own request or result payload");
+    // Nothing in this sentence may name a thing this gate does not have. The
+    // negative is the half that would have caught the original wording.
+    expect(parsed.reason).not.toContain("arguments this tool call sent");
+    // And no raw JS error text: `Error:` in a rendered reason is a stringified
+    // exception leaking into the transcript.
+    expect(parsed.reason).not.toContain("Error:");
     expect(parsed.hookSpecificOutput.updatedToolOutput).toEqual({
       stdout: "[OUTPUT WITHHELD BY POLICY]",
       stderr: "",

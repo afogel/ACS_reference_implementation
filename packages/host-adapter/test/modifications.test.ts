@@ -114,20 +114,20 @@ describe("applyModifications — §6.3", () => {
   it("rejects an index past the end rather than growing the array", () => {
     expect(() =>
       applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/7/value" }] }),
-    ).toThrow(/addresses "\/outputs\/7", which is not present in the arguments this tool call sent/);
+    ).toThrow(/addresses "\/outputs\/7", which is not present in the ACS document these pointers address/);
   });
 
   it("rejects a non-numeric segment into an array", () => {
     expect(() =>
       applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/value" }] }),
-    ).toThrow(/addresses "\/outputs\/value", which is not present in the arguments this tool call sent/);
+    ).toThrow(/addresses "\/outputs\/value", which is not present in the ACS document these pointers address/);
   });
 
   // "-" is RFC 6901's append token. Appending is not redacting.
   it("rejects the JSON-pointer append token", () => {
     expect(() =>
       applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/-/value" }] }),
-    ).toThrow(/addresses "\/outputs\/-", which is not present in the arguments this tool call sent/);
+    ).toThrow(/addresses "\/outputs\/-", which is not present in the ACS document these pointers address/);
   });
 
   // This is the module's stated reason for requiring the canonical digit
@@ -141,7 +141,7 @@ describe("applyModifications — §6.3", () => {
   it("rejects the array's own \"length\" property rather than treating it as a target", () => {
     expect(() =>
       applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/length" }] }),
-    ).toThrow(/addresses "\/outputs\/length", which is not present in the arguments this tool call sent/);
+    ).toThrow(/addresses "\/outputs\/length", which is not present in the ACS document these pointers address/);
   });
 
   // RFC 6901 §4 defines an array index as either "0" or a non-zero digit
@@ -157,7 +157,7 @@ describe("applyModifications — §6.3", () => {
         { outputs: [{ value: "a" }, { value: "b" }] },
         { redactions: [{ path: "/outputs/01/value" }] },
       ),
-    ).toThrow(/addresses "\/outputs\/01", which is not present in the arguments this tool call sent/);
+    ).toThrow(/addresses "\/outputs\/01", which is not present in the ACS document these pointers address/);
   });
 
   // An argument whose value is legitimately absent-looking must still be

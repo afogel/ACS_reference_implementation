@@ -1,7 +1,17 @@
 /**
  * §6.3's `modifications`: what makes one honourable, and what applying it
- * does to the arguments that actually went out on the wire.
- * validate-decision.ts sequences this job rather than owning it.
+ * does to the ACS document that actually went out on the wire. Extracted from
+ * validate-decision.ts (N7), which now sequences this job rather than owning
+ * it.
+ *
+ * WHICH document that is belongs to the caller and never to this module (V4):
+ * the arguments a step was asked to run with at a gate that decides whether it
+ * runs, the result payload it produced at a gate that sees what it produced --
+ * `modificationTarget` is where the choice is made. Everything here is the same
+ * job either way, because a JSON pointer against a structured document does not
+ * care which document it is. The parameter is still called `originalArguments`,
+ * which is the narrower of the two; the refusals it produces are worded for
+ * both, because those are read by a human in an audit trail.
  *
  * A `modify` whose `modifications` cannot be applied exactly as written is a
  * DENY at the caller, never a best-effort partial apply and never a
@@ -16,9 +26,9 @@
  * report a successful `modify` while the original argument -- the
  * un-redacted one -- is what the host actually runs.
  *
- * This module knows ACS's `modifications` shape and a tool call's
- * arguments object, nothing else -- no policy-runtime vocabulary, and no
- * decision vocabulary either. What an unhonourable `modifications` means for
+ * R3.2: this module knows ACS's `modifications` shape and the ACS document its
+ * pointers address, nothing else -- no policy-runtime vocabulary, no host
+ * vocabulary, and no decision vocabulary either. What an unhonourable `modifications` means for
  * the *decision* is validate-decision.ts's sentence to say, which is why
  * nothing here returns a decision or names one.
  */
@@ -118,8 +128,17 @@ function isArrayIndex(segment: string, length: number): boolean {
 }
 
 /**
- * Walks `segments` through the arguments that actually went out on the wire
+ * Walks `segments` through the ACS document that actually went out on the wire
  * and throws unless every segment names a field that is really there.
+ *
+ * WHICH document is the caller's to say (`modificationTarget`): the arguments a
+ * step was asked to run with at a gate that decides whether it runs, the result
+ * payload it produced at a gate that sees what it produced. The refusal below
+ * names neither, and that is deliberate rather than vague -- this text is
+ * rendered as the deny's stated reason and written to the audit trail, and at the
+ * result gate the sentence it used to carry ("not present in the arguments this
+ * tool call sent") named a thing that does not exist at that gate for a pointer
+ * that was never about one.
  *
  * This is the absent-target half of the same defect the empty-pointer check
  * below closes, and it is the one that mattered in practice: `setAtPath` has
@@ -142,23 +161,24 @@ function isArrayIndex(segment: string, length: number): boolean {
  * single-segment `/items`) is separately, and still, fine.
  */
 function assertTargetExists(originalArguments: Record<string, unknown>, segments: string[], label: string): void {
+  const absent = (index: number): ModificationsInvalidError =>
+    new ModificationsInvalidError(
+      `${label} addresses "/${segments.slice(0, index + 1).join("/")}", which is not present in the ACS document ` +
+        "these pointers address (this step's own request or result payload) -- applying it would add a field and " +
+        "leave the original value in place",
+    );
+
   let current: unknown = originalArguments;
   for (const [index, segment] of segments.entries()) {
     if (Array.isArray(current)) {
       if (!isArrayIndex(segment, current.length)) {
-        throw new ModificationsInvalidError(
-          `${label} addresses "/${segments.slice(0, index + 1).join("/")}", which is not present in the arguments ` +
-            "this tool call sent -- applying it would add a field and leave the original value in place",
-        );
+        throw absent(index);
       }
       current = current[Number(segment)];
       continue;
     }
     if (typeof current !== "object" || current === null || !Object.prototype.hasOwnProperty.call(current, segment)) {
-      throw new ModificationsInvalidError(
-        `${label} addresses "/${segments.slice(0, index + 1).join("/")}", which is not present in the arguments ` +
-          "this tool call sent -- applying it would add a field and leave the original value in place",
-      );
+      throw absent(index);
     }
     current = (current as Record<string, unknown>)[segment];
   }
@@ -276,14 +296,18 @@ export function assertValidModifications(
 
   // `modified_content` alone is not a partial apply -- it is a *complete*
   // no-op: the apply step below has no defined mapping from a wholesale
-  // content replacement onto a tool-call arguments object, so it would
-  // return the arguments untouched and still report `modify`. Same shape as
-  // the empty-pointer and absent-target cases: a rewrite reported as
-  // applied that was not applied. Fails closed here instead.
+  // content replacement onto either structured ACS document a step's
+  // modifications can address, so it would return that document untouched and
+  // still report `modify`. Same shape as the empty-pointer and absent-target
+  // cases: a rewrite reported as applied that was not applied. Fails closed
+  // here instead. True at BOTH gates, and for one reason at each: an arguments
+  // bag and a result payload are both structured, and an opaque replacement
+  // string names no field of either.
   if (hasModifiedContent) {
     throw new ModificationsInvalidError(
-      "modified_content asks for a wholesale content replacement, which has no defined mapping onto this tool " +
-        "call's arguments object -- applying nothing while reporting a successful modify is not available",
+      "modified_content asks for a wholesale content replacement, which has no defined mapping onto either " +
+        "structured ACS document a step's modifications can address -- the arguments it was asked to run with, " +
+        "or the outputs it produced. Applying nothing while reporting a successful modify is not available",
     );
   }
 
@@ -413,10 +437,10 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
  * same arguments); throws `ModificationsInvalidError` rather than applying
  * anything on a violation.
  *
- * `modified_content` (wholesale replacement) has no defined mapping onto an
- * arguments object, so validation refuses it outright -- a valid
- * `modifications` reaching the apply loops below is always the
- * structured-edit shape, with every target already known to exist.
+ * `modified_content` (wholesale replacement) has no defined mapping onto
+ * either structured document a step's modifications can address, so validation
+ * refuses it outright -- a valid `modifications` reaching the apply loops below
+ * is always the structured-edit shape, with every target already known to exist.
  */
 export function applyModifications(
   originalArguments: Record<string, unknown>,

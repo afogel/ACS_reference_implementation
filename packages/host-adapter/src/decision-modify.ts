@@ -18,7 +18,7 @@
  */
 
 import { deny, type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
-import { applyModifications, ModificationsInvalidError } from "./modifications.ts";
+import { applyModifications } from "./modifications.ts";
 import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
 
 /**
@@ -26,11 +26,21 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  * denies. `applyModifications` throws rather than half-applying, and this is the
  * one place that turns such a throw into a decision.
  *
- * A throw that is *not* a `ModificationsInvalidError` is stringified into the
- * same deny rather than escaping: an unexpected failure inside the apply step is
- * still a rewrite that did not happen, and letting it propagate would leave the
- * host with a `modify` it never applied, or with no decision at all. Fail closed
+ * A throw that is *not* a `ModificationsInvalidError` becomes the same deny
+ * rather than escaping: an unexpected failure inside the apply step is still a
+ * rewrite that did not happen, and letting it propagate would leave the host
+ * with a `modify` it never applied, or with no decision at all. Fail closed
  * either way, with whatever the failure said as the audited reason.
+ *
+ * ITS MESSAGE, NEVER ITS `toString()`, whatever class it is. This used to strip
+ * the class name for a `ModificationsInvalidError` and keep it for everything
+ * else, so once V4 gave the apply step a projection to fail at, a failed
+ * projection rendered its reason as "guardian's modifications could not be
+ * applied: Error: result-output: ..." -- a milder form of the raw-JS-error-text
+ * defect modifications.ts's own header records fixing, reintroduced by the one
+ * branch that had not been asked the same question. What lands here is read in
+ * the transcript and written to the audit trail, and a deny is only as useful as
+ * its stated reason.
  *
  * THE PROJECTION IS INSIDE THIS TRY, and deliberately so. At a result gate the
  * applied document still has to be projected onto the output object the host
@@ -63,7 +73,7 @@ export function resolveModify(
     }
     return { ...decision, applied_output: appliedOutput(applied, outputTarget) };
   } catch (error) {
-    const reason = error instanceof ModificationsInvalidError ? error.message : String(error);
+    const reason = error instanceof Error ? error.message : String(error);
     return deny(`guardian's modifications could not be applied: ${reason}`, "modifications_invalid");
   }
 }

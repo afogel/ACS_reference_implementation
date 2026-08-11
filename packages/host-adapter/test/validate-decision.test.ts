@@ -508,6 +508,14 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
     expect(out.applied_output).toBeUndefined();
+    // The reason a human reads, and the defect this pins: `resolveModify` used to
+    // strip the class name for a `ModificationsInvalidError` and keep it for
+    // everything else, so a failed PROJECTION rendered as "guardian's
+    // modifications could not be applied: Error: result-output: ..." -- raw JS
+    // error text in the transcript and in the audit trail, which is the defect
+    // modifications.ts's own header records having fixed once already.
+    expect(out.reasoning).toContain("guardian's modifications could not be applied: result-output:");
+    expect(out.reasoning).not.toContain("Error:");
   });
 
   // A pointer the ACS payload does have and the host's output object does not
