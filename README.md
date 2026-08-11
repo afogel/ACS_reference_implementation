@@ -27,7 +27,7 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 | Claim | How it is demonstrated |
 |---|---|
 | R1.2 — AGT's five verdicts (`allow`, `deny`, `escalate`, `transform`, `warn`) all arrive over the ACS wire as real decisions, driven only from `data.agt.defaults.config` over the pinned, unforked bundle — including `warn` arriving as `allow` with a **non-empty** `policy_references`, the only thing distinguishing it from a clean allow | [`test/dispositions.test.ts`](test/dispositions.test.ts) drives all five through a live Guardian; [`docs/demos/v3-runbook.md`](docs/demos/v3-runbook.md) has the real captured output for each, with the exact `data.json` diff that produced it |
-| R1.6 — a `transform` verdict's rewrite lands as the host's actual rewritten tool argument, not merely a reported one | `mapVerdict` synthesizes `modifications.parameter_overrides` from AGT's `transform`; the host adapter's `applyModifications` (N7) applies it ([`packages/guardian/test/map-verdict.test.ts`](packages/guardian/test/map-verdict.test.ts), [`packages/host-adapter/test/validate-decision.test.ts`](packages/host-adapter/test/validate-decision.test.ts)) |
+| R1.6 — a `transform` verdict's rewrite lands as the host's actual rewritten tool argument, not merely a reported one | `mapVerdict` synthesizes `modifications.parameter_overrides` from AGT's `transform`; the host adapter's `applyModifications` (N7) applies it ([`packages/guardian/test/map-verdict.test.ts`](packages/guardian/test/map-verdict.test.ts), [`packages/host-adapter/test/modifications.test.ts`](packages/host-adapter/test/modifications.test.ts)) |
 | R1.5/§6.4 — an AGT `deny` verdict is always honoured regardless of the negotiated failure posture, and a Guardian-side failure (schema, or evaluation itself throwing) never slips through as a bare, unaudited error | `N27 denyOnInvalidEnvelope()` turns both failure classes into honoured `deny` decisions instead ([`packages/guardian/test/server.test.ts`](packages/guardian/test/server.test.ts), [`packages/guardian/test/deny-on-invalid-envelope.test.ts`](packages/guardian/test/deny-on-invalid-envelope.test.ts)) |
 | §6.4's MUST — every fail-open `proceed` taken when no decision arrives at all is audited, and the failure posture is negotiated per session rather than hardcoded | `applyFailurePosture` (N6) + a file-backed, cross-process session store (S13) + the audit sink (S14); `bun run inspector` renders the last posture an audit entry carried and an exact count of audited fail-open proceeds (U23, N51) — [`hosts/claude-code/test/posture.test.ts`](hosts/claude-code/test/posture.test.ts) |
 
@@ -165,7 +165,7 @@ a TTY.
 ### Verify
 
 ```bash
-bun test          # 348 tests across 26 files (347 pass, 1 skip), including the R3.2/R3.3
+bun test          # 389 tests across 29 files (388 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors

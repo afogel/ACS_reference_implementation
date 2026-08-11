@@ -282,7 +282,7 @@ Captured, verbatim:
 ```
 
 `modifications.parameter_overrides.command` is the value a host actually applies in place
-of the original argument (`applyModifications`, N7, `packages/host-adapter/src/validate-decision.ts`)
+of the original argument (`applyModifications`, N7, `packages/host-adapter/src/modifications.ts`)
 — this is not a suggestion the host has to interpret, it is the literal replacement
 string, already computed by AGT's own SDK (`transformedPolicyTarget`) and only carried
 across by `mapVerdict`.
