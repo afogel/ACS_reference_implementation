@@ -266,7 +266,7 @@ All resolved — see `spike-agt-integration.md`.
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N22, → N27 | — |
 | N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
-| N23 | P3 | guardian | `assembleSnapshot()` — envelope + session state → AGT snapshot | call | → N30 | — |
+| N23 | P3 | guardian | `assembleSnapshot()` / `assembleResultSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → `modifications.parameter_overrides` keyed by argument name (R1.6, declared in S10) | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
 | N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
@@ -355,7 +355,7 @@ flowchart TB
         N20["N20: POST /acs JSON-RPC"]
         N21["N21: validateEnvelope()"]
         N22["N22: appendSessionEntry()"]
-        N23["N23: assembleSnapshot()"]
+        N23["N23: assembleSnapshot() / assembleResultSnapshot()"]
         N24["N24: mapVerdict()"]
         N25["N25: persistResultLabels()"]
         N26["N26: createEnvelopeLogSink()"]
