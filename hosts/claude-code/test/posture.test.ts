@@ -231,7 +231,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // Exiting non-zero with empty stdout is the shape of a fail-open: Claude
   // Code reads it as "non-blocking error" and proceeds, unaudited and
   // undeclared. It must never happen once a hook payload has parsed.
-  it("never exits non-zero with empty stdout once a hook payload has parsed", async () => {
+  it("never exits non-zero with empty stdout at the request gate, once a hook payload has parsed", async () => {
     const dir = scratch();
     const out = await runShim(payload("ls -la"), {
       ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
@@ -248,6 +248,34 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // outrank an arriving decision, and a malformed envelope gets no exception
   // from that rule: a decision that arrives is always honoured over the
   // posture.
+  it("exits 2 with empty stdout at the result gate when a fail-closed deny has no output to withhold", async () => {
+    const dir = scratch();
+    const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST, onDecisionFailure: "deny" });
+    let out: ShimRun;
+    try {
+      out = await runShim(
+        JSON.stringify({
+          session_id: "sess-1",
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "cat .env" },
+          tool_response: "TOKEN=ghp_ABCDEF123456",
+        }),
+        {
+          ACS_GUARDIAN_URL: guardian.url,
+          ACS_SESSION_DIR: join(dir, "sessions"),
+          ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        },
+      );
+    } finally {
+      await guardian.close();
+    }
+    expect({ exitCode: out.exitCode, stdout: out.stdout }).toEqual({ exitCode: 2, stdout: "" });
+    expect(out.stderr).toContain("$.tool_response");
+    const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ posture: "deny", outcome: "blocked" });
+  });
   it("honours a deny that arrives alongside an error, rather than answering with the posture", async () => {
     const dir = scratch();
     const stub = Bun.serve({
