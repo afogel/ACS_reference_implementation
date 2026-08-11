@@ -836,9 +836,12 @@ it("never emits both shapes at once", () => {
       modifications:
         # `from` names the transform OBJECT, not its `value` -- an earlier draft
         # of this stanza said `verdict.transform.value`, which would have made
-        # the "is absent" throw name a field one level too deep. `rule.from` is
-        # read only to build that message; the value is taken from
-        # `transform.value` in code once `transform` is known to be present.
+        # the "is absent" throw name a field one level too deep. `rule.from`
+        # never resolves the value; it appears only in two error messages, and
+        # the second of them (`${rule.from}.value is ${typeof ...}`) appends
+        # `.value` itself -- which is the clearest reason the declaration must
+        # not already carry it. The value is read from `transform.value` in
+        # code, once `transform` is known to be present.
         from: verdict.transform
         when_path: "$policy_target"
         into: redactions
