@@ -152,12 +152,25 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
     expect(out.applied_input).toBeUndefined();
   });
 
-  it("denies a multi-segment redaction that would descend through an array", () => {
+  // V4's C7 legalized this: the ACS result payload's redaction path is
+  // /outputs/0/value, so a Guardian must be able to address an array
+  // element. This test used to pin the opposite -- a blanket refusal of
+  // any multi-segment redaction that descended through an array -- because
+  // a naive write turns ["a","b"] into {"0":"[REDACTED]","1":"b"}, which is
+  // not the edit that was asked for and would reach the host as an object
+  // where it expects a list. The refusal is now conditional on the index
+  // being real (modifications.ts), so this is deliberately rewritten as
+  // the positive case rather than relaxed: checking only `decision` would
+  // pass with the array-safe write path deleted, the same weakness the
+  // comment below calls out for the reserved-segment tests.
+  it("applies a redaction addressing an array element, and keeps the array an array", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/items/0" }] } },
       { ...FRESH, originalArguments: { items: ["a", "b"] } },
     );
-    expect(out.decision).toBe("deny");
+    expect(out.decision).toBe("modify");
+    expect(out.applied_input).toEqual({ items: ["[REDACTED]", "b"] });
+    expect(Array.isArray((out.applied_input as { items: unknown }).items)).toBe(true);
   });
 
   // The reasoning is asserted, not just the deny: an absent-target check
