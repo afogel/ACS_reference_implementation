@@ -716,6 +716,57 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
+  // The other half of the same two-part rule, and the half that would have
+  // survived deletion: a result-gate deny declaring the replacement WITHOUT the
+  // block. The replacement withholds, so this one is not a fail-open -- it is a
+  // withholding that happens with nothing in the transcript saying why, which is
+  // the mirror of the case above and the reason the rule is two-part rather than
+  // either field alone. Checked at the gate, not only against the shipped file:
+  // the data-level assertion below reads what this deployment declares, which
+  // says nothing about what the gate would accept.
+  it("exits 2 (blocking) on a PostToolUse deny that declares a replacing output without the block", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "withholds-without-saying.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n" +
+        "  PostToolUse:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n" +
+        "      deny: { output: { hookSpecificOutput.updatedToolOutput: { from: applied_output } } }\n",
+    );
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain("hooks.PostToolUse.decisions.deny");
+      // The message names the missing literal and the value it must carry, so a
+      // reader of the stderr line knows which line of YAML to add.
+      expect(out.stderr).toContain('"decision"');
+      expect(out.stderr).toContain("block");
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
   // Global Constraint 4, at the gate: an unexpected hookmap entry throws. A hook
   // this shim has no expectation for is a hook whose declared decisions nothing
   // checks and whose rendered output nothing checks, at an event whose semantics

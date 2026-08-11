@@ -171,14 +171,19 @@ describe("governStep — the three failure stages name three different incidents
     expect(governed.decision.reasoning).toContain("no decision was ever sought");
   });
 
-  // V4, and the one behaviour the per-hook move deliberately changes. Every
-  // render -- the arriving decision's and the posture's -- now goes through the
-  // hook's OWN decisions block, so a hook the hookmap does not map has nothing
-  // to express either answer through. Reaching the posture anyway would write an
-  // audit entry recording a fail-open proceed and then fail to render it: a
-  // durable record of a bypass that never happened, in the one log an incident
-  // review trusts. So it throws before anything is asked or written, and the
-  // caller answers it the way it answers a hookmap that will not load (exit 2).
+  // V4, and the one behaviour the per-hook move deliberately changes -- a
+  // pre-existing fail-open closed, not a reclassification. Every render (the
+  // arriving decision's and the posture's) now goes through the hook's OWN
+  // decisions block, so a hook the hookmap does not map has nothing to express
+  // either answer through. Before the move there was one top-level block, in the
+  // shipped hookmap a PreToolUse-shaped one, so an unmapped hook WAS answered by
+  // the posture -- and that answer was rendered in the wrong gate's shape and
+  // written with exit 0. A deployment that had negotiated `deny` emitted a
+  // permission field at an event that does not read one: the host saw no
+  // decision, the step ran, and the audit said "blocked".
+  //
+  // So it throws before this step is asked about or audited, and the caller
+  // answers it the way it answers a hookmap that will not load (exit 2).
   it("throws, auditing nothing, for a hook this hookmap does not map -- it cannot express an answer for one", async () => {
     const { sink, events } = recordingSink();
 
@@ -191,6 +196,34 @@ describe("governStep — the three failure stages name three different incidents
     // Nothing proceeded, so nothing claims to have proceeded.
     expect(events).toEqual([]);
   });
+
+  // Review finding, and the guard's one real hole: `hookEventName` is
+  // host-supplied -- it arrives on the host's stdin -- and `hooks["toString"]`
+  // resolves to an inherited Object.prototype function, which is not
+  // `undefined`. With a bare index the guard PASSES for a prototype-named event,
+  // buildEnvelope throws (a function is not a hook entry), the posture writes
+  // `outcome: "proceeded"`, and only then does renderDecision throw -- the exact
+  // durable false record the guard exists to prevent, reachable without touching
+  // the hookmap at all. Asserted on the audit log rather than only on the throw,
+  // because both spellings throw and only one of them audits.
+  //
+  // Mutation-tested: with `hasOwnProperty` reverted to a bare index, this case
+  // fails on `events` (one "proceeded" entry) while the plain unmapped-hook case
+  // above still passes.
+  it.each(["toString", "constructor", "valueOf", "__proto__"])(
+    "throws, auditing nothing, for the prototype-named hook %p -- a bare index would have let it through",
+    async (hookEventName) => {
+      const { sink, events } = recordingSink();
+
+      await expect(
+        govern(answering({ decisionArrived: true, decision: { decision: "allow" } }), sink, undefined, {
+          hookEventName,
+        }),
+      ).rejects.toThrow(/governStep: hookmap has no entry for hook/);
+
+      expect(events).toEqual([]);
+    },
+  );
 
   it("files no decision arriving under \"delivery\", carrying the failure the client reported", async () => {
     const { sink, events } = recordingSink();

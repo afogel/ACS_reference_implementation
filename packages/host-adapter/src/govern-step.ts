@@ -164,14 +164,34 @@ export async function governStep({
 }: GovernStepInput): Promise<GovernedStep> {
   // V4: every render below -- the arriving decision's and the posture's -- goes
   // through the hook's OWN decisions block, so a hook this hookmap does not map
-  // has nothing to express either answer through. Checked here, before anything
-  // is asked or written, because the alternative is worse than a throw: letting
-  // it reach the posture would write an audit entry recording a fail-open
-  // proceed, and then fail to render it -- a durable record of a bypass that
-  // never happened, in the one log an incident review trusts. A hookmap missing
-  // the hook that fired is a broken deployment, the same class as a hookmap that
-  // will not load, and a caller answers it the same way.
-  if (hookmap.hooks?.[hookEventName] === undefined) {
+  // has nothing to express either answer through. Checked before this step is
+  // asked about or audited, because the alternative is worse than a throw:
+  // letting it reach the posture would write an audit entry recording a
+  // fail-open proceed, and then fail to render it -- a durable record of a
+  // bypass that never happened, in the one log an incident review trusts. (The
+  // session handshake has already run by the time a host shim calls this; what
+  // this ordering protects is the audit log and the step call, not "nothing at
+  // all".) A hookmap missing the hook that fired is a broken deployment, the
+  // same class as a hookmap that will not load, and a caller answers it the same
+  // way.
+  //
+  // What this closes is not a reclassification, it is a fail-open that predates
+  // the per-hook move. Before it, `renderDecision` read one top-level block --
+  // in this deployment a PreToolUse-shaped one -- so an unmapped hook was
+  // answered by the posture and that answer was RENDERED IN THE WRONG GATE'S
+  // SHAPE and written with exit 0. A deployment that had negotiated `deny`
+  // emitted a permission field at an event that does not read one: the host saw
+  // no decision, the step ran, and the audit log recorded it as blocked.
+  //
+  // `hasOwnProperty`, not a bare index: `hookEventName` is host-supplied (it
+  // arrives on stdin), and `hooks["toString"]` resolves to an inherited
+  // Object.prototype function, which is not `undefined`. A bare index therefore
+  // passes this guard for a prototype-named event, `buildEnvelope` throws,
+  // `resolveByPosture` writes `outcome: "proceeded"`, and only THEN does
+  // `renderDecision` throw -- the exact durable-false-record outcome this guard
+  // exists to prevent, reachable without touching the hookmap. Same reasoning as
+  // render-decision.ts's RESERVED_SEGMENTS and acs-hook.ts's `expectationFor`.
+  if (!Object.prototype.hasOwnProperty.call(hookmap.hooks ?? {}, hookEventName)) {
     throw new Error(
       `governStep: hookmap has no entry for hook "${hookEventName}", so neither an arriving decision nor a ` +
         `posture's answer to an absent one could be expressed for it`,
@@ -226,11 +246,15 @@ export async function governStep({
 
   const startedAt = performance.now();
 
-  // Stage "request": nothing has been asked of anything yet. A hookmap with no
-  // entry for this event, or a payload the hookmap's paths do not resolve
-  // against, is a host-side configuration fault -- so the audit reasoning must
-  // not blame a Guardian that was never contacted, which is what this stage
-  // records.
+  // Stage "request": nothing has been asked of anything yet. A payload the
+  // hookmap's paths do not resolve against, or an entry naming no single payload
+  // shape, is a host-side configuration fault -- so the audit reasoning must not
+  // blame a Guardian that was never contacted, which is what this stage records.
+  //
+  // A hookmap with no entry for this event used to be listed here and no longer
+  // reaches this stage: the guard at the top of this function throws on it and
+  // audits nothing, because the posture's answer to it could not be rendered
+  // either (V4). Every other way `buildEnvelope` can fail still lands here.
   let envelope: AcsRequestEnvelope;
   try {
     envelope = buildEnvelope(hookEventName, payload, hookmap);
