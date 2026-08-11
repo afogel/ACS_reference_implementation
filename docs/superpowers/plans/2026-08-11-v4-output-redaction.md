@@ -10,10 +10,79 @@
 | **Components** | `U3` — P1, claude-code, *rewritten tool output in transcript*, render. Plus the slice's own sentence: "New entries in **S1** for `PostToolUse` → `steps/toolCallResult`, and in **S8** for the `redact` rules." |
 | **Parked items** | §V4 defers nothing to a later slice. |
 | **Watch-for notes** | §V4 carries none. Its nearest equivalent is the **Framing discipline** paragraph, quoted verbatim under Global Constraint 1. |
-| **Corrections** | §V4 carries no ⚠️ markers. **This plan adds seven** (below), each amended into the slices doc in this PR. |
+| **Corrections** | §V4 carries no ⚠️ markers. **This plan adds eight** (below). C1–C7 landed in the slices doc with this plan's own commit `56d49da`; C8 arrives with the revision below and lands in Task 10 Step 3, alongside the rows the redistribution invalidated. |
 | **Requirements** | `R3.8` (the slice's own: a capability frozen out of one AGT host module is reachable through the contract), `R4.3` (framing is integration-surface reduction, never deficiency), `R4.4` (AGT's modules described accurately). Carried in from the track: `R1.6` (a `modify` is satisfied by the rewrite *landing*), `R1.2`, `R3.2`, `R3.4`, `R5.1`. |
 | **Blocker** | **F1** — "Confirm by hand that Claude Code `PostToolUse.updatedToolOutput` rewrites tool results as documented." **✅ Resolved during planning** — see Evidence 1–3. Risk row 1 retires with it. |
 | **Slices doc says Parts** | `C3` (Slice Summary, line 20). |
+
+---
+
+## Revision — the review redistribution landed under this plan
+
+This plan was written against the stack as it stood before PR #10, #11 and #12's 48 review
+findings were redistributed onto `slice/v1`…`slice/v3`. That work landed **beneath** V4 and moved
+four things this plan assumed were V4's to do. Recorded here rather than left for an implementer to
+discover mid-task, because in three of the four cases the plan now names a symbol or a rule shape
+that **never shipped** — the same ghost-name defect PR #11's review filed against `N26`.
+
+Measured at `slice/v4`'s tip (`56d49da`): **396 pass, 1 skip, 0 fail, 397 tests across 29 files**;
+`bun run typecheck` clean. Every "347" in this plan predates the redistribution.
+
+| # | What the plan assumed | What is actually true now |
+|---|---|---|
+| R1 | **Task 4 is V4's biggest task**: `renderDecision` hardcodes `permissionDecision`/`permissionDecisionReason`/`updatedInput` and requires a permission field | **Already done, in a better shape.** PR #10's review (Critical) landed it: `renderDecision(decision, hookmap)` reads `decisions.<d>.output`, a map of **dotted host paths** to `{value}` or `{from, type}`, and names no host field. `test/invariants.test.ts:123` already gates that. Task 4 shrinks to what is genuinely left — see R2 |
+| R2 | The rule shape is `set:` / `from:` / `top_level: {set, from}` | **That shape never existed.** The shipped shape is one `output:` map, and a path with **no dot** already lands top-level — `render-decision.ts`'s own doc says so. `top_level` is deleted from this plan: adding it would be a second way to express what dotted paths already express |
+| R3 | Task 5 edits `validate-decision.ts` lines 128–142 | The array rejection moved to **`packages/host-adapter/src/modifications.ts:114–127`** (`applyModifications`), extracted from `validateDecision` by PR #12's `governStep` wave. Same rejection, same reason, different file |
+| R4 | Task 10 writes a new fourth gate, and amends the slices doc | The gate **exists and passes**, missing exactly one term (`updatedToolOutput`). The slices-doc amendments **already landed** in `56d49da`. Task 10 becomes: add the term, mutation-test it, and run the whole-slice verification |
+
+### What Task 4 still has to do, and why it is still a task
+
+Three gates written when `PreToolUse` was the only hook. Each assumes every decision has a
+permission field, and `PostToolUse` has none:
+
+1. `hookmap.decisions` is a **single top-level block** shared by all hooks. `renderDecision` takes
+   no hook name. Two hooks needing different renderings cannot both be expressed.
+2. `assertRenderableDecisions` (`build-envelope.ts:106`, load time) iterates that one block and
+   requires `allow` and `deny` in it. Per-hook, that minimum applies **per hook** — a
+   posture-produced allow or deny can arrive at either gate.
+3. `assertHostAcceptsEveryDecision` (`acs-hook.ts:257`) requires **every** decision to declare a
+   literal `hookSpecificOutput.permissionDecision` that Claude Code accepts. `PostToolUse` cannot
+   satisfy this, and the check is not decoration — it is what stops a hookmap from silently turning
+   decisions into ungoverned tool calls. It must become per-hook, not be relaxed.
+
+### C8 — a new correction: what a `PostToolUse` **allow** renders
+
+Nothing in this plan or §V4 asked this, and it collides with a fail-open guard.
+
+At `PreToolUse`, an output with no decision in it means the tool call **proceeds ungoverned**, so
+`renderDecision` refuses to render an empty rule and `asClaudeCodeOutput` refuses an output with no
+wrapper. Both refusals are correct there. At `PostToolUse` the tool has **already run**: "nothing"
+is the honest answer for a clean result, and Task 7's own second test asserts exactly that — no
+`updatedToolOutput` key at all. So both refusals are **gate-specific**, and V4 must make that
+explicit rather than weaken either guard globally.
+
+The resolution needs no new hookmap vocabulary, because `renderDecision`'s static check is on the
+**rule** while its skip is on the **value**: a rule declaring one `from` field the decision does not
+carry passes the check and renders `{}`. So `PostToolUse.decisions.allow` declares one real field —
+`hookSpecificOutput.additionalContext`, present in 2.1.227's `PostToolUse` schema (Evidence 1) —
+sourced `from: reasoning, type: string`. Then:
+
+- a **plain** allow carries no `reasoning`, renders `{}`, and delivers the output unchanged;
+- an **observe-only** allow (AGT `warn` → ACS allow with `policy_references`, R1.2) carries a
+  synthesized `reasoning` and it reaches the transcript.
+
+That is the same gap V3 closed for `PreToolUse`'s `allow`, closed the same way at the second gate —
+naming symmetry across symmetric roles rather than a special case. What remains is the shim's
+wrapper refusal, which must become per-hook alongside gate 3 above: a `PostToolUse` output with an
+empty wrapper is the correct clean-result answer, and a `PreToolUse` one is still the fail-open it
+always was.
+
+### One stale doc comment to fix in passing
+
+`build-envelope.ts:68–70` still describes renderable as *"a non-null object naming a non-empty
+string `permissionDecision`, the one field renderDecision writes into Claude Code's output
+unconditionally"* — the pre-redistribution rule. Lines 95–100 of the same comment give the correct
+declarative one. Task 4 edits this function; it corrects the contradiction while it is there.
 
 ---
 
@@ -123,14 +192,16 @@ The same README lists what the package *does* enforce: `SessionStart`, `UserProm
 
 ## Corrections this plan makes to the slices doc
 
-All seven land in §V4 in this PR (Step 5).
+C1–C7 landed in §V4 with commit `56d49da`. C8, and the corrections the review redistribution
+forced on C4 and on two Scope-added rows, land in Task 10 Step 3 — same PR.
 
 | # | Correction |
 |---|---|
 | C1 | **F1 resolved, and risk row 1 retires.** §V4 says "Blocked on follow-up F1 … If it does not, this slice drops and R3.8 moves to another capability." It does, so the slice proceeds — with the two conditions in C2 and C3 attached. |
 | C2 | **The demo sentence is incomplete as written.** "delivered through `updatedToolOutput`" is true but omits the condition that makes it work: the replacement must preserve the tool's own output shape, or Claude Code delivers the original. The demo gains that clause. |
 | C3 | **A `deny` at this gate does not suppress output.** Nothing in §V4 anticipated a disposition other than the redaction. Rendering deny as `block` alone is a fail-open; it must carry a replacing `updatedToolOutput` too. New watch-for. |
-| C4 | **"New entries in S1" understates the change.** `renderDecision` requires a `permissionDecision` and hardcodes three Claude Code field names, none of which exist on `PostToolUse`. S1's `decisions` block becomes per-hook and declares host field names as data. Recorded under Scope added. |
+| C4 | **"New entries in S1" understates the change.** *Rewritten by Revision R1 — the hardcoded-field-names half landed with PR #10's review.* What remains: S1's `decisions` is one block shared by all hooks, and three gates require every decision to declare a `permissionDecision` that `PostToolUse` does not have. The block becomes per-hook. Recorded under Scope added. |
+| C8 | **A clean `PostToolUse` allow renders nothing, and two fail-open guards are gate-specific because of it.** New during this revision — see the Revision section. `renderDecision`'s empty-output refusal and the shim's missing-wrapper refusal are both correct at `PreToolUse`, where "no decision" means the call proceeds ungoverned, and both are wrong at a gate where the tool has already run. The `allow` entry declares one conditional field (`additionalContext` from `reasoning`), so an observe-only allow reaches the transcript (R1.2) and a plain one renders `{}`. |
 | C5 | **ACS's result payload carries no tool arguments.** `tool-call-result.json` requires `tool`, `exit_status`, `outputs` only. A policy that wants both the call and its result cannot get the call from this wire — correlation runs through `request_id_ref`, which is V6's session chain. A V7 cell, not a V4 gap. |
 | C6 | **`modifications.modified_content` has no applicable target on this host at either gate.** V3 recorded it for `updatedInput` (an arguments object). Evidence 2 shows the result gate refuses it for the same reason. That upgrades V3's note from "this adapter has no mapping" to "this host has no target", which is a stronger V7 statement. |
 | C7 | **`validateDecision` rejects array descent**, so `/outputs/0/value` — the natural ACS redaction path for a result — is rejected today. Extended in Task 5. |
@@ -157,15 +228,15 @@ All seven land in §V4 in this PR (Step 5).
 
 | Task | Belongs to | Why it must happen here |
 |---|---|---|
-| Task 4 — `renderDecision` stops naming host fields | V5 (`N12` "same module as `N3`") | V5's whole claim is that a second host costs a shim and a hookmap. That is false today: `renderDecision` hardcodes `permissionDecision`/`permissionDecisionReason`/`updatedInput`, so OpenCode would have to patch the shared module. V4 is where a **second hook** forces the same generalization a second host would, and it cannot ship without it — `PostToolUse` has none of those three fields. Doing it here means V5 inherits a renderer that is already right, rather than discovering it is wrong. |
+| Task 4 — `decisions` becomes per-hook | V5 (`N12` "same module as `N3`") | **Half of this row is now history** (Revision R1): the field-name generalization it argued for landed with PR #10's review, on this same reasoning. What is left is still cross-slice for the same reason — `decisions` is one block shared by all hooks, and three gates require every decision to carry a permission field. `PostToolUse` has none, so V4 is where a **second hook** forces the per-hook split a second **host** would have forced anyway. V5 inherits a renderer that is already right rather than discovering it is wrong. |
 | Task 5 — array-index descent in `validateDecision` | arguably V6/V7 | Not deferrable: `/outputs/0/value` is *the* redaction path for a result payload, and today it is rejected. Without it V4 has no legal ACS shape to carry its own redaction. |
 
 ## Scope added during planning
 
 | What | Why the slice cannot ship without it | Slices-doc amendment |
 |---|---|---|
-| S1's `decisions` block becomes **per-hook**, declaring host output field names as data (`set` / `from` / `top_level`) | `PostToolUse` has no `permissionDecision`; the current render rule requires one. Chosen over a minimal three-more-named-fields extension so V5 inherits a renderer that needs no patching. | C4, new Scope-added row in §V4 |
-| A **fourth invariant gate**: `packages/host-adapter/src` carries zero Claude Code field names | The generalization above is only real if something fails when it regresses. This project's precedent is that architectural claims become grep gates (R3.2/R3.3/R5.1/R5.2), not prose. | New Scope-added row in §V4 |
+| S1's `decisions` block becomes **per-hook** | `PostToolUse` has no `permissionDecision`, and three gates require every decision to declare one. The field names are **already** data in the shipped `output:` map (Revision R1/R2) — `set`/`from`/`top_level` never shipped and is not built. | C4 (rewritten), Scope-added row in §V4 |
+| A **fourth invariant gate**: `packages/host-adapter/src` carries zero Claude Code field names | **Already exists and passes** with four of five terms (Revision R4). V4 widens it by `updatedToolOutput` and mutation-tests that term specifically. This project's precedent is that architectural claims become grep gates (R3.2/R3.3/R5.1/R5.2), not prose. | §V4 row corrected from "new gate" to "widened" |
 | Array-index descent in `validateDecision` (`/outputs/0/value`), editing arrays in place | See Cross-slice table. | C7 |
 | The Guardian's `assembleSnapshot` gains a `post_tool_call` branch synthesizing `tool_call: { name }` | Evidence 5: without it AGT fails closed on every result-gate call. | New row in §V4's table |
 | `redact` ships in `policy/lib/data.json`, and `policy/manifest.yaml` gains a `post_tool_call` point | Evidence 6: a second *config* would mean a second *bundle*, i.e. a fork of the pinned `.rego` — the one thing R2.2/R2.3 forbid. Both edits are additive and the full suite is unchanged by them. | New Scope-added row in §V4; amends V3's runbook, which called this rule temporary |
@@ -348,7 +419,9 @@ In `policy/manifest.yaml`, after the `pre_tool_call` block, at the same indentat
       id: agt_stock
 ```
 
-- [ ] **Step 4: Run it, expect PASS** — `bun test test/redaction.test.ts`, then `bun test` (all 347 prior tests must still pass — verified during planning that they do), then `bun run verify:pin` (every `.rego` still byte-identical; only `data.json` changed, which is data).
+- [ ] **Step 4: Run it, expect PASS** — `bun test test/redaction.test.ts`, then `bun test`, then `bun run verify:pin` (every `.rego` still byte-identical; only `data.json` changed, which is data).
+
+  **Re-measure, do not renumber.** Planning verified that shipping `redact` left the suite unchanged at **347 pass / 1 skip / 0 fail**; the redistribution has since taken the baseline to **396 pass / 1 skip / 0 fail (397 tests, 29 files)**. Those 49 added tests were written after that measurement, so "unchanged" has to be re-established, not assumed: run `bun test` before the `data.json` edit and after, and report both. Any test that changes verdict is a finding — report it rather than accepting it, because the whole claim of Evidence 6 is that this edit is behaviour-preserving at the pre-tool gate.
 
 - [ ] **Step 5: Commit** — `Ship the redact rules and the post-tool gate` / body explaining that config is data (R2.1) and the manifest edit is additive / `Slice: #5`.
 
@@ -458,8 +531,12 @@ In `build-envelope.ts`, branch payload construction on the hookmap entry's shape
 - Test: `packages/guardian/test/assemble-snapshot.test.ts`, `packages/guardian/test/server.test.ts`
 
 **Interfaces:**
-- Consumes: the envelope type from `validate-envelope.ts`; `mapping.yaml`'s `intervention_points`, which **already** declares `post_tool_call: { acs_method: "steps/toolCallResult" }` — the point is looked up there, never hardcoded.
-- Produces: `assembleSnapshot(envelope)` returning, for a result envelope, `{ envelope: { budgets: {…zeros} }, tool_call: { name }, tool_result: { outputs } }`.
+- Consumes: `validate-envelope.ts`'s `AcsRequestEnvelope` plus its narrowing predicate `isToolCallRequest(envelope): envelope is ToolCallRequestEnvelope`. `mapping.yaml` **already** declares `post_tool_call: { acs_method: "steps/toolCallResult" }`, and `resolveInterventionPoint(acsMethod, mapping)` **already** resolves it and is **already** called from `server.ts` — that half of this task landed with PR #10's review. Do not add a second lookup and do not hardcode the point.
+- Produces: a **sibling** predicate `isToolCallResult` and a **sibling** assembler, returning `{ envelope: { budgets: {…zeros} }, tool_call: { name }, tool_result: { outputs } }`.
+
+**A ruling from PR #10's review that governs this task's shape.** `assemble-snapshot.ts` now takes the narrow `ToolCallRequestEnvelope`, reachable only through `isToolCallRequest`, and its own doc states the consequence: *"A later slice's `post_tool_call` snapshot is a sibling type beside this one, not a widening of it."* So `AgtPreToolCallSnapshot` is **not** widened with optional members, and `assembleSnapshot`'s signature is **not** loosened back to accepting any request envelope — that would undo the review finding this branch's parent just landed. The result path gets `ToolCallResultEnvelope`, `isToolCallResult`, `AgtPostToolCallSnapshot` and its own assembler; the dispatch between them lives at the one caller that already knows the method, beside the `resolveInterventionPoint` call.
+
+Two shapes, two predicates, two assemblers, and a caller that chooses — because the two snapshots share no member but `envelope.budgets`, and a single function reading `payload.arguments` OR `payload.outputs` would be back to the union type the narrowing exists to prevent.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -495,9 +572,13 @@ it("carries no tool_call.args -- the result payload has none to carry", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/guardian/test/assemble-snapshot.test.ts`. Expected: the result envelope is rejected by `validateEnvelope` before assembly, or assembly reads `payload.arguments` and throws.
+- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/guardian/test/assemble-snapshot.test.ts`. Expected: the result envelope is rejected by `validateEnvelope` before assembly (its payload schema is `steps/toolCallRequest`-only), and the new assembler does not exist yet. Note the test above must call the **new** assembler by its own name, not `assembleSnapshot`; a result envelope no longer typechecks against `assembleSnapshot`'s parameter, which is why the `as never` casts in the sketch above must be replaced with a real `isToolCallResult` narrowing.
 
-- [ ] **Step 3: Minimal implementation.** Dispatch on `envelope.method` through `mapping.yaml`'s `intervention_points` table (the ACS method → AGT point direction), and add the result branch. Keep `envelope.budgets` zeros in both branches — `budgets.rego` fails closed on a present-but-wrong-typed counter (V1's C-note), and that hazard is not specific to the request gate.
+- [ ] **Step 3: Minimal implementation.** In `validate-envelope.ts`, add the result payload's schema check and the `isToolCallResult` predicate beside `isToolCallRequest`, symmetrically — `tool`, `exit_status`, `outputs` and nothing else, per `hooks/tool-call-result.json`. In `assemble-snapshot.ts`, add `AgtPostToolCallSnapshot` and its assembler as siblings. At the caller, choose between them on the resolved intervention point, which `resolveInterventionPoint` already returns. Keep `envelope.budgets` zeros in both — `budgets.rego` fails closed on a present-but-wrong-typed counter (V1's C-note), and that hazard is not specific to the request gate.
+
+  **One predicate per assembler, and no method reaches the wrong one.** `server.ts` today has exactly one assembling branch, gated by `isToolCallRequest`; every other well-formed method falls past it to `METHOD_NOT_DISPATCHED_CODE`. V4 adds a **second** gated branch beside it and changes neither the gate on the first nor the fall-through. What must not appear is a branch that assembles from `envelope.method` alone or from the resolved point alone: `mapping.yaml` declares six methods with points and this Guardian assembles two, so a point-driven branch would hand a `steps/sessionStart` envelope to whichever assembler came first and return a verdict that looks perfectly well-formed while having evaluated the wrong policy against the wrong shape.
+
+  Assert both directions, because a predicate that answers `true` too readily is invisible otherwise: a result envelope is not answered by the pre-tool branch, a request envelope is not answered by the result branch, and `steps/sessionStart` still gets method-not-dispatched rather than either. That last one is the assertion that fails if someone replaces the two predicates with a method switch.
 
 - [ ] **Step 4: Run it, expect PASS** — `bun test packages/guardian`.
 
@@ -505,35 +586,57 @@ it("carries no tool_call.args -- the result payload has none to carry", () => {
 
 ---
 
-### Task 4: `renderDecision` stops naming host fields · slice #5 · N3, S1
+### Task 4: `decisions` becomes per-hook · slice #5 · N3, S1
 
-The generalization chosen at planning. **This task changes `PreToolUse`'s hookmap entries too** — every existing render must keep rendering byte-identically, and that is what its first test asserts.
+**Read the Revision section first — R1, R2 and C8 rewrite this task.** The generalization this task was written to perform **already landed** with PR #10's review: `renderDecision` names no host field, the rule shape is a dotted-path `output:` map, and `test/invariants.test.ts:123` gates it. The `set`/`from`/`top_level` shape below **never shipped and must not be built** — a dotless path already renders top-level.
+
+What is left is one structural change and the three gates that block it. **This task changes `PreToolUse`'s entries too** — every existing render must stay byte-identical, and that is what its first test asserts.
 
 **Files:**
-- Modify: `packages/host-adapter/src/render-decision.ts` (whole rule shape, 40–101)
-- Modify: `hosts/claude-code/claude-code.hookmap.yaml` (`decisions` moves under each hook)
-- Modify: `hosts/claude-code/acs-hook.ts` (the hookmap validation added by V3's fix wave reads the old rule shape)
-- Test: `packages/host-adapter/test/render-decision.test.ts`
+- Modify: `hosts/claude-code/claude-code.hookmap.yaml` (`decisions` moves under each hook; add `hooks.PostToolUse.decisions`)
+- Modify: `packages/host-adapter/src/render-decision.ts` (select the block by hook name; the field-walking loop is unchanged)
+- Modify: `packages/host-adapter/src/build-envelope.ts` (`assertRenderableDecisions` becomes per-hook, and the stale doc comment at 68–70 is corrected — see the Revision section)
+- Modify: `hosts/claude-code/acs-hook.ts` (`assertHostAcceptsEveryDecision` and `asClaudeCodeOutput` both become per-hook)
+- Modify: `docs/shaping/acs-reference-impl-shaping.md` (**`N3`'s affordance row, line 253**, pins the signature `renderDecision(decision, hookmap)`; this task adds a parameter to it)
+- Test: `packages/host-adapter/test/render-decision.test.ts`, `packages/host-adapter/test/build-envelope.test.ts`, `hosts/claude-code/test/hook.test.ts`
+
+**The affordance table moves with the signature, in this task's own commit.** `N3`'s row is how a reader gets from an affordance ID to the code, so a row naming a signature that no longer exists is the defect PR #11 filed against `N26` and PR #10's review filed against four more rows — all fixed on `slice/v1` this week. Do not leave it for Task 10: the table is the source of truth and it is edited **before** anything rendered from it. The mermaid at line 327 renders `renderDecision()` without a signature and needs no change; check that this is still true rather than assuming it.
 
 **Interfaces:**
-- Produces: `renderDecision(hookEventName, decisionResult, hookmap)` returning `{ hookSpecificOutput?, topLevel? }` — the shim merges `topLevel` into the JSON it writes to stdout. The render rule shape is:
+- Produces: `renderDecision(hookEventName: string, decision: AcsDecision, hookmap: Hookmap): HostOutput` — one added leading parameter. The return type does **not** change: it is still one flat `HostOutput` whose dotted paths already place fields inside or outside the wrapper. There is no `{ hookSpecificOutput, topLevel }` pair; the shim keeps wrapping exactly as it does now.
+- Produces: the rule shape unchanged from what ships today, moved one level down:
 
 ```yaml
-decisions:
-  <acs-decision>:
-    set:  { <hostField>: <literal> }        # into hookSpecificOutput
-    from: { <hostField>: <decisionField> }  # into hookSpecificOutput, copied if present
-    top_level:
-      set:  { <hostField>: <literal> }      # outside hookSpecificOutput
-      from: { <hostField>: <decisionField> }
+hooks:
+  <hookName>:
+    acs_method: steps/<...>
+    decisions:
+      <acs-decision>:
+        output:
+          <dotted.host.path>: { value: <literal> }
+          <dotted.host.path>: { from: <decisionField>, type: <typeof> }
+          <dotlessHostPath>:  { value: <literal> }      # top-level, alongside the wrapper
 ```
+
+- Consumes: nothing new. `place()`, `RESERVED_SEGMENTS`, the collision checks and the `type` guard all stay as they are.
+
+**The three gates, and what each becomes.** None of them is relaxed; each learns the hook.
+
+1. `renderDecision` reads `hookmap.hooks[hookEventName].decisions`, and throws naming the hook when that block is absent — the fourth test below.
+2. `assertRenderableDecisions` (load time) iterates **every** hook's block and applies the existing `allow`+`deny` minimum **per hook**. Both gates can receive a posture-produced allow or deny, so a hook missing either is a hookmap that cannot answer a delivery failure at that gate.
+3. `assertHostAcceptsEveryDecision` (the shim) keeps checking a declared literal against Claude Code's own enum, but only for hooks that **have** a permission field. `PostToolUse` gets its own check in the same loop: its `deny` must declare both the top-level `decision: block` **and** a replacing output path, because `block` alone reports a suppression that did not happen (Evidence 3, Global Constraint 6). A hook in the hookmap that the shim has no expectation for is a **throw**, not a skip — an unchecked hook is an unchecked fail-open, which is the whole reason this gate exists.
+
+**And `asClaudeCodeOutput`'s wrapper refusal becomes per-hook (C8).** A `PostToolUse` allow legitimately renders `{}`, and refusing an output with no wrapper would exit 2 on **every clean tool result**. The refusal stays exactly as it is for a hook whose decisions declare fields under the wrapper, and a hook whose clean answer is genuinely "nothing" writes `{"hookSpecificOutput":{"hookEventName":"PostToolUse"}}` — which at this gate means "deliver the output unchanged", not "no decision".
 
 - [ ] **Step 1: Write the failing test** — the first one is the safety net for the rewrite:
 
 ```ts
-// The rewrite's whole risk is a silent change to what PreToolUse renders.
-// These are the exact outputs V1/V3 pinned, restated against the new rule
-// shape: if the generalization changes any of them, this fails first.
+// The move's whole risk is a silent change to what PreToolUse renders.
+// These are the exact outputs V1/V3 pinned, restated against the per-hook
+// lookup: if moving the block changes any of them, this fails first.
+// renderDecision returns one flat object -- a dotted path lands under the
+// wrapper, a dotless one beside it -- and the shim adds `hookEventName`, so
+// it is absent here.
 it.each([
   ["allow",  { decision: "allow" },                       { permissionDecision: "allow" }],
   ["deny",   { decision: "deny", reasoning: "nope" },      { permissionDecision: "deny", permissionDecisionReason: "nope" }],
@@ -541,65 +644,85 @@ it.each([
   ["modify", { decision: "modify", reasoning: "rewritten", applied_input: { command: "echo [REDACTED]" } },
              { permissionDecision: "allow", permissionDecisionReason: "rewritten", updatedInput: { command: "echo [REDACTED]" } }],
 ])("renders PreToolUse %s exactly as before", (_name, result, expected) => {
-  const { hookSpecificOutput, topLevel } = renderDecision("PreToolUse", result as never, hookmap);
-  expect(hookSpecificOutput).toEqual({ hookEventName: "PreToolUse", ...expected });
-  expect(topLevel).toBeUndefined();
+  expect(renderDecision("PreToolUse", result as never, hookmap)).toEqual({ hookSpecificOutput: expected });
 });
 
 it("renders a PostToolUse modify as updatedToolOutput, with no permissionDecision", () => {
-  const { hookSpecificOutput, topLevel } = renderDecision(
+  const output = renderDecision(
     "PostToolUse",
     { decision: "modify", reasoning: "redacted", applied_output: { stdout: "TOKEN=[REDACTED]", stderr: "" } } as never,
     hookmap,
   );
-  expect(hookSpecificOutput).toEqual({
-    hookEventName: "PostToolUse",
-    updatedToolOutput: { stdout: "TOKEN=[REDACTED]", stderr: "" },
+  expect(output).toEqual({
+    hookSpecificOutput: { updatedToolOutput: { stdout: "TOKEN=[REDACTED]", stderr: "" } },
   });
-  expect("permissionDecision" in hookSpecificOutput!).toBe(false);
-  expect(topLevel).toBeUndefined();
 });
 
 // Evidence 3: `block` alone does not suppress anything. Deny at this gate
 // must ALSO replace the output, or it reports a suppression that did not
-// happen -- the same "reported but never took effect" shape V3 found.
+// happen -- the same "reported but never took effect" shape V3 found. The
+// dotless `decision`/`reason` paths are what put those two beside the
+// wrapper rather than inside it.
 it("renders a PostToolUse deny as block AND a replacing output", () => {
-  const { hookSpecificOutput, topLevel } = renderDecision(
-    "PostToolUse",
-    { decision: "deny", reasoning: "secret in output", applied_output: { stdout: "[OUTPUT WITHHELD BY POLICY]" } } as never,
-    hookmap,
-  );
-  expect(topLevel).toEqual({ decision: "block", reason: "secret in output" });
-  expect(hookSpecificOutput).toEqual({
-    hookEventName: "PostToolUse",
-    updatedToolOutput: { stdout: "[OUTPUT WITHHELD BY POLICY]" },
+  expect(
+    renderDecision(
+      "PostToolUse",
+      { decision: "deny", reasoning: "secret in output", applied_output: { stdout: "[OUTPUT WITHHELD BY POLICY]" } } as never,
+      hookmap,
+    ),
+  ).toEqual({
+    decision: "block",
+    reason: "secret in output",
+    hookSpecificOutput: { updatedToolOutput: { stdout: "[OUTPUT WITHHELD BY POLICY]" } },
   });
 });
 
-it("throws when a hook declares no decisions block", () => {
-  expect(() => renderDecision("PostToolUse", { decision: "allow" }, { host: "x", hooks: { PostToolUse: {} } } as never))
-    .toThrow(/no decisions block for hook "PostToolUse"/);
+// C8. The clean result: nothing to change, so nothing is rendered. The
+// `allow` entry declares one conditional field, so the RULE is non-empty
+// (which assertRenderableDecisions still requires) while the OUTPUT is
+// empty -- and an empty output at this gate means "deliver it unchanged",
+// which is the honest answer once the tool has already run.
+it("renders a plain PostToolUse allow as nothing at all", () => {
+  expect(renderDecision("PostToolUse", { decision: "allow" } as never, hookmap)).toEqual({});
+});
+
+// R1.2, and the symmetry with what V3 fixed for PreToolUse's allow: an
+// observe-only allow (AGT `warn`) carries a synthesized reasoning, and it
+// has to reach the transcript a human reads. `additionalContext` is the
+// PostToolUse field for it (present in 2.1.227's schema, Evidence 1).
+it("renders an observe-only PostToolUse allow as additionalContext", () => {
+  expect(
+    renderDecision("PostToolUse", { decision: "allow", reasoning: "token pattern seen, not blocked" } as never, hookmap),
+  ).toEqual({ hookSpecificOutput: { additionalContext: "token pattern seen, not blocked" } });
+});
+
+it("throws naming the hook when that hook declares no decisions block", () => {
+  expect(() =>
+    renderDecision("PostToolUse", { decision: "allow" } as never, { host: "x", hooks: { PostToolUse: {} } } as never),
+  ).toThrow(/PostToolUse/);
 });
 ```
 
-- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/host-adapter/test/render-decision.test.ts`. Expected: `renderDecision` returns `{hookSpecificOutput}` only and reads a top-level `hookmap.decisions`.
+- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/host-adapter/test/render-decision.test.ts`. Expected: `renderDecision` takes two arguments, so the calls do not typecheck, and it reads the top-level `hookmap.decisions`.
 
-- [ ] **Step 3: Minimal implementation.** `render-decision.ts` reads `hookmap.hooks[hookEventName].decisions[decision]`, then walks `set` / `from` / `top_level.set` / `top_level.from` generically. **No Claude Code field name appears in the file** — `hookEventName` is the one host-shaped key that remains, and it is a value passed in, not a field the module names. Move the hookmap's `decisions` block under `hooks.PreToolUse` verbatim in behaviour, expressed in the new shape, and add `hooks.PostToolUse.decisions`.
+- [ ] **Step 3: Minimal implementation.** `render-decision.ts` selects `hookmap.hooks[hookEventName]?.decisions` instead of `hookmap.decisions` and throws naming the hook when it is absent. **The field-walking loop, `place()`, the collision checks and the `type` guard are untouched** — this is a lookup change, not a rewrite, and any diff inside the loop is a behaviour change that Step 4's first test should catch. Move the existing `decisions` block under `hooks.PreToolUse` **verbatim**, then add `hooks.PostToolUse.decisions`. Update the three gates and the wrapper refusal per the Interfaces section above.
 
-- [ ] **Step 4: Run it, expect PASS** — `bun test packages/host-adapter && bun test hosts/claude-code`.
+- [ ] **Step 4: Run it, expect PASS** — `bun test packages/host-adapter && bun test hosts/claude-code`, then `bun test`. `hosts/claude-code/test/wire-shape.test.ts` must be **byte-identical** afterwards: it pins every `PreToolUse` output as a literal, so an untouched pin is the evidence this task changed no existing rendering. If it needs editing, stop and report — that is a behaviour change, not a move.
 
-- [ ] **Step 5: Commit** — `Render by hookmap-declared field names, never hardcoded ones` / body naming V5's `N12` as the reason this is not gold-plating / `Slice: #5`.
+- [ ] **Step 5: Commit** — `Give each hook its own decisions block` / body naming V5's `N12` and the three gates that assumed one hook / `Slice: #5`.
 
 ---
 
 ### Task 5: array-index descent in `validateDecision` · slice #5 · N7
 
 **Files:**
-- Modify: `packages/host-adapter/src/validate-decision.ts` (the array rejection at 128–142, and `setAtPath`)
-- Test: `packages/host-adapter/test/validate-decision.test.ts`
+- Modify: `packages/host-adapter/src/modifications.ts` (the array rejection at **114–127**, and `setAtPath`)
+- Test: `packages/host-adapter/test/modifications.test.ts`
+
+**Revision R3:** this task was planned against `validate-decision.ts` lines 128–142. PR #12's `governStep` wave extracted `applyModifications` and its path machinery into `modifications.ts`, so the rejection, its comment, and the tests are all one module over from where this plan says. Same rejection for the same reason — a naive `setAtPath` rewrites `[a, b]` as `{"0": a, "1": b}` — and `validate-decision.ts` now calls into it rather than owning it.
 
 **Interfaces:**
-- Consumes: existing `ModificationsInvalidError`, `pointerSegments`, `assertNoReservedSegments`, `segmentsOverlap`.
+- Consumes: existing `ModificationsInvalidError`, `pointerSegments`, `assertNoReservedSegments`, `segmentsOverlap` — all in `modifications.ts` now. Confirm the exact exported names before writing the test; do not assume this list is current.
 - Produces: `/outputs/0/value` resolving and applying, arrays edited **in place** (copied, index replaced) rather than rewritten as objects.
 
 - [ ] **Step 1: Write the failing test:**
@@ -645,7 +768,7 @@ it("rejects the JSON-pointer append token", () => {
 });
 ```
 
-- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/host-adapter/test/validate-decision.test.ts`. Expected: `descends through the array at "/outputs"`.
+- [ ] **Step 2: Run it, expect FAIL** — `bun test packages/host-adapter/test/modifications.test.ts`. Expected: `descends through the array at "/outputs"`.
 
 - [ ] **Step 3: Minimal implementation.** Replace the blanket array rejection with: a segment addressing an array must be all digits, with no leading zero unless it is exactly `"0"`, and must be `< length`. `setAtPath` copies the array with `slice()` and assigns the index. Every other guard stays — reserved segments, absent targets, disjointness.
 
@@ -837,37 +960,25 @@ it("refuses a redaction whose path has no host-side target", async () => {
 
 ---
 
-### Task 10: the fourth gate, and the whole-slice check · slice #5
+### Task 10: widen the fourth gate, and the whole-slice check · slice #5
+
+**Revision R4 — this task is much smaller than planned.** The gate it was written to create already exists at `test/invariants.test.ts:123`, landed by PR #10's review, and already passes with four of its five terms: `permissionDecision`, `permissionDecisionReason`, `updatedInput`, `hookSpecificOutput`. The slices-doc amendments (C1–C7, the Scope-added rows, the retired and added risk rows, F1 struck through) **already landed in `56d49da`** — this plan's own commit. What remains is one term, its mutation test, and the whole-slice verification.
 
 **Files:**
 - Modify: `test/invariants.test.ts`
-- Modify: `docs/shaping/acs-reference-impl-slices.md` (§V4 amendments — C1–C7, Scope added, risk rows)
-- Modify: `docs/shaping/acs-reference-impl-shaping.md` (F1 struck through, resolved)
+- Modify: `docs/shaping/acs-reference-impl-slices.md` (only the rows the Revision section corrects — see below)
 
-**Interfaces:** consumes Task 4's generalization — the gate is only truthful after it lands.
+**Interfaces:** consumes Task 4's per-hook move and Task 7's `updatedToolOutput` path. `updatedToolOutput` must appear in the hookmap and **nowhere** under `packages/host-adapter/src` — the gate is only worth adding once there is code that could have got it wrong.
 
-- [ ] **Step 1: Write the failing test:**
+- [ ] **Step 1: Add the missing term** to the existing `assertNoVocabulary("packages/host-adapter/src", [...])` call, and extend its doc comment to say that the result gate's field is covered too. The gate's terms are the five host output field names V4 touches; adding one to a passing gate is the cheap half, and Step 2 is what makes it real.
 
-```ts
-/**
- * R3.2 from the host side, and the claim Task 4 exists to make real: the
- * adapter is the module every host shares, so a Claude Code field name in
- * it is a second host's patch waiting to happen. V5's N12 says
- * renderDecision is "the same module as N3" -- this is what makes that
- * literally true rather than aspirationally.
- */
-it("the host adapter's source names no host output field", () => {
-  assertNoVocabulary("packages/host-adapter/src", [
-    "permissionDecision", "permissionDecisionReason",
-    "updatedInput", "updatedToolOutput", "hookSpecificOutput",
-  ]);
-});
-```
+- [ ] **Step 2: Mutation-test the new term specifically.** Reintroduce `updatedToolOutput` into `render-decision.ts` (a comment does not count — the gate strips comments, deliberately, so a doc-comment mention is legal), watch the gate fail naming the file and the term, then restore byte-identically and confirm with `sha256sum`. A term added to a gate nobody watched fail is not known to be gated — and this one in particular, because the four existing terms would pass whether or not the fifth is in the array.
 
-- [ ] **Step 2: Run it, expect FAIL** before Task 4, PASS after — and mutation-test it now: reintroduce `updatedInput` into `render-decision.ts`, watch it fail naming the file and the term, restore byte-identically.
-- [ ] **Step 3: Amend the slices doc** — C1–C7 into §V4, the Scope-added rows, F1 struck through in the shaping doc, and the risk table: retire row 1, add two rows (the shape-mismatch fail-open; deny-at-result not being suppression).
-- [ ] **Step 4: Full verification** — `bun test`, `bun run typecheck`, `bun run verify:pin` with network, and confirm `policy/lib/*.rego` is byte-untouched.
-- [ ] **Step 5: Commit** — `Gate the adapter against host vocabulary, and amend the slices doc` / `Slice: #5`.
+- [ ] **Step 3: Correct the slices-doc rows the redistribution invalidated** — not a fresh amendment pass; §V4's corrections are already in. Exactly the rows the Revision section names: the `renderDecision` correction (it no longer "hardcodes three Claude Code field names", and `set`/`from`/`top_level` never shipped), the Scope-added row for the per-hook `decisions` block, the fourth-gate row (widened, not new), the array-descent row (the rejection lives in `N7`'s extracted `modifications.ts`), the stale `347 pass` measurement, and a new watch-for for C8. A row naming a shape that never existed is the same defect PR #11 filed against `N26`, and this branch is where it gets fixed rather than inherited by V5.
+
+- [ ] **Step 4: Full verification** — `bun test`, `bun run typecheck`, `bun run verify:pin` with network, and confirm `policy/lib/*.rego` is byte-untouched (`git diff --stat policy/lib` shows `data.json` only). Report the final counts against the 396/1/0 baseline this plan's Revision section records.
+
+- [ ] **Step 5: Commit** — `Gate the adapter against the result gate's field too` / `Slice: #5`.
 
 ---
 
@@ -876,8 +987,8 @@ it("the host adapter's source names no host output field", () => {
 | # | Risk | Handling |
 |---|---|---|
 | 1 | A redaction reported as applied that Claude Code silently discards, delivering the secret | Evidence 2 is the whole reason Global Constraint 5 exists. Task 7 asserts every sibling field survives; Task 8 fails closed where the shape cannot be preserved; both mutation-tested |
-| 2 | Task 4's rewrite silently changes what `PreToolUse` renders | Its first test restates V1/V3's exact outputs against the new rule shape before the rewrite starts |
-| 3 | `redact` in the shipped config changes an existing demo | Measured during planning: 347 pass, 1 skip, 0 fail, unchanged. Task 1's fourth test pins the pre-tool deny specifically |
+| 2 | Task 4's move silently changes what `PreToolUse` renders | Its first test restates V1/V3's exact outputs against the per-hook lookup before the move starts, and `wire-shape.test.ts` must come out byte-identical — an edited pin means behaviour changed |
+| 3 | `redact` in the shipped config changes an existing demo | Measured during planning at **347 pass, 1 skip, 0 fail** — unchanged, but that was 49 tests ago. Task 1 Step 4 re-measures against the 396/1/0 baseline rather than trusting it; Task 1's fourth test pins the pre-tool deny specifically |
 | 4 | Array descent re-opens the `__proto__`/prototype hazard V3 closed | Task 5 keeps every existing guard and adds index validation; the reserved-segment check is untouched |
 | 5 | `exit_status` is a literal, so a failed tool would be reported `success` | Real, and recorded rather than papered over: Claude Code fires `PostToolUseFailure` separately and this slice does not wire it. Named in the hookmap comment, the slice README, and V7's matrix |
 
