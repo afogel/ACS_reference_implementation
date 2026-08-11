@@ -449,6 +449,28 @@ A fresh Guardian, started with `ACS_ON_DECISION_FAILURE=deny`, a fresh scratch
 session/audit directory, and session id `demo-deny` (so it cannot collide with the
 `proceed` run above). First hook call negotiates:
 
+> **A session file outlives the Guardian that wrote it, so tightening the posture does
+> not take effect until the session turns over.** The "fresh scratch session directory"
+> above is not incidental to this demo — it is load-bearing, and this is the reason.
+>
+> `on_decision_failure` is negotiated once per session and cached at
+> `$ACS_SESSION_DIR/<session_id>.json`, which is what lets a fresh hook subprocess find
+> the posture without re-handshaking. Nothing invalidates that file: not restarting the
+> Guardian, not changing `ACS_ON_DECISION_FAILURE`. So a deployment that **tightens**
+> its posture from `proceed` to `deny` keeps failing *open* for every session already on
+> disk, for as long as those sessions keep firing hooks — which is the one direction of
+> change where being stale actually costs something. Loosening (`deny` → `proceed`) is
+> stale in the harmless direction.
+>
+> The mitigations available today are both operational: delete the session files
+> (`rm .acs/sessions/*.json`, or the scratch directory this runbook uses per posture),
+> or use a new session. There is no cache invalidation and no TTL in this slice; the
+> nearest fix — the Guardian being able to attach to or renegotiate a session already in
+> flight — is undefined in ACS v0.1 (§4.1 defers it to v0.2 alongside
+> `system/handshake_renegotiate`), so this is a wire-contract gap as much as an
+> implementation one. Recorded in [`slices/v3/README.md`](../../slices/v3/README.md)'s
+> "not in this slice" list.
+
 ```json
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}
 ```

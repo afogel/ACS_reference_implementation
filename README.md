@@ -131,10 +131,41 @@ echo '{"session_id":"demo","hook_event_name":"PreToolUse","tool_name":"Bash","to
 
 Second, through the real `claude` CLI with `.claude/settings.json` installed — Claude Code spawning `acs-hook.ts` as an actual `PreToolUse` subprocess and honouring the decision. That run was **headless** (`claude -p '<prompt>' --allowedTools Bash`), not an interactive TUI session, and the payload was `echo rm -rf /` rather than `rm -rf /`: the configured pattern matches the raw command string with no argv parse, so it is denied by the same rule at offset 5 while being inert if it ever did execute. An unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test. The interactive TUI session was not run, so nothing here describes how the TUI renders the block. See [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md) for the full captured output of both.
 
+### Configuration
+
+Everything above runs with no configuration at all. These are the environment
+variables the three processes read, each with the default it falls back to —
+the quickstart uses every default.
+
+**The host shim** (`hosts/claude-code/acs-hook.ts`, run by Claude Code as a
+subprocess per hook):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ACS_GUARDIAN_URL` | `http://localhost:8787/acs` | Where the shim POSTs its ACS envelopes. Matches the Guardian's own default port, so neither hardcodes the other |
+| `ACS_SESSION_DIR` | `.acs/sessions` | Where the negotiated ServerHello (S13) is filed, one JSON file per host `session_id`, so a fresh hook subprocess finds the posture a previous one negotiated |
+| `ACS_AUDIT_LOG` | `.acs/audit.jsonl` | Where the audit sink (S14) appends every fail-open proceed and every posture-driven block — §6.4's MUST |
+| `ACS_HOOKMAP_PATH` | `hosts/claude-code/claude-code.hookmap.yaml` | **Repoints the governance mapping itself.** The hookmap decides which ACS method each hook fires and how each ACS decision renders as a Claude Code `permissionDecision`, so this variable changes what governance *means* for this host, not merely where a file lives. It exists for tests that need a deliberately broken hookmap; a deployment should leave it unset |
+
+**The Guardian** (`bun run guardian`):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ACS_ON_DECISION_FAILURE` | `proceed` | The failure posture this deployment declares in its ServerHello — what a host should do when *no decision arrives at all*. `proceed` is the ACS default (R1.7, `handshake.json`'s own `default`); `deny` fails closed. Any other value **throws at startup** rather than falling back, because guessing which posture a typo meant is the silent bypass this project exists to remove |
+| `ACS_GUARDIAN_PORT` | `8787` | Port for the `POST /acs` JSON-RPC endpoint |
+| `ACS_MANIFEST_PATH` | `policy/manifest.yaml` | The AGT manifest, which names the policy bundle and any annotators. `policy/manifest.drift.yaml` is the second one V3 added to make `warn` reachable |
+| `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope tap (S6) records every envelope crossing the wire, in both directions, before validation |
+
+**The Inspector** (`bun run inspector`): reads `ACS_ENVELOPE_LOG` and
+`ACS_AUDIT_LOG` with the same defaults, and both are overridable on the
+command line (`--path`, `--audit-path`), which takes precedence. It also
+honours the conventional `NO_COLOR`, and colours nothing when stdout is not
+a TTY.
+
 ### Verify
 
 ```bash
-bun test          # 317 tests across 26 files (316 pass, 1 skip), including the R3.2/R3.3
+bun test          # 348 tests across 26 files (347 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
