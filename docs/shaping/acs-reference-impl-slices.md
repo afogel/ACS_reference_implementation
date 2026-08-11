@@ -40,10 +40,10 @@ Every slice ends in something demo-able.
 | N1 | P1 | acs-hook shim | generic hook entrypoint, reads hook JSON on stdin | call | → N2 | — |
 | N2 | P1 | `@acs/host-adapter` | `buildEnvelope(event, payload, hookmap)` | call | → N4 | — |
 | N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` | call | → U2 | — |
-| N4 | P1 | `@acs/host-adapter` | `guardianClient.post()` JSON-RPC over HTTP | call | → N20 | → N3 |
-| N5 | P1 | `@acs/host-adapter` | `handshake()` — negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
+| N4 | P1 | `@acs/host-adapter` | `createGuardianClient(url).requestDecision()` JSON-RPC over HTTP | call | → N20 | → N3 |
+| N5 | P1 | `@acs/host-adapter` | `negotiateSessionConfig()` — negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
-| N28 | P3 | guardian | `handshakeResponder()` — ServerHello | call | — | → N5 |
+| N28 | P3 | guardian | `buildServerHello()` — ServerHello | call | — | → N5 |
 | S13 | P1 | store | `negotiated session config` | — | — | → N6 (V3) |
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N23 | — |
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope → AGT snapshot | call | → N30 | — |
@@ -138,8 +138,8 @@ New entries in S1 for `PostToolUse` → `steps/toolCallResult`, and in S8 for th
 | N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
 | N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — same module as N2 | call | → N13 | — |
 | N12 | P2 | `@acs/host-adapter` | `renderDecision()` — same module as N3 | call | → U11, → U12 | — |
-| N13 | P2 | `@acs/host-adapter` | `guardianClient.post()` — same module as N4 | call | → N20 | → N16 |
-| N14 | P2 | `@acs/host-adapter` | `handshake()` — same module as N5 | call | → N28 | → S15 |
+| N13 | P2 | `@acs/host-adapter` | `createGuardianClient().requestDecision()` — same module as N4 | call | → N20 | → N16 |
+| N14 | P2 | `@acs/host-adapter` | `negotiateSessionConfig()` — same module as N5 | call | → N28 | → S15 |
 | N15 | P2 | `@acs/host-adapter` | `applyFailurePosture()` — same module as N6 | call | → S16, → N12 | — |
 | N16 | P2 | `@acs/host-adapter` | `validateDecision()` — same module as N7 | call | → N12, → N15 | — |
 | S2 | P2 | store | `opencode.hookmap.yaml` | — | — | → N11, N12 |

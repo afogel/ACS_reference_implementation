@@ -243,16 +243,16 @@ All resolved — see `spike-agt-integration.md`.
 |---|-------|-----------|------------|---------|-----------|------------|
 | N1 | P1 | acs-hook shim | generic hook entrypoint, reads hook JSON on stdin | call | → N2 | — |
 | N2 | P1 | `@acs/host-adapter` | `buildEnvelope(event, payload, hookmap)` | call | → N4 | — |
-| N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` → `hookSpecificOutput` on stdout | call | → U2, → U3 | — |
-| N4 | P1 | `@acs/host-adapter` | `guardianClient.post()` JSON-RPC over HTTP | call | → N20 | → N7 |
-| N5 | P1 | `@acs/host-adapter` | `handshake()` — `handshake/hello`; negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
+| N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` → the host's output object on stdout, every field name read from the hookmap | call | → U2, → U3 | — |
+| N4 | P1 | `@acs/host-adapter` | `createGuardianClient(url).requestDecision()` JSON-RPC over HTTP | call | → N20 | → N7 |
+| N5 | P1 | `@acs/host-adapter` | `negotiateSessionConfig()` — `handshake/hello`; negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
 | N6 | P1 | `@acs/host-adapter` | `applyFailurePosture()` — no decision within timeout → negotiated posture (default `proceed`); writes an audit event on every fail-open proceed | call | → S14, → N3 | — |
 | N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults | call | → N3, → N6 | — |
 | N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
 | N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — **same module as N2** | call | → N13 | — |
 | N12 | P2 | `@acs/host-adapter` | `renderDecision()` — **same module as N3** | call | → U11, → U12 | — |
-| N13 | P2 | `@acs/host-adapter` | `guardianClient.post()` — **same module as N4** | call | → N20 | → N16 |
-| N14 | P2 | `@acs/host-adapter` | `handshake()` — **same module as N5** | call | → N28 | → S15 |
+| N13 | P2 | `@acs/host-adapter` | `createGuardianClient().requestDecision()` — **same module as N4** | call | → N20 | → N16 |
+| N14 | P2 | `@acs/host-adapter` | `negotiateSessionConfig()` — **same module as N5** | call | → N28 | → S15 |
 | N15 | P2 | `@acs/host-adapter` | `applyFailurePosture()` — **same module as N6** | call | → S16, → N12 | — |
 | N16 | P2 | `@acs/host-adapter` | `validateDecision()` — **same module as N7** | call | → N12, → N15 | — |
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
@@ -263,7 +263,7 @@ All resolved — see `spike-agt-integration.md`.
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
 | N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
-| N28 | P3 | guardian | `handshakeResponder()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
+| N28 | P3 | guardian | `buildServerHello()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
 | N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
@@ -317,8 +317,8 @@ flowchart TB
         N1["N1: acs-hook shim"]
         N2["N2: buildEnvelope()"]
         N3["N3: renderDecision()"]
-        N4["N4: guardianClient.post()"]
-        N5["N5: handshake()"]
+        N4["N4: createGuardianClient().requestDecision()"]
+        N5["N5: negotiateSessionConfig()"]
         N6["N6: applyFailurePosture()"]
         N7["N7: validateDecision()"]
         S1["S1: claude-code.hookmap.yaml"]
@@ -333,8 +333,8 @@ flowchart TB
         N10["N10: acs-plugin shim"]
         N11["N11: buildEnvelope() — same module as N2"]
         N12["N12: renderDecision() — same as N3"]
-        N13["N13: guardianClient.post() — same as N4"]
-        N14["N14: handshake() — same as N5"]
+        N13["N13: createGuardianClient().requestDecision() — same as N4"]
+        N14["N14: negotiateSessionConfig() — same as N5"]
         N15["N15: applyFailurePosture() — same as N6"]
         N16["N16: validateDecision() — same as N7"]
         S2["S2: opencode.hookmap.yaml"]
@@ -351,7 +351,7 @@ flowchart TB
         N25["N25: persistResultLabels()"]
         N26["N26: writeEnvelopeTap()"]
         N27["N27: denyOnInvalidEnvelope()"]
-        N28["N28: handshakeResponder()"]
+        N28["N28: buildServerHello()"]
         S3["S3: sessionContext chain"]
         S4["S4: intent"]
         S5["S5: provenance + result_labels"]
