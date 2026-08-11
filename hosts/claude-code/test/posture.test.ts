@@ -57,6 +57,28 @@ function payload(command: string, sessionId = "sess-1"): string {
   });
 }
 
+/**
+ * The RESULT gate's payload, with `Bash`'s real `tool_response` shape as Claude
+ * Code 2.1.227 delivers it (`{stdout, stderr, interrupted, isImage,
+ * noOutputExpected}`) -- prose in `stdout` and flags beside it.
+ *
+ * Every posture claim in this file was written against `PreToolUse`, which is
+ * the only gate the hookmap mapped when they were written. Two of them are
+ * properties of the SHIM rather than of that gate, so they are asked of both
+ * here: whether a parsed payload can still end in a non-zero exit with nothing on
+ * stdout, and whether a hookmap this host cannot carry out blocks rather than
+ * proceeding.
+ */
+function resultPayload(stdout: string, sessionId = "sess-1"): string {
+  return JSON.stringify({
+    session_id: sessionId,
+    hook_event_name: "PostToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "cat .env" },
+    tool_response: { stdout, stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
+  });
+}
+
 async function runShim(
   stdin: string,
   env: Record<string, string>,
@@ -762,6 +784,69 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       expect(out.stderr).toContain('"decision"');
       expect(out.stderr).toContain("block");
       expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
+  // THE TWELFTH FAIL-OPEN, end to end. A result-gate `deny` withholds by carrying
+  // a replacement for the output, and a leaf that is not prose is a leaf no
+  // replacement can be expressed for. That used to be discovered at the render,
+  // with the decision already in hand, where the delivery posture answered it:
+  // measured at exit 0 with the FULL UNREDACTED tool_response delivered, the
+  // Guardian's deny dropped, and an audit entry saying the decision "was
+  // honoured". The hookmap below is the same shipped file with `outputs.from`
+  // moved one field along, from `stdout` to the boolean `interrupted` -- so
+  // `buildEnvelope` still builds a clean envelope and a decision would still come
+  // back. It is refused before either happens.
+  //
+  // The Guardian URL is deliberately unreachable, which makes the posture the ACS
+  // default `proceed` -- the posture that WOULD have proceeded. Nothing is
+  // audited, because nothing proceeded and no decision was ever sought.
+  it("exits 2 (blocking) on a result gate whose named output no replacement can be built for", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "unpatchable-leaf.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n" +
+        "  PostToolUse:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool_name\n" +
+        // Present in the payload, resolvable, under `within`, and a boolean.
+        "    outputs: { from: $.tool_response.interrupted, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          decision:                             { value: block }\n" +
+        "          hookSpecificOutput.updatedToolOutput: { from: applied_output }\n",
+    );
+    try {
+      const out = await runShim(resultPayload("TOKEN=ghp_ABCDEF123456"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      // The stderr line says which hook, which path, and why no replacement of
+      // that shape can be written -- the three things a hookmap author needs.
+      expect(out.stderr).toContain("PostToolUse");
+      expect(out.stderr).toContain("$.tool_response.interrupted");
+      expect(out.stderr).toMatch(/is a string where this tool produced a boolean/);
+      // Nothing proceeded, so nothing was audited as having proceeded. This is
+      // the assertion the old behaviour failed: it wrote one.
+      expect(existsSync(join(dir, "audit.jsonl"))).toBe(false);
     } finally {
       unlinkSync(hookmapPath);
     }

@@ -150,11 +150,14 @@ function patchedClone(
  *     gate cannot express a replacement for at all -- which is a decision the
  *     caller has to answer, not something to coerce past.
  *
- * `buildEnvelope` has already established the two paths describe one leaf inside
- * one object, and that the leaf resolved for this very payload -- so neither
- * throw is reachable for an envelope that was built from this payload. They stay
- * throws rather than assumptions: this function is handed a payload and two
- * paths, and "some caller checked" is not a property of the function.
+ * `buildEnvelope` establishes that the two paths describe one leaf inside one
+ * object and that the leaf resolved for this very payload; the assertion below
+ * establishes the rest, before a decision is ever sought. Between the two, no
+ * throw here is reachable for a prose replacement at a gate that got as far as
+ * holding a decision -- which is the property that keeps a `deny` from arriving
+ * somewhere it cannot be carried out. They stay throws rather than assumptions:
+ * this function is handed a payload and two paths, and "some caller checked" is
+ * not a property of the function.
  */
 export function replacingOutput(target: HostOutputTarget, replacement: unknown): Record<string, unknown> {
   const { payload, outputs } = target;
@@ -192,6 +195,40 @@ export function replacingOutput(target: HostOutputTarget, replacement: unknown):
   }
 
   return patchedClone(container, segments, replacement, outputs.from);
+}
+
+/**
+ * Throws unless a replacing output can be built for this payload AT ALL --
+ * asked, deliberately, by BUILDING one.
+ *
+ * WHY THIS IS ASKED BEFORE A DECISION IS SOUGHT, AND NOT WHERE THE
+ * REPLACEMENT IS NEEDED. Every precondition `replacingOutput` reports is a
+ * property of the payload and the hookmap alone -- an object to clone, a leaf
+ * to patch, and a leaf whose own type prose can stand in for -- and not one of
+ * them depends on which decision arrives. Asked once a decision is in hand,
+ * a hookmap that fails any of them leaves the caller holding a `deny` it cannot
+ * carry out, at the one point where the caller's only remaining answer is a
+ * delivery-failure posture: `proceed` there delivers the unredacted output and
+ * drops the decision, `deny` there blocks with nothing withheld. Both are the
+ * shape this module exists to prevent, arrived at from the other side.
+ *
+ * So the question is asked first, where the only answer needed is a loud stop.
+ * A hookmap that cannot express a withholding for the payload in hand is a
+ * broken deployment, not a policy question -- the same class as a hookmap that
+ * will not load -- and nothing has been asked of a policy runtime and nothing
+ * has been audited at that point, so there is no decision to drop and no record
+ * to falsify.
+ *
+ * BY BUILDING ONE, rather than by re-stating what building one requires.
+ * "A replacement can be built" and "here is what building a replacement needs"
+ * are two sentences that can drift, and this check's whole value is that the
+ * projection and its precondition cannot come apart. `WITHHELD_OUTPUT` is not a
+ * stand-in either: it is the exact value the fail-closed path would have to
+ * patch, so what is checked is the very projection that would be performed. The
+ * clone is discarded -- the answer is in whether it could be made.
+ */
+export function assertOutputIsReplaceable(target: HostOutputTarget): void {
+  replacingOutput(target, WITHHELD_OUTPUT);
 }
 
 /**

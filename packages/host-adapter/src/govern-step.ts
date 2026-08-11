@@ -46,11 +46,15 @@
  *     because that is the only stage it can be reached from.
  *   - There are exactly two ways out: a `GovernedStep`, or a throw. A throw
  *     means this hookmap does not map the hook that fired (see the guard at the
- *     top of `governStep`) or that the fallback render of a posture decision
- *     itself failed, which `loadHookmap` makes unreachable for a hook it does
- *     map (see `resolveByPosture` below) -- and both are left as throws rather
- *     than repaired, because half an output is the one thing a governance hook
- *     must never write.
+ *     top of `governStep`), that it maps a result gate whose named output no
+ *     replacement can be built for (see `assertOutputIsReplaceable`, asked
+ *     before any decision is sought), or that the fallback render of a posture
+ *     decision itself failed, which `loadHookmap` makes unreachable for a hook
+ *     it does map (see `resolveByPosture` below) -- and all three are left as
+ *     throws rather than repaired, because half an output is the one thing a
+ *     governance hook must never write. The middle one is the twelfth fail-open
+ *     closed here: asked any later it arrives with a decision in hand, and the
+ *     posture answers a question the decision had already answered.
  *
  * This module knows ACS and hookmaps, and nothing else: no policy-runtime
  * vocabulary, and no host vocabulary -- it never names a field of the output
@@ -69,7 +73,7 @@ import type { GuardianClient } from "./guardian-client.ts";
 import type { ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
-import { withResultOutput, type HostOutputTarget } from "./result-output.ts";
+import { assertOutputIsReplaceable, withResultOutput, type HostOutputTarget } from "./result-output.ts";
 import { validateDecision } from "./validate-decision.ts";
 
 /**
@@ -260,12 +264,16 @@ export async function governStep({
    *
    * V4 adds one way this CAN throw, and it is not the rendering: a negotiated
    * fail-closed `deny` at a result gate has to withhold the output, and building
-   * the replacement that withholds it can fail (a payload whose named leaf is
-   * absent or is not prose -- see `replacingOutput`). That is a posture deny this
-   * host cannot carry out at all, and the honest answers are a loud stop or a
-   * block that withholds nothing while claiming to. It throws, and the caller
-   * turns that into a blocking stop. Unreachable for an envelope built from this
-   * payload, which is where those two properties are checked.
+   * the replacement that withholds it can fail (see `replacingOutput`). Exactly
+   * one route reaches that, and it is the one route where a posture is consulted
+   * before `assertOutputIsReplaceable` has run: a stage-"request" failure, i.e. a
+   * payload that does not carry what this hook's `outputs` block describes at
+   * all. That is a posture deny this host cannot carry out, and the honest
+   * answers are a loud stop or a block that withholds nothing while claiming to.
+   * It throws, and the caller turns that into a blocking stop. Every other route
+   * -- a leaf that is present and is not prose above all -- is refused before a
+   * decision is sought rather than answered here, because there it would be
+   * answering with a posture something a decision had already answered.
    *
    * `method` is the ACS method or null, never the host's own event name: an
    * envelope that could not be built has no ACS method to report, and the audit
@@ -306,6 +314,47 @@ export async function governStep({
     envelope = buildEnvelope(hookEventName, payload, hookmap);
   } catch (failure) {
     return resolveByPosture(failure, "request", undefined);
+  }
+
+  // Between the two stages, and deliberately in neither: at a gate that sees
+  // what a step PRODUCED, a decision has to be able to REPLACE that output, and
+  // this is where that is established -- once, before anything is asked of a
+  // Guardian and before anything is audited.
+  //
+  // THE TWELFTH FAIL-OPEN, AND IT IS CLOSED BY THIS ORDERING. Building the
+  // replacement is what a `deny` at a result gate withholds WITH (see
+  // `withResultOutput`), and it can fail -- a payload whose named leaf is not
+  // prose is a leaf no replacement can be expressed for at all. Asked at the
+  // render, where it used to be, that failure arrives with a decision already in
+  // hand and lands in the render stage's catch, so the deployment's delivery
+  // posture answers it: under `proceed` the FULL UNREDACTED OUTPUT is delivered,
+  // the Guardian's `deny` is dropped, and the audit entry says the decision "was
+  // honoured". That is both "a decision that ARRIVED always outranks a posture"
+  // (above) and "where it cannot express the edit in the host's shape it fails
+  // closed" made false on one route. Asked HERE there is no decision to drop and
+  // no record to falsify: the hookmap either can express a withholding for this
+  // payload or this deployment stops.
+  //
+  // A throw rather than a posture, for the same reason the guard at the top of
+  // this function is one: a hookmap whose declared output this host cannot
+  // replace is a broken deployment, the same class as a hookmap that will not
+  // load, and a caller answers it the same way -- a loud, blocking stop. What
+  // stays with the posture is the OTHER failure, and the distinction is the
+  // point: `buildEnvelope` failing above means the PAYLOAD does not carry what
+  // this hook's `outputs` block describes, which a host may cause legitimately
+  // by firing one hook for several tools, so it remains the deployment's own
+  // negotiated question. A leaf that is there and is not prose is a permanent
+  // property of the tool's own output shape, and no posture makes it patchable.
+  if (outputTarget !== undefined) {
+    try {
+      assertOutputIsReplaceable(outputTarget);
+    } catch (failure) {
+      throw new Error(
+        `governStep: hook "${hookEventName}" is a gate whose output an arriving decision has to be able to ` +
+          `replace, and no replacement can be built for the output its hookmap entry names: ` +
+          `${failure instanceof Error ? failure.message : String(failure)}`,
+      );
+    }
   }
 
   // Stage "delivery": a request exists and no decision is in hand yet. §6.4's

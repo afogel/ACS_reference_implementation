@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AuditEvent, AuditSink } from "../src/audit-sink.ts";
-import type { Hookmap, HookmapRequestHookEntry } from "../src/build-envelope.ts";
+import type { Hookmap, HookmapRequestHookEntry, HookmapResultHookEntry } from "../src/build-envelope.ts";
 import { governStep } from "../src/govern-step.ts";
 import { GuardianTimeoutError, type DecisionOrFailure, type GuardianClient } from "../src/guardian-client.ts";
 import type { ResolvedSessionConfig } from "../src/handshake.ts";
@@ -34,6 +34,32 @@ const hookmap: Hookmap = { host: "test-host", hooks: { OnStep: ON_STEP } };
 
 const payload = { session_id: "sess-1", tool_name: "Bash", tool_input: { command: "ls -la" } };
 
+/**
+ * A RESULT gate on the same synthetic host: a gate that sees what a step
+ * produced, and therefore the one kind of gate where a decision has to be able
+ * to replace an output. Its `outputs` block is what makes it one -- read off the
+ * entry's shape, never off the event name.
+ *
+ * `text` is prose and `truncated` is a flag, deliberately side by side, because
+ * the property under test is which of the two a replacement can be built for.
+ */
+const ON_RESULT: HookmapResultHookEntry = {
+  acs_method: "steps/toolCallResult",
+  tool_name: "$.tool_name",
+  outputs: { from: "$.step_result.text", within: "$.step_result" },
+  exit_status: { literal: "success" },
+  decisions: {
+    allow: { output: { outcome: { value: "go" } } },
+    deny: { output: { outcome: { value: "stop" }, replacing_output: { from: "applied_output" } } },
+  },
+};
+
+const resultPayload = {
+  session_id: "sess-1",
+  tool_name: "Bash",
+  step_result: { text: "TOKEN=ghp_ABCDEF123456", truncated: false },
+};
+
 function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
   const events: AuditEvent[] = [];
   return {
@@ -65,11 +91,11 @@ function govern(
   guardian: GuardianClient,
   audit: AuditSink,
   session: ResolvedSessionConfig = { config: NEGOTIATED("proceed"), failure: undefined },
-  overrides: { hookmap?: Hookmap; hookEventName?: string } = {},
+  overrides: { hookmap?: Hookmap; hookEventName?: string; payload?: Record<string, unknown> } = {},
 ) {
   return governStep({
     hookEventName: overrides.hookEventName ?? "OnStep",
-    payload,
+    payload: overrides.payload ?? payload,
     hookmap: overrides.hookmap ?? hookmap,
     guardian,
     session,
@@ -278,6 +304,116 @@ describe("governStep — the three failure stages name three different incidents
     // The posture's own decision is renderable by construction, so there is
     // always something on the way out.
     expect(governed.output).toEqual({ outcome: "go", note: governed.decision.reasoning });
+  });
+});
+
+/**
+ * THE TWELFTH FAIL-OPEN, from the side that closes it. A `deny` at a result gate
+ * withholds by carrying a replacement for the output, and building that
+ * replacement can fail: a leaf that is not prose is a leaf no replacement can be
+ * expressed for. Asked at the render, that failure arrived with the decision
+ * already in hand and landed in the render stage's catch, so the delivery
+ * posture answered it -- under `proceed`, the full unredacted output delivered,
+ * the Guardian's deny dropped, and an audit entry saying the decision "was
+ * honoured". Measured before the fix, with `outputs.from` on a boolean leaf and a
+ * Guardian answering `deny`: exit 0, `outcome: "proceeded"`,
+ * `failure.kind: "decision_unrenderable"`.
+ *
+ * So it is asked before a decision is sought, and the assertions below are about
+ * the ORDER as much as the refusal: a Guardian that was never called and an audit
+ * log with nothing in it are what make "no decision was dropped" a property of
+ * the control flow rather than of the message.
+ */
+describe("governStep — a result gate whose named output no replacement can be built for", () => {
+  /** A Guardian that would answer `deny`, and records whether it was ever asked.
+   * The deny matters: it is the decision that would have been dropped. */
+  function askedGuardian(): { guardian: GuardianClient; asked: () => number } {
+    let asks = 0;
+    return {
+      guardian: {
+        requestDecision: () => {
+          asks += 1;
+          return Promise.resolve({
+            decisionArrived: true,
+            decision: { decision: "deny", reasoning: "secret in output" },
+          } satisfies DecisionOrFailure);
+        },
+        post: () => Promise.reject(new Error("governStep must not use the wire primitive")),
+      },
+      asked: () => asks,
+    };
+  }
+
+  const resultHookmap = (from: string): Hookmap => ({
+    host: "test-host",
+    hooks: { OnResult: { ...ON_RESULT, outputs: { from, within: "$.step_result" } } },
+  });
+
+  it("refuses before the Guardian is asked, under a posture that would otherwise have proceeded", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = askedGuardian();
+
+    await expect(
+      govern(guardian, sink, { config: NEGOTIATED("proceed"), failure: undefined }, {
+        hookEventName: "OnResult",
+        payload: resultPayload,
+        // Present, resolvable, and a flag: the envelope builds, the decision
+        // arrives, and nothing can be patched in its place.
+        hookmap: resultHookmap("$.step_result.truncated"),
+      }),
+    ).rejects.toThrow(/no replacement can be built for the output its hookmap entry names/);
+
+    // The two assertions the message cannot make: nothing was asked, so no
+    // decision existed to be dropped, and nothing was audited, so no entry
+    // claims a step proceeded.
+    expect(asked()).toBe(0);
+    expect(events).toEqual([]);
+  });
+
+  // The refusal has to be about the leaf and not about the gate: a result gate
+  // whose named leaf IS prose governs exactly as before, and its deny withholds.
+  it("lets a gate whose named leaf is prose govern, and its deny still withholds", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = askedGuardian();
+
+    const governed = await govern(guardian, sink, undefined, {
+      hookEventName: "OnResult",
+      payload: resultPayload,
+      hookmap: resultHookmap("$.step_result.text"),
+    });
+
+    expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
+      stage: "guardian",
+      decision: "deny",
+    });
+    // The whole object, because a replacement missing a sibling field is the one
+    // a host discards while delivering the original.
+    expect(governed.output).toEqual({
+      outcome: "stop",
+      replacing_output: { text: "[OUTPUT WITHHELD BY POLICY]", truncated: false },
+    });
+    expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
+  });
+
+  // The failure that stays with the posture, and the distinction that keeps the
+  // refusal above from swallowing it: a payload that does not carry what the
+  // hookmap describes is `buildEnvelope`'s report, at stage "request", where a
+  // host firing one hook for several tools is the deployment's own negotiated
+  // question rather than a broken deployment.
+  it("leaves a payload that carries no such leaf to the posture, at stage \"request\"", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = askedGuardian();
+
+    const governed = await govern(guardian, sink, undefined, {
+      hookEventName: "OnResult",
+      payload: { session_id: "sess-1", tool_name: "Bash", step_result: { truncated: false } },
+      hookmap: resultHookmap("$.step_result.text"),
+    });
+
+    expect(governed.stage).toBe("request");
+    expect(asked()).toBe(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ outcome: "proceeded", failure: { kind: "host_configuration" } });
   });
 });
 
