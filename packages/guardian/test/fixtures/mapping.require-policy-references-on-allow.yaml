@@ -3,6 +3,13 @@
 # so a real AGT "allow" verdict for a benign command (which carries no
 # `reason`/`message`, per bridge.test.ts) makes mapVerdict throw for real.
 #
+# AND except that no `intervention_points` row here carries the per-point
+# `modifications` block V4 (slice #5) moved out of `field_synthesis` -- so this
+# file has no point that can express a transform at all. The throw this fixture
+# exists to provoke happens on an `allow`, so nothing it is used for reaches a
+# `modify`; the same caveat as its sibling fixture applies to any later test that
+# does, and the header used to say the file was identical.
+#
 # Used by packages/guardian/test/server.test.ts (fix wave finding 1) to
 # prove the Guardian's evaluation-failure catch turns a genuine
 # assembleSnapshot/bridge.evaluate/mapVerdict throw into a well-formed

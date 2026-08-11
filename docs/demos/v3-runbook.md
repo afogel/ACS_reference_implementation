@@ -85,10 +85,30 @@ after a restart) and reverted immediately after each capture, so the tracked fil
 identical before this task and after it. `git diff -- policy/lib/data.json` is empty at
 every point in this narration except where a section is actively showing its own diff.
 
+> **Correction (V4, slice #5) — one of those edits is no longer an edit.** The sentence above
+> is what V3's own capture session did, and it stays. But V4 **ships** the `redact` rule in the
+> tracked `policy/lib/data.json`, so a reader re-running this runbook today edits that file for
+> two sections rather than three: the `transform` section below needs no edit at all. Two
+> consequences for the diffs in this file, both verified rather than assumed:
+>
+> - Every `diff` block below was captured against the pre-V4 file, blob `2530d81`. The tracked
+>   file is now blob `7130eed`, so the same edits produce the same *added lines* against a
+>   different `index` line and a different hunk header.
+> - What the edits *do* is unchanged. The `escalate` section's `approval.required` was re-run
+>   against the V4 tracked file and reproduces this file's captured `ask`, `reasoning`,
+>   `reason_codes` and `policy_references` exactly; so does the plain `allow`.
+>
+> See `docs/shaping/acs-reference-impl-slices.md` §V4's "the config ships" amendment for why the
+> rule ships rather than living in a second config document, and
+> [`docs/demos/v4-runbook.md`](v4-runbook.md) for what shipping it does at both gates.
+
 ## allow
 
-No edit needed — this is the tracked `policy/lib/data.json` exactly as committed (just the
-destructive-command patterns).
+No edit needed — this is the tracked `policy/lib/data.json` exactly as committed. When V3 shipped
+that meant the destructive-command patterns alone; **since V4 the tracked file also carries the
+`redact` block** the `transform` section below used to add. Re-run against it, `ls -la` is still
+the clean allow captured here — the redaction patterns match secrets, and this command carries
+none.
 
 ```bash
 curl -s -X POST http://localhost:8790/acs \
@@ -151,7 +171,10 @@ completeness, since this is the first of the five verdicts that section 1 above.
 
 The Guardian was stopped, `policy/lib/data.json` was edited to add `approval.required`,
 the Guardian was restarted, and it was reverted again immediately after this section's
-captures. Diff, captured with `git diff`:
+captures. Diff, captured with `git diff` — against the pre-V4 file, blob `2530d81`; **the same
+edit against today's tracked file adds the same six lines under a different hunk header, because
+V4 ships a `redact` block in between** (re-run and re-verified, verdict unchanged; see the
+correction in "Setup common to every section" above):
 
 ```diff
 diff --git a/policy/lib/data.json b/policy/lib/data.json
@@ -229,8 +252,18 @@ deny still outranks escalate under this exact same config. `rm -rf /`, same Guar
 
 ## transform (arrives as ACS `modify`, carrying the rewritten argument — R1.6)
 
-Guardian stopped, `data.json` edited to add a `redact` rule, restarted, reverted after.
-Diff:
+**This section is the one V4 changed, and the change is that there is nothing left to do.** When
+V3 shipped: Guardian stopped, `data.json` edited to add a `redact` rule, restarted, reverted
+after — the diff below is that edit, exactly as it was captured. **Since V4 (slice #5) the rule
+ships in the tracked file**, so re-running this section today needs no edit, no restart and no
+revert: the capture below comes straight out of `policy/lib/data.json` as committed. Re-verified
+against the V4 tracked file, the decision is byte-for-byte the one recorded here.
+
+That also means the rule is live at *every* intervention point, not just this one, which is what
+V4's own demo turns on — see [`docs/demos/v4-runbook.md`](v4-runbook.md), and
+`docs/shaping/acs-reference-impl-slices.md` §V4 for why a second config document was rejected.
+The diff, as V3 captured it (against blob `2530d81`; V4's tracked file is `7130eed`, and the
+`redact` block below is now part of it):
 
 ```diff
 diff --git a/policy/lib/data.json b/policy/lib/data.json
@@ -537,7 +570,10 @@ connection), same command family, opposite outcome. Only the negotiated posture 
 - **`policy/lib/data.json` was edited and reverted by hand during this capture session**,
   never left in an intermediate state. `git diff -- policy/lib/data.json` is empty at the
   end of this runbook's own preparation — verified, not assumed — and the diffs shown
-  above are exact, captured with `git diff` at the moment each edit was live.
+  above are exact, captured with `git diff` at the moment each edit was live. **They are exact
+  as of V3**: they were taken against blob `2530d81`, and V4 changed the tracked file, so a
+  re-run today produces the same added lines under different hunk headers and needs no edit at
+  all for the `transform` section. See the correction under "Setup common to every section".
 - **Timestamps, request ids, and session ids above are real** — genuine UUIDs generated
   per request and genuine wall-clock times from the actual runs — but they will not match
   a re-run's own ids or times. What should match on a re-run is every `decision`,

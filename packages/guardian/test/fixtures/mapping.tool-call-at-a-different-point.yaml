@@ -2,6 +2,14 @@
 # mapping.yaml except one row moves: "steps/toolCallRequest" is answered by the
 # `output` intervention point instead of `pre_tool_call`.
 #
+# AND except that no `intervention_points` row here carries the per-point
+# `modifications` block V4 (slice #5) moved out of `field_synthesis` -- so this
+# file has no point that can express a transform at all. Nothing this fixture is
+# used for reaches a `modify`, which is why it was left alone rather than
+# updated. But a later transform test pointed at this file would get mapVerdict's
+# "no modifications rule for intervention point" throw instead of the shape it
+# meant to exercise, and the header used to say the file was identical.
+#
 # Used by packages/guardian/test/server.test.ts (PR #10 review, Critical) to
 # prove the runtime resolves the AGT intervention point out of THIS table
 # rather than hardcoding "pre_tool_call". `output` is a point AGT knows and

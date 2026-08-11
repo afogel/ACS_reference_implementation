@@ -27,9 +27,18 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 | Claim | How it is demonstrated |
 |---|---|
 | R1.2 — AGT's five verdicts (`allow`, `deny`, `escalate`, `transform`, `warn`) all arrive over the ACS wire as real decisions, driven only from `data.agt.defaults.config` over the pinned, unforked bundle — including `warn` arriving as `allow` with a **non-empty** `policy_references`, the only thing distinguishing it from a clean allow | [`test/dispositions.test.ts`](test/dispositions.test.ts) drives all five through a live Guardian; [`docs/demos/v3-runbook.md`](docs/demos/v3-runbook.md) has the real captured output for each, with the exact `data.json` diff that produced it |
-| R1.6 — a `transform` verdict's rewrite lands as the host's actual rewritten tool argument, not merely a reported one | `mapVerdict` synthesizes `modifications.parameter_overrides` from AGT's `transform`; the host adapter's `applyModifications` (N7) applies it ([`packages/guardian/test/map-verdict.test.ts`](packages/guardian/test/map-verdict.test.ts), [`packages/host-adapter/test/modifications.test.ts`](packages/host-adapter/test/modifications.test.ts)) |
+| R1.6 — a `transform` verdict's rewrite lands as the host's actual rewritten tool argument, not merely a reported one | `mapVerdict` synthesizes `modifications` from AGT's `transform` **per intervention point** — `parameter_overrides` keyed by argument name at the request gate, `redactions` at the result gate V4 added, because the two gates edit different documents (a point with no synthesis rule cannot express a transform at all, and `mapVerdict` throws rather than emitting an empty one); the host adapter's `applyModifications` (N7) applies either ([`packages/guardian/test/map-verdict.test.ts`](packages/guardian/test/map-verdict.test.ts), [`packages/host-adapter/test/modifications.test.ts`](packages/host-adapter/test/modifications.test.ts)) |
 | R1.5/§6.4 — an AGT `deny` verdict is always honoured regardless of the negotiated failure posture, and a Guardian-side failure (schema, or evaluation itself throwing) never slips through as a bare, unaudited error | `N27 denyOnInvalidEnvelope()` turns both failure classes into honoured `deny` decisions instead ([`packages/guardian/test/server.test.ts`](packages/guardian/test/server.test.ts), [`packages/guardian/test/deny-on-invalid-envelope.test.ts`](packages/guardian/test/deny-on-invalid-envelope.test.ts)) |
 | §6.4's MUST — every fail-open `proceed` taken when no decision arrives at all is audited, and the failure posture is negotiated per session rather than hardcoded | `applyFailurePosture` (N6) + a file-backed, cross-process session store (S13) + the audit sink (S14); `bun run inspector` renders the last posture an audit entry carried and an exact count of audited fail-open proceeds (U23, N51) — [`hosts/claude-code/test/posture.test.ts`](hosts/claude-code/test/posture.test.ts) |
+
+**Delivered in V4** — tool output redacted on a host whose own AGT package scopes that capability out.
+
+| Claim | How it is demonstrated |
+|---|---|
+| R3.8 — a capability AGT's own Claude Code package does not claim is reachable through the contract: a secret-bearing `Bash` result comes back redacted by AGT's stock `redact` rule, in the tool's own output shape, with every sibling field intact | `PostToolUse` → `steps/toolCallResult` → an AGT `transform` → ACS `modifications.redactions` → `updatedToolOutput`, over the same pinned bundle with zero Rego authored ([`hosts/claude-code/test/post-tool-use.test.ts`](hosts/claude-code/test/post-tool-use.test.ts) drives the real shim against a real Guardian; [`docs/demos/v4-runbook.md`](docs/demos/v4-runbook.md) has the real captured output, the envelope pair, and the AGT sentence quoted in full at the pinned ref) |
+| A modification this host cannot apply is refused, and the refusal actually withholds | `modified_content`, and a redaction that never reaches the leaf this gate projects, both become `decision: block` **plus** a shape-preserving `updatedToolOutput` — `block` alone suppresses nothing once the tool has run ([`packages/host-adapter/test/validate-decision.test.ts`](packages/host-adapter/test/validate-decision.test.ts), and the runbook's captures) |
+
+What V4 does **not** deliver, stated here because the demo is easy to over-read: the redaction reaches the model **unexplained**. The hookmap's `modify` entry carries a reason field and it works, but the pinned bundle's redaction verdict sends no text for it — `mapping.yaml` sources `reasoning` from `verdict.message` and `policy/lib/redact.rego` emits none. Four more findings V4 measured and recorded rather than fixed are listed in [`slices/v4/README.md`](slices/v4/README.md).
 
 **Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
 
@@ -76,6 +85,7 @@ This constructs the AGT bridge once, against the pinned stock policy bundle (`po
 ```
 Guardian listening at http://localhost:8787/acs
 Envelope log (S6): .acs/envelopes.jsonl
+Failure posture (D8): proceed   (override with ACS_ON_DECISION_FAILURE=deny)
 ```
 
 Leave it running. `hosts/claude-code/acs-hook.ts` defaults to exactly this URL; override with `ACS_GUARDIAN_URL` if it's listening elsewhere.
@@ -121,7 +131,7 @@ Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exact
 
 Watch the Inspector, not just the transcript, if the deny does not appear: the model may decline to issue the tool call at all on its own judgment, in which case no hook fires and the envelope log stays empty. And if you are scripting this rather than watching it, use `echo rm -rf /` as the payload — it matches the same pattern at offset 5 and is inert if it ever did execute, whereas an unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test.
 
-**What was actually run against this tree to write this quickstart.** Steps 1–3 were run end to end: `bun install` completes clean, `bun run guardian` prints both lines above, and `bun run inspector` rendered every envelope quoted here — the badge line above is pasted from that run, not composed. Steps 4–5 were run twice, two different ways.
+**What was actually run against this tree to write this quickstart.** Steps 1–3 were run end to end: `bun install` completes clean, `bun run guardian` prints all three lines above, and `bun run inspector` rendered every envelope quoted here — the badge line above is pasted from that run, not composed. Steps 4–5 were run twice, two different ways. (The Guardian's third startup line and the `PreToolUse` capture below were re-taken during V4; the third line arrived with V3's negotiated posture and this paragraph had gone on claiming two.)
 
 First, by piping a Claude Code–shaped `PreToolUse` payload on stdin straight into the hook shim against a running Guardian — the same way the project's own tests verify it. The shim never executes the command; it only asks the Guardian for a decision:
 
@@ -167,7 +177,7 @@ a TTY.
 ### Verify
 
 ```bash
-bun test          # 397 tests across 29 files (396 pass, 1 skip), including the R3.2/R3.3
+bun test          # 492 tests across 31 files (491 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
@@ -191,7 +201,9 @@ V3 ("all five dispositions, and both failure postures") is implemented: AGT's fi
 
 Five of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host vocabulary in the AGT bridge), R5.1 and R5.2 (the Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter, and names neither AGT nor any host), and R3.2 from the host's own side (a host shim imports the adapter only — never the AGT bridge, never the Guardian, which is what makes a second host cost zero AGT code).
 
-Slices V4–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
+V4 ("output redaction on Claude Code") is implemented: `PostToolUse` is registered as a second gate beside V1's `PreToolUse`, mapped to ACS `steps/toolCallResult`, and an AGT `transform` at that point becomes an ACS `modify` carrying `modifications.redactions` which the adapter applies as `updatedToolOutput` — so a secret-bearing `Bash` result reaches the model redacted, in the tool's own output shape, with every sibling field intact. See [`slices/v4/README.md`](slices/v4/README.md) and [`docs/demos/v4-runbook.md`](docs/demos/v4-runbook.md) for the real captured output. Three boundaries worth stating up front. **The shape is the mechanism:** Claude Code validates a replacement against the tool's own output schema and silently delivers the **original** when it does not match, so the adapter patches a clone of the object the host handed it rather than constructing one, and refuses before asking for a decision where it cannot — which is also why AGT's own package says `PostToolUse` "cannot **reliably** redact tool output", wording this slice's evidence supports rather than corrects. **A deny here withholds or it does nothing:** `decision: block` alone injects a reason and suppresses nothing once the tool has run, so a result-gate deny renders `block` **and** a replacing output. And **the redaction reaches the model unexplained** — the hookmap's reason field works, but the pinned bundle's redaction verdict carries no text for it, permanently until the mapping or the Rego rule changes. `redact` and a `post_tool_call` intervention point now ship in the tracked config (`policy/lib/data.json`, `policy/manifest.yaml`), both additive; because AGT's stock priority chain consults that rule at every point, it also rewrites a *command* carrying a secret at V1's gate.
+
+Slices V5–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
 
 ## License
 
