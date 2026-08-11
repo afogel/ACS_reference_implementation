@@ -40,33 +40,6 @@ export type SessionConfigStore = {
   set(config: SessionConfig): void;
 };
 
-/**
- * A `SessionConfig` must at minimum carry the two fields this host reads. The
- * predicate exists so `negotiateSessionConfig` can ASK that question of the
- * Guardian's ServerHello before storing one, rather than casting the arrival
- * into this type and calling it a config -- a cast would make the name a claim
- * nothing checked.
- *
- * Deliberately NOT the five fields handshake.json's ServerHello $def requires.
- * This checks what this host needs, so `SessionConfig` is the honest name for
- * what it certifies; naming the stored type after the wire message would
- * over-claim in exactly the way a cast would.
- */
-export function isSessionConfig(value: unknown): value is SessionConfig {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  const posture = candidate.on_decision_failure;
-  const timeout = candidate.timeout_config;
-  return (
-    (posture === "proceed" || posture === "deny") &&
-    typeof timeout === "object" &&
-    timeout !== null &&
-    typeof (timeout as Record<string, unknown>).default_ms === "number"
-  );
-}
-
 /** Creates a fresh, empty session config store. */
 export function createSessionConfigStore(): SessionConfigStore {
   let current: SessionConfig | undefined;
@@ -116,6 +89,14 @@ export function sessionConfigPath(dir: string, sessionId: string): string {
  * timeout read. Anything less is treated as "not negotiated" rather than
  * trusted half-way: the caller then applies the ACS default, which is a
  * defined posture, where a half-read config is not.
+ *
+ * Deliberately NOT the five fields handshake.json's ServerHello $def requires.
+ * This checks what this host needs, so `SessionConfig` is the honest name for
+ * what it certifies; naming the stored type after the wire message would
+ * over-claim in exactly the way the cast this replaced did -- `as unknown as
+ * SessionConfig` made the name a claim nothing checked, which is the same
+ * defect as a type named for a validation it does not perform (PR #10 review,
+ * Important).
  *
  * Exported because `get()` is not the only place this question is asked:
  * `handshake` (N5) asks it of the ServerHello BEFORE storing one, so a

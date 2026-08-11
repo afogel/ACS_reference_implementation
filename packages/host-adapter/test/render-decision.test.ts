@@ -188,8 +188,7 @@ describe("renderDecision", () => {
     // actually produces: `reasoning` and `policy_references` both set.
     const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
 
-    const { hookSpecificOutput } = renderDecision(
-      "PreToolUse",
+    const rendered = renderDecision(
       {
         decision: "allow",
         reasoning: "drift_score 0.9 reached threshold 0.5",
@@ -199,10 +198,14 @@ describe("renderDecision", () => {
       real,
     );
 
-    expect(hookSpecificOutput).toEqual({
-      hookEventName: "PreToolUse",
-      permissionDecision: "allow",
-      permissionDecisionReason: "drift_score 0.9 reached threshold 0.5",
+    // No hookEventName: it is not a function of the decision, so the shim adds
+    // it as it wraps. hosts/claude-code/test/wire-shape.test.ts pins the
+    // wrapped stdout; this pins what the adapter is responsible for.
+    expect(rendered).toEqual({
+      hookSpecificOutput: {
+        permissionDecision: "allow",
+        permissionDecisionReason: "drift_score 0.9 reached threshold 0.5",
+      },
     });
   });
 
@@ -227,7 +230,8 @@ describe("renderDecision", () => {
       { elapsedMs: 10, originalArguments },
     );
 
-    const { hookSpecificOutput } = renderDecision("PreToolUse", validated, real);
+    const rendered = renderDecision(validated, real);
+    const hookSpecificOutput = rendered.hookSpecificOutput as Record<string, unknown>;
 
     expect(hookSpecificOutput.permissionDecision).toBe("allow");
     expect(hookSpecificOutput.updatedInput).toEqual({ command: "echo [REDACTED]" });
@@ -241,7 +245,6 @@ describe("renderDecision", () => {
     // against the whole output, so a `reason_from` pointed at the wrong field
     // fails here rather than reading as "some reason surfaced".
     expect(hookSpecificOutput).toEqual({
-      hookEventName: "PreToolUse",
       permissionDecision: "allow",
       permissionDecisionReason: "redaction_applied",
       updatedInput: { command: "echo [REDACTED]" },

@@ -90,7 +90,7 @@ function noteAuditEntry(entry: AuditEntry): void {
 
 async function pumpEnvelopeLog(): Promise<void> {
   for await (const entry of tailEnvelopeLog({ path, fromStart, signal: controller.signal })) {
-    console.log(renderEntry(entry, { color }));
+    console.log(renderEnvelopeLogEntry(entry, { color }));
     console.log("");
   }
 }

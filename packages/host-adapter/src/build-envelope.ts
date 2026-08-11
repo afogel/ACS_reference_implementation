@@ -90,7 +90,18 @@ const ACS_VERSION = "0.1.0";
  * of `applyFailurePosture`'s "allow"/"deny" output be trusted never to
  * throw -- not because `allow` and `deny` merely exist, but because
  * existing here means shape-checked here.
+ *
+ * What "shape-checked" means is S1's own declarative output shape (PR #10
+ * review, Critical): an entry carries a non-empty `output` block, and every
+ * field in it names either a literal `value` or a non-empty `from`. It is
+ * deliberately not a check for any particular host field -- this module names
+ * none, and test/invariants.test.ts gates that -- so the check is that the
+ * rule is renderable, not that it renders anything in particular.
  */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
   const decisions = hookmap.decisions;
   if (typeof decisions !== "object" || decisions === null) {
@@ -102,16 +113,38 @@ function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
     }
   }
   for (const [decision, rule] of Object.entries(decisions)) {
-    if (typeof rule !== "object" || rule === null) {
+    if (!isPlainObject(rule)) {
       throw new Error(
-        `loadHookmap: ${path}'s "decisions.${decision}" entry must be an object naming permissionDecision, got ${JSON.stringify(rule)}`,
+        `loadHookmap: ${path}'s "decisions.${decision}" entry must be an object carrying an "output" block, got ${JSON.stringify(rule)}`,
       );
     }
-    const permissionDecision = (rule as Record<string, unknown>).permissionDecision;
-    if (typeof permissionDecision !== "string" || permissionDecision.length === 0) {
+    const output = rule.output;
+    if (!isPlainObject(output) || Object.keys(output).length === 0) {
       throw new Error(
-        `loadHookmap: ${path}'s "decisions.${decision}" entry needs a non-empty string permissionDecision, got ${JSON.stringify(permissionDecision)}`,
+        `loadHookmap: ${path}'s "decisions.${decision}" entry needs a non-empty "output" block, got ${JSON.stringify(output)}`,
       );
+    }
+    // The same rule renderDecision enforces per field, checked here so that
+    // "loadHookmap accepted it" and "renderDecision can render it" cannot come
+    // apart. A field naming neither source is a hookmap typo; the decision it
+    // belongs to would render an output missing a field its author believes is
+    // there, and for `modify` or `ask` that is a policy decision arriving and
+    // being silently degraded.
+    for (const [field, source] of Object.entries(output)) {
+      if (!isPlainObject(source)) {
+        throw new Error(
+          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must be an object naming ` +
+            `"value" or "from", got ${JSON.stringify(source)}`,
+        );
+      }
+      const hasValue = Object.prototype.hasOwnProperty.call(source, "value");
+      const hasFrom = typeof source.from === "string" && source.from.length > 0;
+      if (!hasValue && !hasFrom) {
+        throw new Error(
+          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must name a literal "value" ` +
+            `or a non-empty string "from", got ${JSON.stringify(source)}`,
+        );
+      }
     }
   }
 }

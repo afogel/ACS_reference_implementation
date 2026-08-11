@@ -363,7 +363,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
     try {
       const url = `http://localhost:${server.port}/acs`;
       const envelope = { jsonrpc: "2.0" as const, method: "steps/toolCallRequest", id: "1", params: {} };
-      await expect(guardianClient.post(url, envelope, { timeoutMs: 40 })).rejects.toThrow(GuardianTimeoutError);
+      await expect(createGuardianClient(url).post(envelope, { timeoutMs: 40 })).rejects.toThrow(GuardianTimeoutError);
     } finally {
       await server.stop(true);
     }
@@ -442,8 +442,8 @@ describe("handshake (N5) — a ServerHello that is not a usable session config",
     });
     try {
       const url = `http://localhost:${server.port}/acs`;
-      const thrown = await handshake(
-        { url, agentId: "claude-code", sessionId: crypto.randomUUID() },
+      const thrown = await negotiateSessionConfig(
+        { guardian: createGuardianClient(url), agentId: "claude-code", sessionId: crypto.randomUUID() },
         store,
       ).then(
         () => undefined,
@@ -516,7 +516,15 @@ describe("handshake (N5) — the negotiated timeout (§6.4)", () => {
       const store = createSessionConfigStore();
       const url = `http://localhost:${server.port}/acs`;
       await expect(
-        handshake({ url, agentId: "claude-code", sessionId: crypto.randomUUID(), timeoutMs: 25 }, store),
+        negotiateSessionConfig(
+          {
+            guardian: createGuardianClient(url),
+            agentId: "claude-code",
+            sessionId: crypto.randomUUID(),
+            timeoutMs: 25,
+          },
+          store,
+        ),
       ).rejects.toThrow(GuardianTimeoutError);
       expect(store.get()).toBeUndefined();
     } finally {

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { handshakeResponder } from "../src/handshake.ts";
+import { buildServerHello } from "../src/handshake.ts";
 
 const MODULE = fileURLToPath(new URL("../src/handshake.ts", import.meta.url));
 
 /**
- * Calls `handshakeResponder()` with NO argument at all -- the shipped call
+ * Calls `buildServerHello()` with NO argument at all -- the shipped call
  * site, and the one path every test in this file used to skip by passing an
  * explicit object.
  *
@@ -28,38 +28,38 @@ async function respondInSubprocess(
     env.ACS_ON_DECISION_FAILURE = posture;
   }
   const proc = Bun.spawn(
-    ["bun", "-e", `import {handshakeResponder} from ${JSON.stringify(MODULE)};` +
-      "process.stdout.write(JSON.stringify(handshakeResponder()));"],
+    ["bun", "-e", `import {buildServerHello} from ${JSON.stringify(MODULE)};` +
+      "process.stdout.write(JSON.stringify(buildServerHello()));"],
     { env: env as Record<string, string>, stdout: "pipe", stderr: "pipe" },
   );
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   return { exitCode: await proc.exited, stdout, stderr };
 }
 
-describe("handshakeResponder — negotiated posture (D8, R1.7)", () => {
+describe("buildServerHello — negotiated posture (D8, R1.7)", () => {
   it("ships the ACS spec default when nothing is configured", () => {
-    expect(handshakeResponder({}).on_decision_failure).toBe("proceed");
+    expect(buildServerHello({}).on_decision_failure).toBe("proceed");
   });
 
   it("declares fail-closed when the deployment asks for it", () => {
-    expect(handshakeResponder({ ACS_ON_DECISION_FAILURE: "deny" }).on_decision_failure).toBe("deny");
+    expect(buildServerHello({ ACS_ON_DECISION_FAILURE: "deny" }).on_decision_failure).toBe("deny");
   });
 
   it("declares fail-open when the deployment asks for it explicitly", () => {
-    expect(handshakeResponder({ ACS_ON_DECISION_FAILURE: "proceed" }).on_decision_failure).toBe("proceed");
+    expect(buildServerHello({ ACS_ON_DECISION_FAILURE: "proceed" }).on_decision_failure).toBe("proceed");
   });
 
   // A typo must not silently pick a posture. Fail-open is the spec default,
   // but "dney" is not a request for it -- it is a broken deployment, and a
   // governance tool that guesses here is the whole problem this slice is about.
   it("throws on a value that is neither posture, naming the value", () => {
-    expect(() => handshakeResponder({ ACS_ON_DECISION_FAILURE: "dney" })).toThrow(/dney/);
+    expect(() => buildServerHello({ ACS_ON_DECISION_FAILURE: "dney" })).toThrow(/dney/);
   });
 
   // An empty string is explicitly set (not undefined), so it is a broken
   // deployment that must throw, not silently fall back to fail-open.
   it("throws on an empty string, treating it as explicit misconfiguration", () => {
-    expect(() => handshakeResponder({ ACS_ON_DECISION_FAILURE: "" })).toThrow();
+    expect(() => buildServerHello({ ACS_ON_DECISION_FAILURE: "" })).toThrow();
   });
 
   // A posture is a deployment's declared intent, not a spelling suggestion.
@@ -70,14 +70,14 @@ describe("handshakeResponder — negotiated posture (D8, R1.7)", () => {
   // `.toLowerCase()` added for "convenience" would have shipped silently.
   for (const miscased of ["Deny", "DENY", "PROCEED", "Proceed", " deny", "deny "]) {
     it(`throws on ${JSON.stringify(miscased)} rather than normalizing it`, () => {
-      expect(() => handshakeResponder({ ACS_ON_DECISION_FAILURE: miscased })).toThrow(
+      expect(() => buildServerHello({ ACS_ON_DECISION_FAILURE: miscased })).toThrow(
         /ACS_ON_DECISION_FAILURE must be/,
       );
     });
   }
 
   it("still declares every ServerHello field handshake.json requires", () => {
-    const hello = handshakeResponder({});
+    const hello = buildServerHello({});
     expect(Object.keys(hello).sort()).toEqual(
       ["methods_evaluated", "negotiated_version", "on_decision_failure", "selected_transport", "timeout_config"],
     );
@@ -86,12 +86,12 @@ describe("handshakeResponder — negotiated posture (D8, R1.7)", () => {
 });
 
 // Every test above passes an explicit object, so none of them touches the
-// shipped call site: `handshakeResponder()` with no argument, falling back to
+// shipped call site: `buildServerHello()` with no argument, falling back to
 // `process.env`. That fallback is the only thing that makes
 // ACS_ON_DECISION_FAILURE a deployment control at all -- if it silently
 // stopped reading the environment, every test above would still pass and
 // every deployment would silently run fail-open.
-describe("handshakeResponder — the zero-argument path the Guardian actually calls", () => {
+describe("buildServerHello — the zero-argument path the Guardian actually calls", () => {
   it("reads the deployment's posture from its own process environment", async () => {
     const { exitCode, stdout, stderr } = await respondInSubprocess("deny");
     expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
