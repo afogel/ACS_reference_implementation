@@ -87,12 +87,28 @@ describe("applyModifications — §6.3", () => {
   // The reason array descent was rejected in V3: a naive setAtPath rewrites
   // the array as {"0": …}. That is not the edit that was asked for, and it
   // would reach the host as an object where it expects a list.
-  it("keeps an array an array, and leaves its siblings alone", () => {
-    const applied = applyModifications(
-      { outputs: [{ value: "a" }, { value: "b" }] },
-      { redactions: [{ path: "/outputs/1/value", replacement: "[REDACTED]" }] },
-    );
+  //
+  // The object path guards Global Constraint 4 (the caller's arguments are
+  // never mutated) twice over -- see "applies a depth-2 redaction..."
+  // above, which checks both the new value AND `original.env !==
+  // result.env`. Until this case, the array path guarded it zero times:
+  // `setAtPath`'s array branch clones with `target.slice()` before
+  // assigning the index, and a version that assigned into `target` itself
+  // would still produce the right VALUE here while silently corrupting the
+  // arguments object a later step reuses -- the exact defect class this
+  // module exists to close, just moved from the write to the clone.
+  it("keeps an array an array, leaves its siblings alone, and does not mutate the original array", () => {
+    const original = { outputs: [{ value: "a" }, { value: "TOKEN=ghp_REALSECRET" }] };
+    const applied = applyModifications(original, {
+      redactions: [{ path: "/outputs/1/value", replacement: "[REDACTED]" }],
+    });
+
     expect(applied).toEqual({ outputs: [{ value: "a" }, { value: "[REDACTED]" }] });
+    // The secret must still be sitting in the caller's own object after
+    // applyModifications returns -- not just "the return value looked
+    // right".
+    expect(original).toEqual({ outputs: [{ value: "a" }, { value: "TOKEN=ghp_REALSECRET" }] });
+    expect(original.outputs).not.toBe((applied as { outputs: unknown }).outputs);
   });
 
   it("rejects an index past the end rather than growing the array", () => {
@@ -112,6 +128,36 @@ describe("applyModifications — §6.3", () => {
     expect(() =>
       applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/-/value" }] }),
     ).toThrow(/addresses "\/outputs\/-", which is not present in the arguments this tool call sent/);
+  });
+
+  // This is the module's stated reason for requiring the canonical digit
+  // form instead of `Object.prototype.hasOwnProperty.call(array, segment)`:
+  // arrays own "length", so a bare existence check would accept it as a
+  // target. Left unguarded, `setAtPath` would compute `Number("length")` ->
+  // `NaN`, write the replacement to the string key "NaN", and
+  // applyModifications would return successfully with the ORIGINAL value
+  // still sitting at index 0 -- a reported-as-applied modify that redacted
+  // nothing, the worst defect class this project exists to catch.
+  it("rejects the array's own \"length\" property rather than treating it as a target", () => {
+    expect(() =>
+      applyModifications({ outputs: [{ value: "a" }] }, { redactions: [{ path: "/outputs/length" }] }),
+    ).toThrow(/addresses "\/outputs\/length", which is not present in the arguments this tool call sent/);
+  });
+
+  // RFC 6901 §4 defines an array index as either "0" or a non-zero digit
+  // followed by more digits -- "01" is not a legal index token at all, not
+  // a legal-but-out-of-range one. A two-element array is required here: on
+  // a one-element array "01"'s numeric value (1) already fails the
+  // `< length` bound, so the test would pass for the wrong reason (the
+  // bound rule, not the leading-zero rule) and a relaxed pattern like
+  // /^\d+$/ would slip through undetected.
+  it("rejects a leading zero in an array index, even when the numeric value is in range", () => {
+    expect(() =>
+      applyModifications(
+        { outputs: [{ value: "a" }, { value: "b" }] },
+        { redactions: [{ path: "/outputs/01/value" }] },
+      ),
+    ).toThrow(/addresses "\/outputs\/01", which is not present in the arguments this tool call sent/);
   });
 
   // An argument whose value is legitimately absent-looking must still be

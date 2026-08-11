@@ -355,7 +355,8 @@ export function assertValidModifications(
  *
  * `target` may be an array at any level the path descends through --
  * `assertTargetExists` has already confirmed every such segment is a real
- * index. The array branch below clones with `slice()` and assigns the
+ * index, on the same caller-dependent basis the paragraph below states
+ * explicitly. The array branch below clones with `slice()` and assigns the
  * index, rather than spreading into `{...target}` as the object branch
  * does: spreading an array into an object literal is exactly the
  * `["a","b"]` → `{"0":"a","1":"b"}` rewrite this module exists to refuse,
@@ -367,10 +368,18 @@ export function assertValidModifications(
  * other for overlap, so within one `applyModifications` call nothing should
  * reach the `{}` fallback below.
  *
- * That is a statement about the current callers, NOT a guarantee about this
- * function. The fallback stays because this function is total by
- * construction and a future caller must not be able to make it throw; do
- * not promote this note to a guarantee without a check that earns it.
+ * Both of the last two claims -- every segment above is a real array index,
+ * and nothing reaches the `{}` fallback -- are statements about the current
+ * callers, NOT a guarantee about this function. If that assumption ever
+ * stopped holding, the array branch's unguarded `Number(head)` is exactly
+ * what would turn an unreal segment into a stray numeric-string-keyed write
+ * instead of a caught error. An earlier version of this comment made the
+ * fallback claim alone while two overlapping redaction paths reached it and
+ * produced a partial rewrite reported as applied -- the exact shape this
+ * module exists to reject. The fallback stays because this function is
+ * total by construction and a future caller must not be able to make it
+ * throw; do not upgrade this note back into a guarantee without a check
+ * that earns it.
  */
 function setAtPath(target: unknown, segments: string[], value: unknown): unknown {
   const [head, ...rest] = segments;
@@ -417,10 +426,13 @@ export function applyModifications(
 
   let result: Record<string, unknown> = { ...originalArguments };
 
-  // The top-level target is always `result` itself, never an array --
-  // `originalArguments` (and so `result`) is typed as a plain arguments
-  // object above -- so `setAtPath`'s `unknown` return is always the object
-  // branch here; the cast reflects that, not a new assumption.
+  // The top-level target is always `result` itself, never an array: the
+  // line above builds `result` with an object-literal spread
+  // (`{ ...originalArguments }`), and `Array.isArray()` of that is false at
+  // runtime no matter what `originalArguments` was -- a compile-time type
+  // annotation could not make this true if the runtime shape disagreed.
+  // `setAtPath`'s `unknown` return is therefore always the object branch
+  // here; the cast reflects that runtime fact, not a new assumption.
   if (mods.parameter_overrides) {
     for (const [key, value] of Object.entries(mods.parameter_overrides)) {
       result = setAtPath(result, [key], value) as Record<string, unknown>;
