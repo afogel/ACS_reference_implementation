@@ -1,15 +1,23 @@
 /**
  * acs-hook.ts -- Claude Code's PreToolUse hook shim.
  *
- * Deliberately thin: read the hook JSON Claude Code sends on stdin, call
- * buildEnvelope -> createGuardianClient(...).requestDecision -> renderDecision
- * (all three from `host-adapter`, packages/host-adapter), wrap what comes
- * back into the JSON Claude Code expects, and write it to stdout. All logic lives
- * in the adapter -- this file is only the wiring a Claude Code hook process
- * needs (stdin, stdout, exit code, which hookmap file to load) plus the one
- * thing the adapter must not know: this host's own output shape. A second
- * host is another shim this thin against the same, unchanged adapter, so any
- * logic added here is logic that host would have to duplicate.
+ * Thin, and now actually thin: read the hook JSON Claude Code sends on stdin,
+ * hand it to `resolveSessionConfig` -> `governStep` (both from `host-adapter`,
+ * packages/host-adapter), wrap the output that comes back into the JSON Claude
+ * Code expects, and write it to stdout. This file branches on nothing about a
+ * decision. It is the wiring a Claude Code hook process needs (stdin, stdout,
+ * exit code, which hookmap file to load) plus the one thing the adapter must
+ * not know: this host's own output shape. Slice V5 adds a second host by
+ * writing another shim this thin against the same, unchanged adapter; any
+ * logic added here is logic V5 would have to duplicate.
+ *
+ * The header used to claim this while the body was a state machine that ASKED
+ * (PR #12 review, Important ×2): it inspected the JSON-RPC response for a
+ * decision, owned a `decisionInHand` boolean, and re-derived which stage of
+ * the exchange had failed inside a catch block. All of that is now
+ * `govern-step.ts`, host-agnostically, and everything it has to preserve is
+ * documented there rather than here -- which is the point, because a second
+ * shim gets it by calling the function instead of by copying this file.
  *
  * This file is host-specific by definition (it may name Claude Code
  * freely) but must not reach into AGT -- it never imports `agt-bridge` or
@@ -74,7 +82,10 @@
  *     out and nothing came back", and "a decision arrived and this host
  *     could not express it" are three different incidents, and an audit
  *     entry that files one under another sends an incident review to the
- *     wrong process.
+ *     wrong process. Which stage a failure belongs to is `governStep`'s to
+ *     know -- each stage is its own guarded step there, so the stage is
+ *     wherever the failure was caught, not something re-inferred afterwards
+ *     from leftover variables.
  *
  * V1's own version of this paragraph described a placeholder, not a
  * considered posture: it caught nothing, wrote the error to stderr only,
@@ -91,24 +102,16 @@
  */
 import { fileURLToPath } from "node:url";
 import {
-  applyFailurePosture,
-  buildEnvelope,
   createAuditSink,
   createFileSessionConfigStore,
   createGuardianClient,
   DEFAULT_TIMEOUT_MS,
+  governStep,
   loadHookmap,
-  negotiateSessionConfig,
-  renderDecision,
-  SessionConfigNotStoredError,
+  resolveSessionConfig,
   toSessionUuid,
-  unwrapArguments,
-  validateDecision,
-  type AcsDecision,
-  type AcsRequestEnvelope,
   type Hookmap,
   type HostOutput,
-  type SessionConfig,
   type SessionConfigStore,
 } from "host-adapter";
 
@@ -161,6 +164,14 @@ const PERMISSION_DECISION_PATH = `${HOOK_SPECIFIC_OUTPUT}.permissionDecision`;
  * would hand Claude Code JSON it reads as no decision at all, and it would
  * then let the tool call proceed. Half an output is the one thing this hook
  * must never write.
+ *
+ * It is also unreachable by construction now that the gate below reads the
+ * declared output path: `assertHostAcceptsEveryDecision` requires every
+ * renderable decision to declare a literal UNDER this wrapper, so the wrapper
+ * is always an object by the time a decision is rendered. Still a throw rather
+ * than a repair, and it escapes to `main().catch`, which exits 2 and blocks --
+ * so even the unreachable failure mode is a stopped tool call rather than an
+ * ungoverned one.
  */
 function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOutput {
   const wrapper = rendered[HOOK_SPECIFIC_OUTPUT];
@@ -316,170 +327,48 @@ async function main(): Promise<void> {
   const guardianUrl = process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL;
   const guardian = createGuardianClient(guardianUrl);
 
-  // Step 4: negotiate once per session. A handshake failure decides nothing
-  // by itself, and it does not become the step call's failure: the two are
-  // different requests that can fail for unrelated reasons, and the audited
-  // entry must classify the failure of the request it is filed against
-  // (steps/toolCallRequest), not this one. It is no longer *discarded*,
-  // though (whole-branch review, I3): it travels beside that failure as
-  // `session_failure`, because the case that matters is a session store this
-  // deployment cannot write to -- `set()` throws by design there, every hook
-  // then re-handshakes and `store.get()` stays undefined, so a deployment
-  // that declared `deny` silently fails open on every delivery failure.
-  // `posture_source: "default"` records that no negotiated config was found;
-  // this records why. The step call may still succeed even after this fails
-  // (Global Constraint 1: the posture must never touch an arriving decision).
+  // Step 4: this session's negotiated config, and whatever went wrong getting
+  // it -- one call, and this shim is TOLD both rather than running the
+  // negotiation and then interrogating whatever it threw (PR #12 review,
+  // Important). What that resolution has to preserve (a handshake failure is
+  // not this step's failure; a config that arrived and could not be persisted
+  // still governs the step that negotiated it, which is risk row 14) is stated
+  // where it happens, in `resolveSessionConfig`, so a second host inherits it
+  // instead of re-deriving it from an `instanceof` and an `error.config`.
   //
-  // Risk row 14, now closed: the ServerHello handshake() returns is no
-  // longer discarded when `store.set` throws. Persisting it is an
-  // optimisation for LATER hooks -- the shipped host runs each hook in a
-  // fresh subprocess, so the file is how the next process finds the posture
-  // -- while the value in hand is authoritative for the step that just
-  // negotiated it. Throwing it away because the write failed meant a
-  // deployment declaring `on_decision_failure: deny` failed *open* on that
-  // very step: the posture was known in-process and unused.
-  let sessionFailure: unknown;
-  let negotiated: SessionConfig | undefined;
-  if (store.get() === undefined) {
-    try {
-      // metadata.session_id is schema-constrained to "uuid" (same rule
-      // buildEnvelope's own toSessionUuid honours below); the store itself
-      // keys on the raw host session_id, per S13's own contract. agentId
-      // is the hookmap's own `host` field -- the same identity buildEnvelope
-      // sends for the step call below, so the two never diverge. Bounded by
-      // the ACS default timeout: there is no negotiated timeout yet, since
-      // negotiating one is what this call is for -- without a bound, a
-      // Guardian that accepts the connection and never answers would hang
-      // this hook until Claude Code's own hook timeout kills the process.
-      negotiated = await negotiateSessionConfig(
-        {
-          guardian,
-          agentId: hookmap.host,
-          sessionId: toSessionUuid(sessionId),
-          timeoutMs: DEFAULT_TIMEOUT_MS,
-        },
-        store,
-      );
-    } catch (error) {
-      // Not fatal, and not this step's own failure -- but not thrown away
-      // either. See the comment above.
-      sessionFailure = error;
-      // A ServerHello that arrived and could not be persisted still
-      // negotiated this session's posture, and it is applied to this step.
-      // Undefined for every other handshake failure, where nothing was
-      // negotiated and there is genuinely nothing to apply.
-      if (error instanceof SessionConfigNotStoredError) {
-        negotiated = error.config;
-      }
-    }
-  }
+  // metadata.session_id is schema-constrained to "uuid" (the same rule
+  // buildEnvelope's own toSessionUuid honours); the store itself keys on the
+  // raw host session_id, per S13's own contract. agentId is the hookmap's own
+  // `host` field -- the same identity buildEnvelope sends for the step call, so
+  // the two never diverge. Bounded by the ACS default timeout: there is no
+  // negotiated timeout yet, since negotiating one is what this call is for --
+  // without a bound, a Guardian that accepts the connection and never answers
+  // would hang this hook until Claude Code's own hook timeout kills the
+  // process.
+  const session = await resolveSessionConfig(
+    {
+      guardian,
+      agentId: hookmap.host,
+      sessionId: toSessionUuid(sessionId),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    store,
+  );
 
-  // Step 5. The stored config when there is one; otherwise whatever this
-  // hook negotiated but could not store (see above). `session_failure` still
-  // travels into the audit entry either way, so the persistence failure
-  // stays visible rather than being papered over by the value being usable.
-  const sessionConfig = store.get() ?? negotiated;
-  const timeoutMs = sessionConfig?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
+  // Step 5: resolve the attempt. One call, one answer, and this shim branches
+  // on nothing: `governStep` builds the ACS request, asks the Guardian for a
+  // decision, honours whatever arrives, and renders it -- answering any failure
+  // along the way with this session's negotiated posture, audited, at the stage
+  // that failed. There are exactly two ways it can end, and both are handled
+  // here: an output to write, or a throw that reaches `main().catch` and exits
+  // 2. What used to be here instead -- a response inspected for a decision, a
+  // `decisionInHand` boolean, and a catch block re-deriving which stage had
+  // failed from whether the envelope variable was still undefined -- is now
+  // stated once, host-agnostically, where slice V5's second host inherits it
+  // rather than reimplementing it.
+  const governed = await governStep({ hookEventName, payload, hookmap, guardian, session, sessionId, audit });
 
-  // Steps 6-7, one guard: buildEnvelope -> requestDecision -> render, all
-  // inside the same try. Rendering has to be in here too: a decision this
-  // host cannot even render (an unrecognised decision string that
-  // validateDecision passed through unchanged, or a hookmap gap) is exactly
-  // as undeliverable as a timeout or a JSON-RPC error, and must be answered
-  // by the posture the same way, not left to escape as a bare throw. The
-  // fallback render in the catch cannot itself fail: loadHookmap already
-  // guaranteed every entry in `hookmap.decisions` it accepted -- including
-  // `allow` and `deny`, both required -- is itself a renderable rule, not
-  // merely present, and applyFailurePosture never returns any decision but
-  // those two. Both of those rules also declare a path under the wrapper
-  // that asClaudeCodeOutput requires, so the wrap cannot fail either.
-  //
-  // `requestDecision` answers the one question that matters here and never
-  // throws for a delivery failure (PR #10 review, Important). This shim does
-  // not read `.error`, cast `.result`, or work out which of them means "no
-  // decision" -- getting that branch wrong is a fail-open, and a decision
-  // arriving alongside a malformed `error` must still be honoured, which is
-  // the case a copy of that inspection gets wrong.
-  let envelope: AcsRequestEnvelope | undefined;
-  let hostOutput: HostOutput;
-  // Set the instant a decision is in hand and before anything tries to
-  // render it, so the catch below can tell "no decision arrived" from "a
-  // decision arrived and this host could not express it". They are different
-  // incidents and the audit entry has to name the right one -- the same
-  // misattribution already fixed one step earlier for a request that was
-  // never sent.
-  let decisionInHand = false;
-  const startedAt = performance.now();
-  try {
-    envelope = buildEnvelope(hookEventName, payload, hookmap);
-    // The same values that just went out on the wire, unwrapped from ACS's
-    // `{value, provenance?}` argument shape -- so a `modify` decision's
-    // `parameter_overrides` apply lands on exactly what the Guardian saw.
-    const originalArguments = unwrapArguments(envelope);
-
-    const answer = await guardian.requestDecision(envelope, { timeoutMs });
-    const elapsedMs = performance.now() - startedAt;
-
-    // An arriving decision is checked for FIRST, and Global Constraint 1's M1
-    // case is the reason: a JSON-RPC response carrying both `error` and
-    // `result` is malformed per JSON-RPC, but if the `result` names a decision
-    // then a decision did arrive, and an arriving `deny` is honoured
-    // regardless of posture -- answering it with the posture instead would let
-    // a delivery-failure rule overrule a policy decision.
-    //
-    // That check is no longer written here. `requestDecision` performs it and
-    // answers `decisionArrived`, which is the whole point of that reshape (PR
-    // #10 review, Important): the branch is stated once, in the module that
-    // owns the wire, instead of once per host shim -- and V5's second shim
-    // would have inherited a copy of it, fail-open and all.
-    const decision: AcsDecision = answer.decisionArrived
-      ? validateDecision(answer.decision, { elapsedMs, originalArguments })
-      : applyFailurePosture({
-          failure: answer.failure,
-          sessionConfig,
-          sessionId,
-          method: envelope.method,
-          rpcId: envelope.id,
-          audit,
-          sessionFailure,
-        });
-
-    // Whichever branch produced it, a decision now exists and has been
-    // honoured. Anything that throws past this point is a rendering failure,
-    // not a delivery one -- and the posture branch above has already written
-    // its own audit entry, so the catch cannot double-count it: every
-    // decision reachable here is `allow` or `deny`, both of which loadHookmap
-    // and the host-enum gate together guarantee renderable.
-    decisionInHand = true;
-
-    hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
-  } catch (error) {
-    const decision = applyFailurePosture({
-      failure: error,
-      sessionConfig,
-      sessionId,
-      // The ACS method, or null -- never this host's own event name. An
-      // envelope that could not be built has no ACS method to report, and
-      // the audit log is read by consumers that know only ACS: putting
-      // "PreToolUse" here made `bun run inspector`, whose whole claim is
-      // that it names no host, print a Claude Code hook name at runtime.
-      method: envelope?.method ?? null,
-      rpcId: envelope?.id ?? null,
-      audit,
-      // Which of the three failures this is, and the audit entry classifies
-      // it accordingly. No envelope means nothing was ever sent, so the
-      // reasoning must not blame a Guardian that was never contacted; a
-      // decision already in hand means one DID arrive and was honoured, and
-      // only this host's expression of it failed -- saying "no decision
-      // arrived from the guardian" there would send an incident reviewer to
-      // a Guardian that answered correctly.
-      stage: envelope === undefined ? "request" : decisionInHand ? "render" : "delivery",
-      sessionFailure,
-    });
-    hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
-  }
-
-  process.stdout.write(JSON.stringify(hostOutput));
+  process.stdout.write(JSON.stringify(asClaudeCodeOutput(governed.output, hookEventName)));
 }
 
 main().catch((error: unknown) => {

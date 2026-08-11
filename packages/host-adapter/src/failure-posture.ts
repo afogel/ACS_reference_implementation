@@ -32,8 +32,7 @@
 import type { AuditEvent, AuditSink } from "./audit-sink.ts";
 import type { AcsDecision } from "./decision-message.ts";
 import { GuardianTimeoutError } from "./guardian-client.ts";
-import { SessionConfigNotStoredError } from "./handshake.ts";
-import type { SessionConfig } from "./session-config.ts";
+import { SessionConfigNotStoredError, type ResolvedSessionConfig } from "./handshake.ts";
 
 /** handshake.json's own default, and R1.7's (D8 closed here). */
 export const DEFAULT_POSTURE = "proceed" as const;
@@ -245,8 +244,25 @@ export function classifySessionFailure(failure: unknown): { kind: SessionFailure
 export type ApplyFailurePostureInput = {
   /** Whatever the delivery attempt threw, or the JSON-RPC error it returned. */
   failure: unknown;
-  /** S13's contents, or undefined when no handshake ever completed. */
-  sessionConfig: SessionConfig | undefined;
+  /**
+   * This session's config and whatever went wrong establishing it, exactly as
+   * `resolveSessionConfig` (N5) answers -- the message, not its halves.
+   *
+   * It used to be two fields, `sessionConfig` and `sessionFailure`, so every
+   * caller unpacked one message to hand this one two loose values and this
+   * function read them back as a pair. The two are read for two unrelated
+   * purposes and that is exactly why they travel together:
+   *
+   *   - `config` decides the posture (its `on_decision_failure`, or the ACS
+   *     default when nothing was negotiated) and, on the audit entry,
+   *     `posture_source`.
+   *   - `failure` never becomes this step's failure. It is recorded beside it as
+   *     `session_failure`, because a session config that cannot be persisted
+   *     means every hook re-negotiates and the declared posture never applies --
+   *     which is how a deployment that asked to fail closed quietly fails open
+   *     (see AuditEntry.session_failure).
+   */
+  session: ResolvedSessionConfig;
   sessionId: string;
   /** The ACS method, or null when no request was built and so none is
    * knowable. Never a host's own event name -- see AuditEntry.method. */
@@ -262,16 +278,6 @@ export type ApplyFailurePostureInput = {
    * to "delivery", which is every ordinary call site and §6.4's own case.
    */
   stage?: FailureStage;
-  /**
-   * Whatever went wrong establishing this session's negotiated config, if
-   * anything did: a handshake that failed, or a ServerHello that could not
-   * be stored. Recorded alongside the step's own failure rather than merged
-   * into it (see AuditEntry.session_failure) -- a session config that cannot
-   * be persisted means every hook re-negotiates and the declared posture
-   * never applies, which is how a deployment that asked to fail closed
-   * quietly fails open.
-   */
-  sessionFailure?: unknown;
 };
 
 /**
@@ -300,14 +306,14 @@ export type FailureResolvedAcsDecision = AcsDecision & {
 
 export function applyFailurePosture({
   failure,
-  sessionConfig,
+  session,
   sessionId,
   method,
   rpcId,
   audit,
   stage = "delivery",
-  sessionFailure,
 }: ApplyFailurePostureInput): FailureResolvedAcsDecision {
+  const { config: sessionConfig, failure: sessionFailure } = session;
   const posture = sessionConfig?.on_decision_failure ?? DEFAULT_POSTURE;
   // One resolution, read once, in the three vocabularies it is expressed in --
   // see RESOLUTION_BY_POSTURE.

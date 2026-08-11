@@ -7,7 +7,7 @@ import {
   DEFAULT_POSTURE,
 } from "../src/failure-posture.ts";
 import { GuardianTimeoutError } from "../src/guardian-client.ts";
-import { SessionConfigNotStoredError } from "../src/handshake.ts";
+import { SessionConfigStoreFailedError, type ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
 function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
@@ -40,6 +40,14 @@ const NEGOTIATED = (posture: "proceed" | "deny"): SessionConfig => ({
   on_decision_failure: posture,
 });
 
+/** The session message N6 is told (`ResolvedSessionConfig`): the config that
+ * governs this step, and whatever went wrong establishing it. `undefined` for
+ * the posture means nothing was negotiated, so the ACS default governs. */
+const SESSION = (posture: "proceed" | "deny" | undefined, failure?: unknown): ResolvedSessionConfig => ({
+  config: posture === undefined ? undefined : NEGOTIATED(posture),
+  failure,
+});
+
 const CALL = { sessionId: "sess-1", method: "steps/toolCallRequest", rpcId: "req-1" };
 
 describe("applyFailurePosture — R1.7", () => {
@@ -47,7 +55,7 @@ describe("applyFailurePosture — R1.7", () => {
     const { sink, events } = recordingSink();
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...CALL,
     });
@@ -66,7 +74,7 @@ describe("applyFailurePosture — R1.7", () => {
     const { sink, events } = recordingSink();
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("deny"),
+      session: SESSION("deny"),
       audit: sink,
       ...CALL,
     });
@@ -82,7 +90,7 @@ describe("applyFailurePosture — R1.7", () => {
     const { sink, events } = recordingSink();
     const decision = applyFailurePosture({
       failure: new TypeError("Unable to connect"),
-      sessionConfig: undefined,
+      session: SESSION(undefined),
       audit: sink,
       ...CALL,
     });
@@ -95,7 +103,7 @@ describe("applyFailurePosture — R1.7", () => {
     const { sink } = recordingSink();
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...CALL,
     });
@@ -107,8 +115,8 @@ describe("applyFailurePosture — R1.7", () => {
   // slice removes. Auditing must not be skippable, so there is no option for it.
   it("audits every proceed — the sink is a required argument", () => {
     const { sink, events } = recordingSink();
-    applyFailurePosture({ failure: new Error("x"), sessionConfig: NEGOTIATED("proceed"), audit: sink, ...CALL });
-    applyFailurePosture({ failure: new Error("y"), sessionConfig: NEGOTIATED("proceed"), audit: sink, ...CALL });
+    applyFailurePosture({ failure: new Error("x"), session: SESSION("proceed"), audit: sink, ...CALL });
+    applyFailurePosture({ failure: new Error("y"), session: SESSION("proceed"), audit: sink, ...CALL });
     expect(events).toHaveLength(2);
   });
 
@@ -117,7 +125,7 @@ describe("applyFailurePosture — R1.7", () => {
   it("still returns a decision when the sink throws", () => {
     const throwing: AuditSink = { path: null, write: () => { throw new Error("sink is broken"); } };
     expect(
-      applyFailurePosture({ failure: new Error("x"), sessionConfig: NEGOTIATED("deny"), audit: throwing, ...CALL })
+      applyFailurePosture({ failure: new Error("x"), session: SESSION("deny"), audit: throwing, ...CALL })
         .decision,
     ).toBe("deny");
   });
@@ -133,7 +141,7 @@ describe("applyFailurePosture — an unauditable proceed is not a proceed (const
   it("downgrades a proceed it could not audit to deny, with its own reason code", () => {
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: unwritableSink(),
       ...CALL,
     });
@@ -147,7 +155,7 @@ describe("applyFailurePosture — an unauditable proceed is not a proceed (const
     expect(
       applyFailurePosture({
         failure: new GuardianTimeoutError(5000),
-        sessionConfig: NEGOTIATED("proceed"),
+        session: SESSION("proceed"),
         audit: throwing,
         ...CALL,
       }).decision,
@@ -160,7 +168,7 @@ describe("applyFailurePosture — an unauditable proceed is not a proceed (const
   it("leaves an unauditable deny alone", () => {
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("deny"),
+      session: SESSION("deny"),
       audit: unwritableSink(),
       ...CALL,
     });
@@ -173,7 +181,7 @@ describe("applyFailurePosture — an unauditable proceed is not a proceed (const
     expect(
       applyFailurePosture({
         failure: new GuardianTimeoutError(5000),
-        sessionConfig: NEGOTIATED("proceed"),
+        session: SESSION("proceed"),
         audit: sink,
         ...CALL,
       }).decision,
@@ -188,7 +196,7 @@ describe("applyFailurePosture — a request that was never sent is not a deliver
     const { sink, events } = recordingSink();
     applyFailurePosture({
       failure: new Error('buildEnvelope: hookmap has no entry for hook "PostToolUse"'),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...NOT_SENT,
     });
@@ -201,7 +209,7 @@ describe("applyFailurePosture — a request that was never sent is not a deliver
     const { sink } = recordingSink();
     const decision = applyFailurePosture({
       failure: new Error("no entry for this hook"),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...NOT_SENT,
     });
@@ -214,7 +222,7 @@ describe("applyFailurePosture — a request that was never sent is not a deliver
     const { sink } = recordingSink();
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...CALL,
     });
@@ -237,14 +245,14 @@ describe("applyFailurePosture — a decision that arrived and could not be rende
 
   it("classifies it as decision_unrenderable, not as a delivery failure", () => {
     const { sink, events } = recordingSink();
-    applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE });
+    applyFailurePosture({ session: SESSION("proceed"), audit: sink, ...UNRENDERABLE });
     expect(events[0]?.failure.kind).toBe("decision_unrenderable");
     expect(events[0]?.failure.message).toContain("quarantine");
   });
 
   it("says a decision arrived and this host could not express it", () => {
     const { sink } = recordingSink();
-    const decision = applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE });
+    const decision = applyFailurePosture({ session: SESSION("proceed"), audit: sink, ...UNRENDERABLE });
     expect(decision.reasoning).toMatch(/a decision arrived from the guardian .* and was honoured/i);
     expect(decision.reasoning).toMatch(/could not express it/i);
     // The exact claim that was false, asserted directly rather than inferred
@@ -258,11 +266,11 @@ describe("applyFailurePosture — a decision that arrived and could not be rende
   // failure. Only what the record SAYS about the failure changed.
   it("still applies the posture, unchanged, in both directions", () => {
     const { sink } = recordingSink();
-    expect(applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE }).decision)
+    expect(applyFailurePosture({ session: SESSION("proceed"), audit: sink, ...UNRENDERABLE }).decision)
       .toBe("allow");
     const second = recordingSink();
     expect(
-      applyFailurePosture({ sessionConfig: NEGOTIATED("deny"), audit: second.sink, ...UNRENDERABLE }).decision,
+      applyFailurePosture({ session: SESSION("deny"), audit: second.sink, ...UNRENDERABLE }).decision,
     ).toBe("deny");
   });
 });
@@ -272,9 +280,8 @@ describe("applyFailurePosture — a session config that could not be established
     const { sink, events } = recordingSink();
     applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: undefined,
+      session: SESSION(undefined, new Error("EACCES: permission denied, mkdir '.acs/sessions'")),
       audit: sink,
-      sessionFailure: new Error("EACCES: permission denied, mkdir '.acs/sessions'"),
       ...CALL,
     });
     expect(events[0]?.failure.kind).toBe("timeout");
@@ -290,9 +297,8 @@ describe("applyFailurePosture — a session config that could not be established
     const unreachable = recordingSink();
     applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: undefined,
+      session: SESSION(undefined, new Error("Unable to connect. Is the computer able to access the url?")),
       audit: unreachable.sink,
-      sessionFailure: new Error("Unable to connect. Is the computer able to access the url?"),
       ...CALL,
     });
     expect(unreachable.events[0]?.session_failure?.kind).toBe("handshake_failed");
@@ -300,11 +306,13 @@ describe("applyFailurePosture — a session config that could not be established
     const unstored = recordingSink();
     applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("deny"),
+      session: SESSION(
+        "deny",
+        new SessionConfigStoreFailedError("handshake: the Guardian's ServerHello could not be stored", {
+          config: NEGOTIATED("deny"),
+        }),
+      ),
       audit: unstored.sink,
-      sessionFailure: new SessionConfigNotStoredError("handshake: the Guardian's ServerHello could not be stored", {
-        config: NEGOTIATED("deny"),
-      }),
       ...CALL,
     });
     expect(unstored.events[0]?.session_failure?.kind).toBe("session_config_unstored");
@@ -321,7 +329,7 @@ describe("applyFailurePosture — a session config that could not be established
     const { sink, events } = recordingSink();
     applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: NEGOTIATED("proceed"),
+      session: SESSION("proceed"),
       audit: sink,
       ...CALL,
     });
@@ -332,9 +340,8 @@ describe("applyFailurePosture — a session config that could not be established
     const { sink } = recordingSink();
     const decision = applyFailurePosture({
       failure: new GuardianTimeoutError(5000),
-      sessionConfig: undefined,
+      session: SESSION(undefined, new Error("EACCES: permission denied")),
       audit: sink,
-      sessionFailure: new Error("EACCES: permission denied"),
       ...CALL,
     });
     expect(decision.reasoning).toMatch(/could not be established or stored/i);

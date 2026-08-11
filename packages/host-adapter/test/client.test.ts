@@ -10,7 +10,12 @@ import {
   GuardianResultCorrelationError,
   GuardianTimeoutError,
 } from "../src/guardian-client.ts";
-import { negotiateSessionConfig, SessionConfigNotStoredError } from "../src/handshake.ts";
+import {
+  negotiateSessionConfig,
+  resolveSessionConfig,
+  ServerHelloInvalidError,
+  SessionConfigNotStoredError,
+} from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
 import { createSessionConfigStore } from "../src/session-config.ts";
 
@@ -530,6 +535,101 @@ describe("handshake (N5) — the negotiated timeout (§6.4)", () => {
     } finally {
       await server.stop(true);
     }
+  });
+});
+
+// `resolveSessionConfig` is what a host shim actually calls, and it exists so
+// that no shim repeats the interrogation this replaced: run the negotiation,
+// catch, test `instanceof`, read `.config` off the error to discover whether a
+// posture had been negotiated after all. Every property below was previously
+// pinned only end to end through a subprocess (hosts/claude-code/test/
+// posture.test.ts), which is exactly the coverage shape that lets a
+// reimplementation in a second host go wrong quietly.
+describe("resolveSessionConfig — the session, as a message rather than a throw", () => {
+  const HELLO = {
+    negotiated_version: "0.1.0",
+    methods_evaluated: ["steps/toolCallRequest"],
+    selected_transport: "http",
+    timeout_config: { default_ms: 1234 },
+    on_decision_failure: "deny" as const,
+  };
+
+  /** A stub answering `handshake/hello` with `result`. */
+  async function against<T>(result: unknown, run: (url: string) => Promise<T>): Promise<T> {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const { id } = (await req.json()) as { id: string | number };
+        return Response.json({ jsonrpc: "2.0", id, result });
+      },
+    });
+    try {
+      return await run(`http://localhost:${server.port}/acs`);
+    } finally {
+      await server.stop(true);
+    }
+  }
+
+  function resolveVia(url: string, store: ReturnType<typeof createSessionConfigStore>) {
+    return resolveSessionConfig(
+      { guardian: createGuardianClient(url), agentId: "claude-code", sessionId: crypto.randomUUID() },
+      store,
+    );
+  }
+
+  it("negotiates when the store is empty, and reports no failure", async () => {
+    const store = createSessionConfigStore();
+    const resolved = await against(HELLO, (url) => resolveVia(url, store));
+    expect(resolved).toEqual({ config: HELLO, failure: undefined });
+  });
+
+  it("does not negotiate at all when the store already holds a config", async () => {
+    const store = createSessionConfigStore();
+    store.set(HELLO);
+    // An unreachable Guardian, so a handshake attempt would surface as a
+    // failure rather than passing silently.
+    const resolved = await resolveVia("http://127.0.0.1:1/acs", store);
+    expect(resolved).toEqual({ config: HELLO, failure: undefined });
+  });
+
+  // Risk row 14. `set()` throws, `get()` stays undefined, and the posture the
+  // Guardian just declared has to reach THIS step anyway -- otherwise a
+  // deployment that asked to fail closed fails open on the very step whose
+  // posture it negotiated, and does so on every hook, forever.
+  it("applies a config it could not store to the step that negotiated it, and still reports the failure", async () => {
+    const unwritable = {
+      get: () => undefined,
+      set: () => {
+        throw new Error("ENOTDIR: not a directory");
+      },
+    };
+    const resolved = await against(HELLO, (url) => resolveVia(url, unwritable));
+    expect(resolved.config).toEqual(HELLO);
+    expect(resolved.failure).toBeInstanceOf(SessionConfigNotStoredError);
+    expect((resolved.failure as SessionConfigNotStoredError).kind).toBe("session_config_unstored");
+  });
+
+  // The other member of the family, and the reason it has a name of its own:
+  // nothing was negotiated, so unlike the case above there is nothing to apply
+  // to this step either, and `config` must stay undefined so the ACS default
+  // governs.
+  it("reports an unusable ServerHello with no config to apply", async () => {
+    const store = createSessionConfigStore();
+    const resolved = await against({ on_decision_failure: "maybe" }, (url) => resolveVia(url, store));
+    expect(resolved.config).toBeUndefined();
+    expect(resolved.failure).toBeInstanceOf(ServerHelloInvalidError);
+    expect((resolved.failure as ServerHelloInvalidError).kind).toBe("server_hello_invalid");
+    expect((resolved.failure as ServerHelloInvalidError).config).toBeUndefined();
+  });
+
+  it("answers rather than throwing when the Guardian was never reachable", async () => {
+    const store = createSessionConfigStore();
+    const resolved = await resolveVia("http://127.0.0.1:1/acs", store);
+    expect(resolved.config).toBeUndefined();
+    expect(resolved.failure).toBeInstanceOf(Error);
+    // NOT a member of the not-stored family: nothing arrived, so nothing was
+    // negotiated, and `classifySessionFailure` files it as `handshake_failed`.
+    expect(resolved.failure).not.toBeInstanceOf(SessionConfigNotStoredError);
   });
 });
 

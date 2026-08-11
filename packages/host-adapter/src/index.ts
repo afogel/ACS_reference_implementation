@@ -34,9 +34,19 @@ export { renderDecision, type HostOutput } from "./render-decision.ts";
 // `FailureResolvedAcsDecision`, is exported with the posture that produces it.
 export { type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 export {
+  governStep,
+  type DecisionStage,
+  type GovernStepInput,
+  type GovernedStep,
+} from "./govern-step.ts";
+export {
   negotiateSessionConfig,
+  resolveSessionConfig,
+  ServerHelloInvalidError,
   SessionConfigNotStoredError,
+  SessionConfigStoreFailedError,
   type HandshakeOptions,
+  type ResolvedSessionConfig,
 } from "./handshake.ts";
 export {
   createSessionConfigStore,
