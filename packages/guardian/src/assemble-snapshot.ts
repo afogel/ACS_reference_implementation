@@ -1,21 +1,71 @@
 /**
- * assemblePreToolCallSnapshot converts a validated ACS request envelope (method
- * `steps/toolCallRequest`) into the AGT snapshot for `pre_tool_call`,
- * shaped per AGT-SNAPSHOT-1.0.md §2.5.
+ * Two assemblers, one per gate, each converting a validated ACS request
+ * envelope into the AGT snapshot for the intervention point that answers its
+ * method, shaped per AGT-SNAPSHOT-1.0.md §2.5:
  *
- * Envelope-only: this reads nothing but the envelope handed to it -- no
- * session state, no chain hash, no prior decisions, no intent.
+ *   assemblePreToolCallSnapshot        steps/toolCallRequest -> pre_tool_call
+ *   assemblePostToolCallSnapshot  steps/toolCallResult  -> post_tool_call   (V4)
+ *
+ * Siblings, not one function with two modes. §2.5 gives each point its own
+ * snapshot shape, and these two share no member but `envelope.budgets`: one
+ * carries the arguments a step was asked to run, the other the outputs it
+ * produced. A single assembler reading `payload.arguments` OR `payload.outputs`
+ * depending on what it found would be back to the union type the narrowing
+ * exists to prevent -- and would take an envelope of either method, which is
+ * exactly what the PR #10 review closed.
+ *
+ * `assemblePreToolCallSnapshot` keeps its name: it is the affordance N23 the shaping docs
+ * and policy/manifest.yaml's own comments refer to. Its parameter type says
+ * which envelope it takes, and the sibling below names the wire's noun for the
+ * other one.
+ *
+ * Envelope-only (per the V1 watch-for): both read nothing but the envelope
+ * handed to them -- no session state, no chain hash, no prior decisions, no
+ * intent. Those arrive in V6 via S3/S4/S5. The result gate carries no
+ * `tool_call.args` for the same reason and one more: the result payload has
+ * none to carry, and synthesizing them from the originating request would be
+ * inventing state this slice does not have (correlation is `request_id_ref`,
+ * V6's).
  */
 
 /**
- * Re-exported from validate-envelope.ts so there is exactly one envelope shape
- * rather than two that could silently diverge. The name means what it says:
- * the tool-call view of a validated ACS request, reachable only through
- * `isToolCallRequest`. So this function cannot be handed a `handshake/hello`,
- * off which it would read a `params.payload.tool.name` that is not there.
+ * The envelope types are validate-envelope.ts's (Task 5) -- re-exported here
+ * so existing imports of `ToolCallRequestEnvelope` from this module keep
+ * working. Task 4 had declared a local, narrower type as a temporary seam;
+ * this closes it so there's exactly one envelope shape, not two that could
+ * silently diverge.
+ *
+ * Since the PR #10 review those names mean what they say: the method-narrowed
+ * view of a validated ACS request, each reachable only through its own
+ * predicate (`isToolCallRequest`, `isToolCallResult`). Each function below
+ * takes exactly one of them, so no signature here accepts a
+ * `handshake/hello` it would read `params.payload.tool.name` off.
  */
-import type { ToolCallRequestEnvelope } from "./validate-envelope.ts";
-export type { ToolCallRequestEnvelope };
+import type { ToolCallRequestEnvelope, ToolCallResultEnvelope } from "./validate-envelope.ts";
+export type { ToolCallRequestEnvelope, ToolCallResultEnvelope };
+
+/**
+ * AGT's `envelope.budgets` counters -- the ONE member the two snapshots below
+ * share, so the one thing they name with a shared type. Sharing the member's
+ * type is not sharing the snapshots': each still declares its own members, and
+ * neither is assignable to the other.
+ *
+ * All four counters are always present and always real numbers: budgets.rego
+ * fails closed on a present-but-wrong-typed counter (V1's C-note), and that
+ * hazard belongs to every gate, not just the request one.
+ */
+export type AgtSnapshotBudgets = {
+  tool_call_count: number;
+  token_count: number;
+  elapsed_seconds: number;
+  cost_usd: number;
+};
+
+/** A fresh set of zeroed counters. A function rather than a shared constant so
+ * no two snapshots can ever alias the same budgets object. */
+function zeroedBudgets(): AgtSnapshotBudgets {
+  return { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 };
+}
 
 /**
  * The AGT `pre_tool_call` snapshot.
@@ -30,19 +80,42 @@ export type { ToolCallRequestEnvelope };
  * are the tool's business rather than this project's.
  */
 export type AgtPreToolCallSnapshot = {
-  envelope: {
-    budgets: {
-      tool_call_count: number;
-      token_count: number;
-      elapsed_seconds: number;
-      cost_usd: number;
-    };
-  };
+  envelope: { budgets: AgtSnapshotBudgets };
   tool_call: {
     name: string;
     args: Record<string, unknown>;
     id: string;
   };
+};
+
+/**
+ * The AGT `post_tool_call` snapshot: the sibling type the comment above said a
+ * later slice would bring, standing beside `AgtPreToolCallSnapshot` rather
+ * than widening it with optional members. Named for its own intervention
+ * point, for the same reason its twin is.
+ *
+ * Every member is load-bearing, and there are only three:
+ *   - `envelope.budgets`  the one member both snapshots carry.
+ *   - `tool_call.name`    SYNTHESIZED from the result payload's `tool.name`.
+ *                         ACS's result payload has no `tool_call` member of its
+ *                         own, and AGT resolves the manifest's
+ *                         `tool_name_from` BEFORE any policy runs -- a snapshot
+ *                         without a name fails closed with
+ *                         `runtime_error:path_missing` on every call
+ *                         (test/redaction.test.ts pins it).
+ *   - `tool_result.outputs`  what policy/manifest.yaml's post_tool_call point
+ *                         targets, at `$.tool_result.outputs[0].value`.
+ *
+ * No `tool_call.args`, and no `tool_call.id`: neither is on the wire at this
+ * step. `outputs` items are `{value}` alone -- ACS's `{value, provenance}`
+ * wrapper does not survive into a snapshot, the same rule the request side
+ * applies to its arguments (C5), and `value` stays `unknown` because what a
+ * tool produced is the tool's business rather than this project's.
+ */
+export type AgtPostToolCallSnapshot = {
+  envelope: { budgets: AgtSnapshotBudgets };
+  tool_call: { name: string };
+  tool_result: { outputs: { value: unknown }[] };
 };
 
 export function assemblePreToolCallSnapshot(envelope: ToolCallRequestEnvelope): AgtPreToolCallSnapshot {
@@ -59,18 +132,25 @@ export function assemblePreToolCallSnapshot(envelope: ToolCallRequestEnvelope): 
   return {
     // budgets.rego fails closed on a present-but-wrong-typed counter, so
     // these are always real zeros, never undefined/null.
-    envelope: {
-      budgets: {
-        tool_call_count: 0,
-        token_count: 0,
-        elapsed_seconds: 0,
-        cost_usd: 0,
-      },
-    },
+    envelope: { budgets: zeroedBudgets() },
     tool_call: {
       name: payload.tool.name,
       args,
       id: request_id,
     },
+  };
+}
+
+export function assemblePostToolCallSnapshot(envelope: ToolCallResultEnvelope): AgtPostToolCallSnapshot {
+  const { payload } = envelope.params;
+
+  return {
+    envelope: { budgets: zeroedBudgets() },
+    // Synthesized, and load-bearing: see AgtPostToolCallSnapshot above.
+    tool_call: { name: payload.tool.name },
+    // Unwrap every output, exactly as the request side unwraps every argument
+    // (C5): AGT reads the raw value at $.tool_result.outputs[0].value, and the
+    // ACS {value, provenance} wrapper does not survive into the snapshot.
+    tool_result: { outputs: payload.outputs.map((output) => ({ value: output.value })) },
   };
 }

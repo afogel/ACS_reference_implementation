@@ -31,9 +31,16 @@ export { buildServerHello, type ServerHello } from "./handshake.ts";
 export {
   validateEnvelope,
   isToolCallRequest,
+  isToolCallResult,
   EnvelopeValidationError,
   type AcsRequestEnvelope,
   type ToolCallRequestEnvelope,
+  type ToolCallResultEnvelope,
 } from "./validate-envelope.ts";
-export { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
+export {
+  assemblePreToolCallSnapshot,
+  assemblePostToolCallSnapshot,
+  type AgtPreToolCallSnapshot,
+  type AgtPostToolCallSnapshot,
+} from "./assemble-snapshot.ts";
 export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";

@@ -53,6 +53,18 @@ function toolCallEnvelope(command: string, overrides: { id?: number; requestId?:
   );
 }
 
+/** V4 (slice #5): the result gate's envelope, per hooks/tool-call-result.json
+ * -- `tool`, `exit_status`, `outputs`, and no `arguments` at all. "Bash" is
+ * registered in policy/manifest.yaml, so AGT evaluates the redact rule rather
+ * than failing closed on an unknown tool. */
+function resultEnvelope(value: string, overrides: { id?: number; requestId?: string } = {}) {
+  return makeEnvelope(
+    "steps/toolCallResult",
+    { tool: { name: "Bash" }, exit_status: "success", outputs: [{ value }] },
+    overrides,
+  );
+}
+
 type JsonRpcResponse = {
   jsonrpc: "2.0";
   id: string | number | null;
@@ -537,14 +549,18 @@ export function validateEnvelope(_input) {
 }
 
 // Must track validate-envelope.ts's real export surface, not just the two
-// symbols this double overrides: server.ts imports isToolCallRequest from the
-// same module, so a double that omits it fails to import rather than
-// exercising the pathological throw these tests exist for. Mirrors the real
-// narrowing exactly -- it is unreachable here (validateEnvelope always
-// throws) but a double that lies about behaviour is worse than one that
-// does not compile.
+// symbols this double overrides: server.ts imports BOTH method predicates from
+// the same module -- one per assembling gate -- so a double that omits either
+// fails to import rather than exercising the pathological throw these tests
+// exist for. Both mirror the real narrowing exactly: unreachable here
+// (validateEnvelope always throws) but a double that lies about behaviour is
+// worse than one that does not compile.
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
+}
+
+export function isToolCallResult(envelope) {
+  return envelope.method === "steps/toolCallResult";
 }
 `;
 
@@ -583,14 +599,18 @@ export function validateEnvelope(_input) {
 }
 
 // Must track validate-envelope.ts's real export surface, not just the two
-// symbols this double overrides: server.ts imports isToolCallRequest from the
-// same module, so a double that omits it fails to import rather than
-// exercising the pathological throw these tests exist for. Mirrors the real
-// narrowing exactly -- it is unreachable here (validateEnvelope always
-// throws) but a double that lies about behaviour is worse than one that
-// does not compile.
+// symbols this double overrides: server.ts imports BOTH method predicates from
+// the same module -- one per assembling gate -- so a double that omits either
+// fails to import rather than exercising the pathological throw these tests
+// exist for. Both mirror the real narrowing exactly: unreachable here
+// (validateEnvelope always throws) but a double that lies about behaviour is
+// worse than one that does not compile.
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
+}
+
+export function isToolCallResult(envelope) {
+  return envelope.method === "steps/toolCallResult";
 }
 `;
 
@@ -982,5 +1002,71 @@ describe("startGuardian binds loopback only", () => {
       await wildcard.close();
       await loopback.close();
     }
+  });
+});
+// V4 (slice #5): the second ACS method. Two gated branches, one predicate per
+// assembler -- so this block asserts both directions AND the fall-through. A
+// dispatch driven by the resolved intervention point alone, or by a single
+// predicate answering for both methods, passes the first test here and fails
+// the last two: mapping.yaml declares six methods with points and this
+// Guardian assembles two, so a point-driven branch would hand a
+// steps/sessionStart envelope to whichever assembler came first and answer
+// with a verdict that looks perfectly well-formed while having evaluated the
+// wrong policy against the wrong shape.
+describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", () => {
+  it("redacts a secret-bearing output, echoing request_id", async () => {
+    const requestId = crypto.randomUUID();
+
+    const response = await postAcs(url, resultEnvelope("TOKEN=ghp_ABCDEF123456", { requestId }));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("modify");
+    // The stock redact rule's own reason, which only the post_tool_call point
+    // produces: pre_tool_call has no redact rule, and the result snapshot
+    // carries no args for its pattern check to read. So this reason_code is
+    // the evidence that the point mapping.yaml names for this method is the
+    // point that evaluated -- not the request gate's.
+    expect(response.result?.reason_codes).toEqual(["redaction_applied"]);
+    expect(response.result?.request_id).toBe(requestId);
+    // What the redacted value lands under is NOT asserted here: mapVerdict
+    // still synthesizes the request gate's `parameter_overrides` shape,
+    // because it does not yet take the intervention point. That is Task 6's,
+    // and pinning today's shape here would only have to be un-pinned there.
+  });
+
+  it("leaves an output with nothing to redact a clean allow", async () => {
+    const requestId = crypto.randomUUID();
+
+    const response = await postAcs(url, resultEnvelope("hello world", { requestId }));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("allow");
+    expect(response.result?.request_id).toBe(requestId);
+  });
+
+  // Direction two: the request gate still answers request envelopes, with the
+  // pre-tool rule's own reason. If the result branch (or one merged branch)
+  // took this envelope, assembling a result snapshot from a payload with no
+  // `outputs` would throw and the reason_code would be "evaluation_failed"
+  // instead -- an honoured deny, and a passing-looking response.
+  it("still answers a request envelope from the pre-tool branch, with the pre-tool rule's own reason", async () => {
+    const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("deny");
+    expect(response.result?.reason_codes).toEqual(["destructive_shell_command_blocked"]);
+  });
+
+  // The fall-through, unchanged: a method this Guardian cannot assemble a
+  // snapshot for must not be answered with a snapshot it can. This is the
+  // assertion that fails if the two predicates are ever replaced by a method
+  // switch or by a branch keyed on the resolved point.
+  it("still answers steps/sessionStart with method-not-dispatched, from neither branch", async () => {
+    const response = await postAcs(url, makeEnvelope("steps/sessionStart", {}, { id: 7 }));
+
+    expect(response.result).toBeUndefined();
+    expect(response.id).toBe(7);
+    expect(response.error?.code).toBe(-32011);
+    expect(response.error?.data).toEqual({ method: "steps/sessionStart" });
   });
 });
