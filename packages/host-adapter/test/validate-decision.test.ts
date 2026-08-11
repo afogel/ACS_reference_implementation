@@ -543,6 +543,54 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.reasoning).toContain("is a number where this tool produced a string");
   });
 
+  // THE HOLE IN THE GUARANTEE, and the reason nothing here re-joins segments into
+  // a path to look one up again. The type check used to read its value through
+  // `resolve(container, segments.join("."))`, which re-parses -- and the parse
+  // strips a leading `$`, because a hookmap path may start with one. So a leaf
+  // segment of `$raw` was READ as `raw` while the patch still landed on `$raw`:
+  // the guard inspected one field and the replacement went into another. Both
+  // fields are present below, with different types, which is what makes the
+  // mismatch visible: before the fix this returned a `modify` carrying
+  // `{raw: "prose", $raw: "TOKEN=[REDACTED]"}` -- prose where a boolean was, the
+  // exact shape the host discards while delivering the original, produced by the
+  // check that exists to prevent it.
+  it("type-checks the field it patches, not one a re-parsed path resolves to", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: {
+        payload: { tool_response: { raw: "prose", $raw: false } },
+        outputs: { from: "$.tool_response.$raw", within: "$.tool_response" },
+      },
+    });
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_output).toBeUndefined();
+    // Named for the boolean it would have replaced, not the string beside it.
+    expect(out.reasoning).toContain("is a string where this tool produced a boolean");
+  });
+
+  // The path relation, checked on the segment arrays the patch is applied through
+  // rather than inferred from their lengths. `buildEnvelope` checks the raw strings
+  // and refuses this pair -- but `resolveByPosture` calls the projection on the
+  // stage-"request" path, where `buildEnvelope` FAILED and may have failed on
+  // exactly this check, so the projection cannot borrow it.
+  it("refuses a path pair where `within` is not a leading part of `from`", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: {
+        payload: { tool_response: { stdout: "TOKEN=ghp_ABCDEF123456" }, other: { stdout: "x" } },
+        outputs: { from: "$.other.stdout", within: "$.tool_response" },
+      },
+    });
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.reasoning).toContain("do not describe one leaf inside one object");
+  });
+
   // The reserved-segment guard, which is the third place in this codebase to need
   // one. `$.tool_response.__proto__` resolves through INHERITED lookup, so it
   // satisfies every check both sides make, and `clone["__proto__"] = x` would set

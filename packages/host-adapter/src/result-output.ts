@@ -117,15 +117,37 @@ function pathSegments(path: string): string[] {
   return segments;
 }
 
-function resolve(payload: Record<string, unknown>, path: string): unknown {
-  let current: unknown = payload;
-  for (const segment of pathSegments(path)) {
+/**
+ * Walks ALREADY-SPLIT segments through an object. Everything that reads a value
+ * out of a payload here goes through this, and nothing re-joins segments into a
+ * path to look one up again.
+ *
+ * WHY THAT IS A RULE AND NOT A PREFERENCE. This function used to be reached by
+ * `resolve(container, segments.join("."))`, which re-parses -- and `pathSegments`
+ * strips a leading `$`, because a hookmap path may start with one. So a leaf
+ * segment of `$raw` was READ as `raw` while `patchedClone` still PATCHED `$raw`:
+ * the type check inspected one field and the replacement landed in another.
+ * Measured with `from: $.tool_response.$raw`, `within: $.tool_response` and a
+ * payload carrying both `{raw: "prose", $raw: false}`, the guard passed on the
+ * string and the built replacement put prose where a boolean was -- exactly the
+ * shape the host discards while delivering the original, produced by the check
+ * that exists to prevent it. A round trip through the string form is a second
+ * parse, and two parses of one path are two paths.
+ */
+function resolveSegments(root: Record<string, unknown>, segments: string[]): unknown {
+  let current: unknown = root;
+  for (const segment of segments) {
     if (!isPlainObject(current)) {
       return undefined;
     }
     current = current[segment];
   }
   return current;
+}
+
+/** One hookmap path, parsed once and resolved against a payload. */
+function resolve(payload: Record<string, unknown>, path: string): unknown {
+  return resolveSegments(payload, pathSegments(path));
 }
 
 /**
@@ -169,10 +191,14 @@ function patchedClone(
  * The one way a replacing output is ever built: a clone of the object at
  * `outputs.within`, with the leaf at `outputs.from` replaced.
  *
- * Both failure modes are throws, because both mean the replacement would be a
+ * Every failure mode is a throw, because each means the replacement would be a
  * shape the host may decline, and a declined replacement delivers the original.
  * A redaction that does not land is a failure, not a partial success:
  *
+ *   - the two paths not describing one leaf inside one object -- `within`'s
+ *     segments not being the leading segments of `from`'s. The leaf's path inside
+ *     the container is `from` minus `within`, so a pair that does not stand in
+ *     that relation has no leaf to take.
  *   - `within` resolving to something that is not an object, or the leaf being
  *     absent from it. There is nothing to clone, or nothing to patch.
  *   - a replacement of a different `typeof` than the value it replaces. Prose
@@ -194,17 +220,44 @@ function patchedClone(
  *     before one is sought, because a leaf no replacement can be expressed for
  *     is not a decision to answer, it is a hookmap that could not carry one out.
  *
- * `buildEnvelope` establishes that the two paths describe one leaf inside one
- * object and that the leaf resolved for this very payload; the assertion below
- * establishes the rest, before a decision is ever sought. Between the two, no
- * throw here is reachable for a prose replacement at a gate that got as far as
- * holding a decision -- which is the property that keeps a `deny` from arriving
- * somewhere it cannot be carried out. They stay throws rather than assumptions:
- * this function is handed a payload and two paths, and "some caller checked" is
- * not a property of the function.
+ * NONE OF THESE IS ASSUMED AWAY, and the path relation is now checked HERE
+ * rather than inherited from `buildEnvelope`'s check on the raw strings. This
+ * function is handed a payload and two paths; "some caller checked" is not a
+ * property of a function, and on one live route it is not even true --
+ * `resolveByPosture` calls this on the stage-"request" path, where `buildEnvelope`
+ * failed and may have failed on exactly that check. What the caller contributes is
+ * ORDER, not trust: `assertOutputIsReplaceable` runs every check below before a
+ * decision is sought, so no failure here can reach a gate that is already holding
+ * one.
  */
 export function replacingOutput(target: HostOutputTarget, replacement: unknown): Record<string, unknown> {
   const { payload, outputs } = target;
+
+  // The two paths first, the payload after -- `buildEnvelope`'s own ordering, for
+  // its own reason: a malformed pair of paths is a hookmap fault and an
+  // unresolvable one is a payload fault, and which of them throws is what tells
+  // an incident reviewer them apart.
+  const fromSegments = pathSegments(outputs.from);
+  const withinSegments = pathSegments(outputs.within);
+
+  // `within`'s segments must BE the leading segments of `from`'s, checked
+  // segment-wise on the arrays the patch is actually applied through -- not
+  // inferred from a count, and not borrowed from `buildEnvelope`'s check on the
+  // raw strings. Those two are equivalent for every path pair this deployment
+  // has, which is exactly why the derivation must not depend on it: the leaf's
+  // path is `from` minus `within`, and taking it by LENGTH alone is sound only
+  // while the prefix relation happens to hold. `resolveByPosture` calls this
+  // function on the stage-"request" path, where `buildEnvelope` FAILED -- possibly
+  // on that very check -- so "the caller established it" is untrue on the one
+  // route that most needs it to be true.
+  if (!withinSegments.every((segment, index) => fromSegments[index] === segment)) {
+    throw new Error(
+      `result-output: hookmap paths ${JSON.stringify(outputs.from)} and ${JSON.stringify(outputs.within)} do ` +
+        `not describe one leaf inside one object -- "within" names the object a replacement is patched into a ` +
+        `clone of, so its segments have to be the leading segments of "from"`,
+    );
+  }
+
   const container = resolve(payload, outputs.within);
   if (!isPlainObject(container)) {
     throw new Error(
@@ -213,7 +266,7 @@ export function replacingOutput(target: HostOutputTarget, replacement: unknown):
     );
   }
 
-  const segments = pathSegments(outputs.from).slice(pathSegments(outputs.within).length);
+  const segments = fromSegments.slice(withinSegments.length);
   if (segments.length === 0) {
     throw new Error(
       `result-output: hookmap path ${JSON.stringify(outputs.from)} names no leaf inside ` +
@@ -221,7 +274,7 @@ export function replacingOutput(target: HostOutputTarget, replacement: unknown):
     );
   }
 
-  const original = resolve(container, segments.join("."));
+  const original = resolveSegments(container, segments);
   if (original === undefined) {
     throw new Error(
       `result-output: hookmap path ${JSON.stringify(outputs.from)} resolves to no value in this payload, so ` +
@@ -324,6 +377,18 @@ export function appliedOutput(
  *     wrapper too -- a rewrite reported and never applied, R1.6's own failure.
  *     Unreachable while `validateDecision` is given this gate's target, which is
  *     why it is a throw and not a repair.
+ *
+ *     THE TWO HALVES ARE NOT GUARDED THE SAME WAY, and the asymmetry is worth
+ *     knowing. The deny above cannot fail to build its replacement, structurally:
+ *     `assertOutputIsReplaceable` establishes that before any decision is sought.
+ *     This one rests on a call-site invariant instead -- that whoever hands this
+ *     function a target handed `validateDecision` the same one -- and if that ever
+ *     broke, this throw would land in the render stage's catch and a delivery
+ *     posture would answer a rewrite, which is exactly the shape the deny half no
+ *     longer has. Left stated rather than closed: telling it apart from a
+ *     legitimate hookmap gap, which the posture SHOULD answer, needs an error
+ *     class, and that is machinery for a case one call site and one type already
+ *     prevent.
  *   - everything else is returned untouched. An `allow` deliberately emits no
  *     replacement at all: the output is delivered as the tool produced it, and an
  *     unnecessary replacement is a chance to get the shape wrong for no benefit.

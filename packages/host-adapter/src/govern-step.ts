@@ -339,12 +339,26 @@ export async function governStep({
   // this function is one: a hookmap whose declared output this host cannot
   // replace is a broken deployment, the same class as a hookmap that will not
   // load, and a caller answers it the same way -- a loud, blocking stop. What
-  // stays with the posture is the OTHER failure, and the distinction is the
-  // point: `buildEnvelope` failing above means the PAYLOAD does not carry what
-  // this hook's `outputs` block describes, which a host may cause legitimately
-  // by firing one hook for several tools, so it remains the deployment's own
-  // negotiated question. A leaf that is there and is not prose is a permanent
-  // property of the tool's own output shape, and no posture makes it patchable.
+  // stays with the posture is the OTHER failure: `buildEnvelope` failing above
+  // means the PAYLOAD does not carry what this hook's `outputs` block describes,
+  // which a host may cause legitimately by firing one hook for several tools, so
+  // it remains the deployment's own negotiated question.
+  //
+  // WHAT SEPARATES THEM IS NOT WHOSE FAULT IT IS -- and an earlier version of
+  // this note claimed it was, calling a non-prose leaf "a permanent property of
+  // the tool's own output shape". That does not generalize, and it fails on the
+  // very case the paragraph above cites: for a hook mapped to several tools it is
+  // a property of ONE of them, and this refusal then blocks that tool's calls
+  // rather than the deployment's configuration. The separation is what each
+  // failure leaves this gate able to do. A payload with no such leaf leaves the
+  // gate with no ACS request either -- nothing was asked, so there is a posture's
+  // question to answer and answering it drops no decision. A leaf that is present
+  // and unpatchable leaves the gate able to ask and unable to act on any answer
+  // it gets, and no posture makes it patchable: the only choices there are
+  // stopping before asking, or asking and dropping what comes back. It stops.
+  // Over-blocking on the safe side, deliberately -- including for a decision that
+  // would have been an `allow` -- because the alternative is a policy decision
+  // arriving and being discarded.
   if (outputTarget !== undefined) {
     try {
       assertOutputIsReplaceable(outputTarget);
