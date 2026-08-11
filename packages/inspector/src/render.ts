@@ -1,11 +1,20 @@
 /**
  * U20 (envelope stream) and U21 (decision badge).
  *
- * Both functions are pure: no clock, no env, no process. The CLI decides
+ * Every function here is pure: no clock, no env, no process. The CLI decides
  * whether the terminal wants ANSI and passes `color`; tests assert exact
  * plain strings. Nothing here knows what produced a decision -- the badge
  * reads ACS's own `decision`, `reason_codes`, and `policy_references`
  * fields and nothing else (global constraint 9).
+ *
+ * `renderDecisionBadge` is TOLD a decision rather than handed a log row to
+ * interrogate (PR #11 review). It used to take an `EnvelopeLogEntry` and dig
+ * `entry.envelope.result.decision` out of it, which made "render this
+ * decision" read as "ask this log line what it contains" and tied U21 to the
+ * one artifact that happens to carry a decision today. The digging now lives
+ * in `decisionMessageOf`, one named translation from an S6 line to the small
+ * `DecisionMessage` the badge actually needs; anything else able to build
+ * that message can use the badge without owning an envelope log.
  */
 import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
 
@@ -18,7 +27,22 @@ const YELLOW = "\u001b[33m";
 const CYAN = "\u001b[36m";
 const DIM = "\u001b[2m";
 
-type PolicyReference = { policy_id?: string; policy_version?: string; rule_id?: string };
+export type PolicyReference = { policy_id?: string; policy_version?: string; rule_id?: string };
+
+/**
+ * U21's message: what a caller tells the badge, already narrowed to the ACS
+ * fields it renders.
+ *
+ * A union rather than one object with an optional `error` beside a
+ * `decision`, because a response carries exactly one of them and the other
+ * arm's fields would have to be invented. A `steps/*` response either names
+ * an ACS `decision` or is a JSON-RPC error; a caller cannot hand the badge
+ * both, and cannot hand it neither.
+ */
+export type DecisionMessage =
+  | { decision: string; reason_codes: string[]; policy_references: PolicyReference[] }
+  | { error: { code: number | null; message: string } };
+
 type DecisionResult = {
   decision?: unknown;
   reason_codes?: unknown;
@@ -41,32 +65,47 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+/** The `policy_references` a response carried, narrowed to objects. Kept
+ * separate from the formatting below so the message stays structured: a
+ * caller building a `DecisionMessage` by hand passes references, not
+ * pre-rendered strings. */
+function policyReferenceList(value: unknown): PolicyReference[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is PolicyReference => typeof item === "object" && item !== null);
+}
+
 /** Formats each `policy_references` entry as `policy_id#rule_id`, falling
  * back to the bare `policy_id` when `rule_id` is absent. ACS's schemas do
  * not require `rule_id` on a policy_reference, so that fallback is a real
  * shape this renders deliberately, not a defect. */
-function referenceList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .filter((item): item is PolicyReference => typeof item === "object" && item !== null)
-    .map((ref) => (ref.rule_id ? `${ref.policy_id ?? "?"}#${ref.rule_id}` : `${ref.policy_id ?? "?"}`));
+function formatReferences(references: PolicyReference[]): string[] {
+  return references.map((ref) => (ref.rule_id ? `${ref.policy_id ?? "?"}#${ref.rule_id}` : `${ref.policy_id ?? "?"}`));
 }
 
-/** U21. Null when this entry carries no decision and no error: a request, or
- * a response such as a ServerHello. */
-export function renderDecisionBadge(entry: EnvelopeLogEntry, options: RenderOptions = {}): string | null {
+/**
+ * The badge's message for one S6 line, or null when that line has no outcome
+ * to badge: a request, or a response such as a ServerHello.
+ *
+ * The one place in this module that reads an envelope's shape. It is a
+ * translation, not a collaboration -- it turns an artifact into the message
+ * U21 speaks -- and confining it here is what lets `renderDecisionBadge` be
+ * told a decision instead of interrogating a log row for one.
+ */
+export function decisionMessageOf(entry: EnvelopeLogEntry): DecisionMessage | null {
   if (entry.direction !== "response") {
     return null;
   }
-  const color = options.color ?? false;
   const envelope = (typeof entry.envelope === "object" && entry.envelope !== null ? entry.envelope : {}) as ResponseEnvelope;
 
   if (envelope.error) {
-    const code = typeof envelope.error.code === "number" ? envelope.error.code : "?";
-    const message = typeof envelope.error.message === "string" ? envelope.error.message : "";
-    return paint(`✖ ERROR ${code}${message ? `  ${message}` : ""}`, RED, color);
+    return {
+      error: {
+        code: typeof envelope.error.code === "number" ? envelope.error.code : null,
+        message: typeof envelope.error.message === "string" ? envelope.error.message : "",
+      },
+    };
   }
 
   const result = envelope.result;
@@ -74,22 +113,39 @@ export function renderDecisionBadge(entry: EnvelopeLogEntry, options: RenderOpti
     return null;
   }
 
-  const reasonCodes = stringList(result.reason_codes);
-  const references = referenceList(result.policy_references);
+  return {
+    decision: result.decision,
+    reason_codes: stringList(result.reason_codes),
+    policy_references: policyReferenceList(result.policy_references),
+  };
+}
+
+/** U21. Renders the decision (or the error) it is given. */
+export function renderDecisionBadge(message: DecisionMessage, options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+
+  if ("error" in message) {
+    const code = message.error.code ?? "?";
+    const text = message.error.message;
+    return paint(`✖ ERROR ${code}${text ? `  ${text}` : ""}`, RED, color);
+  }
+
+  const reasonCodes = message.reason_codes;
+  const references = formatReferences(message.policy_references);
 
   let head: string;
-  if (result.decision === "deny") {
+  if (message.decision === "deny") {
     head = paint("● DENY", RED, color);
-  } else if (result.decision === "allow" && references.length > 0) {
+  } else if (message.decision === "allow" && references.length > 0) {
     // ACS has no `warn`; a policy that fired but let the action proceed
     // arrives as `allow` with a non-empty policy_references. Rendering it
     // identically to a clean allow is exactly what this badge exists to
     // prevent (slices doc, section V2).
     head = paint('◐ ALLOW (policy fired — ACS "warn")', YELLOW, color);
-  } else if (result.decision === "allow") {
+  } else if (message.decision === "allow") {
     head = paint("○ ALLOW", GREEN, color);
   } else {
-    head = paint(`◆ ${result.decision.toUpperCase()}`, CYAN, color);
+    head = paint(`◆ ${message.decision.toUpperCase()}`, CYAN, color);
   }
 
   // Dimmed rather than left plain: with color:true, painting only `head`
@@ -128,7 +184,8 @@ export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderO
   const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
 
   const header = paint(`── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${arrow}  ${method}  ${id}`, DIM, color);
-  const badge = renderDecisionBadge(entry, options);
+  const message = decisionMessageOf(entry);
+  const badge = message === null ? null : renderDecisionBadge(message, options);
   // `JSON.stringify` returns `undefined` -- not a string -- for an entry
   // whose `envelope` key is absent, and `join` would coerce that to an empty
   // line indistinguishable from a real blank body. `isEnvelopeLogEntryShape`

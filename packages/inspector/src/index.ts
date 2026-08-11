@@ -5,4 +5,11 @@ export {
   type EnvelopeLogEntry,
   type TailEnvelopeLogOptions,
 } from "./tail-envelope-log.ts";
-export { renderDecisionBadge, renderEnvelopeLogEntry, type RenderOptions } from "./render.ts";
+export {
+  decisionMessageOf,
+  renderDecisionBadge,
+  renderEnvelopeLogEntry,
+  type DecisionMessage,
+  type PolicyReference,
+  type RenderOptions,
+} from "./render.ts";
