@@ -31,7 +31,7 @@
  * statelessly (R6.1).
  */
 import { fileURLToPath } from "node:url";
-import { createBridge } from "agt-bridge";
+import { createBridge, type PolicyBridge } from "agt-bridge";
 import { assembleSnapshot } from "./assemble-snapshot.ts";
 import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
 import {
@@ -113,7 +113,10 @@ export async function startGuardian({ port, manifestPath, mappingPath }: StartGu
 
 async function handleAcsRequest(
   req: Request,
-  bridge: ReturnType<typeof createBridge>,
+  // The role, not `ReturnType<typeof createBridge>` (PR #10 review): this
+  // handler depends on something it can tell to evaluate a snapshot, not on
+  // the shape one factory happens to return.
+  bridge: PolicyBridge,
   mapping: Mapping,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;

@@ -43,7 +43,7 @@ describe("assembleSnapshot", () => {
       },
     });
 
-    const snapshot = assembleSnapshot(envelope) as { tool_call: { name: string; args: Record<string, unknown> } };
+    const snapshot = assembleSnapshot(envelope);
 
     expect(snapshot.tool_call.name).toBe("run_shell");
     expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /" });
@@ -55,7 +55,7 @@ describe("assembleSnapshot", () => {
   it("keeps tool_call.args.command a STRING, not a nested wrapper or object", () => {
     const envelope = makeEnvelope({ args: { command: { value: "rm -rf /" } } });
 
-    const snapshot = assembleSnapshot(envelope) as { tool_call: { args: { command: unknown } } };
+    const snapshot = assembleSnapshot(envelope);
 
     expect(typeof snapshot.tool_call.args.command).toBe("string");
     expect(snapshot.tool_call.args.command).toBe("rm -rf /");
@@ -64,7 +64,7 @@ describe("assembleSnapshot", () => {
   it("always emits envelope.budgets with all four counters zeroed, even though the envelope says nothing about budgets", () => {
     const envelope = makeEnvelope();
 
-    const snapshot = assembleSnapshot(envelope) as { envelope: { budgets: Record<string, unknown> } };
+    const snapshot = assembleSnapshot(envelope);
 
     expect(snapshot.envelope).toEqual({
       budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 },
@@ -74,7 +74,7 @@ describe("assembleSnapshot", () => {
   it("carries params.request_id onto tool_call.id", () => {
     const envelope = makeEnvelope({ requestId: "2c3e4f50-1234-4abc-9def-000000000000" });
 
-    const snapshot = assembleSnapshot(envelope) as { tool_call: { id: string } };
+    const snapshot = assembleSnapshot(envelope);
 
     expect(snapshot.tool_call.id).toBe("2c3e4f50-1234-4abc-9def-000000000000");
   });
@@ -86,11 +86,13 @@ describe("assembleSnapshot", () => {
   it("reads nothing but the envelope: no session-derived key appears anywhere in the output", () => {
     const envelope = makeEnvelope();
 
-    const snapshot = assembleSnapshot(envelope) as Record<string, unknown>;
+    // No cast: assembleSnapshot returns a named snapshot message now, so what
+    // these read is the type it declares rather than an anonymous dict.
+    const snapshot = assembleSnapshot(envelope);
 
     expect(Object.keys(snapshot).sort()).toEqual(["envelope", "tool_call"]);
-    expect(Object.keys(snapshot.envelope as object)).toEqual(["budgets"]);
-    expect(Object.keys(snapshot.tool_call as object).sort()).toEqual(["args", "id", "name"]);
+    expect(Object.keys(snapshot.envelope)).toEqual(["budgets"]);
+    expect(Object.keys(snapshot.tool_call).sort()).toEqual(["args", "id", "name"]);
 
     const serialized = JSON.stringify(snapshot);
     for (const forbidden of ["session_id", "session_state", "chain_hash", "agent_id", "metadata", "intent", "1b9d6bcd"]) {

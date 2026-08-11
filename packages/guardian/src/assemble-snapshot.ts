@@ -23,7 +23,38 @@
 import type { ToolCallRequestEnvelope } from "./validate-envelope.ts";
 export type { ToolCallRequestEnvelope };
 
-export function assembleSnapshot(envelope: ToolCallRequestEnvelope): Record<string, unknown> {
+/**
+ * The AGT `pre_tool_call` snapshot, as a message rather than an anonymous dict
+ * (PR #10 review, Important). This module used to return
+ * `Record<string, unknown>`: the bridge could be handed anything at all, and
+ * the only description of what a snapshot contains was the literal below.
+ *
+ * Named for the intervention point it is the snapshot FOR, because that is what
+ * fixes its shape -- AGT-SNAPSHOT-1.0.md §2.5 gives each point its own. A later
+ * slice's `post_tool_call` snapshot is a sibling type beside this one, not a
+ * widening of it.
+ *
+ * `args` stays `Record<string, unknown>` on purpose: those are the tool's own
+ * arguments, unwrapped from ACS's `{value, provenance}` shape, and their keys
+ * are the tool's business rather than this project's.
+ */
+export type AgtPreToolCallSnapshot = {
+  envelope: {
+    budgets: {
+      tool_call_count: number;
+      token_count: number;
+      elapsed_seconds: number;
+      cost_usd: number;
+    };
+  };
+  tool_call: {
+    name: string;
+    args: Record<string, unknown>;
+    id: string;
+  };
+};
+
+export function assembleSnapshot(envelope: ToolCallRequestEnvelope): AgtPreToolCallSnapshot {
   const { payload, request_id } = envelope.params;
 
   // Unwrap every argument. AGT reads raw values (e.g. args.command must be

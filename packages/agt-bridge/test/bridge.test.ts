@@ -1,12 +1,12 @@
 import { describe, expect, it, beforeAll } from "bun:test";
-import { createBridge } from "../src/index.ts";
+import { createBridge, type PolicyBridge } from "../src/index.ts";
 
 const snapshotFor = (command: string) => ({
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
   tool_call: { name: "run_shell", args: { command }, id: "t1" },
 });
 
-let bridge: ReturnType<typeof createBridge>;
+let bridge: PolicyBridge;
 beforeAll(() => { bridge = createBridge("policy/manifest.yaml"); });
 
 describe("agt-bridge", () => {
