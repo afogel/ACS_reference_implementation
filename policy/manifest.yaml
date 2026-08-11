@@ -24,6 +24,22 @@ intervention_points:
     tool_name_from: "$.tool_call.name"
     policy:
       id: agt_stock
+  # V4 (slice #5). Additive: nothing evaluates this point until a
+  # steps/toolCallResult envelope arrives, and pre_tool_call above is
+  # unaffected -- pinned by this task's fourth test.
+  #
+  # The target indexes into the ACS payload's own `outputs` array, which
+  # AGT's JSONPath supports directly (verified). `tool_name_from` is
+  # load-bearing here and not decoration: without a `tool_call.name` in the
+  # snapshot AGT fails closed with runtime_error:path_missing before any
+  # rule runs, so assembleSnapshot (N23) synthesizes it from the payload's
+  # `tool.name`.
+  post_tool_call:
+    policy_target: "$.tool_result.outputs[0].value"
+    policy_target_kind: tool_result
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: agt_stock
 tools:
   run_shell:
     type: Tool
