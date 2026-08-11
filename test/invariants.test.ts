@@ -223,9 +223,34 @@ describe("architectural invariants", () => {
    * place that legitimately imports `guardian` -- it stands up a real one to
    * prove the wire contract end to end, the same test-only precedent
    * packages/host-adapter/test/ already sets.
+   *
+   * KNOWN, AND LEFT: `importsSpecifier` matches the specifier by SUBSTRING,
+   * so a future shim importing a local file whose name merely contains
+   * "guardian" (`./guardian-defaults.ts`, say) would trip this gate
+   * spuriously. That is deliberate. The substring match is what catches the
+   * real hole -- a relative reach-around like
+   * `from "../../packages/guardian/src/index.ts"`, which no exact-match
+   * check on a bare package name would see, and which is asserted directly
+   * in "the import gate itself" below. A false positive here is a loud
+   * failure with the offending file named, which someone renames a file to
+   * fix; the alternative trades that for a silent hole. Anyone hitting it
+   * should read this comment before "fixing" the regex.
    */
   it("every host shim imports the adapter only -- never the Guardian, never the AGT bridge", () => {
-    for (const { file, code } of readSourceFiles("hosts")) {
+    const scanned = readSourceFiles("hosts");
+
+    // Asserted, not assumed. `readSourceFiles`'s emptiness check stops the
+    // gate passing vacuously on ZERO files, but not on the wrong ones: this
+    // gate passes today partly because `Glob.scanSync` does not descend into
+    // hosts/claude-code/node_modules -- verified empirically when the gate
+    // was written, asserted nowhere until now. A globbing change that started
+    // returning vendored `.ts` files would bury the shim among hundreds of
+    // them; one that stopped returning the shim would leave a gate that scans
+    // something irrelevant and always passes. Pinned to the exact list, so
+    // V5's second shim has to be added here consciously.
+    expect(scanned.map(({ file }) => file).sort()).toEqual(["claude-code/acs-hook.ts"]);
+
+    for (const { file, code } of scanned) {
       for (const spec of ["agt-bridge", "guardian"]) {
         const found = importsSpecifier(code, spec);
         expect({ file, spec, found }).toEqual({ file, spec, found: false });

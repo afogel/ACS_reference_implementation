@@ -71,6 +71,29 @@ async function runShim(
   return { exitCode: await proc.exited, stdout, stderr };
 }
 
+type ShimRun = { exitCode: number; stdout: string; stderr: string };
+
+/**
+ * Asserts the successful shape in full -- exit 0, a decision on stdout, and
+ * NOTHING on stderr -- and returns the parsed hookSpecificOutput.
+ *
+ * The stderr half is the part that was missing. Every exit-0 test asserted
+ * the exit code and the decision and said nothing about stderr, so a shim
+ * that started printing a warning (or a stack trace) on every hook would
+ * have gone unnoticed by the whole suite. This hook runs as a Claude Code
+ * subprocess whose stderr a human sees, and "the decision was right and it
+ * also printed something alarming" is not a pass. Exactly one test here
+ * legitimately writes to stderr -- the one whose audit sink cannot be
+ * written -- and it asserts what it prints rather than using this helper.
+ *
+ * `toEqual` on both fields at once, so a failure prints the offending
+ * stderr text instead of only "expected 0, got 2".
+ */
+function expectQuietDecision(out: ShimRun): Record<string, unknown> {
+  expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+  return JSON.parse(out.stdout).hookSpecificOutput as Record<string, unknown>;
+}
+
 describe("acs-hook — the negotiated posture, end to end", () => {
   it("handshakes on the first hook and leaves S13 on disk for the next process", async () => {
     const dir = scratch();
@@ -82,8 +105,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       };
       const first = await runShim(payload("ls -la"), env);
-      expect(first.exitCode).toBe(0);
-      expect(JSON.parse(first.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+      expect(expectQuietDecision(first).permissionDecision).toBe("allow");
       expect(existsSync(join(dir, "sessions", "sess-1.json"))).toBe(true);
       expect(JSON.parse(readFileSync(join(dir, "sessions", "sess-1.json"), "utf8")).on_decision_failure)
         .toBe("proceed");
@@ -101,7 +123,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: join(dir, "sessions"),
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      const hook = expectQuietDecision(out);
       expect(hook.permissionDecision).toBe("deny");
       expect(hook.permissionDecisionReason).toContain("matched pattern");
       // Nothing failed to be delivered, so nothing is audited.
@@ -128,8 +150,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
 
     const out = await runShim(payload("rm -rf /"), env);
-    expect(out.exitCode).toBe(0);
-    const hook = JSON.parse(out.stdout).hookSpecificOutput;
+    const hook = expectQuietDecision(out);
     expect(hook.permissionDecision).toBe("allow");
     // Byte-for-byte what docs/demos/v3-runbook.md captures for this step. The
     // session note added for an unpersistable config must not leak into the
@@ -169,7 +190,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
 
     const out = await runShim(payload("ls -la"), env);
-    expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(expectQuietDecision(out).permissionDecision).toBe("deny");
     const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(audit[0]).toMatchObject({ posture: "deny", outcome: "blocked" });
   });
@@ -181,8 +202,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       ACS_SESSION_DIR: join(dir, "sessions"),
       ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
     });
-    expect(out.exitCode).toBe(0);
-    expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(expectQuietDecision(out).permissionDecision).toBe("allow");
     const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
     expect(existsSync(join(dir, "sessions", "sess-1.json"))).toBe(false);
@@ -199,7 +219,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
     });
     expect(out.stdout.length).toBeGreaterThan(0);
-    expect(out.exitCode).toBe(0);
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
   });
 
   // Whole-branch review, M1. Malformed per JSON-RPC (a response carries one of
@@ -242,7 +262,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: join(dir, "sessions"),
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      const hook = expectQuietDecision(out);
       expect(hook.permissionDecision).toBe("deny");
       expect(hook.permissionDecisionReason).toBe("blocked by policy");
       // A decision arrived, so nothing was a delivery failure and nothing is
@@ -289,9 +309,8 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: join(dir, "sessions"),
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      expect(out.exitCode).toBe(0);
       expect(out.stdout.length).toBeGreaterThan(0);
-      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      const hook = expectQuietDecision(out);
       // The negotiated posture was "proceed", so the undeliverable decision
       // resolves to a plain allow, and it is audited like any other
       // fail-open proceed (§6.4's MUST).
@@ -352,10 +371,9 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: join(dir, "sessions"),
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      expect(out.exitCode).toBe(0);
       // The negotiated posture applied -- and it is the fail-open half, so
       // the audit entry below is §6.4's MUST rather than a nicety.
-      expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+      expect(expectQuietDecision(out).permissionDecision).toBe("allow");
 
       const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
       expect(audit).toHaveLength(1);
@@ -424,8 +442,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: join(dir, "sessions"),
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      expect(out.exitCode).toBe(0);
-      expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+      expect(expectQuietDecision(out).permissionDecision).toBe("allow");
 
       const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
       expect(audit).toHaveLength(1);
@@ -464,6 +481,12 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       const hook = JSON.parse(out.stdout).hookSpecificOutput;
       expect(hook.permissionDecision).toBe("deny");
       expect(hook.permissionDecisionReason).toMatch(/could not be recorded/i);
+      // The one exit-0 case in this file that legitimately writes to stderr,
+      // so it says what it writes rather than using `expectQuietDecision`.
+      // The sink's default reporter is the only voice here, and a human
+      // watching a Claude Code session needs to see it: the entry §6.4
+      // requires could not be written, which is why the step blocked.
+      expect(out.stderr).toContain("audit sink disabled");
     } finally {
       unlinkSync(blocker);
     }
@@ -526,6 +549,12 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(2);
     expect(out.stdout).toBe("");
     expect(existsSync(join(dir, "escape.json"))).toBe(false);
+    // Asserting only the exit code left the diagnostic untested: exit 2 with
+    // an empty or unhelpful stderr blocks the tool call and tells the human
+    // nothing about why. The rejected value has to appear, since the point of
+    // blocking here is that the deployment's `session_id` is unusable.
+    expect(out.stderr).toContain("../escape");
+    expect(out.stderr).toMatch(/not a safe path segment/i);
   });
 
   it("exits 2 (blocking) when the hookmap itself fails to load, with a message on stderr and nothing on stdout", async () => {
@@ -618,8 +647,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       ACS_SESSION_DIR: join(dir, "sessions"),
       ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
     });
-    expect(out.exitCode).toBe(0);
-    expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(expectQuietDecision(out).permissionDecision).toBe("allow");
   });
 
   // Risk row 14, closed here. The handshake reached the Guardian and came
@@ -670,8 +698,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         ACS_SESSION_DIR: sessionsAsFile,
         ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
       });
-      expect(out.exitCode).toBe(0);
-      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      const hook = expectQuietDecision(out);
       // Denied, not proceeded: the negotiated posture applied.
       expect(hook.permissionDecision).toBe("deny");
 

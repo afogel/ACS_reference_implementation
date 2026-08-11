@@ -101,6 +101,35 @@ describe("createFileSessionConfigStore — S13 across processes", () => {
     expect(createFileSessionConfigStore({ dir, sessionId: "sess-1" }).get()).toEqual(extended);
   });
 
+  // `set()` is the one method here that is NOT total, and deliberately so:
+  // `get()` swallows everything because a throw there would kill the hook
+  // process and take the decision with it, while a write that fails is a real
+  // deployment fault whose caller has to hear about it -- it is what makes
+  // handshake() able to hand the negotiated ServerHello back for the current
+  // step instead of silently losing the posture. That contract had no direct
+  // test; only its consequences did.
+  it("throws rather than swallowing when the config cannot be written", () => {
+    const base = scratch();
+    // A regular file standing where a PARENT directory should be, so
+    // `mkdirSync(dir, {recursive: true})` throws ENOTDIR -- reliably and
+    // cross-platform, with no permission games and no root-dependent
+    // behaviour. (Pointing `dir` straight at the file instead throws too,
+    // but as EEXIST on macOS -- checked, not assumed. The nested form is the
+    // one that produces the same code everywhere, and it is also the real
+    // fault: ACS_SESSION_DIR resolving under something that is not a
+    // directory.)
+    const blocker = join(base, "not-a-directory");
+    writeFileSync(blocker, "x");
+    const dir = join(blocker, "sessions");
+    const store = createFileSessionConfigStore({ dir, sessionId: "sess-1" });
+
+    expect(() => store.set(HELLO)).toThrow(/ENOTDIR/);
+    // And `get()` stays total across the same fault, which is the pairing
+    // that matters: the write is loud, the read is silent, and the caller
+    // resolves undefined to the ACS default.
+    expect(store.get()).toBeUndefined();
+  });
+
   it("leaves no partial file behind: a reader only ever sees a complete config", () => {
     const dir = scratch();
     const store = createFileSessionConfigStore({ dir, sessionId: "sess-1" });
@@ -127,6 +156,16 @@ describe("createFileSessionConfigStore — session_id is untrusted input (constr
     for (const ok of ["demo", "sess-1", "3f2b9c10-4d5e-6f70-8a9b-0c1d2e3f4a5b", "a_b.c-d"]) {
       expect(() => createFileSessionConfigStore({ dir, sessionId: ok })).not.toThrow();
     }
+  });
+
+  // Only the 129-character rejection was pinned, which passes for a pattern
+  // whose bound is anywhere at or below 128 -- an off-by-one that tightened
+  // the limit would not have failed anything. Both sides of the boundary,
+  // asserted together, are what actually locate it.
+  it("accepts exactly 128 characters and rejects 129 — both sides of the boundary", () => {
+    const dir = scratch();
+    expect(() => createFileSessionConfigStore({ dir, sessionId: "a".repeat(128) })).not.toThrow();
+    expect(() => createFileSessionConfigStore({ dir, sessionId: "a".repeat(129) })).toThrow(InvalidSessionIdError);
   });
 });
 

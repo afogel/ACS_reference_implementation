@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAuditSink } from "host-adapter";
+import { createAuditSink, type AuditEntry as AdapterAuditEntry } from "host-adapter";
 // Not a bare "inspector" specifier: that string is a Node/Bun built-in
 // module name (`node:inspector`), which core-module resolution picks over
 // any workspace package of the same name with no way for us to override it.
 // test/envelope-tap-roundtrip.test.ts sidesteps the same collision for the
 // same package by importing the specific submodule directly rather than
 // through the barrel; this file does the same.
-import { tailAuditLog } from "../packages/inspector/src/tail-audit-log.ts";
+import { tailAuditLog, type AuditEntry as InspectorAuditEntry } from "../packages/inspector/src/tail-audit-log.ts";
 
 /**
  * The contract test that keeps two independent AuditEntry declarations
@@ -35,6 +35,78 @@ afterEach(() => {
   }
 });
 
+/**
+ * The first entry the Inspector's tailer yields, or a failure that SAYS SO.
+ *
+ * The tests below used to `for await` the tailer directly, which fails the
+ * wrong way in the exact case they exist to catch: if the Inspector's shape
+ * validator tightens past what the adapter writes, the line stops being
+ * yielded, the loop never completes, and the test dies of a bun-test timeout
+ * -- a red suite whose message is "timed out after 5000ms", pointing nowhere
+ * near the drift. Bounded here instead, so the same drift fails with a
+ * sentence naming it.
+ */
+async function firstEntry(path: string, timeoutMs = 1000): Promise<InspectorAuditEntry> {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    for await (const entry of tailAuditLog({
+      path,
+      fromStart: true,
+      pollMs: 10,
+      signal: controller.signal,
+      // A line the validator rejects reaches this instead of the consumer,
+      // and its text is what makes the failure below diagnosable.
+      onMalformedLine: (line, error) => rejected.push({ line, error }),
+    })) {
+      return entry;
+    }
+  } finally {
+    clearTimeout(deadline);
+    controller.abort();
+  }
+  const detail =
+    rejected.length > 0
+      ? `its shape validator rejected the line the adapter wrote: ${String(
+          rejected[0]?.error instanceof Error ? rejected[0]?.error.message : rejected[0]?.error,
+        )} -- ${rejected[0]?.line}`
+      : "no line was rejected either, so the entry never reached the tailer at all";
+  throw new Error(`the Inspector's tailer yielded no entry within ${timeoutMs}ms: ${detail}`);
+}
+
+/** Populated by `firstEntry`'s malformed-line reporter; read only when it
+ * has to explain a failure. Reset per test so one test's rejection cannot
+ * be reported as another's. */
+let rejected: { line: string; error: unknown }[] = [];
+afterEach(() => {
+  rejected = [];
+});
+
+/**
+ * The drift direction `toEqual` cannot see. Every assertion below compares
+ * RUNTIME values, and the tailer yields the parsed JSON object whole -- so
+ * dropping a field from the Inspector's TYPE changes nothing at runtime and
+ * fails nothing, even though the two declarations have then stopped being
+ * one contract. These two assignments are the check, and they are enforced
+ * by `bun run typecheck` rather than by `bun test`: a field on either side
+ * that the other lacks makes one of them fail to compile, in the direction
+ * that names which side lost it.
+ *
+ * `Required<>` on both sides, not the bare types, and that is load-bearing:
+ * assignability alone ignores an OPTIONAL field going missing (a value that
+ * lacks it is still assignable), and `session_failure` -- the newest field,
+ * and the one most likely to be dropped by a future edit -- is exactly that
+ * shape. `Required<>` promotes every optional field to required, so a drop
+ * on either side fails in the direction that names which side lost it.
+ *
+ * Deliberately not `as` casts between the two, and deliberately not
+ * exported -- an `as` here would silence exactly what is being checked.
+ */
+const _inspectorAcceptsWhatTheAdapterWrites: Required<InspectorAuditEntry> = {} as Required<AdapterAuditEntry>;
+const _adapterAcceptsWhatTheInspectorReads: Required<AdapterAuditEntry> = {} as Required<InspectorAuditEntry>;
+void _inspectorAcceptsWhatTheAdapterWrites;
+void _adapterAcceptsWhatTheInspectorReads;
+
 describe("S14 write -> N51 read: every field survives", () => {
   for (const outcome of ["proceeded", "blocked"] as const) {
     it(`round-trips a ${outcome} entry`, async () => {
@@ -49,15 +121,9 @@ describe("S14 write -> N51 read: every field survives", () => {
         failure: { kind: "timeout", message: "no decision within 5000ms" },
       });
 
-      const read = [];
-      for await (const entry of tailAuditLog({ path, fromStart: true })) {
-        read.push(entry);
-        break;
-      }
-
       // toEqual, not toMatchObject: an extra field on either side is drift,
       // and drift is exactly what this test exists to catch.
-      expect(read[0]).toEqual({
+      expect(await firstEntry(path)).toEqual({
         seq: 1,
         recorded_at: "2026-08-10T12:00:00.000Z",
         session_id: "sess-1",
@@ -89,21 +155,18 @@ describe("S14 write -> N51 read: every field survives", () => {
       session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" },
     });
 
-    for await (const entry of tailAuditLog({ path, fromStart: true })) {
-      expect(entry).toEqual({
-        seq: 1,
-        recorded_at: "2026-08-10T12:00:00.000Z",
-        session_id: "sess-1",
-        method: null,
-        rpc_id: null,
-        posture: "proceed",
-        posture_source: "default",
-        outcome: "proceeded",
-        failure: { kind: "host_configuration", message: "no entry for this hook" },
-        session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" },
-      });
-      break;
-    }
+    expect(await firstEntry(path)).toEqual({
+      seq: 1,
+      recorded_at: "2026-08-10T12:00:00.000Z",
+      session_id: "sess-1",
+      method: null,
+      rpc_id: null,
+      posture: "proceed",
+      posture_source: "default",
+      outcome: "proceeded",
+      failure: { kind: "host_configuration", message: "no entry for this hook" },
+      session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" },
+    });
   });
 
   it("survives a null rpc_id, which an unpaired failure produces", async () => {
@@ -117,9 +180,6 @@ describe("S14 write -> N51 read: every field survives", () => {
       outcome: "proceeded",
       failure: { kind: "transport", message: "gone" },
     });
-    for await (const entry of tailAuditLog({ path, fromStart: true })) {
-      expect(entry.rpc_id).toBeNull();
-      break;
-    }
+    expect((await firstEntry(path)).rpc_id).toBeNull();
   });
 });

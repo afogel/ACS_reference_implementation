@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -158,6 +158,36 @@ describe("createAuditSink — total by construction (constraint 2)", () => {
     sink.write(EVENT);
     sink.write(EVENT);
     expect(errors).toHaveLength(1);
+  });
+
+  // Every other test in this file supplies `onError`, so the branch a caller
+  // passing no reporter actually takes -- the `console.error` fallback -- was
+  // the one branch never executed. The shipped host is that caller:
+  // acs-hook.ts builds its sink with a path and nothing else, so this is the
+  // reporting path a real deployment uses when its audit log cannot be
+  // written.
+  //
+  // Spied rather than left to print, so the run stays pristine (constraint
+  // 6), and spied rather than silenced by a new production option: adding an
+  // option to keep a test quiet would change the shipped code to suit the
+  // test, and the branch under test is precisely "no options were given".
+  it("falls back to console.error when no reporter is supplied, and still does not throw", () => {
+    const dir = scratch();
+    const blocker = join(dir, "blocker-default-reporter");
+    writeFileSync(blocker, "x");
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const sink = createAuditSink({ path: join(blocker, "audit.jsonl") });
+      expect(() => sink.write(EVENT)).not.toThrow();
+      expect(sink.write(EVENT)).toBe(false);
+      // Once, not per write: the sink disables itself on the first failure,
+      // and the default reporter is subject to the same discipline as a
+      // supplied one.
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(String(errorSpy.mock.calls[0]?.[0])).toContain("audit sink disabled");
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("does not throw when onError itself throws", () => {
