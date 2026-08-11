@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { loadMapping, mapVerdict } from "../src/map-verdict.ts";
+import { loadMapping, mapVerdict, resolveInterventionPoint } from "../src/map-verdict.ts";
 
 const m = loadMapping("mapping.yaml");
 
@@ -51,5 +51,37 @@ describe("mapVerdict", () => {
   // turning it into an HTML 500 or a silent decision.
   it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
     expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
+  });
+});
+
+// PR #10 review, Critical: the intervention_points table used to be a claim
+// nobody checked -- declared here, hardcoded in server.ts. These read the real
+// mapping.yaml, so a row edited there without a matching runtime change fails
+// somewhere rather than nowhere.
+describe("resolveInterventionPoint", () => {
+  it("answers the ACS method the shipped mapping wires, from the table rather than a literal", () => {
+    expect(resolveInterventionPoint("steps/toolCallRequest", m)).toBe("pre_tool_call");
+    expect(resolveInterventionPoint("steps/agentResponse", m)).toBe("output");
+  });
+
+  it("throws for a method no row names, rather than defaulting to a point", () => {
+    // The fail-open this function is shaped against: any default here would
+    // evaluate one intervention point's policy for a different method's
+    // snapshot and call the result a decision.
+    expect(() => resolveInterventionPoint("steps/userMessage", { ...m, intervention_points: {} })).toThrow(
+      /maps no AGT intervention point/,
+    );
+  });
+
+  it("throws when two rows name the same ACS method, rather than letting YAML key order pick", () => {
+    const ambiguous = {
+      ...m,
+      intervention_points: {
+        pre_tool_call: { acs_method: "steps/toolCallRequest" },
+        pre_model_call: { acs_method: "steps/toolCallRequest" },
+      },
+    };
+
+    expect(() => resolveInterventionPoint("steps/toolCallRequest", ambiguous)).toThrow(/more than one/);
   });
 });

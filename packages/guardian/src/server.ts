@@ -6,8 +6,8 @@
  *
  * Composes every earlier task, in order, for `steps/toolCallRequest`:
  *   validateEnvelope (Task 5) -> assembleSnapshot (Task 4) ->
- *   bridge.evaluate("pre_tool_call", snapshot) (Task 2) ->
- *   mapVerdict(verdict, mapping) (Task 3) -> response envelope.
+ *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot)
+ *   (Task 2) -> mapVerdict(verdict, mapping) (Task 3) -> response envelope.
  *
  * assembleSnapshot / bridge.evaluate / mapVerdict are wrapped in a try/catch
  * (fix wave finding 1): an unhandled throw here -- e.g. mapVerdict's own
@@ -33,7 +33,7 @@
 import { fileURLToPath } from "node:url";
 import { createBridge } from "agt-bridge";
 import { assembleSnapshot } from "./assemble-snapshot.ts";
-import { loadMapping, mapVerdict, type Mapping } from "./map-verdict.ts";
+import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
   isToolCallRequest,
@@ -153,7 +153,15 @@ async function handleAcsRequest(
   if (isToolCallRequest(envelope)) {
     try {
       const snapshot = assembleSnapshot(envelope);
-      const { verdict } = await bridge.evaluate("pre_tool_call", snapshot);
+      // The intervention point comes from mapping.yaml's own
+      // `intervention_points` table, not from a literal here (PR #10 review,
+      // Critical): that table is what V7's conformance matrix publishes, and
+      // a declaration the runtime does not consult is a claim nobody checks.
+      // An unresolvable method throws into the catch below rather than
+      // defaulting to a point -- evaluating the wrong policy and calling the
+      // result a decision is the one outcome worse than a reported failure.
+      const point = resolveInterventionPoint(envelope.method, mapping);
+      const { verdict } = await bridge.evaluate(point, snapshot);
       const decision = mapVerdict(verdict, mapping);
 
       const result: Record<string, unknown> = {

@@ -42,6 +42,63 @@ export function loadMapping(path: string): Mapping {
   return Bun.YAML.parse(readFileSync(path, "utf8")) as Mapping;
 }
 
+/**
+ * Resolves an ACS method to the AGT intervention point that answers it, from
+ * mapping.yaml's `intervention_points` table -- the same table V7's
+ * conformance matrix publishes.
+ *
+ * This exists because the table used to be a claim nobody checked: the
+ * Guardian hardcoded `"pre_tool_call"` at its one call site, so the
+ * declaration was documentation V7 was asked to trust while the runtime
+ * ignored it (PR #10 review, Critical, twice -- once against the call site
+ * and once against the table). The two could disagree without anything
+ * failing. Now the runtime reads it, so a wrong row is a wrong decision,
+ * which is the only kind of claim a conformance matrix can safely publish.
+ *
+ * The direction is deliberately method -> point, not point -> method, even
+ * though the YAML is keyed the other way: the runtime is handed an ACS method
+ * by the wire and needs the AGT point, and inverting a small declaration here
+ * is cheaper than duplicating it in the other order.
+ *
+ * Every failure is a THROW, and none of them is recoverable-by-guessing.
+ * Returning a default point, or falling back to `pre_tool_call`, would
+ * evaluate the wrong policy and call the result a decision; that is the
+ * fail-open this function is shaped to make impossible. What the Guardian
+ * does with the throw is its own concern -- at this slice it becomes a
+ * JSON-RPC error in the ACS-reserved range, and turning an evaluation failure
+ * into an explicit ACS `deny` is N27, scoped to V3.
+ */
+export function resolveInterventionPoint(acsMethod: string, mapping: Mapping): string {
+  const table = mapping.intervention_points;
+  if (typeof table !== "object" || table === null) {
+    throw new Error(
+      `mapping.yaml declares no intervention_points table, so ACS method "${acsMethod}" ` +
+        `cannot be resolved to an AGT intervention point`,
+    );
+  }
+
+  const points = Object.entries(table)
+    .filter(([, entry]) => typeof entry === "object" && entry !== null && entry.acs_method === acsMethod)
+    .map(([point]) => point);
+
+  const [point, ...ambiguous] = points;
+  if (point === undefined) {
+    throw new Error(
+      `mapping.yaml's intervention_points table maps no AGT intervention point to ACS method "${acsMethod}"`,
+    );
+  }
+  if (ambiguous.length > 0) {
+    // A table that answers one method with two points has no single right
+    // answer, and picking the first would make the choice depend on YAML key
+    // order. Loud beats arbitrary.
+    throw new Error(
+      `mapping.yaml's intervention_points table maps ACS method "${acsMethod}" to more than one ` +
+        `AGT intervention point: ${[point, ...ambiguous].join(", ")}`,
+    );
+  }
+  return point;
+}
+
 /** Resolves a field_synthesis `source: "verdict.<field>"` path against a verdict. */
 function readVerdictField(verdict: AgtVerdict, source: { source: string }): unknown {
   const field = source.source.slice("verdict.".length) as keyof AgtVerdict;

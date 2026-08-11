@@ -183,3 +183,31 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
     }
   });
 });
+
+// PR #10 review, Critical: mapping.yaml's intervention_points table is what
+// V7's conformance matrix publishes, and the runtime used to hardcode
+// "pre_tool_call" instead of consulting it, so the two could disagree without
+// anything failing.
+describe("startGuardian POST /acs -- the intervention point comes from mapping.yaml", () => {
+  it("evaluates the point the table names, not pre_tool_call: a moved row changes the decision", async () => {
+    // The fixture answers steps/toolCallRequest with `output`, which
+    // policy/manifest.yaml does not register -- so honouring the table makes
+    // AGT fail closed, while ignoring it would allow this benign command. The
+    // two outcomes are opposite: this cannot pass against a hardcoded point.
+    const guardian = await startGuardian({
+      port: 0,
+      manifestPath: "policy/manifest.yaml",
+      mappingPath: "packages/guardian/test/fixtures/mapping.tool-call-at-a-different-point.yaml",
+    });
+
+    try {
+      const response = await postAcs(guardian.url, toolCallEnvelope("ls -la"));
+
+      expect(response.error).toBeUndefined();
+      expect(response.result?.decision).toBe("deny");
+      expect(response.result?.reason_codes).toEqual(["runtime_error:intervention_point_unknown"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+});

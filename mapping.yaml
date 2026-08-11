@@ -15,8 +15,18 @@ acs_version: "0.1.0"
 agt_version: "0.3.1-beta"
 
 # ACS intervention points AGT can be wired to. acs_method: null marks a
-# point AGT supports that ACS v0.1.0 has no equivalent for (D4) — read by
-# V7, not by the runtime.
+# point AGT supports that ACS v0.1.0 has no equivalent for (D4).
+#
+# READ BY THE RUNTIME, not only by V7 (PR #10 review, Critical). The Guardian
+# resolves the AGT intervention point for an arriving ACS method out of this
+# table (map-verdict.ts's resolveInterventionPoint, called from server.ts) --
+# it used to hardcode "pre_tool_call" while this table sat here claiming to be
+# the mapping, so the two could disagree and nothing would fail. Changing a
+# row below now changes which policy actually evaluates that method, which is
+# the only condition under which V7's published matrix can be trusted.
+#
+# One method must map to at most one point: two rows naming the same
+# acs_method is a throw, not a first-match win.
 intervention_points:
   pre_tool_call: { acs_method: "steps/toolCallRequest" }
   post_tool_call: { acs_method: "steps/toolCallResult" }
