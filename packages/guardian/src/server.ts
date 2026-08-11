@@ -40,7 +40,7 @@ import {
   validateEnvelope,
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
-import { handshakeResponder } from "./handshake.ts";
+import { buildServerHello } from "./handshake.ts";
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
@@ -141,7 +141,7 @@ async function handleAcsRequest(
   }
 
   if (envelope.method === HANDSHAKE_METHOD) {
-    return successResponse(envelope.id, handshakeResponder());
+    return successResponse(envelope.id, buildServerHello());
   }
 
   // `isToolCallRequest`, not a method comparison spelled out again here: the

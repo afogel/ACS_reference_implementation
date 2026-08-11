@@ -1,6 +1,6 @@
 /** Public surface of the guardian package. */
 export { startGuardian, type StartGuardianOptions, type StartedGuardian } from "./server.ts";
-export { handshakeResponder, type ServerHello } from "./handshake.ts";
+export { buildServerHello, type ServerHello } from "./handshake.ts";
 export {
   validateEnvelope,
   isToolCallRequest,

@@ -1,6 +1,6 @@
 /**
- * handshakeResponder builds the Guardian's ServerHello (N28) -- the
- * response to `handshake/hello` -- per handshake.json's ServerHello $def
+ * buildServerHello builds the Guardian's ServerHello (N28) -- the answer to
+ * `handshake/hello` -- per handshake.json's ServerHello $def
  * (spec/acs/specification/v0.1.0/handshake.json).
  *
  * V1 scope:
@@ -11,16 +11,26 @@
  *     the posture (the fail-open audit path, N6/N7) is V3. Nothing here
  *     reads or acts on it beyond returning it.
  *
- * Fix wave finding 7 (honesty, not a scope increase): this responder never
- * reads the incoming ClientHello -- the client (host-adapter's `handshake`)
- * genuinely sends one, but every field below is a constant, returned
- * unconditionally. So "negotiated_version" and "selected_transport" are
- * DECLARED by this Guardian, not actually negotiated against what the
- * client proposed. That distinction matters in a reference implementation
- * of a wire *contract*. Real negotiation (reading ClientHello, picking a
- * mutually-supported version/transport, rejecting what isn't) is future
- * work, not attempted here -- see the matching note in
- * docs/demos/v1-runbook.md.
+ * WHY THIS IS NOT CALLED `handshakeResponder` (PR #10 review, Important, and
+ * fix wave finding 7 before it -- honesty, not a scope increase): this
+ * function never reads the incoming ClientHello. The client (host-adapter's
+ * `negotiateSessionConfig`) genuinely sends one, but every field below is a
+ * constant, returned unconditionally. So "negotiated_version" and
+ * "selected_transport" are DECLARED by this Guardian, not actually negotiated
+ * against what the client proposed, and a name containing "responder" claimed
+ * a negotiation the body does not perform. `build<Message>` says exactly what
+ * happens: it assembles the one message this side of the handshake owns. That
+ * distinction matters in a reference implementation of a wire *contract*.
+ * Real negotiation (reading ClientHello, picking a mutually-supported
+ * version/transport, rejecting what isn't) is future work, not attempted here
+ * -- see the matching note in docs/demos/v1-runbook.md.
+ *
+ * Naming symmetry with the host side: each side of this exchange now names its
+ * own message once, with the same `<verb><Message>` morphology --
+ * `buildServerHello` here, `negotiateSessionConfig` in
+ * packages/host-adapter/src/handshake.ts. The asymmetry between "build" and
+ * "negotiate" is deliberate and is the truth about the code: the host really
+ * does perform an exchange, and this side really does return constants.
  */
 
 export type ServerHello = {
@@ -45,7 +55,7 @@ const METHODS_EVALUATED = ["steps/toolCallRequest"];
  */
 const DEFAULT_TIMEOUT_MS = 5000;
 
-export function handshakeResponder(): ServerHello {
+export function buildServerHello(): ServerHello {
   return {
     negotiated_version: NEGOTIATED_VERSION,
     methods_evaluated: METHODS_EVALUATED,

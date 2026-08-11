@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { startGuardian, type StartedGuardian } from "guardian";
 import { buildEnvelope, loadHookmap, type Hookmap } from "../src/build-envelope.ts";
 import { createGuardianClient } from "../src/guardian-client.ts";
-import { handshake } from "../src/handshake.ts";
+import { negotiateSessionConfig } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
 import { createSessionConfigStore } from "../src/session-config.ts";
 
@@ -186,23 +186,57 @@ describe("GuardianClient.requestDecision", () => {
   });
 });
 
-describe("handshake (N5)", () => {
+describe("negotiateSessionConfig (N5)", () => {
   it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store (S13)", async () => {
     const store = createSessionConfigStore();
     expect(store.get()).toBeUndefined();
 
-    const serverHello = await handshake(
+    const sessionConfig = await negotiateSessionConfig(
       { guardian: createGuardianClient(guardian.url), agentId: "claude-code", sessionId: crypto.randomUUID() },
       store,
     );
 
-    expect(serverHello.on_decision_failure).toBe("proceed");
-    expect(serverHello.timeout_config.default_ms).toBeGreaterThan(0);
+    expect(sessionConfig.on_decision_failure).toBe("proceed");
+    expect(sessionConfig.timeout_config.default_ms).toBeGreaterThan(0);
 
     const stored = store.get();
     expect(stored).toBeDefined();
-    expect(stored?.timeout_config).toEqual(serverHello.timeout_config);
+    expect(stored?.timeout_config).toEqual(sessionConfig.timeout_config);
     expect(stored?.on_decision_failure).toBe("proceed");
+  });
+
+  // PR #10 review, Important: the ServerHello used to become a SessionConfig by
+  // `as unknown as SessionConfig` -- a rename dressed as a type. Now it becomes
+  // one by being checked, so a Guardian emitting the wrong shape fails at the
+  // handshake instead of writing an unusable config that every later read
+  // silently rejects.
+  it("refuses a ServerHello that is not a usable session config, rather than casting it into one", async () => {
+    const mock = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number };
+        return Response.json({ jsonrpc: "2.0", id: body.id, result: { negotiated_version: "0.1.0" } });
+      },
+    });
+
+    try {
+      const store = createSessionConfigStore();
+
+      await expect(
+        negotiateSessionConfig(
+          {
+            guardian: createGuardianClient(`http://localhost:${mock.port}/acs`),
+            agentId: "claude-code",
+            sessionId: crypto.randomUUID(),
+          },
+          store,
+        ),
+      ).rejects.toThrow(/not a usable session config/);
+
+      expect(store.get()).toBeUndefined();
+    } finally {
+      mock.stop(true);
+    }
   });
 });
 

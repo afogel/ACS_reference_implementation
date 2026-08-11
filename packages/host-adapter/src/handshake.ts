@@ -1,6 +1,30 @@
 /**
- * handshake (N5) sends `handshake/hello` to the Guardian and stores the
- * returned ServerHello into a session config store (S13).
+ * N5, the host half of `handshake/hello`: send a ClientHello, keep what comes
+ * back as this session's config (S13).
+ *
+ * ONE NAME FOR THE STORED MESSAGE (PR #10 review, Important and naming
+ * symmetry). This module speaks `SessionConfig` throughout -- the message a
+ * host stores and reads its posture and timeout from -- and not `ServerHello`,
+ * which is the Guardian's noun for what it emits
+ * (packages/guardian/src/handshake.ts's `buildServerHello`). The two used to be
+ * used interchangeably here for the same value, joined by
+ * `as unknown as SessionConfig`: a rename dressed as a type, checking nothing.
+ *
+ * `SessionConfig` is the honest name on this side, because `isSessionConfig`
+ * requires the two fields this host actually needs, not the five
+ * handshake.json's ServerHello $def requires -- so naming the stored type after
+ * the wire message would over-claim what this host validates, which is the same
+ * defect as a type that claims a check it does not perform. That leaves
+ * `ServerHello` a scoped noun rather than a second name for one message, and
+ * the scope is exactly one thing: what the Guardian sent, before this host has
+ * confirmed it can use it. No stored value, field, or type is called a
+ * ServerHello anywhere.
+ *
+ * `negotiateSessionConfig`, not `handshake`: the old name was one of four for a
+ * single negotiation (`handshake` / `handshakeResponder` / `SessionConfig` /
+ * `ServerHello`), and the least informative of them -- a bare wire verb that
+ * said nothing about what the caller gets. This one names the message it
+ * produces, matching the `<verb><Message>` shape of the Guardian's own half.
  *
  * V1 SCOPE -- stores only. Applying the negotiated posture (falling back
  * to `timeout_config` when the Guardian is slow or silent; recording a
@@ -17,7 +41,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { GuardianClient, JsonRpcRequest } from "./guardian-client.ts";
-import type { SessionConfig, SessionConfigStore } from "./session-config.ts";
+import { isSessionConfig, type SessionConfig, type SessionConfigStore } from "./session-config.ts";
 
 const HANDSHAKE_METHOD = "handshake/hello";
 const ACS_VERSION = "0.1.0";
@@ -35,11 +59,15 @@ export type HandshakeOptions = {
 };
 
 /**
- * Sends `handshake/hello`, waits for the Guardian's ServerHello, stores it
- * into `store`, and returns it. Throws if the Guardian responds with a
- * JSON-RPC error rather than a result.
+ * Sends `handshake/hello`, waits for the Guardian's ServerHello, stores the
+ * session config it validates out of that arrival, and returns that config.
+ * Throws if the Guardian responds with a JSON-RPC error rather than a result,
+ * or if what arrived is not a usable session config.
  */
-export async function handshake(options: HandshakeOptions, store: SessionConfigStore): Promise<SessionConfig> {
+export async function negotiateSessionConfig(
+  options: HandshakeOptions,
+  store: SessionConfigStore,
+): Promise<SessionConfig> {
   const requestId = randomUUID();
 
   const envelope: JsonRpcRequest = {
@@ -71,7 +99,20 @@ export async function handshake(options: HandshakeOptions, store: SessionConfigS
     throw new Error(`handshake: Guardian rejected handshake/hello: ${response.error.message}`);
   }
 
-  const serverHello = response.result as unknown as SessionConfig;
-  store.set(serverHello);
-  return serverHello;
+  // Validated BEFORE storing, not cast and hoped for. This is the single point
+  // where the Guardian's ServerHello becomes this host's SessionConfig, and it
+  // becomes one by being checked -- named for the wire while it is still only
+  // an arrival, and for the store once it is one.
+  const serverHello: unknown = response.result;
+  if (!isSessionConfig(serverHello)) {
+    throw new Error(
+      `handshake: the Guardian's ServerHello is not a usable session config -- expected an object with ` +
+        `on_decision_failure "proceed" or "deny" and a numeric timeout_config.default_ms, got ` +
+        `${JSON.stringify(serverHello)}`,
+    );
+  }
+
+  const sessionConfig: SessionConfig = serverHello;
+  store.set(sessionConfig);
+  return sessionConfig;
 }

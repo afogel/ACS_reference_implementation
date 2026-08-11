@@ -27,5 +27,10 @@ export {
 } from "./guardian-client.ts";
 export { renderDecision, type HostOutput } from "./render-decision.ts";
 export { type AcsDecision } from "./decision-message.ts";
-export { handshake, type HandshakeOptions } from "./handshake.ts";
-export { createSessionConfigStore, type SessionConfig, type SessionConfigStore } from "./session-config.ts";
+export { negotiateSessionConfig, type HandshakeOptions } from "./handshake.ts";
+export {
+  createSessionConfigStore,
+  isSessionConfig,
+  type SessionConfig,
+  type SessionConfigStore,
+} from "./session-config.ts";
