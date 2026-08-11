@@ -14,6 +14,26 @@ hooks:
     acs_method: steps/toolCallRequest
     tool_name: $.tool_name
     arguments: $.tool_input
+  # V4 (slice #5). The result gate. `outputs.from` is the leaf that becomes
+  # the ACS payload's outputs[0].value; `outputs.within` is the object a
+  # `modify` decision is applied back into (renderDecision, Task 7), so the
+  # replacement handed to the host preserves every sibling field. Claude
+  # Code silently restores the ORIGINAL output when the replacement does
+  # not match the tool's own output shape -- so `within` is not a
+  # convenience, it is the difference between a redaction and an
+  # unredacted delivery with a log line (Evidence 2).
+  PostToolUse:
+    acs_method: steps/toolCallResult
+    tool_name: $.tool_name
+    outputs:
+      from: $.tool_response.stdout
+      within: $.tool_response
+    # Claude Code fires a SEPARATE PostToolUseFailure event for the failing
+    # case (present in 2.1.227's hook schema, not wired in this slice), so
+    # this event genuinely means success. A literal, not a field read: the
+    # payload carries no exit code for this to be derived from, and deriving
+    # one from `interrupted` would be inventing a value the host never sent.
+    exit_status: { literal: success }
 # PR #10 review, Critical: the `decisions` block below is now where Claude
 # Code's output field names live, and they appear nowhere in the adapter.
 # Each entry declares an `output` block whose keys are dotted paths into the

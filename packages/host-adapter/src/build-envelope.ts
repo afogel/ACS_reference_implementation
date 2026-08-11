@@ -12,15 +12,67 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-/** One hook's mapping onto an ACS method: the hookmap's `hooks.<hookName>` entry. */
-export type HookmapHookEntry = {
+/**
+ * A hookmap value the host sent no field for: the constant this hook always
+ * means. `{ literal: success }` on a hook a host fires only for the successful
+ * case says that in data, rather than a path being invented to derive it from a
+ * neighbouring field the host never meant that way.
+ */
+export type HookmapLiteral = { literal: string };
+
+/** Where a result-gate hook's output lives in the raw hook payload. */
+export type HookmapOutputs = {
+  /** JSONPath-lite (`$.foo.bar`) to the leaf that becomes `outputs[0].value`. */
+  from: string;
+  /**
+   * JSONPath-lite (`$.foo.bar`) to the object that leaf sits inside. Declared
+   * here and read by the render side, not by this module: a decision replacing
+   * the output is applied into a clone of that object, so every sibling field
+   * the host put beside the leaf survives the round trip. A replacement missing
+   * one of them is a shape the host may decline, and a declined replacement
+   * delivers the original -- which is why the whole object is named, not just
+   * the leaf that goes on the wire.
+   */
+  within: string;
+};
+
+/** The two members every hook entry carries, whichever payload it builds. */
+type HookmapHookEntryCommon = {
   /** The ACS `steps/*` method this hook fires. Never hardcoded here. */
   acs_method: string;
   /** JSONPath-lite (`$.foo.bar`) into the raw hook payload for the tool/step name. */
   tool_name: string;
+};
+
+/** A hook asking before a step runs: builds a tool-call-request payload. */
+export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
   /** JSONPath-lite (`$.foo.bar`) into the raw hook payload for the argument bag. */
   arguments: string;
+  outputs?: never;
+  exit_status?: never;
 };
+
+/** A hook asking after a step ran: builds a tool-call-result payload. */
+export type HookmapResultHookEntry = HookmapHookEntryCommon & {
+  arguments?: never;
+  outputs: HookmapOutputs;
+  /** The exit status this hook means -- see HookmapLiteral for why a literal. */
+  exit_status: HookmapLiteral;
+};
+
+/**
+ * One hook's mapping onto an ACS method: S1's `hooks.<hookName>` entry.
+ *
+ * Exactly one of `arguments` and `outputs`, spelled as an exclusive union --
+ * each member declaring the other's keys as `?: never` -- rather than as one
+ * type with both keys optional. The optional-key form types the two broken
+ * entries as legal: one declaring both names two payload shapes at once, one
+ * declaring neither names none, and both would only be complained about at the
+ * far end, as a rejected envelope, by which point the fault reads as a policy
+ * failure rather than as the hookmap typo it is. `buildEnvelope` makes the same
+ * check at runtime, where a hookmap parsed out of YAML actually lands.
+ */
+export type HookmapHookEntry = HookmapRequestHookEntry | HookmapResultHookEntry;
 
 /**
  * A hookmap in full: the hook-name -> ACS method mapping this module consumes,
@@ -37,6 +89,39 @@ export type Hookmap = {
 /** An ACS argument wrapper: every hook argument is `{value, provenance?}`. */
 type AcsArgument = { value: unknown };
 
+/** An ACS output wrapper: every step output is `{value, provenance?}` too. */
+type AcsOutput = { value: unknown };
+
+/** hooks/tool-call-request.json's payload: what a step was asked to do. */
+export type AcsToolCallRequestPayload = {
+  tool: { name: string };
+  arguments: Record<string, AcsArgument>;
+  exit_status?: never;
+  outputs?: never;
+};
+
+/**
+ * hooks/tool-call-result.json's payload: what a step produced. That schema
+ * requires exactly `tool`, `exit_status` and `outputs` -- a different member set
+ * from the request payload, not the request payload plus extras.
+ */
+export type AcsToolCallResultPayload = {
+  tool: { name: string };
+  arguments?: never;
+  exit_status: string;
+  outputs: AcsOutput[];
+};
+
+/**
+ * The payload an envelope carries, as an exclusive union of the two shapes --
+ * for the same reason `HookmapHookEntry` is one. A single type with every member
+ * optional would let a caller build an envelope carrying neither shape, and the
+ * type would have said nothing: a payload that names no step is then rejected at
+ * the far end, where the rejection reads as governance declining a step rather
+ * than as this module having built nothing coherent to govern.
+ */
+export type AcsRequestPayload = AcsToolCallRequestPayload | AcsToolCallResultPayload;
+
 /** The ACS v0.1.0 request envelope this module produces. */
 export type AcsRequestEnvelope = {
   jsonrpc: "2.0";
@@ -50,10 +135,7 @@ export type AcsRequestEnvelope = {
       agent_id: string;
       session_id: string;
     };
-    payload: {
-      tool: { name: string };
-      arguments: Record<string, AcsArgument>;
-    };
+    payload: AcsRequestPayload;
   };
 };
 
@@ -163,11 +245,22 @@ export function loadHookmap(path: string): Hookmap {
  * wire. Knowledge of the ACS argument wrapper belongs here, next to the
  * type that defines it, not duplicated in every host shim that needs the
  * unwrapped form (e.g. to hand a `modify` decision's `parameter_overrides`
- * something to apply against, for `validateDecision`).
+ * something to apply against, per N7's `validateDecision`).
+ *
+ * A result payload has no arguments to unwrap -- `arguments` is a member of the
+ * request payload alone -- so it unwraps to the empty bag. That is a fact about
+ * the payload shape, not a failure: throwing here would hand a caller an
+ * exception for an envelope it built correctly, and a caller answering
+ * exceptions with a failure posture would then resolve a perfectly good step by
+ * posture instead of by the decision it was about to go and ask for.
  */
 export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, unknown> {
+  const { payload } = envelope.params;
+  if (payload.arguments === undefined) {
+    return {};
+  }
   const originalArguments: Record<string, unknown> = {};
-  for (const [key, argument] of Object.entries(envelope.params.payload.arguments)) {
+  for (const [key, argument] of Object.entries(payload.arguments)) {
     originalArguments[key] = argument.value;
   }
   return originalArguments;
@@ -188,6 +281,85 @@ function resolvePath(payload: Record<string, unknown>, path: string): unknown {
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
+}
+
+/**
+ * The payload half of an envelope, built from whichever of the two shapes the
+ * hookmap entry declares.
+ *
+ * Branches on the entry's SHAPE, never on `acs_method`. The method is a string a
+ * hookmap author types; branching on it would make a typo in it silently select
+ * a payload shape, and the shape that actually matters is the one the entry's
+ * own paths can build. `acs_method` stays what it has always been here: carried
+ * onto the envelope verbatim, never read.
+ *
+ * An entry declaring both keys, or neither, names no single payload shape and
+ * throws with the hook named. There is deliberately no default and no partial
+ * payload: falling back to one shape would put a payload on the wire the hook's
+ * own paths were never written to fill, and the far end would then be governing
+ * a step it had been described wrongly, rather than the hookmap being reported
+ * broken here where it can be fixed.
+ */
+function buildPayload(
+  event: string,
+  payload: Record<string, unknown>,
+  entry: HookmapHookEntry,
+  toolName: string,
+): AcsRequestPayload {
+  // `?? undefined` because a hookmap is YAML: a key written with nothing after
+  // it parses to null, which is a key present and unusable, not a key absent.
+  const argumentsPath = entry.arguments ?? undefined;
+  const outputs = entry.outputs ?? undefined;
+
+  if (argumentsPath !== undefined && outputs !== undefined) {
+    throw new Error(
+      `buildEnvelope: hookmap entry for hook "${event}" declares both "arguments" and "outputs" -- ` +
+        `an entry names exactly one payload shape`,
+    );
+  }
+
+  if (argumentsPath !== undefined) {
+    const rawArguments = resolvePath(payload, argumentsPath);
+    const args: Record<string, AcsArgument> = {};
+    if (rawArguments !== null && typeof rawArguments === "object") {
+      for (const [key, value] of Object.entries(rawArguments as Record<string, unknown>)) {
+        args[key] = { value };
+      }
+    }
+    return { tool: { name: toolName }, arguments: args };
+  }
+
+  if (outputs !== undefined) {
+    const from = isPlainObject(outputs) && typeof outputs.from === "string" ? outputs.from : "";
+    if (from.length === 0) {
+      throw new Error(
+        `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty "outputs.from" path`,
+      );
+    }
+
+    const value = resolvePath(payload, from);
+    if (value === undefined) {
+      throw new Error(
+        `buildEnvelope: hookmap path "${from}" for hook "${event}" did not resolve -- a result payload ` +
+          `carrying no output would ask the far end to govern a step whose output it cannot see`,
+      );
+    }
+
+    const exitStatus = isPlainObject(entry.exit_status) ? entry.exit_status.literal : undefined;
+    if (typeof exitStatus !== "string" || exitStatus.length === 0) {
+      throw new Error(
+        `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
+          `"exit_status.literal"`,
+      );
+    }
+
+    return { tool: { name: toolName }, exit_status: exitStatus, outputs: [{ value }] };
+  }
+
+  throw new Error(
+    `buildEnvelope: hookmap entry for hook "${event}" declares neither "arguments" nor "outputs" -- ` +
+      `an entry names exactly one payload shape`,
+  );
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -227,10 +399,11 @@ export function toSessionUuid(rawSessionId: string): string {
 
 /**
  * Builds an ACS v0.1.0 request envelope from a raw hook invocation.
- * `hookmap` drives every host-shape decision: the ACS method, and where
- * the tool/step name and argument bag live in the raw payload. An event
- * name absent from `hookmap.hooks` throws -- there is no default method
- * and no partial envelope.
+ * `hookmap` drives every host-shape decision: the ACS method, which of the two
+ * payload shapes this hook carries, and where the tool/step name and that
+ * shape's own content live in the raw payload. An event name absent from
+ * `hookmap.hooks` throws, and so does an entry naming no single payload shape --
+ * there is no default method, no default shape, and no partial envelope.
  */
 export function buildEnvelope(event: string, payload: Record<string, unknown>, hookmap: Hookmap): AcsRequestEnvelope {
   const entry = hookmap.hooks[event];
@@ -245,13 +418,7 @@ export function buildEnvelope(event: string, payload: Record<string, unknown>, h
     );
   }
 
-  const rawArguments = resolvePath(payload, entry.arguments);
-  const args: Record<string, AcsArgument> = {};
-  if (rawArguments !== null && typeof rawArguments === "object") {
-    for (const [key, value] of Object.entries(rawArguments as Record<string, unknown>)) {
-      args[key] = { value };
-    }
-  }
+  const acsPayload = buildPayload(event, payload, entry, toolName);
 
   const rawSessionId = payload.session_id;
   if (typeof rawSessionId !== "string" || rawSessionId.length === 0) {
@@ -272,10 +439,7 @@ export function buildEnvelope(event: string, payload: Record<string, unknown>, h
         agent_id: hookmap.host,
         session_id: toSessionUuid(rawSessionId),
       },
-      payload: {
-        tool: { name: toolName },
-        arguments: args,
-      },
+      payload: acsPayload,
     },
   };
 }

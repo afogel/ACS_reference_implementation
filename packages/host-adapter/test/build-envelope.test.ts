@@ -3,7 +3,14 @@ import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateEnvelope } from "guardian";
-import { buildEnvelope, loadHookmap, toSessionUuid, unwrapArguments, type Hookmap } from "../src/build-envelope.ts";
+import {
+  buildEnvelope,
+  loadHookmap,
+  toSessionUuid,
+  unwrapArguments,
+  type Hookmap,
+  type HookmapHookEntry,
+} from "../src/build-envelope.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -24,6 +31,16 @@ const hookmap: Hookmap = {
       acs_method: "steps/toolCallRequest",
       tool_name: "$.tool_name",
       arguments: "$.tool_input",
+    },
+    // The result gate, mirroring the real hookmap's own entry. `within` is
+    // declared and deliberately unread here: buildEnvelope puts only the leaf
+    // `from` names on the wire, and the object around it is the render side's
+    // business.
+    PostToolUse: {
+      acs_method: "steps/toolCallResult",
+      tool_name: "$.tool_name",
+      outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
+      exit_status: { literal: "success" },
     },
   },
   // Unread by buildEnvelope, which owns the `hooks` half of a hookmap --
@@ -68,8 +85,13 @@ describe("buildEnvelope", () => {
   it("wraps each tool_input argument as {value: ...} per ACS", () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload, hookmap);
 
-    expect(envelope.params.payload.arguments.command).toEqual({ value: "rm -rf /" });
-    expect(envelope.params.payload.arguments.description).toEqual({ value: "clean up" });
+    // `arguments?.` because `params.payload` is now the union of the two ACS
+    // payload shapes and only the request member has an `arguments` bag at all
+    // -- the optional access IS the claim that this envelope carries that
+    // member, since an envelope carrying the result shape reads `undefined`
+    // here and fails both assertions.
+    expect(envelope.params.payload.arguments?.command).toEqual({ value: "rm -rf /" });
+    expect(envelope.params.payload.arguments?.description).toEqual({ value: "clean up" });
   });
 
   it("carries tool_name into params.payload.tool.name", () => {
@@ -119,8 +141,14 @@ describe("buildEnvelope", () => {
     expect(toSessionUuid("abc123")).not.toBe(toSessionUuid("xyz789"));
   });
 
+  // Was "PostToolUse" until V4 mapped it. Kept pointed at a hook this fixture
+  // genuinely does not map -- SessionStart is a real Claude Code hook and no
+  // slice wires it -- because the claim is about an UNMAPPED name, and a name
+  // the fixture now maps would go on throwing for an unrelated reason (its
+  // paths not resolving against a PreToolUse payload) while reading as
+  // coverage of this one.
   it("throws on an unmapped hook name, rather than defaulting or producing a partial envelope", () => {
-    expect(() => buildEnvelope("PostToolUse", preToolUsePayload, hookmap)).toThrow();
+    expect(() => buildEnvelope("SessionStart", preToolUsePayload, hookmap)).toThrow(/no entry for hook/);
   });
 
   it("is hookmap-driven: changing the hookmap's acs_method changes the envelope's method", () => {
@@ -259,6 +287,114 @@ describe("buildEnvelope", () => {
       const envelope = buildEnvelope("PreToolUse", { ...preToolUsePayload, tool_input: {} }, parsed);
 
       expect(unwrapArguments(envelope)).toEqual({});
+    });
+  });
+
+  describe("PostToolUse -> steps/toolCallResult", () => {
+    const payload = {
+      session_id: "6c616a11-495a-4f05-878a-c1bfaa29f0e5",
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "cat .env" },
+      // The real shape, captured from Claude Code 2.1.227 (Evidence 2).
+      tool_response: {
+        stdout: "TOKEN=ghp_ABCDEF123456",
+        stderr: "",
+        interrupted: false,
+        isImage: false,
+        noOutputExpected: false,
+      },
+    };
+
+    it("builds the result payload the ACS schema requires", () => {
+      const envelope = buildEnvelope("PostToolUse", payload, hookmap);
+      expect(envelope.method).toBe("steps/toolCallResult");
+      expect(envelope.params.payload).toEqual({
+        tool: { name: "Bash" },
+        exit_status: "success",
+        outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }],
+      });
+    });
+
+    // The request payload wraps arguments as {value, provenance?}; the result
+    // payload wraps outputs the same way but is a different member entirely.
+    // Asserted so a refactor cannot quietly reuse the request path here.
+    it("carries no `arguments` member -- the result schema has none", () => {
+      const envelope = buildEnvelope("PostToolUse", payload, hookmap);
+      expect("arguments" in (envelope.params.payload as object)).toBe(false);
+    });
+
+    it("still builds the request payload unchanged for PreToolUse", () => {
+      const envelope = buildEnvelope(
+        "PreToolUse",
+        { session_id: payload.session_id, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls" } },
+        hookmap,
+      );
+      expect(envelope.method).toBe("steps/toolCallRequest");
+      expect(envelope.params.payload.arguments).toEqual({ command: { value: "ls" } });
+    });
+
+    // Global Constraint 4: a malformed hookmap entry throws, naming the hook.
+    // Never a default method, a default payload shape, or a partial envelope --
+    // each of those hands the far end a step described wrongly, and a step
+    // described wrongly is one governance cannot see what it is being asked
+    // about.
+    describe("an entry names exactly one payload shape, or throws", () => {
+      // The cast is how a hookmap actually arrives: `loadHookmap` parses YAML
+      // and asserts a `Hookmap`, so the entry type's exactly-one-of guarantee
+      // holds for hookmaps written in TypeScript and is unenforced for the
+      // parsed ones. These cases are the runtime half that closes that.
+      function withBrokenEntry(entry: Record<string, unknown>): Hookmap {
+        return { ...hookmap, hooks: { Broken: entry as unknown as HookmapHookEntry } };
+      }
+
+      it("throws, naming the hook, when an entry declares both `arguments` and `outputs`", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallRequest",
+          tool_name: "$.tool_name",
+          arguments: "$.tool_input",
+          outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"Broken" declares both/);
+      });
+
+      it("throws, naming the hook, when an entry declares neither", () => {
+        const broken = withBrokenEntry({ acs_method: "steps/toolCallResult", tool_name: "$.tool_name" });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"Broken" declares neither/);
+      });
+
+      it("throws, naming the hook, when `outputs` carries no `from` path", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: { within: "$.tool_response" },
+          exit_status: { literal: "success" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"outputs.from"/);
+      });
+
+      it("throws, naming the hook, when `exit_status` names no literal", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"exit_status.literal"/);
+      });
+
+      // Not a hookmap fault but the same fail-closed reason: an unresolved
+      // `from` would put `outputs: [{}]` on the wire, and a result payload with
+      // no output in it asks a redaction gate to inspect nothing -- which it
+      // would find nothing wrong with.
+      it("throws when the `outputs.from` path does not resolve against this payload", () => {
+        const noResponse = { session_id: payload.session_id, hook_event_name: "PostToolUse", tool_name: "Bash" };
+
+        expect(() => buildEnvelope("PostToolUse", noResponse, hookmap)).toThrow(/did not resolve/);
+      });
     });
   });
 });
