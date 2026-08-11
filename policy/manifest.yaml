@@ -16,9 +16,16 @@ policies:
 intervention_points:
   pre_tool_call:
     # R1.6 -- this leaf's argument name ("command") must agree with
-    # mapping.yaml's field_synthesis.modifications.policy_target_argument,
-    # which is how AGT's transform ($policy_target) lands as ACS
-    # parameter_overrides.
+    # mapping.yaml's intervention_points.pre_tool_call.modifications
+    # .policy_target_argument, which is how AGT's transform ($policy_target)
+    # lands as ACS parameter_overrides.
+    #
+    # That key was under mapping.yaml's field_synthesis until V4 (slice #5),
+    # when the synthesis moved per-intervention-point: the same transform is a
+    # tool-argument override at this gate and a redaction at the result gate,
+    # so it could no longer live in one point-independent table. This is the
+    # FIRST of the two places mapping.yaml and this file touch -- see
+    # post_tool_call below for the second.
     policy_target: "$.tool_call.args.command"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"
@@ -44,6 +51,24 @@ intervention_points:
   # there is no `tool_result` in sight, and could only conclude the synthesis
   # was missing.
   post_tool_call:
+    # R1.6, the result-gate half (V4, slice #5). This leaf must agree with
+    # mapping.yaml's intervention_points.post_tool_call.modifications
+    # .redaction_path, which is how AGT's transform ($policy_target) lands as
+    # an ACS redaction: the two address the SAME leaf in two notations --
+    # "$.tool_result.outputs[0].value" here is AGT's JSONPath over the
+    # snapshot, "/outputs/0/value" there is the ACS JSON pointer into the
+    # result payload the host applies it to. This is the SECOND of the two
+    # places mapping.yaml and this file touch, exactly as
+    # policy_target_argument is for the request gate above: change one and the
+    # other is wrong, and nothing in either file can tell.
+    #
+    # What can tell is packages/guardian/test/server.test.ts's result-gate
+    # redaction test: it evaluates through this manifest and asserts the pointer
+    # mapping.yaml supplies comes back on the wire, which makes it the only
+    # test whose assertion spans both halves. Moving this leaf also fails
+    # test/redaction.test.ts's bundle pin and two assembleResultSnapshot tests
+    # (measured), but those three assert AGT's raw verdict and cannot tell
+    # whether the ACS pointer still names the leaf AGT rewrote.
     policy_target: "$.tool_result.outputs[0].value"
     policy_target_kind: tool_result
     tool_name_from: "$.tool_call.name"

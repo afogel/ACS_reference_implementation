@@ -1028,10 +1028,45 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     // point that evaluated -- not the request gate's.
     expect(response.result?.reason_codes).toEqual(["redaction_applied"]);
     expect(response.result?.request_id).toBe(requestId);
-    // What the redacted value lands under is NOT asserted here: mapVerdict
-    // still synthesizes the request gate's `parameter_overrides` shape,
-    // because it does not yet take the intervention point. That is Task 6's,
-    // and pinning today's shape here would only have to be un-pinned there.
+
+    // The pin V4 Task 3 deferred to Task 6, now that mapVerdict takes the
+    // intervention point: the redacted text lands as an ACS REDACTION on the
+    // result payload's own path, not as the request gate's parameter_overrides.
+    //
+    // THIS IS THE ONLY TEST WHOSE ASSERTION SPANS BOTH DECLARATIONS THAT HAVE
+    // TO AGREE ABOUT THAT PATH, and that is what it is for. policy/manifest.yaml
+    // declares the leaf AGT rewrites ($.tool_result.outputs[0].value, its own
+    // JSONPath over the snapshot); mapping.yaml declares the ACS pointer the
+    // host applies the result to (/outputs/0/value). They address the same leaf
+    // in two notations, and nothing in either file can check the other.
+    //
+    // Each half is separately covered; neither cover is the AGREEMENT. Both
+    // measured by mutation rather than assumed:
+    //   - Move mapping.yaml's redaction_path and mapVerdict's unit tests fail
+    //     as well -- they pin that pointer against the real mapping file.
+    //   - Move this manifest's policy_target and every mapVerdict unit test
+    //     still passes: they never read the manifest. Three other tests do fail
+    //     (test/redaction.test.ts's bundle pin and two assembleResultSnapshot
+    //     tests), but all three assert AGT's raw verdict, so none of them can
+    //     tell whether the ACS pointer still names the leaf AGT rewrote.
+    // So this is the one test that can catch a disagreement which leaves each
+    // file individually plausible, because every layer between them is real
+    // here: real bridge, real pinned bundle, real manifest, real mapping, real
+    // HTTP response. Without it a disagreement surfaces in a demo, where the
+    // host redacts the wrong element -- or nothing at all -- while the decision
+    // still reports a rewrite.
+    expect(response.result?.modifications).toEqual({
+      redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
+    });
+
+    // §6.3's oneOf, asserted on the wire rather than in a unit test. The array
+    // is load-bearing and not a detail of the literal above: the host adapter
+    // iterates `redactions`, so an object keyed "0" would apply nothing while
+    // the decision still said modify.
+    const mods = response.result?.modifications as Record<string, unknown>;
+    expect(Array.isArray(mods.redactions)).toBe(true);
+    expect("parameter_overrides" in mods).toBe(false);
+    expect("modified_content" in mods).toBe(false);
   });
 
   it("leaves an output with nothing to redact a clean allow", async () => {
@@ -1042,6 +1077,14 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     expect(response.error).toBeUndefined();
     expect(response.result?.decision).toBe("allow");
     expect(response.result?.request_id).toBe(requestId);
+    // §6.3 attaches modifications to `modify` and to nothing else, so an allow
+    // carrying them is a violation -- and one with a live fail-open on the
+    // other side of it, since the host adapter reads `modifications` off a
+    // decision it was told to honour. The neighbouring test pins that a real
+    // redaction DOES carry them, so this pins the other direction from the
+    // same live Guardian: only the value that matched a pattern gets a rewrite
+    // attached to it.
+    expect(response.result?.modifications).toBeUndefined();
   });
 
   // Direction two: the request gate still answers request envelopes, with the
