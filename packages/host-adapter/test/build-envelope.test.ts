@@ -24,6 +24,41 @@ const preToolUsePayload = {
   tool_input: { command: "rm -rf /", description: "clean up" },
 };
 
+// Unread by buildEnvelope, which owns the `acs_method`/path half of a hook
+// entry -- present so a hookmap this file passes around is a whole one. The host
+// field names live in the output paths, which is render-decision.ts's business
+// (and no code's, in the adapter, above the path level). V4: per hook, because
+// the shape a host reads back is a property of the gate.
+const PRE_TOOL_USE_DECISIONS = {
+  allow: { output: { "hookSpecificOutput.permissionDecision": { value: "allow" } } },
+  deny: {
+    output: {
+      "hookSpecificOutput.permissionDecision": { value: "deny" },
+      "hookSpecificOutput.permissionDecisionReason": { from: "reasoning", type: "string" },
+    },
+  },
+  ask: { output: { "hookSpecificOutput.permissionDecision": { value: "ask" } } },
+  defer: { output: { "hookSpecificOutput.permissionDecision": { value: "deny" } } },
+  modify: {
+    output: {
+      "hookSpecificOutput.permissionDecision": { value: "allow" },
+      "hookSpecificOutput.updatedInput": { from: "applied_input" },
+    },
+  },
+};
+
+const POST_TOOL_USE_DECISIONS = {
+  allow: { output: { "hookSpecificOutput.additionalContext": { from: "reasoning", type: "string" } } },
+  deny: {
+    output: {
+      decision: { value: "block" },
+      reason: { from: "reasoning", type: "string" },
+      "hookSpecificOutput.updatedToolOutput": { from: "applied_output" },
+    },
+  },
+  modify: { output: { "hookSpecificOutput.updatedToolOutput": { from: "applied_output" } } },
+};
+
 const hookmap: Hookmap = {
   host: "claude-code",
   hooks: {
@@ -31,6 +66,7 @@ const hookmap: Hookmap = {
       acs_method: "steps/toolCallRequest",
       tool_name: "$.tool_name",
       arguments: "$.tool_input",
+      decisions: PRE_TOOL_USE_DECISIONS,
     },
     // The result gate, mirroring the real hookmap's own entry. `within` is
     // declared and deliberately unread here: buildEnvelope puts only the leaf
@@ -41,27 +77,7 @@ const hookmap: Hookmap = {
       tool_name: "$.tool_name",
       outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
       exit_status: { literal: "success" },
-    },
-  },
-  // Unread by buildEnvelope, which owns the `hooks` half of a hookmap --
-  // present so a hookmap this file passes around is a whole one. The host
-  // field names live in the output paths, which is render-decision.ts's
-  // business (and no code's, in the adapter, above the path level).
-  decisions: {
-    allow: { output: { "hookSpecificOutput.permissionDecision": { value: "allow" } } },
-    deny: {
-      output: {
-        "hookSpecificOutput.permissionDecision": { value: "deny" },
-        "hookSpecificOutput.permissionDecisionReason": { from: "reasoning", type: "string" },
-      },
-    },
-    ask: { output: { "hookSpecificOutput.permissionDecision": { value: "ask" } } },
-    defer: { output: { "hookSpecificOutput.permissionDecision": { value: "deny" } } },
-    modify: {
-      output: {
-        "hookSpecificOutput.permissionDecision": { value: "allow" },
-        "hookSpecificOutput.updatedInput": { from: "applied_input" },
-      },
+      decisions: POST_TOOL_USE_DECISIONS,
     },
   },
 };
@@ -179,7 +195,7 @@ describe("buildEnvelope", () => {
     expect(() => validateEnvelope(envelope)).not.toThrow();
   });
 
-  describe("loadHookmap — decisions.allow and decisions.deny must both be renderable", () => {
+  describe("loadHookmap — every hook's decisions.allow and decisions.deny must be renderable (V3 fix round 1, item 1)", () => {
     // Guards against the residual case a shim could otherwise only trust:
     // applyFailurePosture never returns anything but "allow" or
     // "deny", so a shim falling back to the posture because the ORIGINAL
@@ -202,11 +218,13 @@ describe("buildEnvelope", () => {
     // The `hooks` half every case below shares, and two renderable entries to
     // build cases out of. Named rather than repeated inline, because after
     // each decision entry gained a full `output` block the inline strings
-    // were longer than the assertions they set up.
+    // were longer than the assertions they set up. V4: `decisions` is indented
+    // under the hook that owns it, so DECISIONS is its own fragment.
     const HOOKS =
-      "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n";
-    const ALLOW = "  allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n";
-    const DENY = "  deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n";
+      "host: claude-code\nhooks:\n  PreToolUse:\n    acs_method: steps/toolCallRequest\n    tool_name: $.tool_name\n    arguments: $.tool_input\n";
+    const DECISIONS = "    decisions:\n";
+    const ALLOW = "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n";
+    const DENY = "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n";
 
     it("throws when the decisions block is missing entirely", () => {
       withHookmapFile(HOOKS, (path) => {
@@ -215,24 +233,64 @@ describe("buildEnvelope", () => {
     });
 
     it("throws when decisions is missing deny (allow alone is not enough)", () => {
-      withHookmapFile(`${HOOKS}decisions:\n${ALLOW}`, (path) => {
+      withHookmapFile(`${HOOKS}${DECISIONS}${ALLOW}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(/deny/);
       });
     });
 
     it("throws when decisions is missing allow (deny alone is not enough)", () => {
-      withHookmapFile(`${HOOKS}decisions:\n${DENY}`, (path) => {
+      withHookmapFile(`${HOOKS}${DECISIONS}${DENY}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(/allow/);
       });
     });
 
     it("accepts decisions with at least allow and deny, extra entries and all", () => {
-      withHookmapFile(`${HOOKS}decisions:\n${ALLOW}${DENY}`, (path) => {
+      withHookmapFile(`${HOOKS}${DECISIONS}${ALLOW}${DENY}`, (path) => {
         expect(() => loadHookmap(path)).not.toThrow();
       });
     });
 
-    // Presence alone would let both of these through. `allow: null`
+    // V4, and the whole point of the block moving: the minimum is per HOOK. A
+    // delivery failure is answered by the posture at whichever gate suffered it,
+    // so a second gate declaring no `deny` is a gate whose fail-closed answer
+    // cannot be rendered -- and the first gate having one says nothing about it.
+    // Before the move there was one block and this case could not exist.
+    it("throws, naming the hook, when a SECOND hook's block is missing deny", () => {
+      const secondHook =
+        "  PostToolUse:\n    acs_method: steps/toolCallResult\n    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n" +
+        `${DECISIONS}${ALLOW}`;
+
+      withHookmapFile(`${HOOKS}${DECISIONS}${ALLOW}${DENY}${secondHook}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"hooks\.PostToolUse\.decisions" block has no "deny" entry/);
+      });
+    });
+
+    // The same claim from the other side: one hook carrying a whole block does
+    // not excuse a hook carrying none. A hook mapped but undecided would reach
+    // renderDecision with nothing to render through, at whatever step first
+    // fired it.
+    it("throws, naming the hook, when a SECOND hook declares no decisions block at all", () => {
+      const secondHook =
+        "  PostToolUse:\n    acs_method: steps/toolCallResult\n    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n";
+
+      withHookmapFile(`${HOOKS}${DECISIONS}${ALLOW}${DENY}${secondHook}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/hook "PostToolUse" has no "decisions" block/);
+      });
+    });
+
+    // A gate that iterates hooks passes vacuously on a hookmap with none, and a
+    // gate that cannot fail reads as enforcement while enforcing nothing.
+    it("throws on a hookmap that maps no hooks at all, rather than passing vacuously", () => {
+      withHookmapFile("host: claude-code\nhooks: {}\n", (path) => {
+        expect(() => loadHookmap(path)).toThrow(/maps no hooks/);
+      });
+    });
+
+    // Fix round 3: presence alone let both of these through. `allow: null`
     // satisfies `"allow" in decisions` but is not an entry renderDecision can
     // read an output block off -- it would throw at render time, past every
     // guard, exiting 1 with empty stdout (a third route to the fail-open
@@ -241,7 +299,7 @@ describe("buildEnvelope", () => {
     // JSON.stringify drops -- stdout would carry a wrapper with no decision
     // in it at all. Both must be rejected at load time instead.
     it("throws when allow is present but not an object (null)", () => {
-      withHookmapFile(`${HOOKS}decisions:\n  allow: null\n${DENY}`, (path) => {
+      withHookmapFile(`${HOOKS}${DECISIONS}      allow: null\n${DENY}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
       });
     });
@@ -254,8 +312,10 @@ describe("buildEnvelope", () => {
     // (assertHostAcceptsEveryDecision, hosts/claude-code/acs-hook.ts), where
     // hosts/claude-code/test/posture.test.ts exercises it end to end.
     it("throws when allow is an object but declares no output block", () => {
-      withHookmapFile(`${HOOKS}decisions:\n  allow: {}\n${DENY}`, (path) => {
-        expect(() => loadHookmap(path)).toThrow(/"decisions\.allow" entry needs a non-empty "output" block/);
+      withHookmapFile(`${HOOKS}${DECISIONS}      allow: {}\n${DENY}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(
+          /"hooks\.PreToolUse\.decisions\.allow" entry needs a non-empty "output" block/,
+        );
       });
     });
 
@@ -266,7 +326,7 @@ describe("buildEnvelope", () => {
       // that would render `modify` as an output missing the field its author
       // believes is there.
       withHookmapFile(
-        `${HOOKS}decisions:\n${ALLOW}${DENY}  modify: { output: { hookSpecificOutput.updatedInput: { type: string } } }\n`,
+        `${HOOKS}${DECISIONS}${ALLOW}${DENY}      modify: { output: { hookSpecificOutput.updatedInput: { type: string } } }\n`,
         (path) => {
           expect(() => loadHookmap(path)).toThrow(/decisions\.modify/);
         },

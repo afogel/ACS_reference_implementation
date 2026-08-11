@@ -1,9 +1,15 @@
 # S1 -- the ONLY per-host artifact besides the hook shim (N1, Task 9).
 #
 # Pure data: maps Claude Code's own hook names and payload shape onto ACS
-# methods/arguments (the `hooks` block, read by buildEnvelope / N2), and
-# maps ACS decisions onto the output Claude Code reads back (the `decisions`
-# block, read by renderDecision / N3, Task 8).
+# methods/arguments (read by buildEnvelope / N2), and maps ACS decisions onto
+# the output Claude Code reads back (each hook's own `decisions` block, read by
+# renderDecision / N3).
+#
+# V4 (slice #5): `decisions` lives under the HOOK, not beside `hooks`. The
+# shape Claude Code reads back is a property of the gate -- `PreToolUse`
+# answers with a permission field, `PostToolUse` answers by replacing what the
+# tool produced, and neither field exists on the other event. One shared block
+# could only have described one of them.
 #
 # `tool_name` and `arguments` are JSONPath-lite references (`$.<field>`)
 # into the raw hook payload Claude Code delivers on stdin for this event --
@@ -14,6 +20,96 @@ hooks:
     acs_method: steps/toolCallRequest
     tool_name: $.tool_name
     arguments: $.tool_input
+    # PR #10 review, Critical: the `decisions` block below is now where Claude
+    # Code's output field names live, and they appear nowhere in the adapter.
+    # Each entry declares an `output` block whose keys are dotted paths into the
+    # JSON object this host writes on stdout, and whose values say where each
+    # field's content comes from -- `value:` for a literal, `from:` for a field
+    # of the arriving ACS decision (copied only when the decision carries it,
+    # and only when it has the declared `type:`).
+    #
+    # The adapter assembles that object without knowing one name in it, which is
+    # what makes slice V5's second host a shim and a hookmap rather than a fork
+    # of the shared module. A host that nests its decision differently, or names
+    # a field alongside the wrapper rather than inside it, or has no
+    # permission-style field at all, writes different paths here and changes no
+    # code.
+    #
+    # `hookEventName` is deliberately NOT declared here: it is not derived from
+    # the decision, it is the name of the hook that asked, and acs-hook.ts adds
+    # it as it wraps. Everything below is a function of the decision alone.
+    #
+    # `type: string` on every reason field is what keeps a Guardian that puts a
+    # non-string in `reasoning` from producing an output Claude Code cannot read:
+    # the field is left off instead, exactly as it is for a decision that carries
+    # no reasoning at all. It is where the old `reason_from` rule's own
+    # `typeof === "string"` check went, now declared rather than hardcoded.
+    #
+    # TWO GAPS PR #10's REVIEW LEFT OPEN, BOTH CLOSED BY V3. `allow` named no
+    # reason field, so a fail-open proceed said nothing in the transcript a human
+    # reads; and `modify` handed `updatedInput` ACS's raw `modifications` object
+    # rather than a tool input Claude Code can apply. Both belonged to the slice
+    # that owns dispositions, and both are fixed in the entries below -- `allow`
+    # gains a reason path, and `modify` names `applied_input`, the post-N7 field.
+    # hosts/claude-code/test/wire-shape.test.ts pins every one of these outputs
+    # as a literal, which is why the change had to be stated there too.
+    #
+    # Fix wave finding 5: Claude Code's PreToolUse output only accepts
+    # permissionDecision "allow" | "deny" | "ask" (see Claude Code's own hook
+    # docs) -- there is no "defer" value on the wire, so a `defer` entry
+    # declaring `permissionDecision: defer` was never a legal Claude Code
+    # output. It was unreachable in V1 (no verdict in mapping.yaml produces an
+    # ACS "defer" decision today) but would have broken the moment one did.
+    # ACS's own defer-details.json defaults an unresolved defer's
+    # `timeout_decision` to "deny", so `deny` is the spec-consistent fail-closed
+    # choice for a host (like Claude Code) with no native defer/pending state --
+    # NOT a considered posture, just the least-wrong mapping until a host that
+    # can actually represent deferral exists. V3, which owns posture and
+    # disposition decisions (N27, N6/N7), should treat this as a known gap
+    # rather than rediscovering it. V3 confirmed nothing upstream of this
+    # hookmap ever produces an ACS `defer` decision today (P2), so this entry
+    # stays a guard for a Guardian that emits one rather than a path this
+    # deployment exercises.
+    decisions:
+      # V3: `allow` gains a reason field. A genuine Guardian allow only rarely
+      # carries a `reasoning` string, but applyFailurePosture (N6) always sets
+      # one -- a fail-open proceed (the audited bypass Global Constraint 3
+      # requires) renders as a plain allow, and this is the only way its
+      # reasoning ("no decision arrived...") reaches the transcript a human
+      # reads.
+      allow:
+        output:
+          hookSpecificOutput.permissionDecision:       { value: allow }
+          hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+      deny:
+        output:
+          hookSpecificOutput.permissionDecision:       { value: deny }
+          hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+      ask:
+        output:
+          hookSpecificOutput.permissionDecision:       { value: ask }
+          hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+      defer:
+        output:
+          hookSpecificOutput.permissionDecision:       { value: deny }
+          hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+      # V3: renderDecision now receives a decision that has been through N7
+      # (validateDecision), which applies §6.3's modifications to the original
+      # tool arguments and puts the result in `applied_input`. V1 named
+      # `modifications` here, which handed Claude Code the raw ACS modifications
+      # object -- a shape its updatedInput does not accept, so the rewrite would
+      # have been reported and never taken effect (R1.6).
+      #
+      # A reason path was the one thing this entry was missing. A policy-ordered
+      # rewrite is the only decision that changes what runs without the transcript
+      # saying anything: the command silently differs from the one that was asked
+      # for, and every sibling entry above carries an explanation while this one
+      # did not.
+      modify:
+        output:
+          hookSpecificOutput.permissionDecision:       { value: allow }
+          hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+          hookSpecificOutput.updatedInput:             { from: applied_input }
   # V4 (slice #5). The result gate. `outputs.from` is the leaf that becomes
   # the ACS payload's outputs[0].value; `outputs.within` is the object a
   # `modify` decision is applied back into (renderDecision, Task 7), so the
@@ -34,93 +130,46 @@ hooks:
     # payload carries no exit code for this to be derived from, and deriving
     # one from `interrupted` would be inventing a value the host never sent.
     exit_status: { literal: success }
-# PR #10 review, Critical: the `decisions` block below is now where Claude
-# Code's output field names live, and they appear nowhere in the adapter.
-# Each entry declares an `output` block whose keys are dotted paths into the
-# JSON object this host writes on stdout, and whose values say where each
-# field's content comes from -- `value:` for a literal, `from:` for a field
-# of the arriving ACS decision (copied only when the decision carries it,
-# and only when it has the declared `type:`).
-#
-# The adapter assembles that object without knowing one name in it, which is
-# what makes slice V5's second host a shim and a hookmap rather than a fork
-# of the shared module. A host that nests its decision differently, or names
-# a field alongside the wrapper rather than inside it, or has no
-# permission-style field at all, writes different paths here and changes no
-# code.
-#
-# `hookEventName` is deliberately NOT declared here: it is not derived from
-# the decision, it is the name of the hook that asked, and acs-hook.ts adds
-# it as it wraps. Everything below is a function of the decision alone.
-#
-# `type: string` on every reason field is what keeps a Guardian that puts a
-# non-string in `reasoning` from producing an output Claude Code cannot read:
-# the field is left off instead, exactly as it is for a decision that carries
-# no reasoning at all. It is where the old `reason_from` rule's own
-# `typeof === "string"` check went, now declared rather than hardcoded.
-#
-# TWO GAPS PR #10's REVIEW LEFT OPEN, BOTH CLOSED BY V3. `allow` named no
-# reason field, so a fail-open proceed said nothing in the transcript a human
-# reads; and `modify` handed `updatedInput` ACS's raw `modifications` object
-# rather than a tool input Claude Code can apply. Both belonged to the slice
-# that owns dispositions, and both are fixed in the entries below -- `allow`
-# gains a reason path, and `modify` names `applied_input`, the post-N7 field.
-# hosts/claude-code/test/wire-shape.test.ts pins every one of these outputs
-# as a literal, which is why the change had to be stated there too.
-#
-# Fix wave finding 5: Claude Code's PreToolUse output only accepts
-# permissionDecision "allow" | "deny" | "ask" (see Claude Code's own hook
-# docs) -- there is no "defer" value on the wire, so a `defer` entry
-# declaring `permissionDecision: defer` was never a legal Claude Code
-# output. It was unreachable in V1 (no verdict in mapping.yaml produces an
-# ACS "defer" decision today) but would have broken the moment one did.
-# ACS's own defer-details.json defaults an unresolved defer's
-# `timeout_decision` to "deny", so `deny` is the spec-consistent fail-closed
-# choice for a host (like Claude Code) with no native defer/pending state --
-# NOT a considered posture, just the least-wrong mapping until a host that
-# can actually represent deferral exists. V3, which owns posture and
-# disposition decisions (N27, N6/N7), should treat this as a known gap
-# rather than rediscovering it. V3 confirmed nothing upstream of this
-# hookmap ever produces an ACS `defer` decision today (P2), so this entry
-# stays a guard for a Guardian that emits one rather than a path this
-# deployment exercises.
-decisions:
-  # V3: `allow` gains a reason field. A genuine Guardian allow only rarely
-  # carries a `reasoning` string, but applyFailurePosture (N6) always sets
-  # one -- a fail-open proceed (the audited bypass Global Constraint 3
-  # requires) renders as a plain allow, and this is the only way its
-  # reasoning ("no decision arrived...") reaches the transcript a human
-  # reads.
-  allow:
-    output:
-      hookSpecificOutput.permissionDecision:       { value: allow }
-      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
-  deny:
-    output:
-      hookSpecificOutput.permissionDecision:       { value: deny }
-      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
-  ask:
-    output:
-      hookSpecificOutput.permissionDecision:       { value: ask }
-      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
-  defer:
-    output:
-      hookSpecificOutput.permissionDecision:       { value: deny }
-      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
-  # V3: renderDecision now receives a decision that has been through N7
-  # (validateDecision), which applies §6.3's modifications to the original
-  # tool arguments and puts the result in `applied_input`. V1 named
-  # `modifications` here, which handed Claude Code the raw ACS modifications
-  # object -- a shape its updatedInput does not accept, so the rewrite would
-  # have been reported and never taken effect (R1.6).
-  #
-  # A reason path was the one thing this entry was missing. A policy-ordered
-  # rewrite is the only decision that changes what runs without the transcript
-  # saying anything: the command silently differs from the one that was asked
-  # for, and every sibling entry above carries an explanation while this one
-  # did not.
-  modify:
-    output:
-      hookSpecificOutput.permissionDecision:       { value: allow }
-      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
-      hookSpecificOutput.updatedInput:             { from: applied_input }
+    # The result gate's own output shape. Every field here is in Claude Code
+    # 2.1.227's PostToolUse schema, and not one of them exists on PreToolUse --
+    # there is no `permissionDecision` at this event, because the tool has
+    # already run and there is no longer a permission to grant.
+    #
+    # `decision`/`reason` carry NO dot: they land beside the
+    # `hookSpecificOutput` wrapper rather than inside it, which is where Claude
+    # Code reads them. The adapter needs no new vocabulary for that -- a dotless
+    # path has always meant top-level.
+    decisions:
+      # A clean result: nothing to change, so nothing is written, and the output
+      # is delivered as the tool produced it. The one field declared here is
+      # conditional, which is what makes that possible -- the RULE is non-empty
+      # (assertRenderableDecisions requires that of every entry), while the
+      # OUTPUT is empty whenever the decision carries no `reasoning`.
+      #
+      # An observe-only allow does carry one (AGT `warn` -> ACS allow with
+      # policy_references, R1.2), and it must reach a reader rather than
+      # vanishing because the step was permitted -- the same gap V3 closed for
+      # PreToolUse's `allow`, closed the same way at this gate.
+      allow:
+        output:
+          hookSpecificOutput.additionalContext: { from: reasoning, type: string }
+      # A deny here withholds the output, and it takes BOTH fields to do that.
+      # `decision: block` alone injects a reason and suppresses nothing: the tool
+      # has already run and its result has already formed, so `block` on its own
+      # would report a withholding that never happened -- the same "reported but
+      # never took effect" defect V3 found when V1 copied a raw `modifications`
+      # object into `updatedInput`. The replacing output is the half that
+      # actually withholds; the block is what says why.
+      deny:
+        output:
+          decision:                             { value: block }
+          reason:                               { from: reasoning, type: string }
+          hookSpecificOutput.updatedToolOutput: { from: applied_output }
+      # The redaction itself. `applied_output` is the post-validation field
+      # name, for the same reason `modify` at the request gate names
+      # `applied_input` rather than `modifications`: what Claude Code accepts
+      # here is the tool's own output shape, not ACS's modifications object, and
+      # a replacement it declines means the ORIGINAL output is delivered.
+      modify:
+        output:
+          hookSpecificOutput.updatedToolOutput: { from: applied_output }

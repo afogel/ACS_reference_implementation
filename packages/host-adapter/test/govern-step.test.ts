@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AuditEvent, AuditSink } from "../src/audit-sink.ts";
-import type { Hookmap } from "../src/build-envelope.ts";
+import type { Hookmap, HookmapRequestHookEntry } from "../src/build-envelope.ts";
 import { governStep } from "../src/govern-step.ts";
 import { GuardianTimeoutError, type DecisionOrFailure, type GuardianClient } from "../src/guardian-client.ts";
 import type { ResolvedSessionConfig } from "../src/handshake.ts";
@@ -18,16 +18,19 @@ import type { SessionConfig } from "../src/session-config.ts";
  * function is host-agnostic, and a test written against the shipped Claude Code
  * hookmap would not catch it quietly becoming otherwise.
  */
-const hookmap: Hookmap = {
-  host: "test-host",
-  hooks: {
-    OnStep: { acs_method: "steps/toolCallRequest", tool_name: "$.tool_name", arguments: "$.tool_input" },
-  },
+const ON_STEP: HookmapRequestHookEntry = {
+  acs_method: "steps/toolCallRequest",
+  tool_name: "$.tool_name",
+  arguments: "$.tool_input",
+  // V4: a hook's decisions belong to the hook, so this fixture's one gate
+  // carries its own block.
   decisions: {
     allow: { output: { outcome: { value: "go" }, note: { from: "reasoning", type: "string" } } },
     deny: { output: { outcome: { value: "stop" }, note: { from: "reasoning", type: "string" } } },
   },
 };
+
+const hookmap: Hookmap = { host: "test-host", hooks: { OnStep: ON_STEP } };
 
 const payload = { session_id: "sess-1", tool_name: "Bash", tool_input: { command: "ls -la" } };
 
@@ -146,8 +149,12 @@ describe("governStep — the three failure stages name three different incidents
       answering({ decisionArrived: true, decision: { decision: "allow" } }),
       sink,
       { config: NEGOTIATED("proceed"), failure: undefined },
-      // A hook the hookmap has no entry for: buildEnvelope throws.
-      { hookEventName: "NotInTheHookmap" },
+      // A hookmap path that does not resolve against this payload:
+      // buildEnvelope throws. This case used to name a hook the hookmap has no
+      // entry for, which V4 moved out of the posture's reach entirely -- see the
+      // test below -- while leaving every other way a request can fail to be
+      // built exactly where it was.
+      { hookmap: { ...hookmap, hooks: { OnStep: { ...ON_STEP, tool_name: "$.no_such_field" } } } },
     );
 
     expect(governed.stage).toBe("request");
@@ -162,6 +169,27 @@ describe("governStep — the three failure stages name three different incidents
       failure: { kind: "host_configuration" },
     });
     expect(governed.decision.reasoning).toContain("no decision was ever sought");
+  });
+
+  // V4, and the one behaviour the per-hook move deliberately changes. Every
+  // render -- the arriving decision's and the posture's -- now goes through the
+  // hook's OWN decisions block, so a hook the hookmap does not map has nothing
+  // to express either answer through. Reaching the posture anyway would write an
+  // audit entry recording a fail-open proceed and then fail to render it: a
+  // durable record of a bypass that never happened, in the one log an incident
+  // review trusts. So it throws before anything is asked or written, and the
+  // caller answers it the way it answers a hookmap that will not load (exit 2).
+  it("throws, auditing nothing, for a hook this hookmap does not map -- it cannot express an answer for one", async () => {
+    const { sink, events } = recordingSink();
+
+    await expect(
+      govern(answering({ decisionArrived: true, decision: { decision: "allow" } }), sink, undefined, {
+        hookEventName: "NotInTheHookmap",
+      }),
+    ).rejects.toThrow(/no entry for hook "NotInTheHookmap"/);
+
+    // Nothing proceeded, so nothing claims to have proceeded.
+    expect(events).toEqual([]);
   });
 
   it("files no decision arriving under \"delivery\", carrying the failure the client reported", async () => {

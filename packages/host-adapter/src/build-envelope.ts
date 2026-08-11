@@ -36,12 +36,26 @@ export type HookmapOutputs = {
   within: string;
 };
 
-/** The two members every hook entry carries, whichever payload it builds. */
+/** The members every hook entry carries, whichever payload it builds. */
 type HookmapHookEntryCommon = {
   /** The ACS `steps/*` method this hook fires. Never hardcoded here. */
   acs_method: string;
   /** JSONPath-lite (`$.foo.bar`) into the raw hook payload for the tool/step name. */
   tool_name: string;
+  /**
+   * This hook's own decision -> host-output mapping, consumed by
+   * `renderDecision` (N3) and never by this module.
+   *
+   * V4: per hook, not per hookmap. One host can expose several gates, and a
+   * gate's output shape is a property of the gate: a request gate answers with
+   * a permission-style field, a result gate answers by replacing what a step
+   * produced, and neither field exists on the other. One block shared by every
+   * hook could only describe one of them, so a second gate would have had to
+   * borrow the first's rule and render a field the host does not read there.
+   * `assertRenderableDecisions` applies the same minimum to each block
+   * separately, for the same reason it applies it at all.
+   */
+  decisions?: Record<string, unknown>;
 };
 
 /** A hook asking before a step runs: builds a tool-call-request payload. */
@@ -75,15 +89,14 @@ export type HookmapResultHookEntry = HookmapHookEntryCommon & {
 export type HookmapHookEntry = HookmapRequestHookEntry | HookmapResultHookEntry;
 
 /**
- * A hookmap in full: the hook-name -> ACS method mapping this module consumes,
- * plus the decision -> host-output mapping renderDecision consumes. The second
- * is on the type only so that a hookmap loaded whole, as `loadHookmap` does,
- * round-trips without losing it.
+ * S1 in full: one entry per hook, each mapping that hook onto an ACS method
+ * (consumed here) and onto the output its host reads back (consumed by
+ * `renderDecision`, not by this module -- present on the entry type only so a
+ * hookmap loaded whole, as `loadHookmap` does, round-trips without loss).
  */
 export type Hookmap = {
   host: string;
   hooks: Record<string, HookmapHookEntry>;
-  decisions?: Record<string, unknown>;
 };
 
 /** An ACS argument wrapper: every hook argument is `{value, provenance?}`. */
@@ -142,20 +155,27 @@ export type AcsRequestEnvelope = {
 const ACS_VERSION = "0.1.0";
 
 /**
- * A hookmap's `decisions` block must declare at least `allow` and `deny`
+ * EVERY hook's `decisions` block must declare at least `allow` and `deny`
  * -- the only two decisions a delivery-failure posture
- * (applyFailurePosture) ever produces -- and every entry it DOES
+ * (applyFailurePosture, N6) ever produces -- and every entry each one DOES
  * declare must actually be renderable, not merely present. "Renderable"
  * means shaped like render-decision.ts's own `DecisionRenderRule`: a
- * non-null object naming a non-empty string `permissionDecision`, the one
- * field renderDecision writes into Claude Code's output unconditionally.
- * Presence alone is not enough to guarantee that: `allow: null` still
- * satisfies `"allow" in decisions`, and then renderDecision throws on the
- * non-object entry; `allow: {}` also satisfies it and renderDecision does
- * NOT throw, but writes `permissionDecision: undefined`, which
- * `JSON.stringify` then drops entirely -- stdout ends up with no decision
- * in it at all, defeating "always a decision on stdout" exactly as surely
- * as a missing entry does, just more quietly.
+ * non-null object carrying a non-empty `output` block, every field of which
+ * names its own source. Presence alone is not enough to guarantee that --
+ * fix round 3 found the gap directly: `allow: null` still satisfies
+ * `"allow" in decisions`, and then renderDecision throws on the non-object
+ * entry; `allow: {}` also satisfies it and used to render an output whose
+ * one field was `undefined`, which `JSON.stringify` then drops entirely --
+ * stdout ends up with no decision in it at all, defeating "always a
+ * decision on stdout" exactly as surely as a missing entry does, just more
+ * quietly.
+ *
+ * The minimum is applied PER HOOK (V4), because the posture answers a
+ * delivery failure at whichever gate suffered it: a hook missing `allow` or
+ * `deny` is a hook whose posture answer cannot be rendered, and one gate
+ * having both says nothing about the other. A hook declaring no `decisions`
+ * block at all is rejected here for the same reason, named, rather than
+ * discovered by the first step that gate ever governs.
  *
  * Every declared entry is checked here, not only `allow` and `deny`: a
  * malformed `modify` (or `ask`, or `defer`) entry would otherwise only
@@ -184,55 +204,71 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
-  const decisions = hookmap.decisions;
-  if (typeof decisions !== "object" || decisions === null) {
-    throw new Error(`loadHookmap: ${path} has no "decisions" block`);
+  const hooks = hookmap.hooks;
+  // A hookmap mapping no hook at all would make every check below iterate
+  // nothing and pass -- and a gate that cannot fail reads as enforcement while
+  // enforcing nothing (the same reasoning test/invariants.test.ts's own
+  // emptiness check states). It is also not a hookmap: a host with no hook
+  // mapped is a host nothing governs.
+  if (!isPlainObject(hooks) || Object.keys(hooks).length === 0) {
+    throw new Error(`loadHookmap: ${path} maps no hooks, so it declares nothing this host could govern`);
   }
-  for (const required of ["allow", "deny"] as const) {
-    if (!(required in decisions)) {
-      throw new Error(`loadHookmap: ${path}'s "decisions" block has no "${required}" entry`);
+
+  for (const [hookEventName, entry] of Object.entries(hooks)) {
+    const decisions = isPlainObject(entry) ? entry.decisions : undefined;
+    if (!isPlainObject(decisions)) {
+      throw new Error(`loadHookmap: ${path}'s hook "${hookEventName}" has no "decisions" block`);
     }
-  }
-  for (const [decision, rule] of Object.entries(decisions)) {
-    if (!isPlainObject(rule)) {
-      throw new Error(
-        `loadHookmap: ${path}'s "decisions.${decision}" entry must be an object carrying an "output" block, got ${JSON.stringify(rule)}`,
-      );
-    }
-    const output = rule.output;
-    if (!isPlainObject(output) || Object.keys(output).length === 0) {
-      throw new Error(
-        `loadHookmap: ${path}'s "decisions.${decision}" entry needs a non-empty "output" block, got ${JSON.stringify(output)}`,
-      );
-    }
-    // The same rule renderDecision enforces per field, checked here so that
-    // "loadHookmap accepted it" and "renderDecision can render it" cannot come
-    // apart. A field naming neither source is a hookmap typo; the decision it
-    // belongs to would render an output missing a field its author believes is
-    // there, and for `modify` or `ask` that is a policy decision arriving and
-    // being silently degraded.
-    for (const [field, source] of Object.entries(output)) {
-      if (!isPlainObject(source)) {
+    for (const required of ["allow", "deny"] as const) {
+      if (!(required in decisions)) {
         throw new Error(
-          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must be an object naming ` +
-            `"value" or "from", got ${JSON.stringify(source)}`,
+          `loadHookmap: ${path}'s "hooks.${hookEventName}.decisions" block has no "${required}" entry`,
         );
       }
-      const hasValue = Object.prototype.hasOwnProperty.call(source, "value");
-      const hasFrom = typeof source.from === "string" && source.from.length > 0;
-      if (!hasValue && !hasFrom) {
+    }
+    for (const [decision, rule] of Object.entries(decisions)) {
+      const named = `"hooks.${hookEventName}.decisions.${decision}"`;
+      if (!isPlainObject(rule)) {
         throw new Error(
-          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must name a literal "value" ` +
-            `or a non-empty string "from", got ${JSON.stringify(source)}`,
+          `loadHookmap: ${path}'s ${named} entry must be an object carrying an "output" block, got ${JSON.stringify(rule)}`,
         );
+      }
+      const output = rule.output;
+      if (!isPlainObject(output) || Object.keys(output).length === 0) {
+        throw new Error(
+          `loadHookmap: ${path}'s ${named} entry needs a non-empty "output" block, got ${JSON.stringify(output)}`,
+        );
+      }
+      // The same rule renderDecision enforces per field, checked here so that
+      // "loadHookmap accepted it" and "renderDecision can render it" cannot come
+      // apart. A field naming neither source is a hookmap typo; the decision it
+      // belongs to would render an output missing a field its author believes is
+      // there, and for `modify` or `ask` that is a policy decision arriving and
+      // being silently degraded.
+      for (const [field, source] of Object.entries(output)) {
+        if (!isPlainObject(source)) {
+          throw new Error(
+            `loadHookmap: ${path}'s ${named} output field "${field}" must be an object naming ` +
+              `"value" or "from", got ${JSON.stringify(source)}`,
+          );
+        }
+        const hasValue = Object.prototype.hasOwnProperty.call(source, "value");
+        const hasFrom = typeof source.from === "string" && source.from.length > 0;
+        if (!hasValue && !hasFrom) {
+          throw new Error(
+            `loadHookmap: ${path}'s ${named} output field "${field}" must name a literal "value" ` +
+              `or a non-empty string "from", got ${JSON.stringify(source)}`,
+          );
+        }
       }
     }
   }
 }
 
-/** Loads and parses a hookmap YAML file (e.g. claude-code.hookmap.yaml).
- * Throws if `decisions` is missing `allow` or `deny`, or if any declared
- * entry is not a renderable rule -- see assertRenderableDecisions. */
+/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
+ * Throws if any hook's `decisions` block is absent or missing `allow` or
+ * `deny`, or if any declared entry is not a renderable rule -- see
+ * assertRenderableDecisions. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);

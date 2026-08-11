@@ -636,10 +636,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       hookmapPath,
       "host: claude-code\n" +
         "hooks:\n" +
-        "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
-        "decisions:\n" +
-        "  allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
-        "  deny: { output: { hookSpecificOutput.permissionDecision: { value: dney } } }\n",
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: dney } } }\n",
     );
     try {
       const out = await runShim(payload("rm -rf /"), {
@@ -671,17 +674,37 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // own gate makes, and it now also covers an entry that declares no
   // permission field at all: `value` comes back undefined, which is not one
   // of the three, so the entry fails here exactly as the shim would fail it.
-  it("still loads the real hookmap: every value it declares is one Claude Code accepts", async () => {
+  //
+  // V4: per hook, and the two gates are checked against DIFFERENT expectations,
+  // because Claude Code accepts different things at them. `PostToolUse` has no
+  // permission to grant -- the tool has already run -- so requiring a
+  // permissionDecision of it would be requiring a field that event does not
+  // have. What its `deny` needs instead is both halves of a withholding.
+  it("still loads the real hookmap: every value each hook declares is one Claude Code accepts at that event", async () => {
     const declared = Bun.YAML.parse(readFileSync(REAL_HOOKMAP, "utf8")) as {
-      decisions: Record<string, { output?: Record<string, { value?: unknown }> }>;
+      hooks: Record<string, { decisions?: Record<string, { output?: Record<string, { value?: unknown }> }> }>;
     };
-    const values = Object.entries(declared.decisions).map(([decision, rule]) => ({
+
+    // Pinned to the exact hook list, so a hook added to the shipped hookmap
+    // without an expectation in this file (and in the shim's own
+    // HOOK_EXPECTATIONS) fails here rather than going unchecked.
+    expect(Object.keys(declared.hooks).sort()).toEqual(["PostToolUse", "PreToolUse"]);
+
+    const preToolUse = Object.entries(declared.hooks.PreToolUse?.decisions ?? {}).map(([decision, rule]) => ({
       decision,
       accepted: ["allow", "deny", "ask"].includes(
         rule.output?.["hookSpecificOutput.permissionDecision"]?.value as string,
       ),
     }));
-    expect(values).toEqual(values.map(({ decision }) => ({ decision, accepted: true })));
+    expect(preToolUse).toEqual(preToolUse.map(({ decision }) => ({ decision, accepted: true })));
+    expect(preToolUse.length).toBeGreaterThan(0);
+
+    const postToolUseDeny = declared.hooks.PostToolUse?.decisions?.deny?.output ?? {};
+    // `block` alone reports a withholding that did not happen -- the tool has
+    // already run. Both halves, or the entry is a log line pretending to be a
+    // suppression (Evidence 3).
+    expect(postToolUseDeny.decision?.value).toBe("block");
+    expect(postToolUseDeny["hookSpecificOutput.updatedToolOutput"]).toBeDefined();
 
     const dir = scratch();
     const out = await runShim(payload("ls -la"), {
@@ -782,10 +805,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       hookmapPath,
       "host: claude-code\n" +
         "hooks:\n" +
-        "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
-        "decisions:\n" +
-        "  allow: null\n" +
-        "  deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n",
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: null\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n",
     );
     try {
       const out = await runShim(payload("ls -la"), {

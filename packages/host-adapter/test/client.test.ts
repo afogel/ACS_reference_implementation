@@ -739,6 +739,7 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
+      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
     ) as { hookSpecificOutput: Record<string, unknown> };
@@ -755,6 +756,7 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
+      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
     ) as { hookSpecificOutput: Record<string, unknown> };

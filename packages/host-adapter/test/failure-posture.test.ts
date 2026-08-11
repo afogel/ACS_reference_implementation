@@ -242,7 +242,9 @@ describe("applyFailurePosture — a decision that arrived and could not be rende
   const UNRENDERABLE = {
     ...CALL,
     stage: "render" as const,
-    failure: new Error('renderDecision: hookmap has no decisions entry for ACS decision "quarantine"'),
+    failure: new Error(
+      'renderDecision: hookmap\'s hook "PreToolUse" has no decisions entry for ACS decision "quarantine"',
+    ),
   };
 
   it("classifies it as decision_unrenderable, not as a delivery failure", () => {

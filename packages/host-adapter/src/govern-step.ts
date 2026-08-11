@@ -45,10 +45,12 @@
  *     each stage has its own `try`, and each `catch` knows its own stage
  *     because that is the only stage it can be reached from.
  *   - There are exactly two ways out: a `GovernedStep`, or a throw. A throw
- *     means the fallback render of a posture decision itself failed, which
- *     `loadHookmap` makes unreachable (see `resolveByPosture` below) -- and it
- *     is left as a throw rather than repaired, because half an output is the
- *     one thing a governance hook must never write.
+ *     means this hookmap does not map the hook that fired (see the guard at the
+ *     top of `governStep`) or that the fallback render of a posture decision
+ *     itself failed, which `loadHookmap` makes unreachable for a hook it does
+ *     map (see `resolveByPosture` below) -- and both are left as throws rather
+ *     than repaired, because half an output is the one thing a governance hook
+ *     must never write.
  *
  * This module knows ACS and hookmaps, and nothing else: no policy-runtime
  * vocabulary, and no host vocabulary -- it never names a field of the output
@@ -160,6 +162,22 @@ export async function governStep({
   sessionId,
   audit,
 }: GovernStepInput): Promise<GovernedStep> {
+  // V4: every render below -- the arriving decision's and the posture's -- goes
+  // through the hook's OWN decisions block, so a hook this hookmap does not map
+  // has nothing to express either answer through. Checked here, before anything
+  // is asked or written, because the alternative is worse than a throw: letting
+  // it reach the posture would write an audit entry recording a fail-open
+  // proceed, and then fail to render it -- a durable record of a bypass that
+  // never happened, in the one log an incident review trusts. A hookmap missing
+  // the hook that fired is a broken deployment, the same class as a hookmap that
+  // will not load, and a caller answers it the same way.
+  if (hookmap.hooks?.[hookEventName] === undefined) {
+    throw new Error(
+      `governStep: hookmap has no entry for hook "${hookEventName}", so neither an arriving decision nor a ` +
+        `posture's answer to an absent one could be expressed for it`,
+    );
+  }
+
   const timeoutMs = session.config?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
   /**
@@ -175,12 +193,13 @@ export async function governStep({
    * it and nothing here can forget to.
    *
    * The render here cannot fail: `loadHookmap` does not merely check that
-   * `allow` and `deny` are present in the `decisions` block, it shape-checks
-   * every entry it accepts (`assertRenderableDecisions`), and
-   * `applyFailurePosture` never returns any decision but those two. So this
-   * cannot recurse into itself, and a throw escaping it means the hookmap
-   * bypassed the loader -- which is the caller's problem to fail loudly on, not
-   * something to paper over.
+   * `allow` and `deny` are present in EVERY hook's `decisions` block, it
+   * shape-checks every entry it accepts (`assertRenderableDecisions`), and
+   * `applyFailurePosture` never returns any decision but those two -- and the
+   * guard at the top of `governStep` has already established that this hook has
+   * a block at all. So this cannot recurse into itself, and a throw escaping it
+   * means the hookmap bypassed the loader -- which is the caller's problem to
+   * fail loudly on, not something to paper over.
    *
    * `method` is the ACS method or null, never the host's own event name: an
    * envelope that could not be built has no ACS method to report, and the audit
@@ -202,7 +221,7 @@ export async function governStep({
       audit,
       stage,
     });
-    return { output: renderDecision(decision, hookmap), decision, stage };
+    return { output: renderDecision(hookEventName, decision, hookmap), decision, stage };
   }
 
   const startedAt = performance.now();
@@ -255,7 +274,7 @@ export async function governStep({
   // different incident, and auditing it as "no decision arrived" would send an
   // incident reviewer to a Guardian that answered correctly.
   try {
-    return { output: renderDecision(decision, hookmap), decision, stage: "honoured" };
+    return { output: renderDecision(hookEventName, decision, hookmap), decision, stage: "honoured" };
   } catch (failure) {
     return resolveByPosture(failure, "render", envelope);
   }

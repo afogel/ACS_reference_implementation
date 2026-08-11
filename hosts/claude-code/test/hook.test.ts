@@ -40,6 +40,21 @@ function preToolUsePayload(command: string): Record<string, unknown> {
   };
 }
 
+/** The real PostToolUse payload shape Claude Code 2.1.227 delivers, captured
+ * from a live run (Evidence 2): `tool_response` is a structured object and
+ * `stdout` is the leaf the shipped hookmap puts on the wire. */
+function postToolUsePayload(stdout: string): Record<string, unknown> {
+  return {
+    session_id: "abc123",
+    transcript_path: "/path/to/transcript.jsonl",
+    cwd: "/current/dir",
+    hook_event_name: "PostToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "ls -la" },
+    tool_response: { stdout, stderr: "", interrupted: false, isImage: false, noOutputExpected: false },
+  };
+}
+
 /** Spawns the real shim as a subprocess -- exactly how Claude Code invokes
  * it -- feeds it `payload` on stdin, and returns what it wrote once it has
  * run to completion. */
@@ -117,6 +132,7 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
     const response = await createGuardianClient(guardian.url).post(envelope);
     expect(response.error).toBeUndefined();
     const expected = renderDecision(
+      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
     ) as { hookSpecificOutput: Record<string, unknown> };
@@ -139,5 +155,27 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
       permissionDecision: "allow",
     });
     expect(stderr).toBe("");
+  });
+
+  // V4, C8, and the half of the wrapper refusal that had to learn the hook. At
+  // PreToolUse an output Claude Code reads no decision from lets the tool call
+  // proceed, so this shim refuses to write one -- and that refusal, applied to
+  // the result gate, would have exited 2 on EVERY clean tool call. The tool has
+  // already run here: "nothing to change, deliver it as the tool produced it" is
+  // the honest answer, and it is what a clean allow renders, because the only
+  // field PostToolUse's `allow` declares is conditional on a `reasoning` a
+  // genuine allow does not carry.
+  //
+  // Through the real shim and the real Guardian rather than a stub, because the
+  // claim is about the bytes a Claude Code process reads back for a clean
+  // result, and the empty wrapper is exactly the shape that looks like a bug.
+  it("answers a clean tool result with an empty wrapper: exit 0, nothing to change, delivered unchanged", async () => {
+    const { stdout, stderr, exitCode } = await runHook(postToolUsePayload("total 0\n"), guardian.url);
+
+    expect({ exitCode, stderr }).toEqual({ exitCode: 0, stderr: "" });
+    // The whole object, as a literal: no permissionDecision (there is no
+    // permission to grant once the step has run), no `decision: block`, and no
+    // replacement -- an empty wrapper and nothing else.
+    expect(JSON.parse(stdout)).toEqual({ hookSpecificOutput: { hookEventName: "PostToolUse" } });
   });
 });
