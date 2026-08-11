@@ -192,7 +192,8 @@ describe("architectural invariants", () => {
  *   from "guardian"              the static named/default import
  *   import "guardian"            the bare side-effect import, no `from`
  *   import("guardian")           dynamic, and `await import("guardian")`
- *   import("guardian").TapEntry  type position -- erased at build, still a
+ *   import("guardian").EnvelopeLogEntry
+ *                                type position -- erased at build, still a
  *                                compile-time dependency on the Guardian's
  *                                type graph, which is exactly what R5.1
  *                                forbids
@@ -215,12 +216,12 @@ describe("the import gate itself", () => {
    */
   it("catches every import form, in any case", () => {
     const caught = [
-      'import { TapEntry } from "guardian";',
+      'import { EnvelopeLogEntry } from "guardian";',
       'import "guardian";',
       'const g = await import("guardian");',
-      'type E = import("guardian").TapEntry;',
+      'type E = import("guardian").EnvelopeLogEntry;',
       'const g = require("guardian");',
-      'import { TapEntry } from "Guardian";',
+      'import { EnvelopeLogEntry } from "Guardian";',
       'export { x } from "../../guardian/src/index.ts";',
     ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
 
@@ -231,7 +232,7 @@ describe("the import gate itself", () => {
     const ignored = [
       'const label = "guardian";',
       "const guardian = startGuardian();",
-      'import { renderEntry } from "./render.ts";',
+      'import { renderEnvelopeLogEntry } from "./render.ts";',
     ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
 
     expect(ignored).toEqual(ignored.map(({ line }) => ({ line, found: false })));

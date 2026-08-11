@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { renderDecisionBadge, renderEntry } from "../src/render.ts";
-import type { TapEntry } from "../src/tail-envelope-log.ts";
+import { renderDecisionBadge, renderEnvelopeLogEntry } from "../src/render.ts";
+import type { EnvelopeLogEntry } from "../src/tail-envelope-log.ts";
 
-function entry(overrides: Partial<TapEntry>): TapEntry {
+function entry(overrides: Partial<EnvelopeLogEntry>): EnvelopeLogEntry {
   return {
     seq: 3,
     recorded_at: "2026-08-09T12:04:31.221Z",
@@ -14,7 +14,7 @@ function entry(overrides: Partial<TapEntry>): TapEntry {
   };
 }
 
-function response(result: Record<string, unknown>): TapEntry {
+function response(result: Record<string, unknown>): EnvelopeLogEntry {
   return entry({ envelope: { jsonrpc: "2.0", id: 1, result } });
 }
 
@@ -124,9 +124,9 @@ describe("renderDecisionBadge (U21)", () => {
   });
 });
 
-describe("renderEntry (U20)", () => {
+describe("renderEnvelopeLogEntry (U20)", () => {
   it("renders a request as a header line plus pretty JSON, with no badge", () => {
-    const rendered = renderEntry(
+    const rendered = renderEnvelopeLogEntry(
       entry({
         direction: "request",
         seq: 1,
@@ -140,7 +140,7 @@ describe("renderEntry (U20)", () => {
   });
 
   it("renders a response as a header line, a badge line, then pretty JSON", () => {
-    const rendered = renderEntry(response({ decision: "deny", reason_codes: ["blocked"] }));
+    const rendered = renderEnvelopeLogEntry(response({ decision: "deny", reason_codes: ["blocked"] }));
     const lines = rendered.split("\n");
 
     expect(lines[0]).toBe("── #3  12:04:31.221  ← RESPONSE  steps/toolCallRequest  id=1");
@@ -149,7 +149,7 @@ describe("renderEntry (U20)", () => {
   });
 
   it("labels an unpaired response -- the malformed-body case -- without an id or a method", () => {
-    const rendered = renderEntry(
+    const rendered = renderEnvelopeLogEntry(
       entry({ method: null, rpc_id: null, envelope: { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } } }),
     );
 
@@ -163,13 +163,13 @@ describe("renderEntry (U20)", () => {
   // Guardian parsed rather than the bytes the host sent.
   it("changes nothing but whitespace -- the envelope value round trips through the renderer", () => {
     const envelope = { jsonrpc: "2.0", id: 1, result: { decision: "allow", nested: { deep: [1, 2] } } };
-    const rendered = renderEntry(entry({ envelope }));
+    const rendered = renderEnvelopeLogEntry(entry({ envelope }));
     const jsonStart = rendered.indexOf("{");
 
     expect(JSON.parse(rendered.slice(jsonStart))).toEqual(envelope);
   });
 
-  // Whole-branch review, finding 8. `isTapEntryShape` deliberately does not
+  // Whole-branch review, finding 8. `isEnvelopeLogEntryShape` deliberately does not
   // constrain `envelope`, so a hand-written or truncated S6 line reaches the
   // renderer with the key missing entirely. `JSON.stringify(undefined)`
   // returns `undefined`, which `join` would coerce into a blank line
@@ -181,9 +181,9 @@ describe("renderEntry (U20)", () => {
       direction: "response",
       method: "steps/toolCallRequest",
       rpc_id: 1,
-    } as unknown as TapEntry;
+    } as unknown as EnvelopeLogEntry;
 
-    const lines = renderEntry(withoutEnvelope).split("\n");
+    const lines = renderEnvelopeLogEntry(withoutEnvelope).split("\n");
 
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe("── #3  12:04:31.221  ← RESPONSE  steps/toolCallRequest  id=1");

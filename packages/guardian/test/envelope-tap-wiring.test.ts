@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGuardian } from "../src/index.ts";
-import type { TapEntry } from "../src/envelope-tap.ts";
+import type { EnvelopeLogEntry } from "../src/envelope-tap.ts";
 
 function makeEnvelope(
   method: string,
@@ -33,14 +33,14 @@ function toolCallEnvelope(command: string, overrides: { id?: number } = {}) {
   );
 }
 
-function readEntries(path: string): TapEntry[] {
+function readEntries(path: string): EnvelopeLogEntry[] {
   if (!existsSync(path)) {
     return [];
   }
   return readFileSync(path, "utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line) as TapEntry);
+    .map((line) => JSON.parse(line) as EnvelopeLogEntry);
 }
 
 /** Non-recursive cleanup, as in envelope-tap.test.ts. */
@@ -75,8 +75,8 @@ async function postRaw(url: string, body: string): Promise<unknown> {
 
 const logIn = (dir: string) => join(dir, "envelopes.jsonl");
 
-describe("Guardian envelope tap wiring (N26 x N20)", () => {
-  it("taps one request and one response per exchange, paired by rpc_id", async () => {
+describe("Guardian envelope log wiring (N26 x N20)", () => {
+  it("records one request and one response per exchange, paired by rpc_id", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       await postRaw(url, JSON.stringify(toolCallEnvelope("rm -rf /", { id: 11 })));
 
@@ -92,7 +92,7 @@ describe("Guardian envelope tap wiring (N26 x N20)", () => {
     });
   });
 
-  it("taps handshake/hello in both directions", async () => {
+  it("records handshake/hello in both directions", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       await postRaw(url, JSON.stringify(makeEnvelope("handshake/hello", {}, { id: 42 })));
 
@@ -103,9 +103,9 @@ describe("Guardian envelope tap wiring (N26 x N20)", () => {
   });
 
   // Decision P5. The envelope that fails validation is the most useful
-  // thing an ACS-first reader can see; tapping after the validator is
+  // thing an ACS-first reader can see; recording it after the validator is
   // exactly what would hide it.
-  it("taps a schema-invalid request, then its JSON-RPC error response", async () => {
+  it("records a schema-invalid request, then its JSON-RPC error response", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       const bad = toolCallEnvelope("rm -rf /", { id: 12 });
       delete (bad.params as Record<string, unknown>).acs_version;
@@ -122,7 +122,7 @@ describe("Guardian envelope tap wiring (N26 x N20)", () => {
     });
   });
 
-  it("taps an unparseable body as a lone response with rpc_id null -- no request line to pair with", async () => {
+  it("records an unparseable body as a lone response with rpc_id null -- no request line to pair with", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       await postRaw(url, "{not json");
 
@@ -135,17 +135,17 @@ describe("Guardian envelope tap wiring (N26 x N20)", () => {
     });
   });
 
-  // Global constraint 8, end to end: the tap is on the decision path, so
-  // this is the test that says a broken tap cannot become a fail-open.
+  // Global constraint 8, end to end: the sink is on the decision path, so
+  // this is the test that says a broken sink cannot become a fail-open.
   //
-  // No `onError` is passed here, so this exercises the tap's *default*
+  // No `onError` is passed here, so this exercises the sink's *default*
   // reporter -- a single `console.error` line -- rather than the
   // onError-captured path envelope-tap.test.ts's "reports once, then goes
-  // quiet" test covers. Spied and silenced so a deliberately-broken tap
+  // quiet" test covers. Spied and silenced so a deliberately-broken sink
   // does not print real stderr into a clean `bun test` run, and asserted
   // on so "reports once" is checked at the call site instead of merely
   // claimed.
-  it("still denies rm -rf / when every tap write fails", async () => {
+  it("still denies rm -rf / when every envelope-log write fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-tap-broken-"));
     const blocker = join(dir, "blocker");
     writeFileSync(blocker, "");

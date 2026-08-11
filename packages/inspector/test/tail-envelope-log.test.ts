@@ -2,12 +2,12 @@ import { describe, expect, it, spyOn } from "bun:test";
 import { appendFileSync, mkdirSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { tailEnvelopeLog, type TapEntry } from "../src/tail-envelope-log.ts";
+import { tailEnvelopeLog, type EnvelopeLogEntry } from "../src/tail-envelope-log.ts";
 
 const POLL_MS = 10;
 
 function entryLine(seq: number, direction: "request" | "response"): string {
-  const entry: TapEntry = {
+  const entry: EnvelopeLogEntry = {
     seq,
     recorded_at: "2026-08-09T12:04:31.221Z",
     direction,
@@ -21,12 +21,12 @@ function entryLine(seq: number, direction: "request" | "response"): string {
 /** Collects `count` entries or rejects after `timeoutMs`, then aborts the
  * generator so the test cannot hang the suite. */
 async function collect(
-  iterable: AsyncGenerator<TapEntry, void, void>,
+  iterable: AsyncGenerator<EnvelopeLogEntry, void, void>,
   count: number,
   controller: AbortController,
   timeoutMs = 3000,
-): Promise<TapEntry[]> {
-  const out: TapEntry[] = [];
+): Promise<EnvelopeLogEntry[]> {
+  const out: EnvelopeLogEntry[] = [];
   const deadline = setTimeout(() => controller.abort(), timeoutMs);
   try {
     for await (const entry of iterable) {
@@ -129,7 +129,7 @@ describe("tailEnvelopeLog (N50)", () => {
       expect(entries.map((e) => e.seq)).toEqual([9]);
     });
 
-    async function collectOne(tail: AsyncGenerator<TapEntry, void, void>): Promise<TapEntry | undefined> {
+    async function collectOne(tail: AsyncGenerator<EnvelopeLogEntry, void, void>): Promise<EnvelopeLogEntry | undefined> {
       const { value } = await tail.next();
       return value ?? undefined;
     }
@@ -161,7 +161,7 @@ describe("tailEnvelopeLog (N50)", () => {
       const tail = tailEnvelopeLog({ path, fromStart: true, pollMs: POLL_MS, signal: controller.signal });
       controller.abort();
 
-      const entries: TapEntry[] = [];
+      const entries: EnvelopeLogEntry[] = [];
       for await (const entry of tail) {
         entries.push(entry);
       }
@@ -186,7 +186,7 @@ describe("tailEnvelopeLog (N50)", () => {
       expect(entries.map((e) => e.seq)).toEqual([9]);
     });
 
-    async function collectOne(tail: AsyncGenerator<TapEntry, void, void>): Promise<TapEntry | undefined> {
+    async function collectOne(tail: AsyncGenerator<EnvelopeLogEntry, void, void>): Promise<EnvelopeLogEntry | undefined> {
       const { value } = await tail.next();
       return value ?? undefined;
     }
@@ -247,7 +247,7 @@ describe("tailEnvelopeLog (N50)", () => {
   it("reassembles a line whose split lands mid-codepoint, without corrupting the multi-byte character", async () => {
     await withTempDir(async (_dir, path) => {
       const note = "🎉café";
-      const entry: TapEntry = {
+      const entry: EnvelopeLogEntry = {
         seq: 7,
         recorded_at: "2026-08-09T12:04:31.221Z",
         direction: "request",
@@ -464,14 +464,14 @@ describe("tailEnvelopeLog (N50)", () => {
     });
   });
 
-  // Backlog item K. `isTapEntryShape` deliberately never constrains
+  // Backlog item K. `isEnvelopeLogEntryShape` deliberately never constrains
   // `envelope` -- it is `unknown` by design (R5.1) -- so a line whose
   // `envelope` is absent, `null`, or a bare string is still a valid
-  // TapEntry as far as this function is concerned, and reaches the consumer
-  // rather than being reported through `onMalformedLine`. That is
-  // load-bearing: the Guardian must be able to tap anything that crossed
+  // EnvelopeLogEntry as far as this function is concerned, and reaches the
+  // consumer rather than being reported through `onMalformedLine`. That is
+  // load-bearing: the Guardian must be able to record anything that crossed
   // the wire, including a malformed body it never got a real envelope for
-  // (see server.ts's Parse-error path, which taps a response with no
+  // (see server.ts's Parse-error path, which records a response with no
   // paired request at all).
   it("accepts a line whose envelope is absent, null, or a bare string, without reporting it as malformed", async () => {
     await withTempDir(async (_dir, path) => {

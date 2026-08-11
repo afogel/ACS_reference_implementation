@@ -10,7 +10,7 @@
  * hardcoding the other's value.
  */
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";
-import { renderEntry } from "./render.ts";
+import { renderEnvelopeLogEntry } from "./render.ts";
 
 const DEFAULT_ENVELOPE_LOG = ".acs/envelopes.jsonl";
 
@@ -34,6 +34,6 @@ console.log(`Envelope Inspector — tailing ${path}${fromStart ? " (from the sta
 console.log("Ctrl-C to stop.\n");
 
 for await (const entry of tailEnvelopeLog({ path, fromStart, signal: controller.signal })) {
-  console.log(renderEntry(entry, { color }));
+  console.log(renderEnvelopeLogEntry(entry, { color }));
   console.log("");
 }

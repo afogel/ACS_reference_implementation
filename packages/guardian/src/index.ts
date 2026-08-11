@@ -11,11 +11,11 @@ export {
 export { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
 export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";
 export {
-  createEnvelopeTap,
+  createEnvelopeLogSink,
   extractRpcId,
-  NULL_TAP,
-  type CreateEnvelopeTapOptions,
-  type EnvelopeTap,
-  type TapDirection,
-  type TapEntry,
+  NULL_ENVELOPE_LOG_SINK,
+  type CreateEnvelopeLogSinkOptions,
+  type EnvelopeLogDirection,
+  type EnvelopeLogEntry,
+  type EnvelopeLogSink,
 } from "./envelope-tap.ts";

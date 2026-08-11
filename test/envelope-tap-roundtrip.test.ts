@@ -3,14 +3,15 @@ import { mkdtempSync, rmdirSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGuardian } from "../packages/guardian/src/index.ts";
-import { tailEnvelopeLog, type TapEntry } from "../packages/inspector/src/tail-envelope-log.ts";
+import { tailEnvelopeLog, type EnvelopeLogEntry } from "../packages/inspector/src/tail-envelope-log.ts";
 import { renderDecisionBadge } from "../packages/inspector/src/render.ts";
 
 /**
  * The contract test for S6. The Guardian writes the log; the Inspector
- * declares its own TapEntry and reads it back (global constraint 10). If
- * either side renames a field, adds a required one, or changes a type, this
- * is what fails -- nothing else would, because the two never share a type.
+ * declares its own EnvelopeLogEntry and reads it back (global constraint 10).
+ * If either side renames a field, adds a required one, or changes a type,
+ * this is what fails -- nothing else would, because the two never share a
+ * type.
  */
 function toolCallEnvelope(command: string, id: number): Record<string, unknown> {
   return {
@@ -28,11 +29,11 @@ function toolCallEnvelope(command: string, id: number): Record<string, unknown> 
 }
 
 async function take(
-  tail: AsyncGenerator<TapEntry, void, void>,
+  tail: AsyncGenerator<EnvelopeLogEntry, void, void>,
   count: number,
   controller: AbortController,
-): Promise<TapEntry[]> {
-  const out: TapEntry[] = [];
+): Promise<EnvelopeLogEntry[]> {
+  const out: EnvelopeLogEntry[] = [];
   const deadline = setTimeout(() => controller.abort(), 5000);
   try {
     for await (const entry of tail) {
@@ -48,7 +49,7 @@ async function take(
   return out;
 }
 
-describe("S6 round trip: Guardian tap (N26) -> Inspector tail (N50) -> badge (U21)", () => {
+describe("S6 round trip: Guardian envelope log sink (N26) -> Inspector tail (N50) -> badge (U21)", () => {
   it("a denied tool call arrives as a paired request/response the Inspector can render", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-roundtrip-"));
     const logPath = join(dir, "envelopes.jsonl");
@@ -69,8 +70,8 @@ describe("S6 round trip: Guardian tap (N26) -> Inspector tail (N50) -> badge (U2
       const tail = tailEnvelopeLog({ path: logPath, fromStart: true, pollMs: 10, signal: controller.signal });
       const [request, response] = await take(tail, 2, controller);
 
-      // Every field the Inspector's TapEntry declares must actually be
-      // present and correctly typed on what the Guardian wrote.
+      // Every field the Inspector's EnvelopeLogEntry declares must actually
+      // be present and correctly typed on what the Guardian wrote.
       expect(request?.seq).toBe(1);
       expect(response?.seq).toBe(2);
       expect(typeof request?.recorded_at).toBe("string");
@@ -83,7 +84,7 @@ describe("S6 round trip: Guardian tap (N26) -> Inspector tail (N50) -> badge (U2
       expect(response?.rpc_id).toBe(77);
 
       // ...and the badge reads a real AGT-backed decision off it.
-      expect(renderDecisionBadge(response as TapEntry)).toContain("DENY");
+      expect(renderDecisionBadge(response as EnvelopeLogEntry)).toContain("DENY");
     } finally {
       controller.abort();
       await guardian.close();

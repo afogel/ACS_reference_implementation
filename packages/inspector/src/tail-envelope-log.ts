@@ -6,10 +6,19 @@
  * its dependencies (global constraint 10). The Inspector reads a file that
  * the Guardian happens to write; it holds no compile-time knowledge of the
  * process that produced it, which is the point of R5.1 -- envelopes are
- * inspectable *on the wire*, not through our own type graph. TapEntry is
- * therefore re-declared here rather than imported. The round-trip test at
+ * inspectable *on the wire*, not through our own type graph. EnvelopeLogEntry
+ * is therefore re-declared here rather than imported. The round-trip test at
  * test/envelope-tap-roundtrip.test.ts is what keeps the two declarations in
  * agreement; if they drift, it fails.
+ *
+ * The names are the artifact's, not the writer's (PR #11 review). This
+ * package's public surface used to carry `TapEntry` / `TapDirection` --
+ * the Guardian's nickname for its own writing mechanism, on a module whose
+ * whole job is reading -- and a bare `TailOptions` that named no log at all.
+ * A later slice gives this package a second stream to follow, and the two
+ * only read as siblings if each names its own log: `EnvelopeLogEntry` beside
+ * that stream's entry type, `TailEnvelopeLogOptions` beside its options type,
+ * the way `tailEnvelopeLog` and its twin verb already do.
  *
  * Polling rather than fs.watch: appends to a growing file are exactly the
  * case where watch semantics differ most across platforms, and a 120ms poll
@@ -54,19 +63,19 @@
  */
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
-export type TapDirection = "request" | "response";
+export type EnvelopeLogDirection = "request" | "response";
 
-/** One line of S6, as written by the Guardian's envelope tap. */
-export type TapEntry = {
+/** One line of S6, as written by the Guardian's envelope log sink. */
+export type EnvelopeLogEntry = {
   seq: number;
   recorded_at: string;
-  direction: TapDirection;
+  direction: EnvelopeLogDirection;
   method: string | null;
   rpc_id: string | number | null;
   envelope: unknown;
 };
 
-export type TailOptions = {
+export type TailEnvelopeLogOptions = {
   path: string;
   /** Replay everything already in the file before following. Default false:
    * start at the current end, like `tail -f`. */
@@ -83,9 +92,9 @@ const NEWLINE = 0x0a;
 
 /**
  * S6 is a plain file on disk; anything can write a line to it that is valid
- * JSON but not a valid TapEntry (a number where recorded_at should be a
- * string, a missing direction, ...). `renderEntry`'s `clockOf` calls
- * `.slice` on `recorded_at` unconditionally, so an unchecked cast here would
+ * JSON but not a valid EnvelopeLogEntry (a number where recorded_at should be
+ * a string, a missing direction, ...). `renderEnvelopeLogEntry`'s `clockOf`
+ * calls `.slice` on `recorded_at` unconditionally, so an unchecked cast would
  * let such a line reach the renderer and throw -- inside a `for await` loop,
  * that kills the whole stream. Checked here instead, right after
  * `JSON.parse`, using exactly the fields the renderer depends on.
@@ -93,7 +102,7 @@ const NEWLINE = 0x0a;
  * (R5.1 -- see the module doc above), not a shape this function's job to
  * police.
  */
-function isTapEntryShape(value: unknown): value is TapEntry {
+function isEnvelopeLogEntryShape(value: unknown): value is EnvelopeLogEntry {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -113,7 +122,7 @@ export function tailEnvelopeLog({
   pollMs = 120,
   signal,
   onMalformedLine = warnMalformedLine,
-}: TailOptions): AsyncGenerator<TapEntry, void, void> {
+}: TailEnvelopeLogOptions): AsyncGenerator<EnvelopeLogEntry, void, void> {
   let offset = fromStart ? 0 : sizeOf(path);
   // Bytes, not a string: a poll can land mid-line and, worse, mid-codepoint.
   // Decoding only complete lines keeps multi-byte UTF-8 intact.
@@ -122,7 +131,7 @@ export function tailEnvelopeLog({
   // Entries the timer has parsed but nobody has consumed yet, and the
   // wake-up the drain loop below is currently parked on while that queue is
   // empty. The timer and the generator only communicate through these two.
-  const ready: TapEntry[] = [];
+  const ready: EnvelopeLogEntry[] = [];
   let wake: (() => void) | undefined;
   let stopped = false;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -157,8 +166,8 @@ export function tailEnvelopeLog({
             }
             try {
               const parsed: unknown = JSON.parse(line);
-              if (!isTapEntryShape(parsed)) {
-                throw new Error("line parsed as JSON but does not match the TapEntry shape");
+              if (!isEnvelopeLogEntryShape(parsed)) {
+                throw new Error("line parsed as JSON but does not match the EnvelopeLogEntry shape");
               }
               ready.push(parsed);
               added = true;
@@ -221,7 +230,7 @@ export function tailEnvelopeLog({
 
   return drain();
 
-  async function* drain(): AsyncGenerator<TapEntry, void, void> {
+  async function* drain(): AsyncGenerator<EnvelopeLogEntry, void, void> {
     // Starting the timer here, not above, means a tail nobody ever iterates
     // (and nobody ever aborts) never ticks at all.
     if (!stopped) {

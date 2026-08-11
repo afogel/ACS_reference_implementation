@@ -7,7 +7,7 @@
  * reads ACS's own `decision`, `reason_codes`, and `policy_references`
  * fields and nothing else (global constraint 9).
  */
-import type { TapEntry } from "./tail-envelope-log.ts";
+import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
 
 export type RenderOptions = { color?: boolean; indent?: number };
 
@@ -56,7 +56,7 @@ function referenceList(value: unknown): string[] {
 
 /** U21. Null when this entry carries no decision and no error: a request, or
  * a response such as a ServerHello. */
-export function renderDecisionBadge(entry: TapEntry, options: RenderOptions = {}): string | null {
+export function renderDecisionBadge(entry: EnvelopeLogEntry, options: RenderOptions = {}): string | null {
   if (entry.direction !== "response") {
     return null;
   }
@@ -121,7 +121,7 @@ export function renderDecisionBadge(entry: TapEntry, options: RenderOptions = {}
  * pretty-printing below and the round-trip contract test; an accurate
  * sentence is the better trade.
  */
-export function renderEntry(entry: TapEntry, options: RenderOptions = {}): string {
+export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;
   const arrow = entry.direction === "request" ? "→ REQUEST " : "← RESPONSE";
   const method = entry.method ?? "(no method)";
@@ -131,9 +131,9 @@ export function renderEntry(entry: TapEntry, options: RenderOptions = {}): strin
   const badge = renderDecisionBadge(entry, options);
   // `JSON.stringify` returns `undefined` -- not a string -- for an entry
   // whose `envelope` key is absent, and `join` would coerce that to an empty
-  // line indistinguishable from a real blank body. `isTapEntryShape` does
-  // not require `envelope` (it is `unknown` by design), so a hand-written or
-  // truncated S6 line reaches here without one. Narrowed the way the badge
+  // line indistinguishable from a real blank body. `isEnvelopeLogEntryShape`
+  // does not require `envelope` (it is `unknown` by design), so a hand-written
+  // or truncated S6 line reaches here without one. Narrowed the way the badge
   // path above narrows (whole-branch review, finding 8).
   const body = JSON.stringify(entry.envelope, null, options.indent ?? 2) ?? "(no envelope recorded)";
 

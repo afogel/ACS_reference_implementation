@@ -58,7 +58,7 @@ import {
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
-import { createEnvelopeTap, NULL_TAP, type EnvelopeTap } from "./envelope-tap.ts";
+import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-tap.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
@@ -103,9 +103,9 @@ const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g,
 /**
  * Both catches in this module (the outer net in handleAcsRequest and the
  * evaluation-failure catch in dispatch) surface a real error to the ACS
- * client and, via the tap, into S6 -- and a real error's message (an ENOENT
- * out of a missing schema directory, say) carries this machine's absolute
- * filesystem path, e.g.
+ * client and, via the envelope log, into S6 -- and a real error's message
+ * (an ENOENT out of a missing schema directory, say) carries this machine's
+ * absolute filesystem path, e.g.
  * `/Users/you/.../ACS_reference_implementation/packages/spec/acs/...`.
  * That is diagnostic in a way this demo's value depends on, so the fix is
  * not to replace it with something generic -- it is to remove only the
@@ -205,8 +205,8 @@ export type StartGuardianOptions = {
    * handleAcsRequest against a real bridge, without touching the mapping
    * every other consumer reads. Not meant for production use. */
   mappingPath?: string;
-  /** Path to S6, the JSONL envelope log (N26). Omitted means no tap: every
-   * V1 test constructs Guardians freely and a default-on tap would scatter
+  /** Path to S6, the JSONL envelope log (N26). Omitted means no sink: every
+   * V1 test constructs Guardians freely and a default-on sink would scatter
    * files through the working tree. `packages/guardian/src/main.ts` -- the
    * demo path -- passes it. See the plan's decision P3. */
   envelopeLogPath?: string;
@@ -223,7 +223,7 @@ export async function startGuardian({
   // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
-  const tap = envelopeLogPath ? createEnvelopeTap({ path: envelopeLogPath }) : NULL_TAP;
+  const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
 
   const server = Bun.serve({
     hostname: hostname ?? LOOPBACK_ONLY,
@@ -233,7 +233,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping, tap);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog);
       return Response.json(response);
     },
   });
@@ -247,20 +247,21 @@ export async function startGuardian({
 }
 
 /**
- * Three phases, in order: parse, tap the request, dispatch, tap the
- * response. The tap calls live here and only here -- `dispatch` below leaves
- * by six routes (five `return`s and one rethrow) and V3's N27 adds a
- * seventh, so tapping inside it would make totality something a future task
- * has to remember rather than something the structure guarantees.
+ * Three phases, in order: parse, record the request, dispatch, record the
+ * response. The envelope-log writes live here and only here -- `dispatch`
+ * below leaves by six routes (five `return`s and one rethrow) and V3's N27
+ * adds a seventh, so writing S6 inside it would make totality something a
+ * future task has to remember rather than something the structure
+ * guarantees.
  *
  * That guarantee is only as good as its coverage of the throwing route, and
  * the whole-branch review's finding 1 found it uncovered: `dispatch`'s
  * rethrow used to leave this function without a response at all, so the
  * client got a Bun.serve HTML 500 that S6 never recorded. The try/catch
  * below closes it -- every route out of `dispatch` now produces a response
- * object, and every response object gets tapped.
+ * object, and every response object reaches the envelope log.
  *
- * The tap itself is total (see envelope-tap.ts): these two calls cannot
+ * The sink itself is total (see envelope-tap.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
  */
 async function handleAcsRequest(
@@ -270,24 +271,24 @@ async function handleAcsRequest(
   // factory happens to return.
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
-  tap: EnvelopeTap,
+  envelopeLog: EnvelopeLogSink,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
-    // Nothing parseable arrived, so there is no request envelope to tap --
-    // the response is deliberately recorded unpaired, which is what the
+    // Nothing parseable arrived, so there is no request envelope to record
+    // -- the response is deliberately recorded unpaired, which is what the
     // Inspector renders when a host sends a malformed body.
     const parseError = errorResponse(null, -32700, "Parse error");
-    tap.write("response", parseError, null);
+    envelopeLog.write("response", parseError, null);
     return parseError;
   }
 
   // Decision P5: before validation, so an envelope that fails the schema is
   // visible to the Inspector rather than invisible.
   const method = extractMethod(raw);
-  tap.write("request", raw, method);
+  envelopeLog.write("request", raw, method);
 
   let response: JsonRpcSuccess | JsonRpcFailure;
   try {
@@ -300,7 +301,7 @@ async function handleAcsRequest(
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
-  tap.write("response", response, method);
+  envelopeLog.write("response", response, method);
   return response;
 }
 
@@ -395,8 +396,8 @@ function extractId(raw: unknown): string | number | null {
   return null;
 }
 
-/** Best-effort method name for tap labelling only. Never used to dispatch --
- * `dispatch` reads the schema-validated envelope's own `method`. */
+/** Best-effort method name for envelope-log labelling only. Never used to
+ * dispatch -- `dispatch` reads the schema-validated envelope's own `method`. */
 function extractMethod(raw: unknown): string | null {
   if (typeof raw === "object" && raw !== null && "method" in raw) {
     const method = raw.method;

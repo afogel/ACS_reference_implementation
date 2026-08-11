@@ -394,8 +394,8 @@ export function isToolCallRequest(envelope) {
  * real, unmodified copy of every other file in \`packages/guardian/src\`,
  * dynamically imported from its own scratch directory so it is a distinct
  * module instance, with only \`validate-envelope.ts\` swapped for the
- * double. No \`envelopeLogPath\` -- these tests need no tap, and
- * \`NULL_TAP\`'s totality is already covered elsewhere.
+ * double. No \`envelopeLogPath\` -- these tests need no envelope log, and
+ * \`NULL_ENVELOPE_LOG_SINK\`'s totality is already covered elsewhere.
  *
  * \`root\` is the caller's -- one of the two scratch-dir constants above,
  * never shared between two different \`fakeSource\`s (see their doc comment
@@ -447,7 +447,7 @@ async function withFakeValidateEnvelopeGuardian(
 }
 
 // Whole-branch review, finding 1 -- the fourth fail-open of V1's shape, and
-// the exit the tap's structural-totality claim did not cover. `dispatch`
+// the exit the sink's structural-totality claim did not cover. `dispatch`
 // rethrows any non-EnvelopeValidationError, and nothing used to catch it:
 // Bun.serve answers a rejecting fetch() handler with a `text/html` 500,
 // guardian-client's unconditional `res.json()` throws `JSON Parse error:
@@ -515,7 +515,7 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  it("taps both the request and the response, so S6 has no untapped exit", async () => {
+  it("records both the request and the response, so S6 has no unrecorded exit", async () => {
     await withSchemalessGuardian(async ({ url, logPath }) => {
       await postAcs(url, toolCallEnvelope("ls -la", { id: 11 }));
 
@@ -537,7 +537,7 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
   // and unlike the inner catch's own throw (contained by this outer catch),
   // a throw *from* the outer catch has nothing above `handleAcsRequest` to
   // catch it: Bun.serve's fetch handler has no try, so it answers with the
-  // untapped HTML 500 the module header exists to prevent. Fails against
+  // unrecorded HTML 500 the module header exists to prevent. Fails against
   // the pre-fix helper (confirmed by hand before implementing the fix: the
   // fetch below resolves to an HTML error page, and `res.json()` -- exactly
   // guardianClient.post's call -- throws a SyntaxError instead of returning
