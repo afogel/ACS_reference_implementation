@@ -168,7 +168,9 @@ function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): 
   if (!transform || typeof transform !== "object") {
     throw new Error(
       `mapping.yaml maps this verdict to ACS "modify", which requires modifications, ` +
-        `but the verdict carries no ${rule.from}`,
+        // `rule.from` is a fully-qualified path ("verdict.transform"), so the
+        // sentence has to read around it rather than append it to "carries no".
+        `but ${rule.from} is absent`,
     );
   }
   if (transform.path !== rule.when_path) {

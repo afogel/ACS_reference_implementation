@@ -202,8 +202,11 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications (
   it("leaves every other verdict's shape untouched", () => {
     expect(mapVerdict({ decision: "allow" }, m).modifications).toBeUndefined();
     expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m).modifications).toBeUndefined();
-    expect(mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m).decision)
-      .toBe("ask");
+    // `escalate -> ask` is asserted above, in the test whose subject that is;
+    // this line is about the same thing as its two neighbours -- that only a
+    // `modify` grows a `modifications` object.
+    expect(mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m).modifications)
+      .toBeUndefined();
   });
 
   // Fix round 2 -- round 1's finding was that `into` was declared, typed,

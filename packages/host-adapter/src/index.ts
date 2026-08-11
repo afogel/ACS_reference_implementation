@@ -50,6 +50,12 @@ export {
   createAuditSink,
   NULL_AUDIT_SINK,
   type AuditEntry,
+  // `AuditSink.write()` takes one of these, so a caller that builds an event
+  // to hand to a sink could not name its type through this barrel. Coherent
+  // under structural typing, which is why it went unnoticed -- but the barrel
+  // is documented as "the whole contract a shim relies on", and a parameter
+  // type of an exported method belongs in it.
+  type AuditEvent,
   type AuditSink,
   type CreateAuditSinkOptions,
 } from "./audit-sink.ts";

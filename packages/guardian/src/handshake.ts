@@ -54,6 +54,14 @@ type Posture = (typeof POSTURES)[number];
  * exists to remove: the deployment asked for something, and guessing which
  * posture it meant is not available to us.
  */
+// The parameter type is deliberately WIDER than handshakeResponder's own
+// (`{ ACS_ON_DECISION_FAILURE?: string }`), and the asymmetry is forced
+// rather than accidental: the zero-argument call site passes `process.env`,
+// whose index signature is `Record<string, string | undefined>` and which
+// does not satisfy the narrower shape. Widening the public parameter to
+// match would let any environment-like bag in where the intent is "the one
+// variable this reads"; narrowing this one would need a cast at the only
+// call site that matters. This is the cheaper of the two.
 function readPosture(env: Record<string, string | undefined>): Posture {
   const raw = env.ACS_ON_DECISION_FAILURE;
   if (raw === undefined) {
