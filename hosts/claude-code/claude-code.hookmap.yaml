@@ -170,6 +170,17 @@ hooks:
       # `applied_input` rather than `modifications`: what Claude Code accepts
       # here is the tool's own output shape, not ACS's modifications object, and
       # a replacement it declines means the ORIGINAL output is delivered.
+      #
+      # And it says why, which is the exact asymmetry V3 closed for PreToolUse's
+      # `modify` -- on the grounds that a rewrite is the only decision that
+      # changes what runs without the transcript saying anything. It is worse
+      # here: what the model reads IS the redacted output, so without a reason
+      # field the model is handed altered text with nothing to say it was
+      # altered, and may take `[REDACTED]` for the command's real answer.
+      # `additionalContext` is this event's field for it and the `allow` entry
+      # above already uses it, so the reason travels the same way at both
+      # dispositions of this gate.
       modify:
         output:
           hookSpecificOutput.updatedToolOutput: { from: applied_output }
+          hookSpecificOutput.additionalContext: { from: reasoning, type: string }

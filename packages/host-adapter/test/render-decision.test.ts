@@ -311,7 +311,13 @@ describe("renderDecision against the shipped hookmap, per hook", () => {
     expect(renderDecision("PreToolUse", result as never, real)).toEqual({ hookSpecificOutput: expected });
   });
 
-  it("renders a PostToolUse modify as updatedToolOutput, with no permissionDecision", () => {
+  // The reason field is the second half, and the asymmetry it closes is the one
+  // V3 closed for PreToolUse's `modify`: a rewrite is the only decision that
+  // changes what runs while the transcript says nothing. It is worse at this
+  // gate, because what the model reads IS the rewritten text -- without a reason
+  // the model is handed altered output with nothing saying it was altered, and
+  // may take `[REDACTED]` for the command's own answer.
+  it("renders a PostToolUse modify as updatedToolOutput AND the reason for it, with no permissionDecision", () => {
     const output = renderDecision(
       "PostToolUse",
       { decision: "modify", reasoning: "redacted", applied_output: { stdout: "TOKEN=[REDACTED]", stderr: "" } } as never,
@@ -319,7 +325,10 @@ describe("renderDecision against the shipped hookmap, per hook", () => {
     );
 
     expect(output).toEqual({
-      hookSpecificOutput: { updatedToolOutput: { stdout: "TOKEN=[REDACTED]", stderr: "" } },
+      hookSpecificOutput: {
+        updatedToolOutput: { stdout: "TOKEN=[REDACTED]", stderr: "" },
+        additionalContext: "redacted",
+      },
     });
   });
 

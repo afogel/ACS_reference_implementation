@@ -200,6 +200,15 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     // `permissionDecision` leaking in from the request gate's rule, or a stray
     // `decision: block` beside the wrapper, are both changes a
     // replacement-only assertion would not see.
+    //
+    // NO `additionalContext` HERE, and it is the hookmap that is right rather
+    // than this literal. The `modify` entry declares one (`from: reasoning`), and
+    // the field is conditional; the pinned bundle's own redaction verdict comes
+    // back carrying `reason_codes` and `policy_references` and NO `reasoning`
+    // string, so there is nothing for it to carry. The mechanism is pinned in
+    // render-decision.test.ts and, end to end, by the test below -- so this
+    // literal records what this deployment actually produces today: a redaction
+    // the model reads with nothing in the transcript explaining it.
     expect(JSON.parse(out.stdout)).toEqual({
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
@@ -216,6 +225,45 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     // The redaction is only real if the original does not survive anywhere in
     // what the host is told to deliver -- including in a field nothing above
     // names.
+    expect(out.stdout).not.toContain("ghp_ABCDEF123456");
+  });
+
+  // The reason a redaction gives for itself, end to end through the real shim.
+  // V3 closed exactly this asymmetry for `PreToolUse`'s `modify`, on the grounds
+  // that a rewrite is the only decision that changes what runs while the
+  // transcript says nothing -- and at this gate the stakes are higher, because
+  // what the model reads IS the rewritten text. Without a reason it is handed
+  // altered output with nothing saying it was altered, and `[REDACTED]` reads as
+  // the command's own answer.
+  //
+  // A stub Guardian, because the pinned bundle's redaction verdict carries no
+  // `reasoning` for the conditional field to render (see the first test): the
+  // hookmap entry is what is under test here, not what this bundle happens to
+  // send.
+  it("says why it redacted, in the field this event reads a reason from", async () => {
+    const out = await answering(
+      {
+        decision: "modify",
+        reasoning: "token pattern matched in tool output",
+        modifications: { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }] },
+      },
+      (url) => runHook(postToolUsePayload("TOKEN=ghp_ABCDEF123456"), url),
+    );
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    expect(JSON.parse(out.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: {
+          stdout: "TOKEN=[REDACTED]",
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+          noOutputExpected: false,
+        },
+        additionalContext: "token pattern matched in tool output",
+      },
+    });
     expect(out.stdout).not.toContain("ghp_ABCDEF123456");
   });
 
