@@ -32,6 +32,20 @@ import { startGuardian, type StartedGuardian } from "guardian";
  *
  * The shape below is `Bash`'s real one, captured from a live 2.1.227 payload:
  * `{stdout, stderr, interrupted, isImage, noOutputExpected}`.
+ *
+ * MEASURED, not assumed. The mutation that isolates these three tests: make
+ * `result-output.ts`'s `patchedClone` build a fresh object (`{}`) instead of
+ * spreading the container it was handed -- i.e. construct a new output object
+ * rather than patch a clone, which is the one thing that module forbids. The
+ * suite goes 465 pass / 4 fail, and `updatedToolOutput` comes back as
+ * `{"stdout": "TOKEN=[REDACTED]"}` with all four siblings gone: the exact shape
+ * Claude Code discards, so the model would receive the real token. Three of the
+ * four failures are here; the fourth is validate-decision.test.ts's projection
+ * test, which asserts the same whole object one seam earlier. Nothing else in
+ * 470 tests notices -- including the per-hook render literals in
+ * packages/host-adapter/test/render-decision.test.ts, which assert hand-written
+ * `applied_output` fixtures and so cannot tell a projection from a
+ * construction.
  */
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 
