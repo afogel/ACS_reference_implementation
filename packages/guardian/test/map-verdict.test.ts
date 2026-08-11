@@ -5,13 +5,14 @@ const m = loadMapping("mapping.yaml");
 
 describe("mapVerdict", () => {
   it("maps allow to allow", () => {
-    expect(mapVerdict({ decision: "allow" }, m).decision).toBe("allow");
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").decision).toBe("allow");
   });
 
   it("maps deny, carrying reason and message into ACS fields", () => {
     const d = mapVerdict(
       { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X" },
       m,
+      "pre_tool_call",
     );
     expect(d.decision).toBe("deny");
     expect(d.reasoning).toBe("matched pattern X");
@@ -21,22 +22,28 @@ describe("mapVerdict", () => {
 
   // The whole warn round trip rests on this.
   it("maps warn to allow WITH non-empty policy_references", () => {
-    const d = mapVerdict({ decision: "warn", reason: "drift_detected", message: "drift 0.8" }, m);
+    const d = mapVerdict(
+      { decision: "warn", reason: "drift_detected", message: "drift 0.8" },
+      m,
+      "pre_tool_call",
+    );
     expect(d.decision).toBe("allow");
     expect(d.policy_references?.length).toBeGreaterThan(0);
     expect(d.policy_references?.[0]?.rule_id).toBe("drift_detected");
   });
 
   it("distinguishes warn-allow from clean allow by policy_references", () => {
-    expect(mapVerdict({ decision: "allow" }, m).policy_references ?? []).toHaveLength(0);
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").policy_references ?? []).toHaveLength(0);
   });
 
   it("maps escalate to ask and transform to modify", () => {
-    expect(mapVerdict({ decision: "escalate", reason: "approval_required" }, m).decision).toBe("ask");
+    expect(mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call").decision)
+      .toBe("ask");
     expect(
       mapVerdict(
         { decision: "transform", reason: "redacted", transform: { path: "$policy_target", value: "x" } },
         m,
+        "pre_tool_call",
       ).decision,
     ).toBe("modify");
   });
@@ -50,18 +57,19 @@ describe("mapVerdict", () => {
         dec === "transform"
           ? { decision: dec, reason: "r", transform: { path: "$policy_target", value: "x" } }
           : { decision: dec, reason: "r" };
-      const out = mapVerdict(verdict, m).decision;
+      const out = mapVerdict(verdict, m, "pre_tool_call").decision;
       expect(out.toLowerCase()).toBe(out);
     }
   });
 
-  // This throw path (require_policy_references marked true, but no
-  // policy_references could be synthesized) is real: a "warn" verdict with
-  // no `reason` hits it directly, and it's exactly what the Guardian's
-  // evaluation-failure catch (server.test.ts) has to survive without turning
-  // it into an HTML 500 or a silent decision.
-  it("throws when require_policy_references is set but verdict.reason is empty", () => {
-    expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
+  // Fix wave finding 1 -- previously-deferred coverage gap: this throw path
+  // (require_policy_references marked true, but no policy_references could
+  // be synthesized) had no test. It's real: a "warn" verdict with no
+  // `reason` hits it directly, and it's exactly what the Guardian's
+  // evaluation-failure catch (server.test.ts) now has to survive without
+  // turning it into an HTML 500 or a silent decision.
+  it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
+    expect(() => mapVerdict({ decision: "warn" }, m, "pre_tool_call")).toThrow(/require_policy_references/);
   });
 
   // Confirms mapVerdict reads `field_synthesis.reason_codes.wrap` from the
@@ -164,6 +172,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
         transform: { path: "$policy_target", value: "echo [REDACTED]" },
       },
       m,
+      "pre_tool_call",
     );
     expect(decision.decision).toBe("modify");
     expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
@@ -173,6 +182,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
     const decision = mapVerdict(
       { decision: "transform", reason: "redaction_applied", transform: { path: "$policy_target", value: "x" } },
       m,
+      "pre_tool_call",
     );
     expect(decision.reason_codes).toEqual(["redaction_applied"]);
     expect(decision.policy_references).toEqual([{ policy_id: "agt_stock", rule_id: "redaction_applied" }]);
@@ -181,7 +191,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
   // A MODIFY with no modifications is invalid per §6, and silently emitting
   // one would make the host apply nothing while reporting a rewrite. Fail loudly.
   it("throws when a transform verdict carries no transform object", () => {
-    expect(() => mapVerdict({ decision: "transform", reason: "redaction_applied" }, m)).toThrow(
+    expect(() => mapVerdict({ decision: "transform", reason: "redaction_applied" }, m, "pre_tool_call")).toThrow(
       /transform/,
     );
   });
@@ -191,38 +201,133 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
       mapVerdict(
         { decision: "transform", reason: "x", transform: { path: "$.some.other.leaf", value: "y" } },
         m,
+        "pre_tool_call",
       ),
     ).toThrow(/\$policy_target/);
   });
 
   it("leaves every other verdict's shape untouched", () => {
-    expect(mapVerdict({ decision: "allow" }, m).modifications).toBeUndefined();
-    expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m).modifications).toBeUndefined();
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").modifications).toBeUndefined();
+    expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m, "pre_tool_call").modifications)
+      .toBeUndefined();
     // `escalate -> ask` is asserted above, in the test whose subject that is;
     // this line is about the same thing as its two neighbours -- that only a
     // `modify` grows a `modifications` object.
-    expect(mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m).modifications)
-      .toBeUndefined();
+    expect(
+      mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m, "pre_tool_call")
+        .modifications,
+    ).toBeUndefined();
   });
 
-  // Simulates a mapping.yaml edit that declares an `into` this mapping
-  // cannot express -- something loadMapping's unchecked `as Mapping` would
-  // let through unnoticed. The cast here stands in for that malformed YAML,
-  // proving the runtime rejects it loudly instead of silently misbuilding or
-  // disagreeing with the declaration.
+  // Fix round 2 -- round 1's finding was that `into` was declared, typed,
+  // and read by nobody. Widening `into` to test that directly let a value
+  // the code can't honour type-check and get built, which needed an
+  // `as AcsModifications` cast to compile -- a bad trade. `into` is instead a
+  // closed union of the shapes this mapping can build (two of them as of V4,
+  // one per gate), each widened by adding a CHECKED value and never a cast,
+  // and this test simulates what that cast was covering for: a mapping.yaml
+  // edit that loadMapping's unchecked `as Mapping` would let through
+  // unnoticed. The cast belongs here now -- the test is deliberately standing
+  // in for malformed YAML -- and proves the runtime rejects it loudly instead
+  // of silently misbuilding or disagreeing with the declaration.
+  //
+  // `modified_content` is the §6.3 shape this deployment does not build: it is
+  // a legal ACS modification and an illegal one HERE, which is exactly the
+  // gap between "the spec permits it" and "this mapping can express it" that
+  // the check exists to keep loud.
   it("throws when mapping.yaml declares an into this mapping cannot express", () => {
     const withUnsupportedInto = {
       ...m,
-      field_synthesis: {
-        ...m.field_synthesis,
-        modifications: { ...m.field_synthesis.modifications, into: "redactions" },
+      intervention_points: {
+        ...m.intervention_points,
+        pre_tool_call: {
+          ...m.intervention_points.pre_tool_call,
+          modifications: { ...m.intervention_points.pre_tool_call?.modifications, into: "modified_content" },
+        },
       },
     } as unknown as Mapping;
     expect(() =>
       mapVerdict(
         { decision: "transform", reason: "x", transform: { path: "$policy_target", value: "y" } },
         withUnsupportedInto,
+        "pre_tool_call",
       ),
-    ).toThrow(/redactions/);
+    ).toThrow(/modified_content/);
+  });
+});
+
+// V4 (slice #5). The same AGT transform has to land in a DIFFERENT ACS
+// modification depending on which gate asked: the request gate rewrites a tool
+// argument (parameter_overrides, keyed by argument name) and the result gate
+// rewrites the result payload's own leaf (a redaction, keyed by JSON pointer).
+// So the synthesis moved out of `field_synthesis` and under each intervention
+// point in mapping.yaml -- the same table resolveInterventionPoint already
+// reads -- and mapVerdict takes the point that decides which.
+describe("mapVerdict — the modifications synthesis is per intervention point (V4)", () => {
+  const transformVerdict = {
+    decision: "transform",
+    reason: "redaction_applied",
+    transform: { path: "$policy_target", value: "TOKEN=[REDACTED]" },
+  } as const;
+
+  it("maps a post-tool transform to a redaction on the output path", () => {
+    const decision = mapVerdict(transformVerdict, m, "post_tool_call");
+    expect(decision.decision).toBe("modify");
+    expect(decision.modifications).toEqual({
+      redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
+    });
+  });
+
+  it("still maps a pre-tool transform to parameter_overrides", () => {
+    const decision = mapVerdict(
+      { decision: "transform", reason: "redaction_applied", transform: { path: "$policy_target", value: "echo [REDACTED]" } },
+      m,
+      "pre_tool_call",
+    );
+    expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
+  });
+
+  // §6.3's oneOf: the two shapes never combine. A synthesis producing both
+  // would be rejected by the Guardian's own response validation.
+  it("never emits both shapes at once", () => {
+    for (const point of ["pre_tool_call", "post_tool_call"]) {
+      const mods = mapVerdict(transformVerdict, m, point).modifications as Record<string, unknown>;
+      expect(["redactions", "parameter_overrides"].filter((k) => k in mods)).toHaveLength(1);
+      expect("modified_content" in mods).toBe(false);
+    }
+  });
+
+  // mapping.yaml declares six methods with intervention points and gives two
+  // of them a synthesis rule. A `transform` arriving at any of the others is a
+  // verdict this mapping cannot express, and it THROWS -- the Guardian's
+  // evaluation catch then turns that into an honoured `deny` (§6.4, R1.5, the
+  // evaluation-failure domain).
+  //
+  // What it must never do is answer with a `modify` carrying no modifications:
+  // §6 requires a MODIFY to carry them, and a MODIFY the host cannot apply is
+  // a rewrite reported as applied while the original is delivered -- the
+  // fail-open class this project has closed eleven times.
+  it("throws for a transform at a point with no modifications rule, rather than an empty modify", () => {
+    // The four mapped points with no synthesis rule, plus a point no row names
+    // at all: a missing row and a row missing its rule are the same gap.
+    for (const point of ["input", "output", "agent_startup", "agent_shutdown", "pre_model_call", "no_such_point"]) {
+      expect(() => mapVerdict(transformVerdict, m, point)).toThrow(/no modifications rule/);
+    }
+  });
+
+  // A redaction's `replacement` is a string in modifications.json, so a
+  // transform value that is not one is a rewrite this mapping cannot express
+  // as a redaction. Throwing beats coercing: `String(value)` would put a
+  // replacement nobody chose into the delivered output, and the whole point of
+  // moving AGT's already-substituted text is that the Guardian never invents
+  // the replacement.
+  it("throws when the transform value could not be a redaction replacement", () => {
+    expect(() =>
+      mapVerdict(
+        { decision: "transform", reason: "x", transform: { path: "$policy_target", value: { some: "object" } } },
+        m,
+        "post_tool_call",
+      ),
+    ).toThrow(/replacement/);
   });
 });

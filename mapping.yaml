@@ -6,10 +6,10 @@
 #   2. The conformance harness (V7), which publishes a machine-checked
 #      ACS↔AGT mapping table from this same file.
 #
-# Any change to the verdict/field_synthesis tables below is a behavior
-# change for both consumers. mapVerdict must implement exactly this table —
-# no verdict names, decisions, or field derivations hardcoded in code that
-# aren't declared here.
+# Any change to the intervention_points / verdict / field_synthesis tables
+# below is a behavior change for both consumers. mapVerdict must implement
+# exactly this table — no verdict names, decisions, field derivations or
+# output keys hardcoded in code that aren't declared here.
 
 acs_version: "0.1.0"
 agt_version: "0.3.1-beta"
@@ -27,9 +27,49 @@ agt_version: "0.3.1-beta"
 #
 # One method must map to at most one point: two rows naming the same
 # acs_method is a throw, not a first-match win.
+#
+# `modifications` is per-point (V4, slice #5) because it is the one part of the
+# synthesis that depends on WHICH payload is being edited: the request gate
+# rewrites a tool argument, the result gate rewrites the result payload's own
+# leaf, and the two are different ACS modification shapes for the same AGT
+# transform. Everything else a verdict becomes is point-independent and stays
+# in field_synthesis below. A point with no `modifications` rule cannot express
+# a transform at all, and mapVerdict throws for one rather than answering with
+# a MODIFY the host has nothing to apply.
 intervention_points:
-  pre_tool_call: { acs_method: "steps/toolCallRequest" }
-  post_tool_call: { acs_method: "steps/toolCallResult" }
+  pre_tool_call:
+    acs_method: "steps/toolCallRequest"
+    # R1.6 -- AGT's transform verdict carries {path, value}, where path is the
+    # literal "$policy_target": the leaf the manifest's intervention point
+    # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
+    # as modifications.parameter_overrides keyed by argument name, per
+    # modifications.json ("Replacement values for tool call arguments, keyed by
+    # argument name"). policy_target_argument names which key, and must agree
+    # with policy/manifest.yaml's pre_tool_call policy_target -- this is one of
+    # the two places the two files touch.
+    modifications:
+      from: verdict.transform
+      when_path: "$policy_target"
+      into: parameter_overrides
+      policy_target_argument: command
+  post_tool_call:
+    acs_method: "steps/toolCallResult"
+    # AGT's redact rule returns the FULLY substituted text (verified against
+    # the pinned bundle), so `replacement` carries the finished string, not a
+    # marker the host would have to interpret.
+    #
+    # redaction_path is the ACS JSON pointer for the same leaf this point's
+    # policy_target addresses: policy/manifest.yaml declares
+    # policy_target: "$.tool_result.outputs[0].value", and the pointer into the
+    # result payload for that leaf is "/outputs/0/value". That agreement is the
+    # SECOND of the two places mapping.yaml and policy/manifest.yaml touch,
+    # exactly as policy_target_argument is for the request gate above: change
+    # one and the other is wrong.
+    modifications:
+      from: verdict.transform
+      when_path: "$policy_target"
+      into: redactions
+      redaction_path: "/outputs/0/value"
   agent_startup: { acs_method: "steps/sessionStart" }
   agent_shutdown: { acs_method: "steps/sessionEnd" }
   input: { acs_method: "steps/userMessage" }
@@ -70,16 +110,6 @@ field_synthesis:
       source: verdict.reason
     policy_id:
       literal: agt_stock
-  # R1.6 -- AGT's transform verdict carries {path, value}, where path is the
-  # literal "$policy_target": the leaf the manifest's intervention point
-  # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
-  # as modifications.parameter_overrides keyed by argument name, per
-  # modifications.json ("Replacement values for tool call arguments, keyed by
-  # argument name"). policy_target_argument names which key, and must agree
-  # with policy/manifest.yaml's policy_target -- this is the one place the
-  # two files touch.
-  modifications:
-    from: verdict.transform
-    when_path: "$policy_target"
-    into: parameter_overrides
-    policy_target_argument: command
+# modifications is NOT here: it lives under each intervention_points row above,
+# because it is the one field whose synthesis depends on which payload the gate
+# is editing (R1.6). See the two rows there.

@@ -34,27 +34,53 @@ type FieldLiteral = { literal: string };
 type WrapMode = "array";
 
 /** The mapping's declaration of how an AGT transform becomes ACS
- * modifications. `when_path` is the only transform path this mapping can
- * express; anything else is a mapping gap and must fail loudly rather than
- * silently drop a rewrite. Same for `into`: the single-member union is the
- * whole truth about what this mapping can build today -- one modification
- * shape, keyed by argument name -- so a value the code cannot honour is a
- * typecheck failure when written into code, not a runtime surprise. That
- * guarantee doesn't reach mapping.yaml itself, though: loadMapping casts
- * the parsed YAML with `as Mapping` and validates nothing, so `into` is
- * still read from the mapping (not hardcoded) and checked at synthesis
- * time against the one value this mapping can express. */
-type ModificationsRule = {
-  from: string;
-  when_path: string;
-  into: "parameter_overrides";
-  policy_target_argument: string;
+ * modifications, for ONE intervention point. `when_path` is the only transform
+ * path this mapping can express; anything else is a mapping gap and must fail
+ * loudly rather than silently drop a rewrite. Same for `into`: the union is the
+ * whole truth about what this mapping can build -- one modification shape per
+ * gate, and each member carries only the fields its own shape needs, so a
+ * value the code cannot honour is a typecheck failure when written into code,
+ * not a runtime surprise. That guarantee doesn't reach mapping.yaml itself,
+ * though: loadMapping casts the parsed YAML with `as Mapping` and validates
+ * nothing, so `into` is still read from the mapping (not hardcoded) and
+ * checked at synthesis time against the values this mapping can express.
+ *
+ * V4 widened this from a single member to two the way that constraint requires
+ * -- by adding a member and a CHECKED value for it, never by casting an
+ * arbitrary `into` into the output key. `modified_content`, §6.3's third and
+ * exclusive shape, is legal ACS and remains inexpressible here, which is the
+ * gap the check keeps loud. */
+type ModificationsRule =
+  | {
+      from: string;
+      when_path: string;
+      /** The request gate rewrites a tool ARGUMENT, named by the mapping. */
+      into: "parameter_overrides";
+      policy_target_argument: string;
+    }
+  | {
+      from: string;
+      when_path: string;
+      /** The result gate rewrites the result payload's own leaf, addressed by
+       * an ACS JSON pointer the mapping supplies. */
+      into: "redactions";
+      redaction_path: string;
+    };
+
+/** One row of mapping.yaml's intervention_points table. `modifications` is
+ * optional because most points have no synthesis rule: mapping.yaml declares
+ * six methods with points and gives two of them one. Optional here, and a
+ * throw at synthesis time -- not a silently empty MODIFY. */
+type InterventionPoint = {
+  acs_method: string | null;
+  note?: string;
+  modifications?: ModificationsRule;
 };
 
 export type Mapping = {
   acs_version: string;
   agt_version: string;
-  intervention_points: Record<string, { acs_method: string | null; note?: string }>;
+  intervention_points: Record<string, InterventionPoint>;
   verdicts: Record<string, VerdictRule>;
   field_synthesis: {
     reasoning: FieldSource;
@@ -63,7 +89,6 @@ export type Mapping = {
       rule_id: FieldSource;
       policy_id: FieldLiteral;
     };
-    modifications: ModificationsRule;
   };
 };
 
@@ -146,17 +171,30 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * The $policy_target bound survives as ACS modifications.
  *
  * AGT's transform names the leaf it rewrote by the literal "$policy_target",
- * resolved against the manifest's intervention point. ACS expresses a
- * rewritten tool argument as parameter_overrides keyed by argument name, so
- * the mapping declares which argument that is and this copies the value in.
+ * resolved against the manifest's intervention point FOR THAT POINT. The same
+ * verdict therefore means two different ACS edits depending on which gate
+ * asked: at the request gate $policy_target is a tool argument, which ACS
+ * expresses as parameter_overrides keyed by argument name; at the result gate
+ * it is a leaf of the result payload, which ACS expresses as a redaction
+ * addressed by JSON pointer. So the rule is read from `point`'s own row of
+ * mapping.yaml's intervention_points table -- the same table
+ * resolveInterventionPoint reads -- and the point is a parameter rather than
+ * something inferred here.
  *
  * The output key comes from rule.into, not a hardcoded literal, so this
  * stays genuinely declaration-driven: mapping.yaml and this function can
  * never quietly disagree about which modifications.json field the rewrite
- * lands in. rule.into is still checked against the one value this mapping
+ * lands in. rule.into is still checked against the values this mapping
  * can express before use, because loadMapping validates nothing at runtime
  * -- the same reason transform.path is checked against rule.when_path
  * above rather than trusted.
+ *
+ * Every failure here is a THROW, and the alternative in each case is worse
+ * than a reported failure: a point with no rule, a transform of a path the
+ * mapping cannot name, or an `into` the code cannot build would all otherwise
+ * become a `modify` the host has nothing to apply -- a rewrite reported as
+ * applied while the original is delivered. The Guardian's evaluation catch
+ * turns these into an honoured `deny` (§6.4, R1.5).
  *
  * Note what is NOT here: re-applying the substitution. `verdict.transform.value`
  * is already the finished string -- AGT's own rule applies the substitution
@@ -167,7 +205,16 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * the value travels by, and `PolicyBridge.evaluate` answers with the verdict
  * alone.
  */
-function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): AcsModifications {
+function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: string): AcsModifications {
+  const rule = mapping.intervention_points[point]?.modifications;
+  if (!rule) {
+    throw new Error(
+      `mapping.yaml maps AGT decision ${JSON.stringify(verdict.decision)} to ACS "modify", but its ` +
+        `intervention_points row for "${point}" declares no modifications rule, so this mapping cannot ` +
+        `express the rewrite`,
+    );
+  }
+
   const transform = verdict.transform;
   if (!transform || typeof transform !== "object") {
     throw new Error(
@@ -183,16 +230,35 @@ function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): 
         `but the verdict rewrote ${JSON.stringify(transform.path)}`,
     );
   }
-  if (rule.into !== "parameter_overrides") {
-    throw new Error(
-      `mapping.yaml declares field_synthesis.modifications.into as ${JSON.stringify(rule.into)}, ` +
-        `but this mapping can only express "parameter_overrides"`,
-    );
+
+  // Read before the narrowing below, so the final throw can name what the
+  // mapping actually declared without casting a checked value back out.
+  const declaredInto: string = rule.into;
+  if (rule.into === "parameter_overrides") {
+    return { [rule.into]: { [rule.policy_target_argument]: transform.value } };
   }
-  return { [rule.into]: { [rule.policy_target_argument]: transform.value } };
+  if (rule.into === "redactions") {
+    // ACS's redaction `replacement` is a string (modifications.json), and
+    // AGT's redact rule returns the finished substituted text. A non-string
+    // is a rewrite this mapping cannot express as a redaction, so it throws
+    // rather than being coerced: String(value) would deliver a replacement
+    // nobody chose, which is the one thing this function exists not to do.
+    if (typeof transform.value !== "string") {
+      throw new Error(
+        `mapping.yaml maps this verdict into an ACS redaction, whose replacement is a string, but ` +
+          `${rule.from}.value is ${typeof transform.value}`,
+      );
+    }
+    return { [rule.into]: [{ path: rule.redaction_path, replacement: transform.value }] };
+  }
+  throw new Error(
+    `mapping.yaml declares intervention_points.${point}.modifications.into as ` +
+      `${JSON.stringify(declaredInto)}, but this mapping can only express "parameter_overrides" ` +
+      `or "redactions"`,
+  );
 }
 
-export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
+export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
     throw new Error(`mapping.yaml has no verdict rule for AGT decision "${verdict.decision}"`);
@@ -224,7 +290,7 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
   }
 
   if (rule.decision === "modify") {
-    out.modifications = synthesizeModifications(verdict, fs.modifications);
+    out.modifications = synthesizeModifications(verdict, mapping, point);
   }
 
   return out;

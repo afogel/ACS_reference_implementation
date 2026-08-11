@@ -9,7 +9,11 @@
  *   validateEnvelope (Task 5) -> assemblePreToolCallSnapshot / assemblePostToolCallSnapshot
  *   (Task 4, V4's Task 3) ->
  *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot)
- *   (Task 2) -> mapVerdict(verdict, mapping) (Task 3) -> response envelope.
+ *   (Task 2) -> mapVerdict(verdict, mapping, point) (Task 3) -> response
+ *   envelope. The resolved point reaches mapVerdict because the ACS
+ *   modification an AGT transform becomes differs per gate (V4): a tool
+ *   argument override at the request gate, a redaction on the result payload
+ *   at the result gate. One resolution, used by both consumers of it.
  *
  * Every throw on this path is caught, in two places, because nothing may
  * escape the fetch handler. Bun.serve would answer an unhandled rejection with
@@ -610,7 +614,7 @@ async function evaluateStep<E extends AcsRequestEnvelope>(
     const snapshot = assemble(envelope);
     const point = resolveInterventionPoint(envelope.method, mapping);
     const verdict = await bridge.evaluate(point, snapshot);
-    const decision = mapVerdict(verdict, mapping);
+    const decision = mapVerdict(verdict, mapping, point);
 
     return successResponse(envelope.id, finalResult(envelope.params, decision));
   } catch (error) {
