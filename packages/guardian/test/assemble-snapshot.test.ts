@@ -255,12 +255,31 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   // The precondition this assembler reads unconditionally: outputs. The
   // result payload's schema (hooks/tool-call-result.json) is checked by
   // validateEnvelope for this method exactly as the request payload's is for
-  // its own, so assembly is never reached with the member missing.
-  it("is never reached with outputs missing: validateEnvelope rejects the payload first", () => {
+  // its own, so assembly is never reached with the member ABSENT -- which is
+  // as far as the schema goes, and no further: see the empty-array case below.
+  it("is never reached with outputs absent: validateEnvelope rejects the payload first", () => {
     const raw = rawResultEnvelope() as { params: { payload: Record<string, unknown> } };
     delete raw.params.payload.outputs;
 
     expect(() => validateEnvelope(raw)).toThrow(/\/params\/payload\/outputs/);
+  });
+
+  // hooks/tool-call-result.json sets no `minItems`, so `outputs: []` is a
+  // schema-VALID result payload: it passes validateEnvelope, narrows, and
+  // reaches this assembler, which assembles an empty outputs array honestly
+  // rather than inventing an element. AGT then finds nothing at
+  // $.tool_result.outputs[0].value and fails CLOSED. Pinned because it is
+  // wire-reachable and because "empty output" is exactly the shape someone
+  // might later be tempted to answer with an allow -- a tenth fail-open.
+  it("assembles an empty outputs array, and AGT fails closed on it", async () => {
+    const snapshot = assembleResultSnapshot(makeResultEnvelope({ outputs: [] }));
+    expect(snapshot.tool_result.outputs).toEqual([]);
+
+    const bridge = createBridge("policy/manifest.yaml");
+    const result = await bridge.evaluate("post_tool_call", snapshot);
+
+    expect(result.verdict.decision).toBe("deny");
+    expect(result.verdict.reason).toBe("runtime_error:path_missing");
   });
 
   // The high-value integration test, the result-gate twin of the pre-tool one

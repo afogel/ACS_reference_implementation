@@ -14,10 +14,14 @@
  * exists to prevent -- and would take an envelope of either method, which is
  * exactly what the PR #10 review closed.
  *
- * `assemblePreToolCallSnapshot` keeps its name: it is the affordance N23 the shaping docs
- * and policy/manifest.yaml's own comments refer to. Its parameter type says
- * which envelope it takes, and the sibling below names the wire's noun for the
- * other one.
+ * `assemblePreToolCallSnapshot` keeps its name: it is affordance N23 by that name in the
+ * shaping docs' own affordance tables (docs/shaping/acs-reference-impl-slices.md,
+ * docs/shaping/acs-reference-impl-shaping.md). Its parameter type says which
+ * envelope it takes, and the sibling below names the wire's noun for the other
+ * one. policy/manifest.yaml's post_tool_call comment used to be cited here too;
+ * it named this function for the synthesis `assemblePostToolCallSnapshot` performs,
+ * and it now names the sibling instead -- so the justification rests on the
+ * shaping docs, which is where the affordance name actually lives.
  *
  * Envelope-only (per the V1 watch-for): both read nothing but the envelope
  * handed to them -- no session state, no chain hash, no prior decisions, no
@@ -104,13 +108,38 @@ export type AgtPreToolCallSnapshot = {
  *                         `runtime_error:path_missing` on every call
  *                         (test/redaction.test.ts pins it).
  *   - `tool_result.outputs`  what policy/manifest.yaml's post_tool_call point
- *                         targets, at `$.tool_result.outputs[0].value`.
+ *                         targets, at `$.tool_result.outputs[0].value`. EVERY
+ *                         output is carried, and that target names index 0 --
+ *                         so a step returning several outputs has its first one
+ *                         evaluated and the rest carried but unexamined. That
+ *                         is the manifest's declaration, not this assembler's
+ *                         choice; widening it is a manifest change with its own
+ *                         policy consequences.
  *
- * No `tool_call.args`, and no `tool_call.id`: neither is on the wire at this
- * step. `outputs` items are `{value}` alone -- ACS's `{value, provenance}`
- * wrapper does not survive into a snapshot, the same rule the request side
- * applies to its arguments (C5), and `value` stays `unknown` because what a
- * tool produced is the tool's business rather than this project's.
+ * Three members ABSENT on purpose, each for its own reason:
+ *   - `tool_call.args`    the result payload has none. Carrying the originating
+ *                         call's arguments forward would be inventing state
+ *                         this slice does not have (C5).
+ *   - `tool_call.id`      NOT because no id is on the wire -- `params.request_id`
+ *                         is required by request-envelope.json at every step, and
+ *                         the request gate uses exactly that field for its own
+ *                         `tool_call.id`. But at this step that field identifies
+ *                         THIS result message, not the call that produced it. The
+ *                         originating call's id arrives only as the optional
+ *                         `request_id_ref`, so an id here would name the wrong
+ *                         request. Correlating the two is V6's session chain.
+ *   - `exit_status`       required by hooks/tool-call-result.json, validated on
+ *                         the way in, and deliberately not forwarded: AGT's
+ *                         snapshot for this point (test/redaction.test.ts pins
+ *                         the shape the stock bundle evaluates) has no place for
+ *                         it, and no stock rule reads it. A later slice wanting a
+ *                         policy that branches on it adds the member here --
+ *                         additively, with a test showing a policy reading it.
+ *
+ * `outputs` items are `{value}` alone -- ACS's `{value, provenance}` wrapper does
+ * not survive into a snapshot, the same rule the request side applies to its
+ * arguments (C5), and `value` stays `unknown` because what a tool produced is
+ * the tool's business rather than this project's.
  */
 export type AgtPostToolCallSnapshot = {
   envelope: { budgets: AgtSnapshotBudgets };

@@ -80,15 +80,15 @@ import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } f
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
- * member today; each gate this Guardian learns to assemble adds its own
- * point-specific type here.
+ * Both gates, since V4; each gate this Guardian learns to assemble adds its
+ * own point-specific type here.
  *
  * Declared so the bridge seam carries the message rather than erasing it.
  * `PolicyBridge` is parameterised by the snapshot its holder sends, and this
  * is what this holder sends, so the `bridge.evaluate` calls below are checked
  * against the assemblers' own output types instead of against any object at all.
  */
-type GuardianSnapshot = AgtPreToolCallSnapshot;
+type GuardianSnapshot = AgtPreToolCallSnapshot | AgtPostToolCallSnapshot;
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
@@ -547,12 +547,12 @@ async function dispatch(
   //     shape. Anything neither predicate answers falls past both, to
   //     METHOD_NOT_DISPATCHED_CODE below.
   if (isToolCallRequest(envelope)) {
-    return await evaluateStep(raw, envelope, () => assemblePreToolCallSnapshot(envelope), bridge, mapping);
+    return await evaluateStep(raw, envelope, assemblePreToolCallSnapshot, bridge, mapping);
   }
 
   // V4's result gate, beside the request gate rather than merged into it.
   if (isToolCallResult(envelope)) {
-    return await evaluateStep(raw, envelope, () => assemblePostToolCallSnapshot(envelope), bridge, mapping);
+    return await evaluateStep(raw, envelope, assemblePostToolCallSnapshot, bridge, mapping);
   }
 
   // A well-formed envelope (it passed validateEnvelope: the method matched
@@ -571,14 +571,25 @@ async function dispatch(
  * handling below is a project invariant (§6.4, R1.5) rather than a detail of
  * the request gate, and a second copy of it is a second thing to keep true.
  *
- * The assembler arrives as a thunk, closed over the envelope its own predicate
- * narrowed. That is what keeps each assembler's parameter type narrow while
- * this function stays method-agnostic: nothing here reads a snapshot member, so
- * nothing here needs to know which shape it got, and no union of the two
- * snapshot types is needed to say so -- `InterventionSnapshot` is the bridge's
- * own seam type, the JSON document a point is evaluated against. The thunk is
- * called INSIDE the try, so a throw from the assembler itself lands in the
- * same catch as a throw from AGT.
+ * Generic in the envelope, and the assembler is a function OF that envelope --
+ * `E` and `(envelope: E) => GuardianSnapshot` rather than an
+ * `AcsRequestEnvelope` and an independent thunk. `E` infers from the narrowed
+ * variable each gate passes, both assemblers are assignable as they stand, and
+ * the one miswiring this function could otherwise permit becomes
+ * unrepresentable: `evaluateStep(raw, envelopeA, () => assemblePreToolCallSnapshot(envelopeB), ...)`
+ * would have resolved the point from A's method and echoed A's ids while
+ * evaluating B's snapshot -- the wrong policy against the wrong shape, which
+ * this file's own comments call worse than a reported failure. In the inline
+ * form that gap did not exist, because the narrowed variable was structurally
+ * the one variable; the tie has to be re-stated in the signature once the tail
+ * is shared, not left to the call sites to get right.
+ *
+ * The generic keeps each assembler's parameter type narrow while this function
+ * stays method-agnostic: nothing here reads a snapshot member, so nothing here
+ * needs to know which shape it got, and no union of the two snapshot types is
+ * needed to say so -- `GuardianSnapshot` is the union of the two messages this
+ * Guardian can send, and this function reads no member of either. The assembler is called INSIDE
+ * the try, so a throw from it lands in the same catch as a throw from AGT.
  *
  * The intervention point comes from mapping.yaml's own `intervention_points`
  * table, not from a literal here (PR #10 review, Critical): that table is what
@@ -588,15 +599,15 @@ async function dispatch(
  * and calling the result a decision is the one outcome worse than a reported
  * failure.
  */
-async function evaluateStep(
+async function evaluateStep<E extends AcsRequestEnvelope>(
   raw: unknown,
-  envelope: AcsRequestEnvelope,
-  assemble: () => InterventionSnapshot,
+  envelope: E,
+  assemble: (envelope: E) => GuardianSnapshot,
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   try {
-    const snapshot = assemble();
+    const snapshot = assemble(envelope);
     const point = resolveInterventionPoint(envelope.method, mapping);
     const verdict = await bridge.evaluate(point, snapshot);
     const decision = mapVerdict(verdict, mapping);
