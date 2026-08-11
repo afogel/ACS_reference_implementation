@@ -34,13 +34,17 @@ import { fileURLToPath } from "node:url";
 import { createBridge } from "agt-bridge";
 import { assembleSnapshot } from "./assemble-snapshot.ts";
 import { loadMapping, mapVerdict, type Mapping } from "./map-verdict.ts";
-import { EnvelopeValidationError, validateEnvelope, type ToolCallRequestEnvelope } from "./validate-envelope.ts";
+import {
+  EnvelopeValidationError,
+  isToolCallRequest,
+  validateEnvelope,
+  type AcsRequestEnvelope,
+} from "./validate-envelope.ts";
 import { handshakeResponder } from "./handshake.ts";
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
 const HANDSHAKE_METHOD = "handshake/hello";
-const TOOL_CALL_REQUEST_METHOD = "steps/toolCallRequest";
 const ACS_PATH = "/acs";
 
 /**
@@ -59,7 +63,7 @@ const METHOD_NOT_DISPATCHED_CODE = -32011;
 /** A throw from assembleSnapshot, bridge.evaluate, or mapVerdict -- e.g.
  * mapVerdict's own require_policy_references check, or any AGT runtime
  * error. See fix wave finding 1's comment above handleAcsRequest's
- * TOOL_CALL_REQUEST_METHOD branch for why this must never be dead code. */
+ * tool-call branch for why this must never be dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: Record<string, unknown> };
@@ -121,7 +125,7 @@ async function handleAcsRequest(
 
   const rpcId = extractId(raw);
 
-  let envelope: ToolCallRequestEnvelope;
+  let envelope: AcsRequestEnvelope;
   try {
     // validateEnvelope (N21) checks the general request-envelope.json shape
     // for every method, plus -- only for steps/toolCallRequest -- the
@@ -140,7 +144,13 @@ async function handleAcsRequest(
     return successResponse(envelope.id, handshakeResponder());
   }
 
-  if (envelope.method === TOOL_CALL_REQUEST_METHOD) {
+  // `isToolCallRequest`, not a method comparison spelled out again here: the
+  // predicate lives beside the payload check it stands for
+  // (validate-envelope.ts), so this branch cannot come to disagree with the
+  // module that decided whether `params.payload` was validated as a tool
+  // call. It also narrows the envelope, which is what lets assembleSnapshot
+  // take the tool-call view rather than any request at all.
+  if (isToolCallRequest(envelope)) {
     try {
       const snapshot = assembleSnapshot(envelope);
       const { verdict } = await bridge.evaluate("pre_tool_call", snapshot);

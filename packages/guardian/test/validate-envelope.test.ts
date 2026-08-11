@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { EnvelopeValidationError, validateEnvelope } from "../src/validate-envelope.ts";
+import { EnvelopeValidationError, isToolCallRequest, validateEnvelope } from "../src/validate-envelope.ts";
 
 function makeEnvelope(overrides: {
   method?: string;
@@ -47,7 +47,14 @@ describe("validateEnvelope", () => {
   it("passes a well-formed steps/toolCallRequest envelope", () => {
     const envelope = makeEnvelope();
 
-    const validated = validateEnvelope(envelope) as { params: { payload: { tool: { name: string } } } };
+    // Narrowed through the predicate rather than cast: `validateEnvelope`
+    // returns a request of any method, and `params.payload.tool` only exists
+    // on the tool-call view of one. A `throw` rather than an expect, so the
+    // assertion below stays the assertion this test is about.
+    const validated = validateEnvelope(envelope);
+    if (!isToolCallRequest(validated)) {
+      throw new Error(`validateEnvelope returned a non-tool-call request: ${validated.method}`);
+    }
 
     expect(validated.params.payload.tool.name).toBe("run_shell");
   });

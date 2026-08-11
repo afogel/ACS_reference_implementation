@@ -5,6 +5,13 @@
  * `steps/toolCallRequest` -- additionally against the hook-specific
  * payload schema (hooks/tool-call-request.json).
  *
+ * It returns an `AcsRequestEnvelope`: a request of ANY method, named the
+ * same thing the host's own builder names it
+ * (packages/host-adapter/src/build-envelope.ts). Narrowing to the tool-call
+ * view is a separate, explicit step (`isToolCallRequest`), so a method this
+ * module validated only generically can never be read as one whose
+ * hook-specific payload was checked.
+ *
  * Failure is a THROWN, typed EnvelopeValidationError -- never a returned
  * decision. Turning a rejection into an explicit ACS "deny" decision is
  * N27, which belongs to a later slice (V3). The caller (Task 6, the
@@ -21,48 +28,93 @@ import type { ErrorObject, ValidateFunction } from "ajv";
 /** An ACS argument wrapper: `{value, provenance?}`. */
 export type AcsArgument = { value: unknown; provenance?: unknown };
 
+/** request-envelope.json's Metadata $def -- method-independent. */
+export type AcsRequestMetadata = {
+  agent_id: string;
+  agent_name?: string;
+  session_id: string;
+  turn_id?: string;
+  parent_turn_id?: string;
+  session_state?: { chain_hash?: string };
+  environment?: "development" | "staging" | "production";
+  platform?: string;
+  platform_version?: string;
+  user_context?: { user_id?: string; roles?: string[]; authentication_method?: string };
+};
+
 /**
- * The validated shape of a `steps/toolCallRequest` envelope, per
- * request-envelope.json's AcsParams/Metadata $defs plus
- * hooks/tool-call-request.json's payload shape.
- *
- * This is the canonical envelope type for the project: assemble-snapshot.ts
- * re-exports it rather than declaring its own -- Task 4 left a local,
- * narrower `ToolCallRequestEnvelope` there as a temporary seam explicitly
- * flagged for reconciliation with this task.
+ * request-envelope.json's AcsParams $def. `payload` is deliberately as open
+ * here as the schema itself leaves it -- "Hook-specific payload. Schema
+ * depends on method." -- because that is the honest shape of a request whose
+ * method has not been discriminated yet.
  */
-export type ToolCallRequestEnvelope = {
+export type AcsRequestParams = {
+  acs_version: string;
+  request_id: string;
+  timestamp: string;
+  nonce?: string;
+  tenant_id?: string;
+  metadata: AcsRequestMetadata;
+  payload: Record<string, unknown>;
+  signature?: { algorithm: string; value: string; key_id: string };
+};
+
+/**
+ * A validated ACS request of ANY method -- `handshake/hello`,
+ * `steps/toolCallRequest`, or anything else request-envelope.json's method
+ * pattern admits. This is what `validateEnvelope` returns, and it is the
+ * consumer half of the host's `AcsRequestEnvelope`
+ * (packages/host-adapter/src/build-envelope.ts): one wire message, one noun,
+ * on both sides of the seam.
+ *
+ * It used to be called `ToolCallRequestEnvelope` (PR #10 review, Critical,
+ * and its naming-symmetry companion): every method was typed as a tool call,
+ * so handshake traffic arrived under a name that lied about it, and the
+ * consumer's noun was the narrower and more misleading of the two. The
+ * tool-call shape now lives in `ToolCallRequestEnvelope` below and is
+ * reachable only after the method has been checked.
+ */
+export type AcsRequestEnvelope = {
   jsonrpc: "2.0";
   method: string;
   id: string | number;
-  params: {
-    acs_version: string;
-    request_id: string;
-    timestamp: string;
-    nonce?: string;
-    tenant_id?: string;
-    metadata: {
-      agent_id: string;
-      agent_name?: string;
-      session_id: string;
-      turn_id?: string;
-      parent_turn_id?: string;
-      session_state?: { chain_hash?: string };
-      environment?: "development" | "staging" | "production";
-      platform?: string;
-      platform_version?: string;
-      user_context?: { user_id?: string; roles?: string[]; authentication_method?: string };
-    };
-    payload: {
-      tool: { name: string; version?: string; provider?: string };
-      operation?: string;
-      capability?: string;
-      arguments: Record<string, AcsArgument>;
-      raw_command?: string;
-      intent?: { description?: string; goal?: string };
-    };
-    signature?: { algorithm: string; value: string; key_id: string };
-  };
+  params: AcsRequestParams;
+};
+
+/**
+ * hooks/tool-call-request.json's payload shape -- the payload this module
+ * additionally validates when, and only when, the method is
+ * `steps/toolCallRequest`.
+ */
+export type ToolCallRequestPayload = {
+  tool: { name: string; version?: string; provider?: string };
+  operation?: string;
+  capability?: string;
+  arguments: Record<string, AcsArgument>;
+  raw_command?: string;
+  intent?: { description?: string; goal?: string };
+};
+
+/**
+ * The method-narrowed view of an `AcsRequestEnvelope`: same envelope, with
+ * `method` pinned to the one method whose payload has actually been validated
+ * against hooks/tool-call-request.json, and `payload` narrowed to that
+ * schema's shape.
+ *
+ * Reachable only through `isToolCallRequest` below, never returned by
+ * `validateEnvelope` directly. That is the whole point: the narrow type is
+ * the *conclusion* of a method check, not the type every request is handed
+ * back as.
+ *
+ * Spelled with `Omit` rather than an intersection so `params.payload` is
+ * exactly `ToolCallRequestPayload`, not `ToolCallRequestPayload &
+ * Record<string, unknown>` -- the intersection type-checks but leaves every
+ * property lookup resolving against an index signature too, which is how a
+ * typo silently becomes `unknown` instead of an error.
+ */
+export type ToolCallRequestEnvelope = Omit<AcsRequestEnvelope, "method" | "params"> & {
+  method: typeof TOOL_CALL_REQUEST_METHOD;
+  params: Omit<AcsRequestParams, "payload"> & { payload: ToolCallRequestPayload };
 };
 
 /**
@@ -169,13 +221,13 @@ function toValidationError(errors: ErrorObject[] | null | undefined, prefix: str
  * envelope, typed, on success. Throws EnvelopeValidationError on any
  * failure; never returns a decision.
  */
-export function validateEnvelope(input: unknown): ToolCallRequestEnvelope {
+export function validateEnvelope(input: unknown): AcsRequestEnvelope {
   const validateTopLevel = getValidator(REQUEST_ENVELOPE_SCHEMA_ID);
   if (!validateTopLevel(input)) {
     throw toValidationError(validateTopLevel.errors, "");
   }
 
-  const envelope = input as ToolCallRequestEnvelope;
+  const envelope = input as AcsRequestEnvelope;
 
   if (envelope.method === TOOL_CALL_REQUEST_METHOD) {
     const validatePayload = getValidator(TOOL_CALL_REQUEST_SCHEMA_ID);
@@ -185,4 +237,21 @@ export function validateEnvelope(input: unknown): ToolCallRequestEnvelope {
   }
 
   return envelope;
+}
+
+/**
+ * The one way to get from a validated ACS request to the tool-call view of
+ * it. Narrows on `method`, which is exactly the condition under which
+ * `validateEnvelope` above validated `params.payload` against
+ * hooks/tool-call-request.json -- so the narrowing is not a convenient cast,
+ * it is a claim the same module already checked.
+ *
+ * Kept next to that check on purpose: the two must agree about which method
+ * carries a tool-call payload, and they can only be trusted to agree while
+ * they read the same constant in the same file. A second ACS method adds its
+ * own predicate and its own narrow type beside these, rather than widening
+ * either.
+ */
+export function isToolCallRequest(envelope: AcsRequestEnvelope): envelope is ToolCallRequestEnvelope {
+  return envelope.method === TOOL_CALL_REQUEST_METHOD;
 }

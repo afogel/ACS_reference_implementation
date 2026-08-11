@@ -14,6 +14,11 @@
  * working. Task 4 had declared a local, narrower type as a temporary seam;
  * this closes it so there's exactly one envelope shape, not two that could
  * silently diverge.
+ *
+ * Since the PR #10 review that name means what it says: the tool-call view of
+ * a validated ACS request, reachable only through `isToolCallRequest`. This
+ * function takes exactly that, so its signature no longer accepts a
+ * `handshake/hello` it would read `params.payload.tool.name` off.
  */
 import type { ToolCallRequestEnvelope } from "./validate-envelope.ts";
 export type { ToolCallRequestEnvelope };
