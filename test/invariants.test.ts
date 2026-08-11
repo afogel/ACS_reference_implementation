@@ -123,6 +123,15 @@ describe("architectural invariants", () => {
       "permissionDecision",
       "permissionDecisionReason",
       "updatedInput",
+      // V4's own field, and the one this list would have been weakest without:
+      // the result gate is where the adapter now builds a replacement for a
+      // host's tool output, so `updatedToolOutput` is the name it would be most
+      // natural to reach for -- and a gate that listed the four fields the
+      // request gate uses while omitting the one the new code is about would
+      // look like coverage while quietly losing it. It lives in
+      // claude-code.hookmap.yaml as data and in acs-hook.ts as a checked path,
+      // and nowhere else.
+      "updatedToolOutput",
       "hookSpecificOutput",
     ]);
   });

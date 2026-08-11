@@ -493,6 +493,30 @@ describe("buildEnvelope", () => {
         );
       });
 
+      // The other half of what makes `within` usable, and the half a
+      // present-and-non-empty check cannot see: the two paths have to describe
+      // ONE leaf inside ONE object, because the replacement is a clone of that
+      // object patched at that leaf. An entry whose paths point into different
+      // objects satisfies both checks above, builds a clean envelope, and gets a
+      // correct decision back -- and the gap surfaces at the one moment it
+      // matters, as a replacement the host declines and an original delivered.
+      it.each([
+        ["names a leaf outside `within`", "$.tool_input.command"],
+        ["names `within` itself, so there is no leaf to patch", "$.tool_response"],
+        ["stops at a trailing dot, naming an empty segment", "$.tool_response."],
+      ])("throws, naming the hook, when `outputs.from` %s", (_name, from) => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: { from, within: "$.tool_response" },
+          exit_status: { literal: "success" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "outputs\.from" .* which is not a field inside "outputs\.within"/,
+        );
+      });
+
       it("throws, naming the hook, when `exit_status` names no literal", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallResult",

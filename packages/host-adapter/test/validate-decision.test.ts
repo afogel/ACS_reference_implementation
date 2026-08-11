@@ -432,3 +432,96 @@ describe("validateDecision — everything else passes through", () => {
     }
   });
 });
+
+/**
+ * V4. At a gate that sees what a step PRODUCED, the applied document still has
+ * to be projected onto the output object the host already holds -- and that
+ * projection happens INSIDE this module's apply step, so a projection that
+ * cannot land is the same `deny` as a rewrite that could not be applied.
+ *
+ * That placement is the property these tests exist for. Projecting after
+ * `validateDecision` returned would put these failures outside the only catch
+ * that can answer them with a decision, where a caller's delivery posture would
+ * answer them instead -- and a `proceed` posture there is an unredacted output
+ * delivered because a redaction could not be expressed. The end-to-end proof is
+ * hosts/claude-code/test/post-tool-use.test.ts; this is the seam.
+ */
+describe("validateDecision — the result gate projects the applied document onto the host's output", () => {
+  const OUTPUT_TARGET = {
+    payload: {
+      tool_response: { stdout: "TOKEN=ghp_ABCDEF123456", stderr: "", interrupted: false, isImage: false },
+    },
+    outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
+  };
+  /** The result payload the pointer below addresses -- what `modificationTarget`
+   * answers for a result envelope, and NOT an arguments bag. */
+  const RESULT_DOCUMENT = { tool: { name: "Bash" }, exit_status: "success", outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] };
+  const REDACT = {
+    decision: "modify",
+    reasoning: "redaction_applied",
+    modifications: { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }] },
+  };
+
+  it("lands the applied leaf in `applied_output`, a clone of `within` with every sibling intact", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: OUTPUT_TARGET,
+    });
+
+    expect(out.decision).toBe("modify");
+    // The whole object: a replacement carrying the redacted leaf ALONE is the
+    // shape the host silently discards, delivering the original.
+    expect(out.applied_output).toEqual({
+      stdout: "TOKEN=[REDACTED]",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+    });
+    // `applied_input` is the OTHER gate's field. A decision carries one or the
+    // other, never both: an arguments bag is a tool input and a projected output
+    // object is a tool result, and a host renders from the one its gate names.
+    expect(out.applied_input).toBeUndefined();
+  });
+
+  it("does not mutate the payload the host handed us", () => {
+    validateDecision(REDACT, { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET });
+
+    expect(OUTPUT_TARGET.payload.tool_response.stdout).toBe("TOKEN=ghp_ABCDEF123456");
+  });
+
+  // The fail-closed case, and the reason `replacingOutput` compares types at
+  // all: the host validates a replacement against the tool's own output schema
+  // and delivers the ORIGINAL when it does not match. Prose in place of a number
+  // is exactly that mismatch, so writing it would withhold nothing and redact
+  // nothing -- while the decision reported a rewrite.
+  it("denies, rather than throwing, when the replacement is not a shape the host's own leaf admits", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: {
+        payload: { tool_response: { stdout: 42, stderr: "" } },
+        outputs: OUTPUT_TARGET.outputs,
+      },
+    });
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_output).toBeUndefined();
+  });
+
+  // A pointer the ACS payload does have and the host's output object does not
+  // reach. It applies cleanly to the document and changes nothing the host can
+  // see, so the projection is the only place left that can notice -- and it
+  // notices by finding no leaf to patch.
+  it("denies a rewrite whose leaf the host payload does not have", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: { payload: { tool_response: { stderr: "" } }, outputs: OUTPUT_TARGET.outputs },
+    });
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+  });
+});

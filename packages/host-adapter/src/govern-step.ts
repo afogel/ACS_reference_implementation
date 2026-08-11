@@ -57,7 +57,7 @@
  * it returns, which is what lets the same function serve a second host with a
  * different wire shape (see render-decision.ts).
  */
-import { buildEnvelope, unwrapArguments, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
+import { buildEnvelope, modificationTarget, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
 import type { AuditSink } from "./audit-sink.ts";
 import {
   applyFailurePosture,
@@ -69,6 +69,7 @@ import type { GuardianClient } from "./guardian-client.ts";
 import type { ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
+import { withResultOutput, type HostOutputTarget } from "./result-output.ts";
 import { validateDecision } from "./validate-decision.ts";
 
 /**
@@ -200,6 +201,42 @@ export async function governStep({
 
   const timeoutMs = session.config?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
+  // Which KIND of gate this hook is, read off the entry's own SHAPE and never
+  // off the event name -- the same rule `buildPayload` states for choosing a
+  // payload shape, and for the same reason: an event name is a string a hookmap
+  // author types, and branching on one would make a typo in it silently select
+  // the wrong behaviour. An entry declaring `outputs` is a gate that sees what a
+  // step PRODUCED, so a decision there is answered by replacing that output;
+  // an entry declaring `arguments` is a gate that decides whether a step RUNS,
+  // and has no output to replace.
+  //
+  // `?? undefined` because a hookmap is YAML: a key written with nothing after
+  // it parses to null, which is a key present and unusable, not a key absent.
+  //
+  // A bare index is safe HERE and only here: the guard above has already
+  // established `hookEventName` is an own property of `hooks`, so this cannot
+  // resolve to an inherited `Object.prototype` member the way the guard's own
+  // lookup could have.
+  const outputs = hookmap.hooks[hookEventName]?.outputs ?? undefined;
+  const outputTarget: HostOutputTarget | undefined = outputs === undefined ? undefined : { payload, outputs };
+
+  /**
+   * Every render in this function, and the one thing every render at a result
+   * gate has to do first: a `deny` there withholds the output, and withholding
+   * it means carrying a shape-preserving replacement (`withResultOutput`).
+   *
+   * One function rather than three call sites, because the three denies that can
+   * reach a render here arrive by different routes -- one the policy runtime
+   * sent, one N7 substituted for a rewrite it could not apply, one a negotiated
+   * fail-closed posture produced -- and all three are withholdings. A route that
+   * rendered a block without a replacement would report a withholding that never
+   * happened while the original output was delivered, and it would be the same
+   * defect whichever route reached it.
+   */
+  function render(decision: AcsDecision): HostOutput {
+    return renderDecision(hookEventName, withResultOutput(decision, outputTarget), hookmap);
+  }
+
   /**
    * `applyFailurePosture`'s answer to a failure, rendered. Every stage's catch
    * ends here and nowhere else, which is what makes "no decision without an
@@ -212,7 +249,7 @@ export async function governStep({
    * posture, decided inside `applyFailurePosture`, so nothing here branches on
    * it and nothing here can forget to.
    *
-   * The render here cannot fail: `loadHookmap` does not merely check that
+   * The RENDERING here cannot fail: `loadHookmap` does not merely check that
    * `allow` and `deny` are present in EVERY hook's `decisions` block, it
    * shape-checks every entry it accepts (`assertRenderableDecisions`), and
    * `applyFailurePosture` never returns any decision but those two -- and the
@@ -220,6 +257,15 @@ export async function governStep({
    * a block at all. So this cannot recurse into itself, and a throw escaping it
    * means the hookmap bypassed the loader -- which is the caller's problem to
    * fail loudly on, not something to paper over.
+   *
+   * V4 adds one way this CAN throw, and it is not the rendering: a negotiated
+   * fail-closed `deny` at a result gate has to withhold the output, and building
+   * the replacement that withholds it can fail (a payload whose named leaf is
+   * absent or is not prose -- see `replacingOutput`). That is a posture deny this
+   * host cannot carry out at all, and the honest answers are a loud stop or a
+   * block that withholds nothing while claiming to. It throws, and the caller
+   * turns that into a blocking stop. Unreachable for an envelope built from this
+   * payload, which is where those two properties are checked.
    *
    * `method` is the ACS method or null, never the host's own event name: an
    * envelope that could not be built has no ACS method to report, and the audit
@@ -241,7 +287,7 @@ export async function governStep({
       audit,
       stage,
     });
-    return { output: renderDecision(hookEventName, decision, hookmap), decision, stage };
+    return { output: render(decision), decision, stage };
   }
 
   const startedAt = performance.now();
@@ -270,10 +316,15 @@ export async function governStep({
   // would still be a request that produced no decision if it ever did.
   let decision: ValidatedAcsDecision;
   try {
-    // The same values that just went out on the wire, unwrapped from ACS's
-    // `{value, provenance?}` argument shape -- so a `modify` decision's
-    // `parameter_overrides` apply lands on exactly what the Guardian saw.
-    const originalArguments = unwrapArguments(envelope);
+    // The same document that just went out on the wire -- so a `modify`
+    // decision's §6.3 pointers apply against exactly the structure the Guardian
+    // saw and addressed. At a gate that decides whether a step runs that is the
+    // arguments bag, unwrapped from ACS's `{value, provenance?}` shape; at a gate
+    // that sees what a step produced it is the result payload, because that is
+    // what a result-gate pointer names (`/outputs/0/value` addresses no argument,
+    // and there are no arguments at that step). `modificationTarget` reads which
+    // from the envelope it just built.
+    const originalArguments = modificationTarget(envelope);
 
     const answer = await guardian.requestDecision(envelope, { timeoutMs });
     const elapsedMs = performance.now() - startedAt;
@@ -282,11 +333,10 @@ export async function governStep({
       return resolveByPosture(answer.failure, "delivery", envelope);
     }
 
-    // A decision arrived, so no posture may touch this step's outcome.
-    // validateDecision is the host's own last word on it -- §6.3's rewrite,
-    // and any expired ask/defer outcome -- and it substitutes only
-    // decisions, never failures.
-    decision = validateDecision(answer.decision, { elapsedMs, originalArguments });
+    // A decision arrived, so no posture may touch this step's outcome. N7 is
+    // the host's own last word on it -- §6.3's rewrite, and any expired
+    // ask/defer outcome -- and it substitutes only decisions, never failures.
+    decision = validateDecision(answer.decision, { elapsedMs, originalArguments, outputTarget });
   } catch (failure) {
     return resolveByPosture(failure, "delivery", envelope);
   }
@@ -298,7 +348,7 @@ export async function governStep({
   // different incident, and auditing it as "no decision arrived" would send an
   // incident reviewer to a Guardian that answered correctly.
   try {
-    return { output: renderDecision(hookEventName, decision, hookmap), decision, stage: "honoured" };
+    return { output: render(decision), decision, stage: "honoured" };
   } catch (failure) {
     return resolveByPosture(failure, "render", envelope);
   }

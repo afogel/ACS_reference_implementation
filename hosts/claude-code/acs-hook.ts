@@ -125,7 +125,8 @@ const PERMISSION_DECISION_PATH = `${HOOK_SPECIFIC_OUTPUT}.permissionDecision`;
 // the top-level (unwrapped) key Claude Code reads a block from. Both appear as
 // data in claude-code.hookmap.yaml's output paths; here they appear as the paths
 // whose declared values this shim has to check.
-const UPDATED_TOOL_OUTPUT_PATH = `${HOOK_SPECIFIC_OUTPUT}.updatedToolOutput`;
+const UPDATED_TOOL_OUTPUT = "updatedToolOutput";
+const UPDATED_TOOL_OUTPUT_PATH = `${HOOK_SPECIFIC_OUTPUT}.${UPDATED_TOOL_OUTPUT}`;
 const TOP_LEVEL_DECISION_PATH = "decision";
 const BLOCK = "block";
 
@@ -336,6 +337,37 @@ function expectationFor(hookEventName: string): HookExpectation {
 function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOutput {
   const expectation = expectationFor(hookEventName);
   const wrapper = rendered[HOOK_SPECIFIC_OUTPUT];
+
+  // The runtime half of the result gate's two-part deny rule, and the case
+  // `emptyOutputIsHonest` would otherwise wave through. An empty wrapper means
+  // "nothing to change, deliver the output as the tool produced it" -- which is
+  // the honest answer for a clean result and a LIE beside `decision: block`. The
+  // tool has already run, so the block injects a reason and suppresses nothing:
+  // that output reports a withholding that did not happen while Claude Code
+  // delivers the original.
+  //
+  // `assertHostAcceptsEveryDecision` already refuses a HOOKMAP that declares the
+  // block without a replacement. This is the other half: a hookmap that declares
+  // both, and a decision that reached here carrying no replacement to render into
+  // the field it declared. Neither gate implies the other -- one reads the YAML,
+  // one reads the bytes about to go to stdout -- and this is the one a change
+  // anywhere upstream of the render could reopen.
+  if (rendered[TOP_LEVEL_DECISION_PATH] === BLOCK) {
+    const replacement =
+      typeof wrapper === "object" && wrapper !== null && !Array.isArray(wrapper)
+        ? (wrapper as Record<string, unknown>)[UPDATED_TOOL_OUTPUT]
+        : undefined;
+    if (replacement === undefined) {
+      throw new Error(
+        `acs-hook: the rendered output for hook "${hookEventName}" carries ` +
+          `"${TOP_LEVEL_DECISION_PATH}": "${BLOCK}" with no "${UPDATED_TOOL_OUTPUT_PATH}" to replace the tool's ` +
+          `output with. The tool has already run at this event, so a block injects a reason and suppresses ` +
+          `nothing: writing this would report a withholding that never happened while the original output was ` +
+          `delivered`,
+      );
+    }
+  }
+
   if (wrapper === undefined && expectation.emptyOutputIsHonest) {
     return { ...rendered, [HOOK_SPECIFIC_OUTPUT]: { hookEventName } };
   }

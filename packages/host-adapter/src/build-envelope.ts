@@ -25,13 +25,15 @@ export type HookmapOutputs = {
   /** JSONPath-lite (`$.foo.bar`) to the leaf that becomes `outputs[0].value`. */
   from: string;
   /**
-   * JSONPath-lite (`$.foo.bar`) to the object that leaf sits inside. Declared
-   * here and read by the render side, not by this module: a decision replacing
-   * the output is applied into a clone of that object, so every sibling field
-   * the host put beside the leaf survives the round trip. A replacement missing
-   * one of them is a shape the host may decline, and a declined replacement
-   * delivers the original -- which is why the whole object is named, not just
-   * the leaf that goes on the wire.
+   * JSONPath-lite (`$.foo.bar`) to the object that leaf sits inside -- so
+   * `from` must be `within` plus at least one further segment, which
+   * `buildPayload` checks. Declared here and read by the projection side
+   * (result-output.ts), not by this module: a decision replacing the output is
+   * patched into a CLONE of that object, so every sibling field the host put
+   * beside the leaf survives the round trip. A replacement missing one of them
+   * is a shape the host may decline, and a declined replacement delivers the
+   * original -- which is why the whole object is named, not just the leaf that
+   * goes on the wire.
    */
   within: string;
 };
@@ -303,6 +305,42 @@ export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, un
 }
 
 /**
+ * The ACS-side document a decision's §6.3 `modifications` pointers address --
+ * for whichever of the two payload shapes this envelope carries.
+ *
+ * A request payload's pointers address its ARGUMENTS: `/env/TOKEN` names an
+ * argument field, so the document is the unwrapped bag above and the applied
+ * result is a tool input the host can run.
+ *
+ * A result payload's pointers address the PAYLOAD ITSELF: the pointer for the
+ * leaf that went out is `/outputs/0/value`, which names nothing inside an
+ * arguments bag -- there isn't one at this step, and inventing one was never an
+ * option (see `unwrapArguments`'s own note). Handing `unwrapArguments`' honest
+ * empty bag to the apply step made every result-gate `modify` fail closed as
+ * `deny(modifications_invalid)`: not a leak, but a deny where a redaction was
+ * asked for, which is the one thing the result gate exists to do. So the
+ * document is the payload, and the pointer resolves against exactly the
+ * structure the far end evaluated and named.
+ *
+ * A shallow copy, never the payload object itself: the apply step returns a new
+ * object but reads this one, and an envelope is also what the audit and envelope
+ * logs record. Nothing downstream of a decision may reach back into the message
+ * that asked for it (Global Constraint 4).
+ *
+ * The applied result is NOT what a result-gate host delivers -- the ACS payload
+ * carries one leaf where the host's own output object carries that leaf and its
+ * siblings. Projecting the applied document back onto the host's shape is
+ * result-output.ts's job, and the reason `HookmapOutputs.within` is declared.
+ */
+export function modificationTarget(envelope: AcsRequestEnvelope): Record<string, unknown> {
+  const { payload } = envelope.params;
+  if (payload.arguments !== undefined) {
+    return unwrapArguments(envelope);
+  }
+  return { ...(payload as Record<string, unknown>) };
+}
+
+/**
  * Resolves a JSONPath-lite reference (`$.foo.bar`, or `$` alone) against a
  * raw hook payload. Only dotted field access is supported: every hookmap path
  * is a single top-level field, and nothing here needs array indexing or filters.
@@ -395,6 +433,24 @@ function buildPayload(
         `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
           `"outputs.within" path -- a replacement applied to the named leaf alone loses every sibling ` +
           `field beside it, and a replacement a host declines delivers the original`,
+      );
+    }
+
+    // And the two paths have to describe one leaf inside one object, which is
+    // the whole premise of patching a clone: `from` must name a field UNDER
+    // `within`. Checked here, beside the check above and for the same stated
+    // reason -- so that "buildEnvelope accepted this entry" and "the projection
+    // side can patch a replacement through it" cannot come apart. An entry
+    // whose two paths point into different objects (or at the same one) builds a
+    // clean envelope and gets a correct decision back, and the gap surfaces only
+    // at the one moment it matters, as a replacement the host declines and an
+    // original delivered with a log line.
+    if (!from.startsWith(`${within}.`) || from.length <= within.length + 1) {
+      throw new Error(
+        `buildEnvelope: hookmap entry for hook "${event}" declares "outputs.from" ${JSON.stringify(from)}, ` +
+          `which is not a field inside "outputs.within" ${JSON.stringify(within)} -- the leaf that goes on ` +
+          `the wire is the one a replacement is patched into a clone of that object at, so one path must ` +
+          `extend the other`,
       );
     }
 
