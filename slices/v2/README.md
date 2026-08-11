@@ -8,7 +8,7 @@
 
 ## What this slice delivers
 
-The Guardian taps every ACS envelope crossing its wire into a JSONL log
+The Guardian records every ACS envelope crossing its wire into a JSONL log
 (`packages/guardian/src/envelope-tap.ts` → `.acs/envelopes.jsonl`, S6/N26), and
 `bun run inspector` (`packages/inspector`) tails that log and renders each entry live:
 a header line, a decision badge for responses, then the envelope as pretty JSON
@@ -19,18 +19,20 @@ unparseable body.
 
 Three properties make this worth more than a log viewer:
 
-- **The tap is total by construction.** `writeEnvelopeTap` sits on the decision path. A
-  write failure disables the tap for the process lifetime, reports once, and never
+- **The envelope log sink is total by construction.** N26 — `createEnvelopeLogSink`, and
+  the `write` method on the `EnvelopeLogSink` it returns — sits on the decision path. A
+  write failure disables the sink for the process lifetime, reports once, and never
   propagates — an observability feature must not be able to turn a governed tool call
   into an ungoverned one. `packages/guardian/test/envelope-tap-wiring.test.ts` asserts
-  exactly that end to end: *"still denies `rm -rf /` when every tap write fails"*.
-- **The request is tapped before validation.** An envelope that fails the schema is the
-  most useful thing an ACS-first reader can see, and it is exactly what disappears if
-  the tap sits behind the validator. R5.1 says *every* hook firing.
-- **The Inspector imports nothing from the Guardian.** It re-declares `TapEntry` rather
-  than importing it, so "inspectable on the wire" is a claim about the file rather than
-  about our own type graph — a third-party reader of S6 has only the file, and so does
-  this one. Two gates in [`test/invariants.test.ts`](../../test/invariants.test.ts)
+  exactly that end to end: *"still denies `rm -rf /` when every envelope-log write
+  fails"*.
+- **The request is recorded before validation.** An envelope that fails the schema is
+  the most useful thing an ACS-first reader can see, and it is exactly what disappears
+  if the sink sits behind the validator. R5.1 says *every* hook firing.
+- **The Inspector imports nothing from the Guardian.** It re-declares `EnvelopeLogEntry`
+  rather than importing it, so "inspectable on the wire" is a claim about the file rather
+  than about our own type graph — a third-party reader of S6 has only the file, and so
+  does this one. Two gates in [`test/invariants.test.ts`](../../test/invariants.test.ts)
   enforce it: zero AGT vocabulary and zero host vocabulary in
   `packages/inspector/src` (R5.2), and no import of `guardian` or `agt-bridge` (R5.1).
   The duplication is kept honest by the round-trip contract test, which exercises both
@@ -56,7 +58,7 @@ Three properties make this worth more than a log viewer:
 stripping, no redaction, no reordering of anything we control — so it carries raw tool
 arguments. It is gitignored for that reason and is never committed.
 
-The precision matters, and V2 first shipped this claim too strongly. The tap is handed
+The precision matters, and V2 first shipped this claim too strongly. The sink is handed
 `await req.json()`, so it stores a JSON *value*, not the request's bytes: the parse has
 already collapsed duplicate keys, canonicalised number literals (`1.0` → `1`), and
 hoisted integer-like object keys ahead of the rest — and `arguments` keys are

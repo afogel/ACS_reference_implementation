@@ -224,10 +224,16 @@ Captured, from terminal 2, verbatim:
 A clean allow carries no `reasoning`, no `reason_codes`, and no `policy_references`, so
 the badge is bare. That absence is the signal: a policy that fired but let the action
 proceed arrives as `allow` with a **non-empty** `policy_references`, and the badge
-renders that case differently — `◐ ALLOW (policy fired — ACS "warn")` — because ACS has
-no `warn` disposition and rendering the two identically is exactly what U21 exists to
-prevent. No `warn` case occurred in this run; the rendering above is the deny and the
-clean allow, which are what the pinned configuration actually produced.
+renders that case differently — `◐ ALLOW (policy fired)` — because rendering the two
+identically is exactly what U21 exists to prevent. No policy-fired allow occurred in
+this run; the rendering above is the deny and the clean allow, which are what the pinned
+configuration actually produced.
+
+The label used to end `— ACS "warn"`, and it was retired by PR #11's review: ACS has no
+`warn` disposition, so the badge was teaching one. The Inspector is an ACS-first reader
+and R5.2 keeps it clear of policy-runtime vocabulary; a string on screen carries that
+vocabulary further than an identifier does. The badge now says only what ACS says
+happened — a policy fired, and the action was allowed.
 
 ## The honest boundary: a schema-invalid envelope is an error, not a deny
 

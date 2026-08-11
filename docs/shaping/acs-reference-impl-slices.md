@@ -79,7 +79,7 @@ Every slice ends in something demo-able.
 |---|-------|-----------|------------|---------|-----------|------------|
 | U20 | P4 | inspector | envelope stream, request/response JSON pairs | render | — | — |
 | U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` — **total**: never throws, never alters a decision | call | → S6 | — |
+| N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — **total**: never throws, never alters a decision | call | → S6 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
 | S6 | P3 | store | `envelope log`, JSONL at `.acs/envelopes.jsonl` (gitignored), one entry per direction | — | — | → N50 |
 
@@ -95,7 +95,7 @@ Every slice ends in something demo-able.
 | P4 | Request/response pairing is by **JSON-RPC `id`**, carried as `rpc_id` on every entry. | The only identifier present in both directions. `params.request_id` exists on requests only. Pairing by arrival order breaks the moment two hooks are in flight. |
 | P5 | The request is tapped **before validation**. | An envelope that fails the schema is the most useful thing an ACS-first reader can see, and it is exactly what disappears if the tap sits behind the validator. R5.1 says *every* hook firing. |
 
-**⚠️ Watch-for — the tap must be total.** `writeEnvelopeTap` sits on the decision path. V1 shipped three separate fail-opens before they were caught (the `./` bundle landmine, `tool_unknown` failing closed, and an unhandled Guardian throw reaching the shim as an empty stdout); an observability feature that can turn a governed tool call into an ungoverned one would be the fourth. Every write is wrapped: a failure disables the tap for the process lifetime, reports once, and never propagates. V2 asserts this end to end — `rm -rf /` is still denied when every tap write fails.
+**⚠️ Watch-for — the envelope log sink must be total.** `sink.write()` sits on the decision path. V1 shipped three separate fail-opens before they were caught (the `./` bundle landmine, `tool_unknown` failing closed, and an unhandled Guardian throw reaching the shim as an empty stdout); an observability feature that can turn a governed tool call into an ungoverned one would be the fourth. Every write is wrapped: a failure disables the tap for the process lifetime, reports once, and never propagates. V2 asserts this end to end — `rm -rf /` is still denied when every tap write fails.
 
 **⚠️ Watch-for — S6 records the parsed envelope, unmodified.** No field stripping, no redaction, no reordering of anything we control; pretty-printing happens at render time only. An inspector that shows something other than what was sent is worse than none. The consequence is that S6 carries raw tool arguments, which is why `.acs/` is gitignored and why the runbook says so out loud. **Corrected by V2's whole-branch review:** this watch-for originally said "records the wire verbatim", and so did the plan's global constraint 11, the slice README, the runbook, and the Inspector's own renderer comment. The tap is handed `await req.json()`, so it stores a JSON *value*, not bytes — the parse collapses duplicate keys, canonicalises number literals, and hoists integer-like object keys, and `arguments` keys are host-controlled. Storing bytes instead would make `envelope` a string rather than JSON, costing the Inspector its pretty-printing and the round-trip contract test its subject. The wording was corrected everywhere rather than the code.
 
@@ -105,7 +105,7 @@ Every slice ends in something demo-able.
 
 **Scope added at planning** (both amend this slice, both land in V2's PR):
 - An **invariant gate** on `packages/inspector/src`: zero AGT vocabulary, zero host vocabulary, and no import of `guardian` or `agt-bridge`. R5.2 is why this slice is early, and V1 established that this project turns architectural claims into grep gates rather than prose. Joins the R3.2/R3.3 gates in `test/invariants.test.ts`.
-- A **tap↔tail contract test** (`test/envelope-tap-roundtrip.test.ts`). The Inspector declares its own `TapEntry` instead of importing the Guardian's — that is what makes the gate above meaningful — and the duplication is only safe while something fails when the two drift.
+- A **write↔tail contract test** (`test/envelope-tap-roundtrip.test.ts`). The Inspector declares its own `EnvelopeLogEntry` instead of importing the Guardian's — that is what makes the gate above meaningful — and the duplication is only safe while something fails when the two drift.
 
 ---
 

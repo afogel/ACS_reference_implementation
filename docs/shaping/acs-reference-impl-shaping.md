@@ -262,7 +262,7 @@ All resolved — see `spike-agt-integration.md`.
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope + session state → AGT snapshot | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references` | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` — ⚠️ **total**: never throws, never alters a decision. Taps the request *before* validation | call | → S6 | — |
+| N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
@@ -351,7 +351,7 @@ flowchart TB
         N23["N23: assembleSnapshot()"]
         N24["N24: mapVerdict()"]
         N25["N25: persistResultLabels()"]
-        N26["N26: writeEnvelopeTap()"]
+        N26["N26: createEnvelopeLogSink()"]
         N27["N27: denyOnInvalidEnvelope()"]
         N28["N28: buildServerHello()"]
         S3["S3: sessionContext chain"]
