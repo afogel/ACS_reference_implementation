@@ -3,9 +3,11 @@ import type { AuditEvent, AuditSink } from "../src/audit-sink.ts";
 import {
   applyFailurePosture,
   classifyDeliveryFailure,
+  classifySessionFailure,
   DEFAULT_POSTURE,
 } from "../src/failure-posture.ts";
 import { GuardianTimeoutError } from "../src/guardian-client.ts";
+import { SessionConfigNotStoredError } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
 function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
@@ -180,7 +182,7 @@ describe("applyFailurePosture — an unauditable proceed is not a proceed (const
 });
 
 describe("applyFailurePosture — a request that was never sent is not a delivery failure (I2)", () => {
-  const NOT_SENT = { ...CALL, method: null, requestSent: false };
+  const NOT_SENT = { ...CALL, method: null, stage: "request" as const };
 
   it("classifies it as host_configuration, not unknown", () => {
     const { sink, events } = recordingSink();
@@ -220,6 +222,51 @@ describe("applyFailurePosture — a request that was never sent is not a deliver
   });
 });
 
+// A decision that arrived and was honoured, which this host then could not
+// express, used to be audited as "no decision arrived from the guardian
+// (unknown: ...)". Both halves were false: one arrived, and the cause is
+// precisely known. It is the same misattribution the `request` stage above
+// fixed, read the other way round -- and it sends an incident reviewer to a
+// Guardian that answered correctly.
+describe("applyFailurePosture — a decision that arrived and could not be rendered (B1)", () => {
+  const UNRENDERABLE = {
+    ...CALL,
+    stage: "render" as const,
+    failure: new Error('renderDecision: hookmap has no decisions entry for ACS decision "quarantine"'),
+  };
+
+  it("classifies it as decision_unrenderable, not as a delivery failure", () => {
+    const { sink, events } = recordingSink();
+    applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE });
+    expect(events[0]?.failure.kind).toBe("decision_unrenderable");
+    expect(events[0]?.failure.message).toContain("quarantine");
+  });
+
+  it("says a decision arrived and this host could not express it", () => {
+    const { sink } = recordingSink();
+    const decision = applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE });
+    expect(decision.reasoning).toMatch(/a decision arrived from the guardian .* and was honoured/i);
+    expect(decision.reasoning).toMatch(/could not express it/i);
+    // The exact claim that was false, asserted directly rather than inferred
+    // from the sentence above: it must not say none arrived.
+    expect(decision.reasoning).not.toMatch(/no decision arrived/i);
+    expect(decision.reason_codes).toEqual(["decision_unrenderable"]);
+  });
+
+  // Constraint 1 is untouched by the reclassification: the posture still
+  // decides, and it still decides the same way it would for any other
+  // failure. Only what the record SAYS about the failure changed.
+  it("still applies the posture, unchanged, in both directions", () => {
+    const { sink } = recordingSink();
+    expect(applyFailurePosture({ sessionConfig: NEGOTIATED("proceed"), audit: sink, ...UNRENDERABLE }).decision)
+      .toBe("allow");
+    const second = recordingSink();
+    expect(
+      applyFailurePosture({ sessionConfig: NEGOTIATED("deny"), audit: second.sink, ...UNRENDERABLE }).decision,
+    ).toBe("deny");
+  });
+});
+
 describe("applyFailurePosture — a session config that could not be established is recorded (I3)", () => {
   it("carries the session failure into the audited entry, beside the step's own failure", () => {
     const { sink, events } = recordingSink();
@@ -232,6 +279,42 @@ describe("applyFailurePosture — a session config that could not be established
     });
     expect(events[0]?.failure.kind).toBe("timeout");
     expect(events[0]?.session_failure?.message).toContain("EACCES");
+  });
+
+  // B2: the two session-establishment failures used to share one constant
+  // (`kind: "session_config"`), separated only by free text. In a
+  // Guardian-down session EVERY entry carries the note, so the one
+  // occurrence that actually costs something -- a ServerHello that arrived
+  // and could not be kept -- was buried in it.
+  it("distinguishes a handshake that never came back from a ServerHello it could not keep", () => {
+    const unreachable = recordingSink();
+    applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: undefined,
+      audit: unreachable.sink,
+      sessionFailure: new Error("Unable to connect. Is the computer able to access the url?"),
+      ...CALL,
+    });
+    expect(unreachable.events[0]?.session_failure?.kind).toBe("handshake_failed");
+
+    const unstored = recordingSink();
+    applyFailurePosture({
+      failure: new GuardianTimeoutError(5000),
+      sessionConfig: NEGOTIATED("deny"),
+      audit: unstored.sink,
+      sessionFailure: new SessionConfigNotStoredError("handshake: the Guardian's ServerHello could not be stored", {
+        config: NEGOTIATED("deny"),
+      }),
+      ...CALL,
+    });
+    expect(unstored.events[0]?.session_failure?.kind).toBe("session_config_unstored");
+  });
+
+  it("classifySessionFailure is total: an unrecognised throw still gets a kind", () => {
+    expect(classifySessionFailure("not an error at all")).toEqual({
+      kind: "handshake_failed",
+      message: "not an error at all",
+    });
   });
 
   it("omits the field entirely when the session config was fine", () => {

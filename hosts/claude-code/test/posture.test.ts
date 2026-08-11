@@ -299,6 +299,76 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
       expect(audit).toHaveLength(1);
       expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
+      // A decision DID arrive here and was honoured in principle -- only this
+      // host's rendering of it failed. Auditing that as a delivery failure
+      // ("no decision arrived from the guardian", kind "unknown") told an
+      // incident reviewer to go and look at a Guardian that answered
+      // correctly, which is the same misattribution `host_configuration`
+      // fixed one step earlier in the exchange.
+      expect(audit[0].failure.kind).toBe("decision_unrenderable");
+      expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason)
+        .toMatch(/a decision arrived from the guardian .* and was honoured/i);
+    } finally {
+      stub.stop(true);
+    }
+  });
+
+  // The branch the shim takes for every N27-boundary case -- a parse error,
+  // an envelope too broken to address a decision to, an outer-net `-32020` --
+  // and it had no end-to-end coverage at all. That is the same gap shape that
+  // let `transport` be misclassified as `unknown` through eleven review
+  // passes and was found only by running it.
+  it("audits a JSON-RPC error carrying no decision as error_without_decision, and applies the posture", async () => {
+    const dir = scratch();
+    const stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number; method: string };
+        if (body.method === "handshake/hello") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              negotiated_version: "0.1.0",
+              methods_evaluated: ["steps/toolCallRequest"],
+              selected_transport: "http",
+              timeout_config: { default_ms: 5000 },
+              on_decision_failure: "proceed",
+            },
+          });
+        }
+        // An error and NO result: nothing arrived that names a decision, so
+        // this is a delivery failure and the posture answers it.
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: -32020, message: "evaluation failed" },
+        });
+      },
+    });
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      expect(out.exitCode).toBe(0);
+      // The negotiated posture applied -- and it is the fail-open half, so
+      // the audit entry below is §6.4's MUST rather than a nicety.
+      expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+
+      const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "proceeded",
+        failure: { kind: "error_without_decision" },
+      });
+      // The Guardian's own error code and message survive into the record,
+      // which is the only thing that makes the entry actionable.
+      expect(audit[0].failure.message).toContain("-32020");
+      expect(audit[0].failure.message).toContain("evaluation failed");
     } finally {
       stub.stop(true);
     }
@@ -616,7 +686,9 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         failure: { kind: "error_without_decision" },
       });
       // And the persistence failure stays visible rather than being papered
-      // over by the value having been usable anyway.
+      // over by the value having been usable anyway -- under its own kind,
+      // not the one a Guardian-down session stamps on every single entry.
+      expect(audit[0].session_failure.kind).toBe("session_config_unstored");
       expect(audit[0].session_failure.message).toContain("could not be stored");
     } finally {
       stub.stop(true);

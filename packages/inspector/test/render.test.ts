@@ -374,11 +374,11 @@ describe("renderAuditEntry — N51", () => {
     } as const;
 
     const withSessionFailure = renderAuditEntry(
-      { ...base, session_failure: { kind: "session_config", message: "EACCES: permission denied" } },
+      { ...base, session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" } },
       { color: false },
     );
     expect(withSessionFailure.split("\n")).toHaveLength(3);
-    expect(withSessionFailure).toContain("session_failure=session_config: EACCES: permission denied");
+    expect(withSessionFailure).toContain("session_failure=session_config_unstored: EACCES: permission denied");
     // The step's own failure is still reported as the step's own.
     expect(withSessionFailure).toContain("failure=timeout: no decision within 5000ms");
 

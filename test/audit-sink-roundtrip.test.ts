@@ -86,7 +86,7 @@ describe("S14 write -> N51 read: every field survives", () => {
       posture_source: "default",
       outcome: "proceeded",
       failure: { kind: "host_configuration", message: "no entry for this hook" },
-      session_failure: { kind: "session_config", message: "EACCES: permission denied" },
+      session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" },
     });
 
     for await (const entry of tailAuditLog({ path, fromStart: true })) {
@@ -100,7 +100,7 @@ describe("S14 write -> N51 read: every field survives", () => {
         posture_source: "default",
         outcome: "proceeded",
         failure: { kind: "host_configuration", message: "no entry for this hook" },
-        session_failure: { kind: "session_config", message: "EACCES: permission denied" },
+        session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" },
       });
       break;
     }

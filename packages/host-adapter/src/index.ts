@@ -55,11 +55,14 @@ export {
 export {
   applyFailurePosture,
   classifyDeliveryFailure,
+  classifySessionFailure,
   DEFAULT_POSTURE,
   DEFAULT_TIMEOUT_MS,
   type ApplyFailurePostureInput,
   type DeliveryFailureKind,
+  type FailureStage,
   type PostureDecision,
+  type SessionFailureKind,
 } from "./failure-posture.ts";
 export {
   applyModifications,

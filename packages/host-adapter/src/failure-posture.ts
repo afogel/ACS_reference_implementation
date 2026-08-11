@@ -31,6 +31,7 @@
  */
 import type { AuditSink } from "./audit-sink.ts";
 import { GuardianTimeoutError } from "./guardian-client.ts";
+import { SessionConfigNotStoredError } from "./handshake.ts";
 import type { SessionConfig } from "./session-config.ts";
 
 /** handshake.json's own default, and R1.7's (D8 closed here). */
@@ -52,7 +53,38 @@ export type DeliveryFailureKind =
    * and an audit entry that files a host misconfiguration under an unknown
    * delivery failure sends an incident review to the wrong process.
    */
-  | "host_configuration";
+  | "host_configuration"
+  /**
+   * Also not a delivery failure: a decision DID arrive and was honoured in
+   * principle -- what failed was this host expressing it (a decision string
+   * no hookmap entry names, or a hookmap gap). Same misattribution as
+   * `host_configuration` fixed one step earlier in the exchange: auditing it
+   * as "no decision arrived from the guardian" tells an incident reviewer to
+   * go and look at a Guardian that answered correctly, when the fault is in
+   * this host's own rendering table.
+   */
+  | "decision_unrenderable";
+
+/**
+ * WHERE in the exchange the failure happened. Three materially different
+ * incidents, and the audit record has to tell them apart -- an entry that
+ * confuses them sends an incident review to the wrong process, which is the
+ * defect this type replaced a boolean to fix:
+ *
+ *   "delivery" -- a request went out and no usable decision came back.
+ *                 §6.4's own case, and the default for every ordinary call
+ *                 site.
+ *   "request"  -- no request was ever built, so nothing was asked of
+ *                 anything. Host-side configuration, and the reasoning must
+ *                 not name a Guardian that was never contacted.
+ *   "render"   -- a decision arrived and was honoured in principle; this
+ *                 host could not express it.
+ *
+ * A boolean could only express two of the three, and a second boolean would
+ * have admitted a combination that means nothing ("nothing was sent, and a
+ * decision arrived").
+ */
+export type FailureStage = "delivery" | "request" | "render";
 
 /** A JSON-RPC error object, as it arrives in a response that carried no decision. */
 type ErrorLike = { code?: unknown; message?: unknown };
@@ -126,6 +158,44 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
   }
 }
 
+/** What went wrong establishing this session's negotiated config, for
+ * `AuditEntry.session_failure`. */
+export type SessionFailureKind =
+  /**
+   * The handshake never came back with a ServerHello: the Guardian was
+   * unreachable, timed out, or answered with a JSON-RPC error. Nothing was
+   * negotiated, so there is no posture to lose -- `posture_source: "default"`
+   * on the same entry already says the ACS default applied, and in a
+   * Guardian-down session EVERY entry carries this.
+   */
+  | "handshake_failed"
+  /**
+   * A ServerHello arrived and this host could not keep it. Materially
+   * different from the above and the reason this field is not one constant:
+   * a posture WAS negotiated. It is applied to the step that negotiated it,
+   * and every LATER hook in the session re-handshakes because the file the
+   * next subprocess would have read is not there -- so a store that stays
+   * unwritable is a deployment quietly paying a round trip per hook, and one
+   * whose declared posture depends on that round trip continuing to succeed.
+   */
+  | "session_config_unstored";
+
+/**
+ * Names which of the two session-establishment failures happened. Total, for
+ * the same reason classifyDeliveryFailure is: this runs while the host is
+ * already handling a failure.
+ *
+ * The two used to share one constant (`"session_config"`), separated only by
+ * free text -- so in a Guardian-down session every entry carried the note and
+ * the one occurrence that actually costs something was buried in it.
+ */
+export function classifySessionFailure(failure: unknown): { kind: SessionFailureKind; message: string } {
+  return {
+    kind: failure instanceof SessionConfigNotStoredError ? failure.kind : "handshake_failed",
+    message: messageOf(failure),
+  };
+}
+
 export type ApplyFailurePostureInput = {
   /** Whatever the delivery attempt threw, or the JSON-RPC error it returned. */
   failure: unknown;
@@ -139,13 +209,13 @@ export type ApplyFailurePostureInput = {
   /** Required, not optional: constraint 3 makes auditing non-skippable. */
   audit: AuditSink;
   /**
-   * False when no request was ever sent -- the envelope could not even be
-   * built, so nothing was asked of anything. Such a failure is host-side
-   * configuration rather than a delivery failure, and both the classified
-   * kind and the reasoning say so instead of naming a Guardian that was
-   * never contacted. Defaults to true, which is every ordinary call site.
+   * Where in the exchange this failure happened -- see FailureStage. Both
+   * the classified kind and the reasoning follow from it, so that neither
+   * blames a Guardian that was never contacted ("request") nor tells an
+   * incident reviewer no decision arrived when one did ("render"). Defaults
+   * to "delivery", which is every ordinary call site and §6.4's own case.
    */
-  requestSent?: boolean;
+  stage?: FailureStage;
   /**
    * Whatever went wrong establishing this session's negotiated config, if
    * anything did: a handshake that failed, or a ServerHello that could not
@@ -171,13 +241,11 @@ export function applyFailurePosture({
   method,
   rpcId,
   audit,
-  requestSent = true,
+  stage = "delivery",
   sessionFailure,
 }: ApplyFailurePostureInput): PostureDecision {
   const posture = sessionConfig?.on_decision_failure ?? DEFAULT_POSTURE;
-  const classified = requestSent
-    ? classifyDeliveryFailure(failure)
-    : { kind: "host_configuration" as const, message: messageOf(failure) };
+  const classified = classifyByStage(stage, failure);
   const outcome = posture === "proceed" ? "proceeded" : "blocked";
 
   // Computed before the audit write, and written into it: "the guardian was
@@ -202,9 +270,7 @@ export function applyFailurePosture({
         posture_source: postureSource,
         outcome,
         failure: classified,
-        ...(sessionFailure === undefined
-          ? {}
-          : { session_failure: { kind: "session_config", message: messageOf(sessionFailure) } }),
+        ...(sessionFailure === undefined ? {} : { session_failure: classifySessionFailure(sessionFailure) }),
       }) === true;
   } catch {
     // The sink is documented total; if it throws anyway, there is nowhere
@@ -222,11 +288,22 @@ export function applyFailurePosture({
   // Never names a Guardian for a request that never reached one (whole-branch
   // review, I2): a `host_configuration` failure is this host's own, and an
   // audit trail that blames the policy runtime for it sends an incident
-  // review to the wrong process.
-  const cause = requestSent
-    ? `no decision arrived from the guardian for ${method ?? "this step"} (${classified.kind}: ${classified.message})`
-    : `this host could not build a request for this step, so no decision was ever sought ` +
-      `(${classified.kind}: ${classified.message})`;
+  // review to the wrong process. `render` is the same misattribution read
+  // the other way round -- a decision genuinely did arrive, so saying none
+  // did would send that reviewer to the wrong process too, just a different
+  // wrong one.
+  //
+  // The "delivery" wording below is quoted verbatim in four v3-runbook
+  // captures reproduced against a live Guardian. It is not to be reworded
+  // without re-capturing them.
+  const cause =
+    stage === "request"
+      ? `this host could not build a request for this step, so no decision was ever sought ` +
+        `(${classified.kind}: ${classified.message})`
+      : stage === "render"
+        ? `a decision arrived from the guardian for ${method ?? "this step"} and was honoured, but this host ` +
+          `could not express it (${classified.kind}: ${classified.message})`
+        : `no decision arrived from the guardian for ${method ?? "this step"} (${classified.kind}: ${classified.message})`;
 
   const sessionNote =
     sessionFailure === undefined
@@ -257,8 +334,34 @@ export function applyFailurePosture({
   return {
     decision: posture === "proceed" ? "allow" : "deny",
     reasoning: `${cause};${sessionNote} ${postureOrigin} -- on_decision_failure=${posture}, so this step was ${outcome}.`,
-    reason_codes: [requestSent ? "decision_failure" : "host_configuration"],
+    reason_codes: [REASON_CODE_BY_STAGE[stage]],
   };
+}
+
+/** One reason code per stage, so the machine-readable half of the decision
+ * carries the same distinction the prose does. */
+const REASON_CODE_BY_STAGE: Record<FailureStage, string> = {
+  delivery: "decision_failure",
+  request: "host_configuration",
+  render: "decision_unrenderable",
+};
+
+/**
+ * The classified `{kind, message}` for a stage. Only "delivery" consults the
+ * failure value itself: the other two stages KNOW what happened -- the
+ * failure object is the detail, not the diagnosis -- and running them
+ * through classifyDeliveryFailure is what produced "unknown" for two
+ * precisely-known, entirely host-side causes.
+ */
+function classifyByStage(stage: FailureStage, failure: unknown): { kind: DeliveryFailureKind; message: string } {
+  switch (stage) {
+    case "request":
+      return { kind: "host_configuration", message: messageOf(failure) };
+    case "render":
+      return { kind: "decision_unrenderable", message: messageOf(failure) };
+    default:
+      return classifyDeliveryFailure(failure);
+  }
 }
 
 /** The message of whatever was thrown, without assuming it was an Error. */

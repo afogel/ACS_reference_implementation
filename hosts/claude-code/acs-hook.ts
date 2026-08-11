@@ -53,8 +53,8 @@
  *     exception. A Guardian that is down, a response carrying an error
  *     instead of a decision, a request that times out, or a decision this
  *     host cannot even render (an unrecognised decision string, or a
- *     hookmap gap) are all delivery failures, not decisions, and Global
- *     Constraint 1's two failure domains never merge: a `deny` that
+ *     hookmap gap) all leave this hook with nothing it can honour, and
+ *     Global Constraint 1's two failure domains never merge: a `deny` that
  *     arrives is honoured regardless of what follows, and a delivery
  *     failure never gets dressed up as one. Every such failure is resolved
  *     by the deployment's own negotiated `on_decision_failure` posture
@@ -63,8 +63,18 @@
  *     so the bypass is visible rather than silent. The posture's own
  *     "allow"/"deny" is guaranteed renderable: loadHookmap doesn't just
  *     require both to exist in every hookmap's `decisions` block, it
- *     shape-checks every entry it accepts, so this tier can never recurse
- *     into itself.
+ *     shape-checks every entry it accepts, and `assertHostAcceptsEveryDecision`
+ *     below then checks each accepted value against the three Claude Code
+ *     actually honours -- so this tier can never recurse into itself, and
+ *     can never emit a value the host will silently discard.
+ *
+ *     They are resolved the same way; they are not RECORDED as the same
+ *     thing. The posture takes one of three `stage`s (failure-posture.ts's
+ *     FailureStage), because "no request was ever built", "a request went
+ *     out and nothing came back", and "a decision arrived and this host
+ *     could not express it" are three different incidents, and an audit
+ *     entry that files one under another sends an incident review to the
+ *     wrong process.
  *
  * V1's own version of this paragraph described a placeholder, not a
  * considered posture: it caught nothing, wrote the error to stderr only,
@@ -373,6 +383,13 @@ async function main(): Promise<void> {
   // the case a copy of that inspection gets wrong.
   let envelope: AcsRequestEnvelope | undefined;
   let hostOutput: HostOutput;
+  // Set the instant a decision is in hand and before anything tries to
+  // render it, so the catch below can tell "no decision arrived" from "a
+  // decision arrived and this host could not express it". They are different
+  // incidents and the audit entry has to name the right one -- the same
+  // misattribution already fixed one step earlier for a request that was
+  // never sent.
+  let decisionInHand = false;
   const startedAt = performance.now();
   try {
     envelope = buildEnvelope(hookEventName, payload, hookmap);
@@ -408,6 +425,14 @@ async function main(): Promise<void> {
           sessionFailure,
         });
 
+    // Whichever branch produced it, a decision now exists and has been
+    // honoured. Anything that throws past this point is a rendering failure,
+    // not a delivery one -- and the posture branch above has already written
+    // its own audit entry, so the catch cannot double-count it: every
+    // decision reachable here is `allow` or `deny`, both of which loadHookmap
+    // and the host-enum gate together guarantee renderable.
+    decisionInHand = true;
+
     hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
   } catch (error) {
     const decision = applyFailurePosture({
@@ -422,10 +447,14 @@ async function main(): Promise<void> {
       method: envelope?.method ?? null,
       rpcId: envelope?.id ?? null,
       audit,
-      // No envelope means nothing was ever sent, so this is host-side
-      // configuration rather than a delivery failure, and the reasoning must
-      // not blame a Guardian that was never contacted.
-      requestSent: envelope !== undefined,
+      // Which of the three failures this is, and the audit entry classifies
+      // it accordingly. No envelope means nothing was ever sent, so the
+      // reasoning must not blame a Guardian that was never contacted; a
+      // decision already in hand means one DID arrive and was honoured, and
+      // only this host's expression of it failed -- saying "no decision
+      // arrived from the guardian" there would send an incident reviewer to
+      // a Guardian that answered correctly.
+      stage: envelope === undefined ? "request" : decisionInHand ? "render" : "delivery",
       sessionFailure,
     });
     hostOutput = asClaudeCodeOutput(renderDecision(decision, hookmap), hookEventName);
