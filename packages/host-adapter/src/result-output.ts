@@ -75,13 +75,46 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Path segments that address a JavaScript object's prototype machinery rather
+ * than a field a tool actually produced -- the same set, for the same reason, as
+ * modifications.ts's and render-decision.ts's.
+ *
+ * This is the third place in this codebase to need the guard and was the first
+ * without it. `outputs.from: $.tool_response.__proto__` resolves through
+ * INHERITED lookup, so it satisfies every check both sides make -- `within` is an
+ * object, the path extends it, and the leaf is "present" -- and then
+ * `clone["__proto__"] = replacement` sets a prototype instead of creating an own
+ * property. The clone comes back byte-identical to the payload, the decision
+ * reports an applied rewrite, and nothing withheld anything: reported-as-applied
+ * with nothing applied, which is the defect class this module exists to close.
+ *
+ * Nothing is reachable today -- for a prose replacement the leaf's `typeof`
+ * (`object` for `__proto__`, `function` for `constructor`) fails the comparison
+ * in `replacingOutput` first, and `assertOutputIsReplaceable` now runs that
+ * comparison before any decision is sought. That is a guard holding by
+ * coincidence of another guard's shape, which is exactly how the two places that
+ * already have this one describe what they are for.
+ */
+const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
 /** JSONPath-lite (`$.foo.bar`) split into its field names -- the same notation
  * and the same leading-`$` tolerance `buildEnvelope` resolves. */
 function pathSegments(path: string): string[] {
-  return path
+  const segments = path
     .replace(/^\$\.?/, "")
     .split(".")
     .filter(Boolean);
+  for (const segment of segments) {
+    if (RESERVED_SEGMENTS.has(segment)) {
+      throw new Error(
+        `result-output: hookmap path ${JSON.stringify(path)} names the reserved segment ` +
+          `${JSON.stringify(segment)}, which addresses no field a tool produced -- a replacement patched at one ` +
+          `would set a prototype rather than the field, and report a rewrite that changed nothing`,
+      );
+    }
+  }
+  return segments;
 }
 
 function resolve(payload: Record<string, unknown>, path: string): unknown {
@@ -145,10 +178,21 @@ function patchedClone(
  *   - a replacement of a different `typeof` than the value it replaces. Prose
  *     in place of prose preserves the shape; prose in place of a number,
  *     an object or a list does not, and writing it would produce exactly the
- *     silently-discarded replacement this module exists to prevent. ACS types a
- *     redaction's `replacement` as a string, so a non-string leaf is a leaf this
- *     gate cannot express a replacement for at all -- which is a decision the
- *     caller has to answer, not something to coerce past.
+ *     silently-discarded replacement this module exists to prevent.
+ *
+ *     BOTH DIRECTIONS OF THAT MISMATCH ARE REACHABLE, and the one reachable
+ *     HERE is the replacement's, not the leaf's. An earlier version of this note
+ *     leaned on "ACS types a redaction's `replacement` as a string" as though
+ *     that were enforced: `Redaction.replacement?: string` is a TypeScript type
+ *     on a value that arrives over the wire, and nothing checks it at runtime.
+ *     A Guardian sending `{path: "/outputs/0/value", replacement: 42}` reaches
+ *     this comparison with a number for a string leaf and gets
+ *     `deny(modifications_invalid)` -- an arriving decision this gate cannot
+ *     carry out, answered as a decision, which is what this comparison is for.
+ *     The other direction, a leaf that is not prose, no longer reaches a
+ *     decision at all: `assertOutputIsReplaceable` refuses the deployment for it
+ *     before one is sought, because a leaf no replacement can be expressed for
+ *     is not a decision to answer, it is a hookmap that could not carry one out.
  *
  * `buildEnvelope` establishes that the two paths describe one leaf inside one
  * object and that the leaf resolved for this very payload; the assertion below

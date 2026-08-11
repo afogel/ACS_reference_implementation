@@ -518,6 +518,52 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.reasoning).not.toContain("Error:");
   });
 
+  // THE DIRECTION THAT IS ACTUALLY REACHABLE, and the reason the comparison in
+  // `replacingOutput` cannot be replaced by a claim about ACS's types.
+  // `Redaction.replacement?: string` is a TypeScript type on a value that arrives
+  // over the wire, and nothing checks it at runtime -- so a Guardian sending a
+  // number reaches the projection with a number for a string leaf. The mirror
+  // above (a non-string LEAF, `stdout: 42`) is the one this deployment cannot
+  // reach: `Bash`'s stdout is always prose, and a hookmap naming a leaf that is
+  // not is refused by `assertOutputIsReplaceable` before a decision is sought.
+  // This one needs no hookmap mistake at all, only a Guardian.
+  it("denies a redaction whose replacement is not prose, for a leaf that is", () => {
+    const out = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { redactions: [{ path: "/outputs/0/value", replacement: 42 }] },
+      },
+      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+    );
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_output).toBeUndefined();
+    expect(out.reasoning).toContain("is a number where this tool produced a string");
+  });
+
+  // The reserved-segment guard, which is the third place in this codebase to need
+  // one. `$.tool_response.__proto__` resolves through INHERITED lookup, so it
+  // satisfies every check both sides make, and `clone["__proto__"] = x` would set
+  // a prototype instead of creating a field -- a clone identical to the payload,
+  // and a decision reporting an applied rewrite that changed nothing. Refused by
+  // name rather than left to the type comparison that happens to catch it.
+  it("denies a rewrite whose hookmap path names a prototype segment rather than a field", () => {
+    const out = validateDecision(REDACT, {
+      ...FRESH,
+      originalArguments: RESULT_DOCUMENT,
+      outputTarget: {
+        payload: { tool_response: { stdout: "TOKEN=ghp_ABCDEF123456" } },
+        outputs: { from: "$.tool_response.__proto__", within: "$.tool_response" },
+      },
+    });
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.reasoning).toContain('reserved segment "__proto__"');
+  });
+
   // A pointer the ACS payload does have and the host's output object does not
   // reach. It applies cleanly to the document and changes nothing the host can
   // see, so the projection is the only place left that can notice -- and it
