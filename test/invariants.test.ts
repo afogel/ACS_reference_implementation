@@ -157,6 +157,20 @@ describe("architectural invariants", () => {
       "opa",
       "intervention_point",
       "verdict",
+      // The three AGT VERDICT NAMES, added by PR #11's review response and
+      // the reason it was worth adding them: this gate listed the word
+      // "verdict" but none of the verdicts, so the Inspector shipped a badge
+      // reading `ALLOW (policy fired -- ACS "warn")` with a green suite. ACS
+      // has no `warn` disposition; that string taught a reader AGT's
+      // vocabulary from an ACS-first tool, which is the exact leak R5.2
+      // exists to prevent, and the gate said nothing.
+      //
+      // `allow`/`deny`/`ask`/`modify`/`defer` are deliberately NOT here --
+      // they are ACS's own dispositions and the Inspector must name them.
+      // These three are AGT's alone.
+      "warn",
+      "escalate",
+      "transform",
       "claude",
       "opencode",
       "hookSpecificOutput",

@@ -99,10 +99,16 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badgeFor({ decision: "allow" })).toBe("○ ALLOW");
   });
 
-  // The reason U21 exists, per the slices doc: an AGT `warn` arrives as an
-  // ACS `allow` with a non-empty policy_references, and the badge is what
-  // keeps it from being buried.
-  it("distinguishes an allow that carries policy_references -- ACS's encoding of warn", () => {
+  // The reason U21 exists, per the slices doc: a policy that fired and let
+  // the action proceed arrives as an ACS `allow` with a non-empty
+  // policy_references, and the badge is what keeps it from being buried.
+  //
+  // PR #11 review: the label used to end with the policy runtime's own name
+  // for that case, a disposition ACS does not have. R5.2 keeps this package
+  // clear of policy-runtime vocabulary, and rendered text teaches it more
+  // loudly than an identifier would -- so the label now says only what ACS
+  // says happened, and the last assertion holds the line.
+  it("distinguishes an allow that carries policy_references, without naming a disposition ACS lacks", () => {
     const badge = badgeFor({
       decision: "allow",
       reason_codes: ["drift_detected"],
@@ -110,10 +116,10 @@ describe("renderDecisionBadge (U21)", () => {
     });
 
     expect(badge).toBe(
-      '◐ ALLOW (policy fired — ACS "warn")  reason_codes=[drift_detected]  ' +
-        "policy_references=[agt_stock#drift_detected]",
+      "◐ ALLOW (policy fired)  reason_codes=[drift_detected]  policy_references=[agt_stock#drift_detected]",
     );
     expect(badge).not.toBe(badgeFor({ decision: "allow" }));
+    expect(badge).not.toContain("warn");
   });
 
   // Pins current behaviour (backlog item H): ACS's schemas do not require

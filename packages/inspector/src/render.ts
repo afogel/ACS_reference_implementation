@@ -137,11 +137,18 @@ export function renderDecisionBadge(message: DecisionMessage, options: RenderOpt
   if (message.decision === "deny") {
     head = paint("● DENY", RED, color);
   } else if (message.decision === "allow" && references.length > 0) {
-    // ACS has no `warn`; a policy that fired but let the action proceed
-    // arrives as `allow` with a non-empty policy_references. Rendering it
+    // A policy fired and the action still proceeded. ACS carries that as
+    // `allow` with a non-empty `policy_references`, and rendering it
     // identically to a clean allow is exactly what this badge exists to
     // prevent (slices doc, section V2).
-    head = paint('◐ ALLOW (policy fired — ACS "warn")', YELLOW, color);
+    //
+    // The label used to name the policy runtime's own word for this case,
+    // which ACS does not have -- the comment above it said so in the same
+    // breath. R5.2 exists so this package carries no policy-runtime
+    // vocabulary at all, and a string on screen teaches it more effectively
+    // than an identifier would. What is left is what ACS itself says
+    // happened (PR #11 review).
+    head = paint("◐ ALLOW (policy fired)", YELLOW, color);
   } else if (message.decision === "allow") {
     head = paint("○ ALLOW", GREEN, color);
   } else {
