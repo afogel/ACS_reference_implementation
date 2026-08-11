@@ -580,31 +580,32 @@ describe("acs-hook — the negotiated posture, end to end", () => {
 
   // A hookmap whose `permissionDecision` is a well-formed string that Claude
   // Code does not accept. Reproduced against a live Guardian before this
-  // gate existed: mutating the real hookmap's `deny` entry to
-  // `permissionDecision: dney` made a real policy deny for `rm -rf /` render
+  // gate existed: mutating the real hookmap's `deny` entry to declare
+  // `{ value: dney }` made a real policy deny for `rm -rf /` render
   // as {"hookSpecificOutput":{...,"permissionDecision":"dney",
   // "permissionDecisionReason":"matched pattern ... at offset 0"}} with exit
   // 0 -- and Claude Code, which accepts only allow/deny/ask, read that as no
   // decision at all and PROCEEDED. A policy that fired and denied became an
   // allowed tool call behind plausible JSON and a success exit code.
   //
-  // loadHookmap cannot catch it: it checks that permissionDecision is a
-  // non-empty string and stops there, because the adapter must not know any
-  // host's decision enum (R3.2, enforced by test/invariants.test.ts). The
-  // check belongs in this shim, which is host-specific by definition.
+  // loadHookmap cannot catch it: it checks that every entry renders
+  // something and stops there, because the adapter must not know any host's
+  // decision enum -- or, since the output shape became generic, any host's
+  // field names at all (R3.2, enforced by test/invariants.test.ts). The check
+  // belongs in this shim, which is host-specific by definition.
   it("exits 2 (blocking) on a hookmap permissionDecision Claude Code does not accept, rather than emitting it", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "typo-hookmap.yaml");
-    // Byte-for-byte the real hookmap's decisions block with one character
-    // changed in `deny` -- the mutation that was actually reproduced.
+    // The real hookmap's decisions block with one character changed in
+    // `deny`'s literal -- the mutation that was actually reproduced.
     writeFileSync(
       hookmapPath,
       "host: claude-code\n" +
         "hooks:\n" +
         "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
         "decisions:\n" +
-        "  allow: { permissionDecision: allow, reason_from: reasoning }\n" +
-        "  deny: { permissionDecision: dney, reason_from: reasoning }\n",
+        "  allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "  deny: { output: { hookSpecificOutput.permissionDecision: { value: dney } } }\n",
     );
     try {
       const out = await runShim(payload("rm -rf /"), {
@@ -628,16 +629,23 @@ describe("acs-hook — the negotiated posture, end to end", () => {
 
   // The other half of the gate: it must not fire on the hookmap this
   // deployment actually ships. Asserted twice over -- against the file's own
-  // data (so adding a fourth value, e.g. reinstating `defer:
-  // { permissionDecision: defer }`, fails here rather than at runtime) and
+  // data (so adding a fourth value, e.g. reinstating a `defer` entry that
+  // declares `{ value: defer }`, fails here rather than at runtime) and
   // through a real subprocess run that reaches a decision.
+  //
+  // Reading the literal out of the output path is the same reach the shim's
+  // own gate makes, and it now also covers an entry that declares no
+  // permission field at all: `value` comes back undefined, which is not one
+  // of the three, so the entry fails here exactly as the shim would fail it.
   it("still loads the real hookmap: every value it declares is one Claude Code accepts", async () => {
     const declared = Bun.YAML.parse(readFileSync(REAL_HOOKMAP, "utf8")) as {
-      decisions: Record<string, { permissionDecision: string }>;
+      decisions: Record<string, { output?: Record<string, { value?: unknown }> }>;
     };
     const values = Object.entries(declared.decisions).map(([decision, rule]) => ({
       decision,
-      accepted: ["allow", "deny", "ask"].includes(rule.permissionDecision),
+      accepted: ["allow", "deny", "ask"].includes(
+        rule.output?.["hookSpecificOutput.permissionDecision"]?.value as string,
+      ),
     }));
     expect(values).toEqual(values.map(({ decision }) => ({ decision, accepted: true })));
 
@@ -739,7 +747,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
         "decisions:\n" +
         "  allow: null\n" +
-        "  deny: { permissionDecision: deny, reason_from: reasoning }\n",
+        "  deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n",
     );
     try {
       const out = await runShim(payload("ls -la"), {

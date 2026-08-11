@@ -27,12 +27,26 @@ const hookmap: Hookmap = {
       arguments: "$.tool_input",
     },
   },
+  // Unread by buildEnvelope, which owns the `hooks` half of a hookmap --
+  // present so a hookmap this file passes around is a whole one. The host
+  // field names live in the output paths, which is render-decision.ts's
+  // business (and no code's, in the adapter, above the path level).
   decisions: {
-    allow: { permissionDecision: "allow" },
-    deny: { permissionDecision: "deny", reason_from: "reasoning" },
-    ask: { permissionDecision: "ask" },
-    defer: { permissionDecision: "defer" },
-    modify: { permissionDecision: "allow", updatedInput_from: "modifications" },
+    allow: { output: { "hookSpecificOutput.permissionDecision": { value: "allow" } } },
+    deny: {
+      output: {
+        "hookSpecificOutput.permissionDecision": { value: "deny" },
+        "hookSpecificOutput.permissionDecisionReason": { from: "reasoning", type: "string" },
+      },
+    },
+    ask: { output: { "hookSpecificOutput.permissionDecision": { value: "ask" } } },
+    defer: { output: { "hookSpecificOutput.permissionDecision": { value: "deny" } } },
+    modify: {
+      output: {
+        "hookSpecificOutput.permissionDecision": { value: "allow" },
+        "hookSpecificOutput.updatedInput": { from: "applied_input" },
+      },
+    },
   },
 };
 
@@ -158,72 +172,75 @@ describe("buildEnvelope", () => {
       }
     }
 
+    // The `hooks` half every case below shares, and two renderable entries to
+    // build cases out of. Named rather than repeated inline, because after
+    // each decision entry gained a full `output` block the inline strings
+    // were longer than the assertions they set up.
+    const HOOKS =
+      "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n";
+    const ALLOW = "  allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n";
+    const DENY = "  deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n";
+
     it("throws when the decisions block is missing entirely", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).toThrow(/decisions/);
-        },
-      );
+      withHookmapFile(HOOKS, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/decisions/);
+      });
     });
 
     it("throws when decisions is missing deny (allow alone is not enough)", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).toThrow(/deny/);
-        },
-      );
+      withHookmapFile(`${HOOKS}decisions:\n${ALLOW}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/deny/);
+      });
     });
 
     it("throws when decisions is missing allow (deny alone is not enough)", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).toThrow(/allow/);
-        },
-      );
+      withHookmapFile(`${HOOKS}decisions:\n${DENY}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/allow/);
+      });
     });
 
     it("accepts decisions with at least allow and deny, extra entries and all", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).not.toThrow();
-        },
-      );
+      withHookmapFile(`${HOOKS}decisions:\n${ALLOW}${DENY}`, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+      });
     });
 
     // Fix round 3: presence alone let both of these through. `allow: null`
-    // satisfies `"allow" in decisions` but is not an object renderDecision
-    // can read a permissionDecision off -- it would throw at render time,
-    // past every guard, exiting 1 with empty stdout (a third route to the
-    // fail-open this task exists to remove). `allow: {}` also satisfies
-    // presence, renderDecision does NOT throw for it, but
-    // `permissionDecision` comes out `undefined`, which JSON.stringify
-    // drops -- stdout would carry hookSpecificOutput with no decision in
-    // it at all. Both must be rejected at load time instead.
+    // satisfies `"allow" in decisions` but is not an entry renderDecision can
+    // read an output block off -- it would throw at render time, past every
+    // guard, exiting 1 with empty stdout (a third route to the fail-open this
+    // task exists to remove). `allow: {}` also satisfies presence, and used to
+    // render an output whose one field was `undefined`, which JSON.stringify
+    // drops -- stdout would carry a wrapper with no decision in it at all.
+    // Both must be rejected at load time instead.
     it("throws when allow is present but not an object (null)", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: null\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
-        },
-      );
+      withHookmapFile(`${HOOKS}decisions:\n  allow: null\n${DENY}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
+      });
     });
 
-    it("throws when allow is an object but names no permissionDecision", () => {
-      withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: {}\n  deny: { permissionDecision: deny, reason_from: reasoning }\n",
-        (path) => {
-          expect(() => loadHookmap(path)).toThrow(/permissionDecision/);
-        },
-      );
+    // Was "names no permissionDecision" before S1's output block became
+    // declarative. The claim it can still make is the one the adapter is
+    // allowed to make: an entry that renders NOTHING is rejected. Which host
+    // field a renderable entry has to name is no longer this module's business
+    // -- R3.2 forbids it naming one -- and the `permissionDecision` half of
+    // the old claim now lives in the shim's own gate
+    // (assertHostAcceptsEveryDecision, hosts/claude-code/acs-hook.ts), where
+    // hosts/claude-code/test/posture.test.ts exercises it end to end.
+    it("throws when allow is an object but declares no output block", () => {
+      withHookmapFile(`${HOOKS}decisions:\n  allow: {}\n${DENY}`, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"decisions\.allow" entry needs a non-empty "output" block/);
+      });
     });
 
     it("throws when a THIRD entry (not allow or deny) is malformed -- every declared entry is checked", () => {
+      // Malformed the second way an entry can be, now that entries carry an
+      // output block: the block is there and non-empty, but its one field
+      // names neither a literal `value` nor a `from` to copy -- a hookmap typo
+      // that would render `modify` as an output missing the field its author
+      // believes is there.
       withHookmapFile(
-        "host: claude-code\nhooks:\n  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\ndecisions:\n  allow: { permissionDecision: allow }\n  deny: { permissionDecision: deny, reason_from: reasoning }\n  modify: { updatedInput_from: applied_input }\n",
+        `${HOOKS}decisions:\n${ALLOW}${DENY}  modify: { output: { hookSpecificOutput.updatedInput: { type: string } } }\n`,
         (path) => {
           expect(() => loadHookmap(path)).toThrow(/decisions\.modify/);
         },

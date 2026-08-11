@@ -132,11 +132,12 @@ const DEFAULT_GUARDIAN_URL = "http://localhost:8787/acs";
  * knowing ACS decisions and nothing about this host. That is what lets a
  * second host arrive as a shim and a hookmap rather than a fork of the
  * shared module -- and it is only true while these names appear on this side
- * of the seam. The two inside the wrapper appear as data in
- * claude-code.hookmap.yaml's output paths; here the wrapper itself is the one
- * name this shim needs, because it is the shim that wraps.
+ * of the seam. Both appear as data in claude-code.hookmap.yaml's output paths;
+ * here they appear as the wrapper this shim adds and the one output path whose
+ * declared value this shim has to check against Claude Code's own enum.
  */
 const HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput";
+const PERMISSION_DECISION_PATH = `${HOOK_SPECIFIC_OUTPUT}.permissionDecision`;
 
 /**
  * Wraps the adapter's host-agnostic output into the exact JSON Claude Code
@@ -203,11 +204,12 @@ class BlockingConfigurationError extends Error {
 const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
 
 /**
- * Rejects a hookmap that declares a `permissionDecision` this host cannot
- * actually emit -- and this is a fail-open, not a tidiness check.
+ * Rejects a hookmap that does not declare, for every decision, a literal
+ * `permissionDecision` this host actually accepts -- and this is a fail-open
+ * guard, not a tidiness check.
  *
- * A one-character typo in the hookmap (`permissionDecision: dney`) renders a
- * real policy deny as
+ * A one-character typo in the hookmap (`{ value: dney }`) renders a real
+ * policy deny as
  * `{"hookSpecificOutput":{...,"permissionDecision":"dney",...}}` with exit 0.
  * Claude Code does not recognise the value, so it treats the hook as having
  * produced no decision at all and PROCEEDS: a policy that fired and denied
@@ -215,13 +217,26 @@ const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
  * success exit code. Same shape as every other fail-open found here -- the
  * host receives no honoured decision and the tool call runs ungoverned.
  *
- * `loadHookmap` deliberately stops one step short of this: it shape-checks
- * every declared entry (a non-null object naming a non-empty string
- * `permissionDecision`) but does not check the VALUE against any host's
- * enum, because the adapter must not know one -- R3.2, enforced
- * mechanically by test/invariants.test.ts's vocabulary gate over
- * packages/host-adapter/src. This shim is host-specific by definition and
- * already names Claude Code freely, so the enum lives here and only here.
+ * Two cases this catches that a per-entry `permissionDecision` FIELD check
+ * could not, both of which arrived with S1's generic output shape (V1's own
+ * PR #10 Critical) and both of which are the same bypass by another route:
+ *
+ *   - An entry declaring no `permissionDecision` path at all. Legal for a host
+ *     whose output has no such field; for this one it renders JSON Claude Code
+ *     reads as no decision.
+ *   - An entry sourcing it `from:` a decision field instead of a literal.
+ *     Present-looking in the YAML, absent at runtime whenever the decision
+ *     does not carry that field.
+ *
+ * `loadHookmap` deliberately stops one step short of all of this: it checks
+ * that every declared entry renders SOMETHING (a non-empty `output` block
+ * whose every field names a literal `value` or a non-empty `from`), but never
+ * checks a value against a host's enum, because the adapter must not know one
+ * -- or, since the output shape became generic, any host's field names at all
+ * -- R3.2, enforced mechanically by test/invariants.test.ts's vocabulary gate
+ * over packages/host-adapter/src. This shim is host-specific by definition and
+ * already names Claude Code freely, so the enum and the path live here and
+ * only here.
  *
  * Raised as a BlockingConfigurationError, so it exits 2 ("blocking error")
  * like every other broken-configuration case rather than exiting 0 with an
@@ -229,16 +244,20 @@ const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
  */
 function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
   for (const [decision, rule] of Object.entries(hookmap.decisions ?? {})) {
-    // loadHookmap has already guaranteed a non-null object with a non-empty
-    // string here; this reads it defensively anyway, because a value it
-    // rejects is exactly what this function must name rather than crash on.
-    const permissionDecision = (rule as { permissionDecision?: unknown } | null)?.permissionDecision;
+    // loadHookmap has already guaranteed a well-formed output block here;
+    // this reads it defensively anyway, because a hookmap it rejects is
+    // exactly what this function must name rather than crash on.
+    const field = (rule as { output?: Record<string, { value?: unknown } | null> } | null)?.output?.[
+      PERMISSION_DECISION_PATH
+    ];
+    const permissionDecision = field?.value;
     if (typeof permissionDecision !== "string" || !ACCEPTED_PERMISSION_DECISIONS.has(permissionDecision)) {
       throw new Error(
-        `acs-hook: ${path}'s "decisions.${decision}" declares permissionDecision ` +
-          `${JSON.stringify(permissionDecision)}, which Claude Code does not accept -- it accepts exactly ` +
-          `"allow", "deny" or "ask". Claude Code reads an unrecognised value as no decision at all and lets ` +
-          `the tool call proceed, so this hookmap would silently turn decisions into ungoverned tool calls.`,
+        `acs-hook: ${path}'s "decisions.${decision}" must declare a literal "${PERMISSION_DECISION_PATH}" ` +
+          `output field, and declares ${JSON.stringify(permissionDecision)}, which Claude Code does not accept ` +
+          `-- it accepts exactly "allow", "deny" or "ask". Claude Code reads a missing or unrecognised value as ` +
+          `no decision at all and lets the tool call proceed, so this hookmap would silently turn decisions ` +
+          `into ungoverned tool calls.`,
       );
     }
   }
