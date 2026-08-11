@@ -74,10 +74,47 @@ export type HandshakeOptions = {
 };
 
 /**
- * Sends `handshake/hello`, waits for the Guardian's ServerHello, stores the
- * session config it validates out of that arrival, and returns that config.
- * Throws if the Guardian responds with a JSON-RPC error rather than a result,
- * or if what arrived is not a usable session config.
+ * Thrown when the Guardian answered with a ServerHello this host could not
+ * KEEP -- as opposed to a handshake that never got an answer at all. The two
+ * are materially different incidents and must not be squashed into one:
+ *
+ *   - A handshake that never reached the Guardian negotiated nothing. There
+ *     is no posture to apply, and `posture_source: "default"` already says
+ *     so.
+ *   - A ServerHello that arrived and could not be *persisted* DID negotiate
+ *     a posture. Persisting it is an optimisation for the hooks that come
+ *     after this one (the shipped host runs each hook in a fresh
+ *     subprocess, so the file is how a later process finds it); the value in
+ *     hand is authoritative for the step that negotiated it. Discarding it
+ *     because the write failed is how a deployment that declared
+ *     `on_decision_failure: deny` fails *open* on the very step it just
+ *     negotiated -- the fail-open shape this project keeps finding.
+ *
+ * `config` carries the negotiated ServerHello whenever there is one to
+ * carry, so a caller can apply it to the current step and still report the
+ * persistence failure. It is undefined only when there was never a usable
+ * config to begin with.
+ */
+export class SessionConfigNotStoredError extends Error {
+  /** Which of the two local failures this is -- see classifySessionFailure. */
+  readonly kind: "session_config_unstored";
+  /** The negotiated ServerHello, when one was negotiated. */
+  readonly config: SessionConfig | undefined;
+
+  constructor(message: string, { cause, config }: { cause?: unknown; config?: SessionConfig } = {}) {
+    super(message, { cause });
+    this.name = "SessionConfigNotStoredError";
+    this.kind = "session_config_unstored";
+    this.config = config;
+  }
+}
+
+/**
+ * Sends `handshake/hello`, waits for the Guardian's ServerHello, stores it
+ * into `store`, and returns it. Throws if the Guardian responds with a
+ * JSON-RPC error rather than a result, and throws
+ * `SessionConfigNotStoredError` -- carrying the ServerHello -- if the store
+ * refuses to persist what did arrive.
  */
 export async function negotiateSessionConfig(
   options: HandshakeOptions,
@@ -128,6 +165,19 @@ export async function negotiateSessionConfig(
   }
 
   const sessionConfig: SessionConfig = serverHello;
-  store.set(sessionConfig);
+  try {
+    store.set(sessionConfig);
+  } catch (error) {
+    // The store is documented to throw here rather than swallow (an
+    // unwritable `.acs/sessions` is a real deployment fault and hiding it
+    // would be the silent half of the bug this error class exists for), so
+    // this rethrows -- but with the negotiated ServerHello attached, so the
+    // caller can still apply it to the step that negotiated it.
+    throw new SessionConfigNotStoredError(
+      `handshake: the Guardian's ServerHello could not be stored ` +
+        `(${error instanceof Error ? error.message : String(error)})`,
+      { cause: error, config: sessionConfig },
+    );
+  }
   return sessionConfig;
 }

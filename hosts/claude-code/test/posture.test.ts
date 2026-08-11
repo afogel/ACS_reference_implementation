@@ -7,6 +7,9 @@ import { startGuardian } from "guardian";
 
 const SHIM = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const MANIFEST = fileURLToPath(new URL("../../../policy/manifest.yaml", import.meta.url));
+/** The hookmap this deployment actually ships -- the same default the shim
+ * resolves when ACS_HOOKMAP_PATH is unset. */
+const REAL_HOOKMAP = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
 
 const dirs: string[] = [];
 function scratch(): string {
@@ -474,6 +477,151 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     // Nothing was written either -- the hookmap failed before the session
     // store was ever built.
     expect(existsSync(join(dir, "sessions"))).toBe(false);
+  });
+
+  // A hookmap whose `permissionDecision` is a well-formed string that Claude
+  // Code does not accept. Reproduced against a live Guardian before this
+  // gate existed: mutating the real hookmap's `deny` entry to
+  // `permissionDecision: dney` made a real policy deny for `rm -rf /` render
+  // as {"hookSpecificOutput":{...,"permissionDecision":"dney",
+  // "permissionDecisionReason":"matched pattern ... at offset 0"}} with exit
+  // 0 -- and Claude Code, which accepts only allow/deny/ask, read that as no
+  // decision at all and PROCEEDED. A policy that fired and denied became an
+  // allowed tool call behind plausible JSON and a success exit code.
+  //
+  // loadHookmap cannot catch it: it checks that permissionDecision is a
+  // non-empty string and stops there, because the adapter must not know any
+  // host's decision enum (R3.2, enforced by test/invariants.test.ts). The
+  // check belongs in this shim, which is host-specific by definition.
+  it("exits 2 (blocking) on a hookmap permissionDecision Claude Code does not accept, rather than emitting it", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "typo-hookmap.yaml");
+    // Byte-for-byte the real hookmap's decisions block with one character
+    // changed in `deny` -- the mutation that was actually reproduced.
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse: { acs_method: steps/toolCallRequest, tool_name: $.tool_name, arguments: $.tool_input }\n" +
+        "decisions:\n" +
+        "  allow: { permissionDecision: allow, reason_from: reasoning }\n" +
+        "  deny: { permissionDecision: dney, reason_from: reasoning }\n",
+    );
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      // The offending entry AND its value are named, so a reader of the
+      // stderr line knows which line of YAML to fix.
+      expect(out.stderr).toContain("decisions.deny");
+      expect(out.stderr).toContain("dney");
+      // Nothing was written: the gate runs before the session store is built.
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
+  // The other half of the gate: it must not fire on the hookmap this
+  // deployment actually ships. Asserted twice over -- against the file's own
+  // data (so adding a fourth value, e.g. reinstating `defer:
+  // { permissionDecision: defer }`, fails here rather than at runtime) and
+  // through a real subprocess run that reaches a decision.
+  it("still loads the real hookmap: every value it declares is one Claude Code accepts", async () => {
+    const declared = Bun.YAML.parse(readFileSync(REAL_HOOKMAP, "utf8")) as {
+      decisions: Record<string, { permissionDecision: string }>;
+    };
+    const values = Object.entries(declared.decisions).map(([decision, rule]) => ({
+      decision,
+      accepted: ["allow", "deny", "ask"].includes(rule.permissionDecision),
+    }));
+    expect(values).toEqual(values.map(({ decision }) => ({ decision, accepted: true })));
+
+    const dir = scratch();
+    const out = await runShim(payload("ls -la"), {
+      ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+      ACS_SESSION_DIR: join(dir, "sessions"),
+      ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+    });
+    expect(out.exitCode).toBe(0);
+    expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecision).toBe("allow");
+  });
+
+  // Risk row 14, closed here. The handshake reached the Guardian and came
+  // back with `on_decision_failure: deny`; only the local WRITE of that
+  // ServerHello failed. Before this fix the shim discarded the returned
+  // value, `store.get()` stayed undefined, and the ACS default (`proceed`)
+  // applied -- so a deployment that declared `deny` failed OPEN on the very
+  // step whose posture it had just negotiated, and did so on every hook,
+  // forever, because every hook re-handshakes and every write fails again.
+  it("applies a ServerHello it could not persist to the step that negotiated it (risk row 14)", async () => {
+    const dir = scratch();
+    // A regular file where the session directory should be: `mkdirSync`
+    // throws ENOTDIR, reliably and cross-platform, so `set()` throws while
+    // `get()` (total by design) still returns undefined.
+    const sessionsAsFile = join(dir, "sessions");
+    writeFileSync(sessionsAsFile, "x");
+    const stub = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number; method: string };
+        if (body.method === "handshake/hello") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              negotiated_version: "0.1.0",
+              methods_evaluated: ["steps/toolCallRequest"],
+              selected_transport: "http",
+              timeout_config: { default_ms: 5000 },
+              // The posture the deployment declared, and the whole point of
+              // the test: it must reach this step, not just the next one.
+              on_decision_failure: "deny",
+            },
+          });
+        }
+        // A delivery failure for the step itself, so the posture is what
+        // decides the outcome (constraint 1 keeps the two domains apart).
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: -32020, message: "evaluation failed" },
+        });
+      },
+    });
+    try {
+      const out = await runShim(payload("ls -la"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: sessionsAsFile,
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      expect(out.exitCode).toBe(0);
+      const hook = JSON.parse(out.stdout).hookSpecificOutput;
+      // Denied, not proceeded: the negotiated posture applied.
+      expect(hook.permissionDecision).toBe("deny");
+
+      const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        posture: "deny",
+        // Negotiated, not defaulted -- the distinction the durable record
+        // exists to carry.
+        posture_source: "negotiated",
+        outcome: "blocked",
+        failure: { kind: "error_without_decision" },
+      });
+      // And the persistence failure stays visible rather than being papered
+      // over by the value having been usable anyway.
+      expect(audit[0].session_failure.message).toContain("could not be stored");
+    } finally {
+      stub.stop(true);
+      unlinkSync(sessionsAsFile);
+    }
   });
 
   it("exits 2 (blocking) when the hookmap's decisions block is malformed, not merely absent (fix round 3)", async () => {

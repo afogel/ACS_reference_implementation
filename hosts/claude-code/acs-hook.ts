@@ -90,6 +90,7 @@ import {
   loadHookmap,
   negotiateSessionConfig,
   renderDecision,
+  SessionConfigNotStoredError,
   toSessionUuid,
   unwrapArguments,
   validateDecision,
@@ -97,6 +98,7 @@ import {
   type AcsRequestEnvelope,
   type Hookmap,
   type HostOutput,
+  type SessionConfig,
   type SessionConfigStore,
 } from "host-adapter";
 
@@ -181,6 +183,57 @@ class BlockingConfigurationError extends Error {
   }
 }
 
+/**
+ * The only three `permissionDecision` values Claude Code accepts on a
+ * PreToolUse hookSpecificOutput -- the same three claude-code.hookmap.yaml's
+ * own header comment names ("Claude Code's PreToolUse hookSpecificOutput
+ * only accepts permissionDecision \"allow\" | \"deny\" | \"ask\" (see Claude
+ * Code's own hook docs)"). The hookmap says it; until now nothing checked it.
+ */
+const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
+
+/**
+ * Rejects a hookmap that declares a `permissionDecision` this host cannot
+ * actually emit -- and this is a fail-open, not a tidiness check.
+ *
+ * A one-character typo in the hookmap (`permissionDecision: dney`) renders a
+ * real policy deny as
+ * `{"hookSpecificOutput":{...,"permissionDecision":"dney",...}}` with exit 0.
+ * Claude Code does not recognise the value, so it treats the hook as having
+ * produced no decision at all and PROCEEDS: a policy that fired and denied
+ * becomes an allowed tool call, silently, behind plausible-looking JSON and a
+ * success exit code. Same shape as every other fail-open found here -- the
+ * host receives no honoured decision and the tool call runs ungoverned.
+ *
+ * `loadHookmap` deliberately stops one step short of this: it shape-checks
+ * every declared entry (a non-null object naming a non-empty string
+ * `permissionDecision`) but does not check the VALUE against any host's
+ * enum, because the adapter must not know one -- R3.2, enforced
+ * mechanically by test/invariants.test.ts's vocabulary gate over
+ * packages/host-adapter/src. This shim is host-specific by definition and
+ * already names Claude Code freely, so the enum lives here and only here.
+ *
+ * Raised as a BlockingConfigurationError, so it exits 2 ("blocking error")
+ * like every other broken-configuration case rather than exiting 0 with an
+ * output the host will discard.
+ */
+function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
+  for (const [decision, rule] of Object.entries(hookmap.decisions ?? {})) {
+    // loadHookmap has already guaranteed a non-null object with a non-empty
+    // string here; this reads it defensively anyway, because a value it
+    // rejects is exactly what this function must name rather than crash on.
+    const permissionDecision = (rule as { permissionDecision?: unknown } | null)?.permissionDecision;
+    if (typeof permissionDecision !== "string" || !ACCEPTED_PERMISSION_DECISIONS.has(permissionDecision)) {
+      throw new Error(
+        `acs-hook: ${path}'s "decisions.${decision}" declares permissionDecision ` +
+          `${JSON.stringify(permissionDecision)}, which Claude Code does not accept -- it accepts exactly ` +
+          `"allow", "deny" or "ask". Claude Code reads an unrecognised value as no decision at all and lets ` +
+          `the tool call proceed, so this hookmap would silently turn decisions into ungoverned tool calls.`,
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   // Step 1: read the hook payload. A hook fired, so something governs this
   // tool call or nothing does -- and a shim that cannot read its own input
@@ -205,17 +258,19 @@ async function main(): Promise<void> {
     throw new BlockingConfigurationError(error);
   }
 
-  // Step 2: a hookmap that fails to load, or an unsafe session_id, both make
-  // a governed decision impossible -- a broken deployment, not a policy
-  // question -- so both become a BlockingConfigurationError and exit 2, not
-  // the silent proceed a non-blocking exit code would produce. Nothing is
-  // written anywhere before this succeeds (constraint 4):
+  // Step 2: a hookmap that fails to load, a hookmap declaring a decision
+  // value this host cannot emit, or an unsafe session_id all make a governed
+  // decision impossible -- a broken deployment, not a policy question -- so
+  // all three become a BlockingConfigurationError and exit 2, not the silent
+  // proceed a non-blocking exit code would produce. Nothing is written
+  // anywhere before this succeeds (constraint 4):
   // createFileSessionConfigStore's InvalidSessionIdError throws
   // synchronously, before its first write.
   let hookmap: Hookmap;
   let store: SessionConfigStore;
   try {
     hookmap = loadHookmap(HOOKMAP_PATH);
+    assertHostAcceptsEveryDecision(hookmap, HOOKMAP_PATH);
     store = createFileSessionConfigStore({
       dir: process.env.ACS_SESSION_DIR ?? ".acs/sessions",
       sessionId,
@@ -245,7 +300,17 @@ async function main(): Promise<void> {
   // `posture_source: "default"` records that no negotiated config was found;
   // this records why. The step call may still succeed even after this fails
   // (Global Constraint 1: the posture must never touch an arriving decision).
+  //
+  // Risk row 14, now closed: the ServerHello handshake() returns is no
+  // longer discarded when `store.set` throws. Persisting it is an
+  // optimisation for LATER hooks -- the shipped host runs each hook in a
+  // fresh subprocess, so the file is how the next process finds the posture
+  // -- while the value in hand is authoritative for the step that just
+  // negotiated it. Throwing it away because the write failed meant a
+  // deployment declaring `on_decision_failure: deny` failed *open* on that
+  // very step: the posture was known in-process and unused.
   let sessionFailure: unknown;
+  let negotiated: SessionConfig | undefined;
   if (store.get() === undefined) {
     try {
       // metadata.session_id is schema-constrained to "uuid" (same rule
@@ -257,7 +322,7 @@ async function main(): Promise<void> {
       // negotiating one is what this call is for -- without a bound, a
       // Guardian that accepts the connection and never answers would hang
       // this hook until Claude Code's own hook timeout kills the process.
-      await negotiateSessionConfig(
+      negotiated = await negotiateSessionConfig(
         {
           guardian,
           agentId: hookmap.host,
@@ -270,11 +335,21 @@ async function main(): Promise<void> {
       // Not fatal, and not this step's own failure -- but not thrown away
       // either. See the comment above.
       sessionFailure = error;
+      // A ServerHello that arrived and could not be persisted still
+      // negotiated this session's posture, and it is applied to this step.
+      // Undefined for every other handshake failure, where nothing was
+      // negotiated and there is genuinely nothing to apply.
+      if (error instanceof SessionConfigNotStoredError) {
+        negotiated = error.config;
+      }
     }
   }
 
-  // Step 5.
-  const sessionConfig = store.get();
+  // Step 5. The stored config when there is one; otherwise whatever this
+  // hook negotiated but could not store (see above). `session_failure` still
+  // travels into the audit entry either way, so the persistence failure
+  // stays visible rather than being papered over by the value being usable.
+  const sessionConfig = store.get() ?? negotiated;
   const timeoutMs = sessionConfig?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
   // Steps 6-7, one guard: buildEnvelope -> requestDecision -> render, all
