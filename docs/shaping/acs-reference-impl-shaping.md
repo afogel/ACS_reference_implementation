@@ -267,7 +267,7 @@ All resolved — see `spike-agt-integration.md`.
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N22, → N27 | — |
 | N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
 | N23 | P3 | guardian | `assembleSnapshot()` / `assembleResultSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point | call | → N30 | — |
-| N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → `modifications.parameter_overrides` keyed by argument name (R1.6, declared in S10) | call | → N25, → N26 | → N4, → N13 |
+| N24 | P3 | guardian | `mapVerdict()` — AGT verdict **+ the resolved intervention point** → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → the modification that point's own S10 row declares — `modifications.parameter_overrides` keyed by argument name at the request gate, `modifications.redactions` on the result payload's own path at the result gate (R1.6). A point S10 gives no synthesis rule cannot express a `transform` and throws, reaching the host as an honoured `deny` | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
 | N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
