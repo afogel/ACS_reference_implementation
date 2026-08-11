@@ -125,7 +125,7 @@ Second, through the real `claude` CLI with `.claude/settings.json` installed —
 ### Verify
 
 ```bash
-bun test          # 134 tests across 16 files (133 pass, 1 skip), including the R3.2/R3.3
+bun test          # 157 tests across 17 files (156 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors

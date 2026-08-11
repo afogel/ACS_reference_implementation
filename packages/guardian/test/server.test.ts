@@ -326,6 +326,17 @@ export function validateEnvelope(_input) {
   error.message = undefined;
   throw error;
 }
+
+// Must track validate-envelope.ts's real export surface, not just the two
+// symbols this double overrides: server.ts imports isToolCallRequest from the
+// same module, so a double that omits it fails to import rather than
+// exercising the pathological throw these tests exist for. Mirrors the real
+// narrowing exactly -- it is unreachable here (validateEnvelope always
+// throws) but a double that lies about behaviour is worse than one that
+// does not compile.
+export function isToolCallRequest(envelope) {
+  return envelope.method === "steps/toolCallRequest";
+}
 `;
 
 /**
@@ -361,6 +372,17 @@ export function validateEnvelope(_input) {
     },
   });
   throw error;
+}
+
+// Must track validate-envelope.ts's real export surface, not just the two
+// symbols this double overrides: server.ts imports isToolCallRequest from the
+// same module, so a double that omits it fails to import rather than
+// exercising the pathological throw these tests exist for. Mirrors the real
+// narrowing exactly -- it is unreachable here (validateEnvelope always
+// throws) but a double that lies about behaviour is worse than one that
+// does not compile.
+export function isToolCallRequest(envelope) {
+  return envelope.method === "steps/toolCallRequest";
 }
 `;
 
