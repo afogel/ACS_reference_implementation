@@ -834,7 +834,12 @@ it("never emits both shapes at once", () => {
       # would have to interpret. The path indexes the ACS result payload's
       # own outputs array -- the same leaf policy_target addressed.
       modifications:
-        from: verdict.transform.value
+        # `from` names the transform OBJECT, not its `value` -- an earlier draft
+        # of this stanza said `verdict.transform.value`, which would have made
+        # the "is absent" throw name a field one level too deep. `rule.from` is
+        # read only to build that message; the value is taken from
+        # `transform.value` in code once `transform` is known to be present.
+        from: verdict.transform
         when_path: "$policy_target"
         into: redactions
         redaction_path: "/outputs/0/value"
