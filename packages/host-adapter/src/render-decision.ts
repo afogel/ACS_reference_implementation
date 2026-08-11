@@ -22,6 +22,7 @@
  * separate rendering path for it to invent.
  */
 import type { Hookmap } from "./build-envelope.ts";
+import type { AcsDecision } from "./decision-message.ts";
 
 /** One decision's hookmap-declared rendering rule (S1's `decisions.<decision>` entry). */
 type DecisionRenderRule = {
@@ -29,14 +30,6 @@ type DecisionRenderRule = {
   reason_from?: string;
   updatedInput_from?: string;
 };
-
-/**
- * The ACS decision-result shape renderDecision reads from. Deliberately
- * loose: only `decision` is required, because everything else this module
- * touches is named by the hookmap (`reason_from`, `updatedInput_from`), not
- * assumed to exist under a fixed key.
- */
-export type AcsDecisionResult = { decision: string } & Record<string, unknown>;
 
 export type HookSpecificOutput = { hookEventName: string; permissionDecision: string } & Record<string, unknown>;
 
@@ -51,7 +44,7 @@ export type HookSpecificOutput = { hookEventName: string; permissionDecision: st
  */
 export function renderDecision(
   hookEventName: string,
-  decisionResult: AcsDecisionResult,
+  decisionResult: AcsDecision,
   hookmap: Hookmap,
 ): { hookSpecificOutput: HookSpecificOutput } {
   const rules = hookmap.decisions as Record<string, DecisionRenderRule> | undefined;
