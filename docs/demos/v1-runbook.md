@@ -42,7 +42,11 @@ Leave this running for the rest of the demo. `hosts/claude-code/acs-hook.ts` def
 
 ## Step 2 — wire the hook into Claude Code
 
-`hosts/claude-code/settings.json` registers the shim for the `Bash` tool only (matching `policy/manifest.yaml`'s registered tools — not a general-purpose interception of every tool call). **When V1 shipped it registered `PreToolUse` alone**, which is the "one hook" of V1's name, and that is the half this runbook exercises. V4 added a `PostToolUse` entry beside it, against the same tool and the same command, so the result gate fires for a live agent too — nothing in this runbook exercises it, and nothing in it changes because of it. Install it as this repo's project-level Claude Code settings:
+`hosts/claude-code/settings.json` registers the shim for the `Bash` tool only (matching `policy/manifest.yaml`'s registered tools — not a general-purpose interception of every tool call).
+
+**Both matchers are anchored — `^Bash$`, not `Bash` — and that is load-bearing rather than tidy.** `matcher` is a regular expression: Claude Code's own hook documentation writes alternations like `"Write|Edit"`, which is only meaningful as one. An unanchored `Bash` therefore also selects `BashOutput` and `KillShell`, the two background-shell tools, and neither of those answers with the `tool_response.stdout` that `claude-code.hookmap.yaml`'s `outputs.from` names. At the result gate that means no ACS request can be built for them at all, and the deployment's negotiated `on_decision_failure` answers instead — an audited proceed where it is `proceed`, and a **blocking stop on every background-shell call the session makes** where it is `deny`. That reaches a live agent, not a test. Anchoring it removes the question rather than answering it: whatever Claude Code's own matching semantics turn out to be, the pattern selects exactly the one tool `policy/manifest.yaml` registers. The `PreToolUse` entry is anchored for the same reason — it always had the same exposure, and V1 simply never fired a hook for a tool it could not build a request for.
+
+**When V1 shipped it registered `PreToolUse` alone**, which is the "one hook" of V1's name, and that is the half this runbook exercises. V4 added a `PostToolUse` entry beside it, against the same tool and the same command, so the result gate fires for a live agent too — nothing in this runbook exercises it, and nothing in it changes because of it. Install it as this repo's project-level Claude Code settings:
 
 ```bash
 mkdir -p .claude
