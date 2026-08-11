@@ -2,9 +2,9 @@
  * acs-hook.ts (N1) -- Claude Code's PreToolUse hook shim.
  *
  * Deliberately thin: read the hook JSON Claude Code sends on stdin, call
- * buildEnvelope -> guardianClient.post -> renderDecision (all three from
- * `host-adapter`, packages/host-adapter), wrap the output that comes back
- * into the JSON Claude Code expects, and write it to stdout. All logic lives
+ * buildEnvelope -> createGuardianClient(...).requestDecision -> renderDecision
+ * (all three from `host-adapter`, packages/host-adapter), wrap what comes
+ * back into the JSON Claude Code expects, and write it to stdout. All logic lives
  * in the adapter -- this file is only the wiring a Claude Code hook process
  * needs (stdin, stdout, exit code, which hookmap file to load) plus the one
  * thing the adapter must not know: this host's own output shape. Slice V5
@@ -15,7 +15,8 @@
  * This file is host-specific by definition (it may name Claude Code
  * freely) but must not reach into AGT -- it never imports `agt-bridge` or
  * `guardian`'s server-side pieces, only `host-adapter`'s public surface,
- * and talks to the Guardian only over HTTP via `guardianClient.post`.
+ * and talks to the Guardian only over HTTP, through the client role
+ * `createGuardianClient` returns.
  *
  * Claude Code's hook protocol (see the task brief and
  * docs/demos/v1-runbook.md): stdin is one JSON object
@@ -38,7 +39,7 @@
  * posture; V3 should replace it deliberately.
  */
 import { fileURLToPath } from "node:url";
-import { buildEnvelope, guardianClient, loadHookmap, renderDecision, type HostOutput } from "host-adapter";
+import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type HostOutput } from "host-adapter";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
 
@@ -97,6 +98,19 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
   return { ...rendered, [HOOK_SPECIFIC_OUTPUT]: { hookEventName, ...(wrapper as Record<string, unknown>) } };
 }
 
+/**
+ * Turns whatever stood in for a decision into one line of stderr. `failure` is
+ * `unknown` by design -- it is a throw from the wire, a JSON-RPC `error`
+ * object, or an Error this shim never constructed -- so this formats all three
+ * rather than assuming any one of them.
+ */
+function describeFailure(failure: unknown): string {
+  if (failure instanceof Error) {
+    return failure.message;
+  }
+  return typeof failure === "string" ? failure : JSON.stringify(failure);
+}
+
 async function main(): Promise<void> {
   const input = await Bun.stdin.text();
   const payload = JSON.parse(input) as Record<string, unknown>;
@@ -109,14 +123,23 @@ async function main(): Promise<void> {
   const hookmap = loadHookmap(HOOKMAP_PATH);
   const envelope = buildEnvelope(hookEventName, payload, hookmap);
 
-  const guardianUrl = process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL;
-  const response = await guardianClient.post(guardianUrl, envelope);
+  const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
 
-  if (response.error) {
-    throw new Error(`acs-hook: Guardian returned a JSON-RPC error: ${response.error.message}`);
+  // Told whether a decision arrived, rather than handed a JSON-RPC bag to
+  // interrogate (PR #10 review, Important). This shim no longer reads
+  // `.error`, casts `.result`, or decides which of those means "no decision" --
+  // getting that branch wrong is a fail-open, and a second host would have
+  // inherited it by copying this file.
+  const outcome = await guardian.requestDecision(envelope);
+  if (!outcome.decisionArrived) {
+    // V1 placeholder, unchanged: this throw lands in main().catch below, which
+    // still exits 1. Deciding what a delivery failure means -- the negotiated
+    // fail-open/fail-closed posture, and auditing a bypass when one is taken --
+    // is N6/N7 and belongs to V3. See this file's header.
+    throw new Error(`acs-hook: no decision arrived from the Guardian: ${describeFailure(outcome.failure)}`);
   }
 
-  const rendered = renderDecision(response.result as { decision: string } & Record<string, unknown>, hookmap);
+  const rendered = renderDecision(outcome.decision, hookmap);
 
   process.stdout.write(JSON.stringify(asClaudeCodeOutput(rendered, hookEventName)));
 }

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // is used the same way the shim itself uses it, so this test also proves
 // what a subprocess sees is what the adapter would have produced directly.
 import { startGuardian, type StartedGuardian } from "guardian";
-import { buildEnvelope, guardianClient, loadHookmap, renderDecision, type Hookmap } from "host-adapter";
+import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type Hookmap } from "host-adapter";
 
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
@@ -84,7 +84,7 @@ describe("acs-hook.ts (N1) -- the Claude Code hook shim, run as a real subproces
     // demo's entire payoff: what a human reads in the transcript.
     const hookmap: Hookmap = loadHookmap(HOOKMAP_PATH);
     const envelope = buildEnvelope("PreToolUse", payload, hookmap);
-    const response = await guardianClient.post(guardian.url, envelope);
+    const response = await createGuardianClient(guardian.url).post(envelope);
     expect(response.error).toBeUndefined();
     const expected = renderDecision(
       response.result as { decision: string } & Record<string, unknown>,

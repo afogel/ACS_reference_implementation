@@ -12,7 +12,7 @@
 
 1. You ask Claude Code to run a destructive shell command.
 2. Claude Code's transcript shows the tool call **blocked**, with a human-readable deny reason — not a generic "permission denied," but the actual text the policy engine produced (something like *"matched pattern `(?i)rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/(?:\s|$)` at offset 0"*).
-3. That reason did not come from Claude Code, and it did not come from a hardcoded string in the hook shim — it travelled from the AGT bridge's Rego evaluation, through the Guardian's `POST /acs` endpoint, over HTTP, through `guardianClient.post` → `renderDecision`, and into `permissionDecisionReason`. The payoff is that this text is real, not stubbed.
+3. That reason did not come from Claude Code, and it did not come from a hardcoded string in the hook shim — it travelled from the AGT bridge's Rego evaluation, through the Guardian's `POST /acs` endpoint, over HTTP, through `createGuardianClient(...).requestDecision` → `renderDecision`, and into `permissionDecisionReason`. The payoff is that this text is real, not stubbed.
 4. Ask for something harmless (e.g. `ls -la`) in the same session and it runs normally — the hook only interrupts what the policy actually denies.
 
 ## Prerequisites

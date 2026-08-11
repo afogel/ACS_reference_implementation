@@ -13,18 +13,21 @@
  *
  * R3.2: this module knows ACS handshake vocabulary and JSON-RPC, nothing
  * else. It has no runtime dependency on the Guardian package -- it talks
- * to the Guardian only through guardianClient.post, over the wire.
+ * to the Guardian only through the client role it is given, over the wire.
  */
 import { randomUUID } from "node:crypto";
-import { guardianClient, type JsonRpcRequest } from "./guardian-client.ts";
+import type { GuardianClient, JsonRpcRequest } from "./guardian-client.ts";
 import type { SessionConfig, SessionConfigStore } from "./session-config.ts";
 
 const HANDSHAKE_METHOD = "handshake/hello";
 const ACS_VERSION = "0.1.0";
 
 export type HandshakeOptions = {
-  /** The Guardian's ACS endpoint, as returned by startGuardian (test-only) or configured for the deployment. */
-  url: string;
+  /** The Guardian to negotiate with -- `createGuardianClient(url)` for the
+   * endpoint startGuardian returned (test-only) or the one this deployment is
+   * configured for. A client rather than a URL because that is the seam: this
+   * module knows the handshake, not how to reach a Guardian. */
+  guardian: GuardianClient;
   /** This Observed Agent's identity on the wire (ACS metadata.agent_id). */
   agentId: string;
   /** This session's identity on the wire (ACS metadata.session_id, a uuid). */
@@ -60,7 +63,10 @@ export async function handshake(options: HandshakeOptions, store: SessionConfigS
     },
   };
 
-  const response = await guardianClient.post(options.url, envelope);
+  // `post`, not `requestDecision`: this method's result is a ServerHello, not
+  // a decision, and a handshake failure is a different incident from a step
+  // that got no decision. It travels as a throw, separately.
+  const response = await options.guardian.post(envelope);
   if (response.error) {
     throw new Error(`handshake: Guardian rejected handshake/hello: ${response.error.message}`);
   }

@@ -16,8 +16,10 @@ export {
   type AcsRequestEnvelope,
 } from "./build-envelope.ts";
 export {
-  guardianClient,
+  createGuardianClient,
   GuardianResponseMismatchError,
+  type DecisionOrFailure,
+  type GuardianClient,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type JsonRpcSuccessResponse,
