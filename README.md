@@ -107,7 +107,9 @@ mkdir -p .claude
 cp hosts/claude-code/settings.json .claude/settings.json
 ```
 
-This registers `hosts/claude-code/acs-hook.ts` as a `PreToolUse` hook for the `Bash` tool — the "one hook" of V1's name.
+This registers `hosts/claude-code/acs-hook.ts` against **two** of Claude Code's hook events, both running the same command: `PreToolUse` — the "one hook" of V1's name, which decides whether the call runs — and `PostToolUse` (added by V4), which sees what the call produced and can redact it before the model does.
+
+Both entries are scoped to the `Bash` tool, and the matcher is written **anchored**: `^Bash$`, not `Bash`. That matches the tools `policy/manifest.yaml` registers rather than intercepting every tool call, and the anchor is load-bearing — an unanchored `Bash` also selects `BashOutput` and `KillShell`, whose output shape this hookmap's result gate cannot project. [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) Step 2 states why, and what the second entry changes about a live session.
 
 **5. Run Claude Code with the hook.**
 
@@ -115,7 +117,7 @@ This registers `hosts/claude-code/acs-hook.ts` as a `PreToolUse` hook for the `B
 claude
 ```
 
-Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exactly this command: `rm -rf /`"*. The tool call is blocked, with the real policy-engine reasoning surfaced in the transcript — not a canned string, the actual text AGT's stock policy engine produces when it evaluates the pattern it matched. That pattern list is this project's own configuration (`policy/lib/data.json`), not something AGT ships — the stock bundle carries no shell/command patterns of its own, only generic PII regexes; what's stock is the *deciding module* (`agt.patterns`) and the priority chain that consults it, per R2.1 (zero Rego authored). See the framing note in [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) before narrating this demo. Ask for something harmless (`ls -la`) in the same session and it runs normally. Full walkthrough and what to watch for: [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md); with the Inspector running you also see both envelopes as they cross the wire.
+Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exactly this command: `rm -rf /`"*. The tool call is blocked, with the real policy-engine reasoning surfaced in the transcript — not a canned string, the actual text AGT's stock policy engine produces when it evaluates the pattern it matched. That pattern list is this project's own configuration (`policy/lib/data.json`), not something AGT ships — the stock bundle carries no shell/command patterns of its own, only generic PII regexes; what's stock is the *deciding module* (`agt.patterns`) and the priority chain that consults it, per R2.1 (zero Rego authored). See the framing note in [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) before narrating this demo. Ask for something harmless (`ls -la`) in the same session and it runs normally. Full walkthrough and what to watch for: [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md); with the Inspector running you also see the envelopes as they cross the wire. Since V4 registered the result gate, an **allowed** `Bash` call produces four of them — a `steps/toolCallRequest` and its decision before the command runs, then a `steps/toolCallResult` and its decision after — while a denied one produces the first pair only, because the command never runs.
 
 Watch the Inspector, not just the transcript, if the deny does not appear: the model may decline to issue the tool call at all on its own judgment, in which case no hook fires and the envelope log stays empty. And if you are scripting this rather than watching it, use `echo rm -rf /` as the payload — it matches the same pattern at offset 5 and is inert if it ever did execute, whereas an unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test.
 
