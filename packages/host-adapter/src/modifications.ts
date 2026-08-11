@@ -295,19 +295,32 @@ export function assertValidModifications(
   }
 
   // `modified_content` alone is not a partial apply -- it is a *complete*
-  // no-op: the apply step below has no defined mapping from a wholesale
-  // content replacement onto either structured ACS document a step's
-  // modifications can address, so it would return that document untouched and
-  // still report `modify`. Same shape as the empty-pointer and absent-target
-  // cases: a rewrite reported as applied that was not applied. Fails closed
-  // here instead. True at BOTH gates, and for one reason at each: an arguments
-  // bag and a result payload are both structured, and an opaque replacement
-  // string names no field of either.
+  // no-op: the apply step below has nowhere to put a wholesale content
+  // replacement, so it would return the document untouched and still report
+  // `modify`. Same shape as the empty-pointer and absent-target cases: a rewrite
+  // reported as applied that was not applied. Fails closed here instead.
+  //
+  // AND THE REASON IS NOT THAT THIS APPLY STEP LACKS A MAPPING. Both documents a
+  // step's modifications can address are field-addressed structures -- the
+  // arguments it was asked to run with, and the outputs it produced -- and an
+  // opaque replacement string is a field of neither, so there is no target for it
+  // to be applied at. That is true at both gates and true independently of what
+  // this module can do. §V3's note read "this adapter has no mapping", which was
+  // the narrower claim and the only one one gate could support; V4 measured the
+  // result gate refusing it for the same reason, which is what upgrades the
+  // finding.
+  //
+  // It is also not a gap in §6.3. `modified_content` is a legal disposition shape,
+  // and a step whose payload IS an opaque body -- a document, a prompt, a message
+  // -- has an obvious target for it. What decides whether one exists is the shape
+  // of the payload a gate governs, and both of these are structures addressed by
+  // pointer.
   if (hasModifiedContent) {
     throw new ModificationsInvalidError(
-      "modified_content asks for a wholesale content replacement, which has no defined mapping onto either " +
-        "structured ACS document a step's modifications can address -- the arguments it was asked to run with, " +
-        "or the outputs it produced. Applying nothing while reporting a successful modify is not available",
+      "modified_content asks for a wholesale content replacement, and neither structured ACS document a " +
+        "step's modifications can address -- the arguments it was asked to run with, or the outputs it " +
+        "produced -- has a field for an opaque replacement string to land in, so there is no target for it " +
+        "at either gate. Applying nothing while reporting a successful modify is not available",
     );
   }
 
@@ -437,10 +450,10 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
  * same arguments); throws `ModificationsInvalidError` rather than applying
  * anything on a violation.
  *
- * `modified_content` (wholesale replacement) has no defined mapping onto
- * either structured document a step's modifications can address, so validation
- * refuses it outright -- a valid `modifications` reaching the apply loops below
- * is always the structured-edit shape, with every target already known to exist.
+ * `modified_content` (wholesale replacement) has no target in either structured
+ * document a step's modifications can address, so validation refuses it outright
+ * -- a valid `modifications` reaching the apply loops below is always the
+ * structured-edit shape, with every target already known to exist.
  */
 export function applyModifications(
   originalArguments: Record<string, unknown>,

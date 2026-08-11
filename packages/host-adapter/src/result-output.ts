@@ -342,6 +342,44 @@ export function assertOutputIsReplaceable(target: HostOutputTarget): void {
  * applied at all, for the same reason: a rewrite the host cannot land is a
  * rewrite that did not happen (R1.6), and reporting it as applied is the one
  * outcome that is worse than denying.
+ *
+ * AND THE LAST WAY A REWRITE CAN FAIL TO LAND IS BY LANDING SOMEWHERE ELSE,
+ * which is the one failure the projection cannot report by failing -- because it
+ * does not fail. §6.3's pointers address the whole ACS result payload, and that
+ * payload has fields beside the one leaf this gate carries: a redaction of
+ * `/exit_status` or `/tool/name`, or an override of either, is honourable, has a
+ * real target, and applies exactly as written. `outputs[0].value` then comes back
+ * untouched, the projection patches the leaf with the value already there, and
+ * the replacement is the object the host is already holding. Measured: the host
+ * was handed the tool's own output, secret and all, beside a decision reporting
+ * a redaction and an explanation saying so.
+ *
+ * SO THE QUESTION ASKED HERE IS WHETHER THE REWRITE REACHED THE LEAF, not
+ * whether its pointer looked like the leaf's. Comparing pointers would have to
+ * decide what an ANCESTOR pointer means -- an override replacing the whole
+ * `outputs` array does reach the leaf, and does land -- and even then it could
+ * only say the pointer covers the leaf, never that the value under it changed.
+ * The comparison below asks the projection's own inputs, so it cannot drift from
+ * the projection, which is `assertOutputIsReplaceable`'s argument for probing by
+ * building rather than by re-stating.
+ *
+ * `===` IS EXACT HERE BECAUSE THE LEAF IS PROSE. Any deployment that reaches
+ * this function has passed `assertOutputIsReplaceable`, which refuses a leaf
+ * `WITHHELD_OUTPUT` is not the same `typeof` as -- so the leaf is a string and
+ * `===` is value equality. For a leaf that were an object it would be reference
+ * equality and therefore too weak: a structurally identical replacement would
+ * read as a change. A host with such a leaf needs this comparison taught about
+ * its shape, the same way the projection would need teaching about arrays.
+ *
+ * WHAT THIS REFUSES THAT A POLICY AUTHOR MIGHT NOT EXPECT: a redaction whose
+ * `replacement` is the value the leaf already held. Nothing about it is
+ * malformed and its pointer is the right one -- and it is refused anyway,
+ * because what this gate can observe is the object the host will be handed, and
+ * that object is the one the tool produced. A Guardian that wants the output
+ * delivered as produced has `allow` for exactly that; a `modify` this host
+ * cannot tell apart from one is not a rewrite it can report as applied. An
+ * over-refusal on the safe side, deliberately, and the same side as the
+ * preflight's.
  */
 export function appliedOutput(
   appliedDocument: Record<string, unknown>,
@@ -356,7 +394,24 @@ export function appliedOutput(
         `the step produced`,
     );
   }
-  return replacingOutput(target, first.value);
+
+  // The projection first, the landing question after. Every check
+  // `replacingOutput` makes is about the hookmap and the payload, and one of
+  // those failing is a different incident from a rewrite that went somewhere
+  // this gate cannot carry -- so it gets to speak first, on the same reasoning
+  // this module already orders its own checks by.
+  const replacement = replacingOutput(target, first.value);
+  if (first.value === resolve(target.payload, target.outputs.from)) {
+    throw new Error(
+      `result-output: applying these modifications left "outputs[0].value" -- the one leaf of the ACS result ` +
+        `payload this gate can carry back to the host -- exactly as the step produced it, so the replacement ` +
+        `projected from it is the output the host is already holding. Either the modifications addressed some ` +
+        `other part of the result payload, which this gate has no second leaf to project, or they replaced ` +
+        `that leaf with the value already there. Both deliver the ORIGINAL output, so a rewrite reported here ` +
+        `is one that nothing carried out`,
+    );
+  }
+  return replacement;
 }
 
 /**

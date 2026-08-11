@@ -626,4 +626,86 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
   });
+
+  // THE ONE THE PROJECTION COULD NOT NOTICE BY FAILING, because it does not
+  // fail. `/exit_status` is a field the ACS result payload really has, so §6.3's
+  // apply step honours the redaction exactly as written; but the ACS payload
+  // carries ONE leaf of the host's output object, and this rewrite went
+  // somewhere else in the payload. The projection then builds a replacement out
+  // of the untouched leaf and hands back the object the host already holds --
+  // a `modify` reported as applied, an audit line recording a redaction, and the
+  // original secret delivered to the model.
+  //
+  // Detected by asking whether the rewrite REACHED the leaf this gate projects,
+  // rather than by comparing the pointer against `/outputs/0/value`: a pointer
+  // comparison has to decide what an ANCESTOR pointer means (`parameter_overrides`
+  // replacing the whole `outputs` array does land) and still cannot say whether
+  // an ancestor edit reached the leaf. This asks the question the hazard is
+  // actually about -- did what the model reads change -- and it cannot drift from
+  // the projection, because it is asked of the projection's own inputs.
+  for (const modifications of [
+    { redactions: [{ path: "/exit_status" }] },
+    { redactions: [{ path: "/tool/name" }] },
+    { parameter_overrides: { exit_status: "failure" } },
+  ]) {
+    it(`denies a rewrite that lands somewhere the host cannot be handed: ${JSON.stringify(modifications)}`, () => {
+      const out = validateDecision(
+        { decision: "modify", reasoning: "redaction_applied", modifications },
+        { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      );
+
+      expect(out.decision).toBe("deny");
+      expect(out.reason_codes).toContain("modifications_invalid");
+      // Never an "applied" that applied nothing -- and never the original output
+      // dressed as a rewrite.
+      expect(out.applied_output).toBeUndefined();
+      expect(out.reasoning).toContain("exactly as the step produced it");
+      expect(out.reasoning).not.toContain("Error:");
+    });
+  }
+
+  // The case the refusal above cannot tell apart from the ones above it, stated
+  // as a test rather than left for a reader to discover: a redaction that
+  // replaces the leaf with the value already there. The pointer is the right one
+  // and nothing is malformed, and it is still refused -- because what this gate
+  // can observe is the object the host will be handed, and that object is the
+  // one the tool produced. A Guardian that wants the output delivered as
+  // produced has `allow` for it; a `modify` indistinguishable from one is not a
+  // rewrite this host can report. An over-refusal, deliberately, on the same
+  // side as `assertOutputIsReplaceable`'s.
+  it("denies a redaction that replaces the leaf with the value it already had", () => {
+    const out = validateDecision(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=ghp_ABCDEF123456" }] },
+      },
+      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+    );
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_output).toBeUndefined();
+  });
+
+  // The other refusal Task 8 owns, at THIS gate. It is already refused before
+  // any target is consulted (`assertValidModifications`), which is why this pins
+  // the sentence rather than the disposition: the refusal has to be true of the
+  // document these pointers actually address at a gate where the step has
+  // already run, and the earlier wording named an arguments object alone.
+  it("denies a modified_content result modification, naming the outputs as well as the arguments", () => {
+    const out = validateDecision(
+      { decision: "modify", reasoning: "r", modifications: { modified_content: "wholesale replacement" } },
+      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+    );
+
+    expect(out.decision).toBe("deny");
+    expect(out.reason_codes).toContain("modifications_invalid");
+    expect(out.applied_output).toBeUndefined();
+    expect(out.reasoning).toContain("the outputs it produced");
+    // "no target", not "no mapping in this adapter" -- the fact is about what
+    // the two documents a step's pointers address can hold, which is why it is
+    // true at both gates and not only at the one V3 measured.
+    expect(out.reasoning).toContain("no target for it at either gate");
+  });
 });

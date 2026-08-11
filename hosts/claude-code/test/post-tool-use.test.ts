@@ -359,4 +359,134 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     });
     expect(out.stdout).not.toContain("ghp_ABCDEF123456");
   });
+
+  // A MODIFICATION THIS HOST HAS NO TARGET FOR, at either gate -- and the
+  // sentence is about the host, not about §6.3 and not about this adapter's
+  // apply step. `modified_content` is a legal §6.3 shape: one opaque body
+  // replacing the whole payload, exclusive of the structured edits. A host whose
+  // gate accepted an opaque body could apply it as it arrives.
+  //
+  // This host accepts a STRUCTURED object at both of its gates -- the arguments
+  // a step is to run with where it decides whether the step runs, and the tool's
+  // own output object where it sees what the step produced -- and an opaque
+  // replacement string is a field of neither. So there is no target for it here,
+  // which is the stronger statement §V3's note deserves ("this adapter has no
+  // mapping" was the request gate's half of it).
+  //
+  // AND HANDING THIS GATE ONE ANYWAY IS EXACTLY THE HAZARD IN THIS FILE'S
+  // HEADER: a plain string where the tool's output shape is expected is
+  // discarded, and the ORIGINAL output is delivered with a warning line. So the
+  // only honest answer is a withholding deny -- never a `modify` reported as
+  // applied while the token reaches the model.
+  //
+  // MEASURED, and the measurement found something worth knowing: with
+  // `assertValidModifications`' `modified_content` refusal made a silent
+  // pass-through, this gate STILL fails closed -- the apply step returns the
+  // document untouched, so the projection's landing check (the test below)
+  // catches it and withholds. 483 pass / 3 fail, and this test fails on its
+  // `reason` assertion rather than on a delivered token. At the request gate
+  // there is no such backstop: the same mutation renders an applied rewrite
+  // carrying `{command: "cat .env"}`, the original, which is what runs. Both
+  // refusals passed through together: 478 pass / 8 fail, and this gate hands the
+  // model `stdout: "TOKEN=ghp_ABCDEF123456"` beside
+  // `additionalContext: "redaction_applied"` -- the real secret, with an
+  // explanation saying it was redacted.
+  it("refuses a modified_content result modification as a withholding deny", async () => {
+    const out = await answering(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { modified_content: "wholesale replacement" },
+      },
+      (url) => runHook(postToolUsePayload("TOKEN=ghp_ABCDEF123456"), url),
+    );
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    const parsed = JSON.parse(out.stdout) as {
+      decision: string;
+      reason: string;
+      hookSpecificOutput: Record<string, unknown>;
+    };
+    expect(parsed.decision).toBe("block");
+    // The stated reason has to be true AT THIS GATE. There are no arguments
+    // where the step has already run, so a refusal naming only them would send
+    // an incident reviewer to a document this exchange never carried.
+    expect(parsed.reason).toContain("modified_content asks for a wholesale content replacement");
+    expect(parsed.reason).toContain("the outputs it produced");
+    expect(parsed.reason).not.toContain("arguments this tool call sent");
+    expect(parsed.reason).not.toContain("Error:");
+    expect(parsed.hookSpecificOutput.updatedToolOutput).toEqual({
+      stdout: "[OUTPUT WITHHELD BY POLICY]",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+      noOutputExpected: false,
+    });
+    // The assertion the brief asks for by name, and the one that fails the
+    // moment the refusal becomes a pass-through: a reported-as-applied
+    // `modified_content` renders no replacement at all, so the host delivers the
+    // output the tool produced.
+    expect(out.stdout).not.toContain("ghp_");
+  });
+
+  // THE HAZARD IN ITS PUREST FORM. A redaction path that resolves in the ACS
+  // payload and names a field this host has no way to read back: `/exit_status`
+  // is really there in the result payload (a hookmap literal put it there), so
+  // §6.3's apply step honours it exactly as written and nothing is malformed.
+  // But the ACS payload carries ONE leaf of the host's output object, and the
+  // rewrite did not touch it -- so the replacement projected from the applied
+  // document is the output the host already holds, byte for byte.
+  //
+  // Reporting `modify` there is the worst outcome this slice can produce: the
+  // audit trail records a redaction, the transcript says the output was
+  // rewritten, and the model reads the real token. Refused as a withholding
+  // deny instead.
+  //
+  // MEASURED, on the tree before the refusal existed and again by mutating it
+  // away (delete the landing check in `result-output.ts`'s `appliedOutput` and
+  // return the projection unconditionally): 481 pass / 5 fail, and this gate
+  // writes
+  //
+  //   {"hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":
+  //     {"stdout":"TOKEN=ghp_ABCDEF123456","stderr":"","interrupted":false,
+  //      "isImage":false,"noOutputExpected":false},
+  //     "additionalContext":"redaction_applied"}}
+  //
+  // -- a perfectly well-formed replacement in the tool's own output shape, so
+  // nothing is discarded and nothing warns: the model reads the real token and
+  // is told in the same breath that it was redacted. Four of the five failures
+  // are validate-decision.test.ts's, which assert the same thing one seam
+  // earlier; nothing else in 487 tests notices.
+  it("refuses a redaction whose path has no host-side target", async () => {
+    const out = await answering(
+      {
+        decision: "modify",
+        reasoning: "redaction_applied",
+        modifications: { redactions: [{ path: "/exit_status" }] },
+      },
+      (url) => runHook(postToolUsePayload("TOKEN=ghp_ABCDEF123456"), url),
+    );
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    const parsed = JSON.parse(out.stdout) as {
+      decision: string;
+      reason: string;
+      hookSpecificOutput: Record<string, unknown>;
+    };
+    expect(parsed.decision).toBe("block");
+    expect(parsed.reason).toContain("exactly as the step produced it");
+    expect(parsed.reason).not.toContain("Error:");
+    expect(parsed.hookSpecificOutput.updatedToolOutput).toEqual({
+      stdout: "[OUTPUT WITHHELD BY POLICY]",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+      noOutputExpected: false,
+    });
+    // The whole point. Before the refusal existed this line was the only one
+    // that failed: everything above it was already true of a `modify` whose
+    // projected replacement was identical to the original, because a decision
+    // that changes nothing renders perfectly well.
+    expect(out.stdout).not.toContain("ghp_");
+  });
 });
