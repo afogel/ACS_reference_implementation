@@ -40,4 +40,30 @@ describe("agt-bridge", () => {
     expect(r.inputIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(r.enforcedIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
+
+  it("createBridge's result satisfies the role", async () => {
+    // The `let bridge: PolicyBridge` annotation above is already the
+    // compile-time half of this claim; this is the runtime half, asserting the
+    // role's one method is the one being called throughout.
+    const asRole: PolicyBridge = createBridge("policy/manifest.yaml");
+
+    expect(typeof asRole.evaluate).toBe("function");
+    expect((await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).verdict.decision).toBe("deny");
+  });
+
+  it("a caller that never touches createBridge can satisfy the role too", async () => {
+    // The property that matters for V5 and V7: the Guardian depends on
+    // something it can be told to evaluate, not on this package's factory. A
+    // stand-in written by hand type-checks and answers, with no AGT in it --
+    // which is what makes `PolicyBridge` a role rather than a synonym for
+    // `ReturnType<typeof createBridge>` (PR #10 review).
+    const standIn: PolicyBridge = {
+      async evaluate(point, snapshot) {
+        return { verdict: { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` } };
+      },
+    };
+
+    const r = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));
+    expect(r.verdict.reason).toBe("pre_tool_call:envelope,tool_call");
+  });
 });

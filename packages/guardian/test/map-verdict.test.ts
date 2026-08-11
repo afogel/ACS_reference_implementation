@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { loadMapping, mapVerdict, resolveInterventionPoint } from "../src/map-verdict.ts";
+import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "../src/map-verdict.ts";
 
 const m = loadMapping("mapping.yaml");
 
@@ -83,5 +83,40 @@ describe("resolveInterventionPoint", () => {
     };
 
     expect(() => resolveInterventionPoint("steps/toolCallRequest", ambiguous)).toThrow(/more than one/);
+  });
+
+  it("resolves every other declared ACS method from the same table", () => {
+    // One row resolving is not evidence the table is being read -- a literal
+    // would satisfy that. These are the rest of the rows mapping.yaml ships.
+    expect(resolveInterventionPoint("steps/toolCallResult", m)).toBe("post_tool_call");
+    expect(resolveInterventionPoint("steps/sessionStart", m)).toBe("agent_startup");
+    expect(resolveInterventionPoint("steps/agentResponse", m)).toBe("output");
+  });
+
+  it("never resolves to a row whose acs_method is null", () => {
+    // mapping.yaml really does ship two of these: the model-call points have
+    // no ACS v0.1.0 target (D4). A resolver comparing loosely would match a
+    // null row and evaluate the wrong intervention point's policy.
+    const allNull = {
+      ...m,
+      intervention_points: {
+        pre_model_call: { acs_method: null },
+        post_model_call: { acs_method: null },
+      },
+    } as unknown as Mapping;
+
+    expect(() => resolveInterventionPoint("steps/toolCallRequest", allNull)).toThrow(
+      /maps no AGT intervention point/,
+    );
+  });
+
+  it("throws when the mapping declares no intervention_points table at all", () => {
+    // loadMapping's `as Mapping` is unchecked, so a mapping.yaml edited to
+    // drop the table type-checks and reaches here. Standing in for that.
+    const tableless = { ...m, intervention_points: undefined } as unknown as Mapping;
+
+    expect(() => resolveInterventionPoint("steps/toolCallRequest", tableless)).toThrow(
+      /no intervention_points table/,
+    );
   });
 });

@@ -119,3 +119,39 @@ describe("validateEnvelope", () => {
     expect((thrown as Record<string, unknown>).decision).toBeUndefined();
   });
 });
+
+describe("isToolCallRequest -- the method discrimination the narrow type depends on", () => {
+  it("validates a handshake/hello envelope without claiming it is a tool call", () => {
+    const handshake = {
+      jsonrpc: "2.0",
+      method: "handshake/hello",
+      id: 7,
+      params: {
+        acs_version: "0.1.0",
+        request_id: "8f14e45f-ceea-467e-bd5f-1d4d9a4e0c8f",
+        timestamp: "2026-08-09T12:00:00Z",
+        metadata: { agent_id: "agent-1", session_id: "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed" },
+        // No tool, no arguments -- a handshake carries neither, which is
+        // exactly why typing it as a tool call was wrong rather than untidy.
+        payload: {},
+      },
+    };
+
+    const validated = validateEnvelope(handshake);
+
+    expect(validated.method).toBe("handshake/hello");
+    expect(isToolCallRequest(validated)).toBe(false);
+  });
+
+  it("says yes to steps/toolCallRequest", () => {
+    expect(isToolCallRequest(validateEnvelope(makeEnvelope()))).toBe(true);
+  });
+
+  it("says no to any other steps/* method", () => {
+    // Nothing dispatches this method today. The point is that a second
+    // steps/* method is NOT silently a tool call just because it validated.
+    const validated = validateEnvelope(makeEnvelope({ method: "steps/sessionStart" }));
+
+    expect(isToolCallRequest(validated)).toBe(false);
+  });
+});
