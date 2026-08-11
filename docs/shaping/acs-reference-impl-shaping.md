@@ -87,7 +87,7 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R3.5 | Claude Code is host #1 | Decided |
 | R3.6 | 🟡 OpenCode is host #2 — in-process TS plugin against Claude Code's subprocess hooks | Leaning yes |
 | R3.7 | No runtime swap. AGT is the only policy runtime in the demo | Decided |
-| R3.8 | 🟡 Show that a capability frozen out of one AGT host module is reachable through the contract, framed as capability drift rather than defect | Leaning yes |
+| R3.8 | ✅ Show that a capability frozen out of one AGT host module is reachable through the contract, framed as capability drift rather than defect | **Confirmed** (F1, V4 planning) |
 | **R4** | **AGT gains, doesn't lose** | Must-have |
 | R4.1 | No capability regression versus AGT's native `agent-governance-claude-code` | Must-have |
 | R4.2 | Nothing in the demo requires AGT to change | Must-have |
@@ -187,6 +187,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.
 - ⚠️ **R1.3 is qualified, discovered during V3 planning — and no verdict moves.** Four of AGT's five policy-input members come from the snapshot the Guardian assembles; `annotations` comes from a manifest-declared annotator instead, and the ACS v0.1.0 wire carries no field a drift or confidence score could be derived from (evidence under Verified ground). So "the AGT policy input's five members are constructible from an ACS envelope" is true of four and Guardian-originated for the fifth. This does not move R1 in any column: A and B assert expressibility and still do not prove it; C still proves it case by case, and the qualification becomes one more resolved cell in C2's matrix — green for the Guardian, red for a wire consumer — which is the honest result C2 exists to produce. It is a note about ACS v0.1.0's coverage, not about AGT, so R4 is untouched.
+- ✅ **R3.8 confirms, discovered during V4 planning — and no verdict moves.** F1 is resolved: a capability AGT's own Claude Code package scopes out ("`PostToolUse` … cannot reliably redact tool output", README:39, under *Important parity gaps*) is reachable through the contract. R3 was already ✅ in all three columns on R3.1–R3.7, so this closes the one 🟡 beneath it without changing a cell. **R4 is untouched, and the reason matters:** the package's wording is "cannot **reliably**", and V4's evidence is what makes that wording exactly right — a replacement not matching the tool's own output schema is silently discarded and the original delivered. So the finding is that meeting the reliability condition is a contract-level job done once for every runtime, not a defect in a per-host module. That is R4.3's framing holding under the one requirement most able to break it.
 - ⚠️ **A4's SDK choice is load-bearing for R1.4, discovered during V1 planning.** AGT's PyO3 binding surfaces only `action_identity`, collapsing `input_identity` and `enforced_identity`; the Node binding serializes both. Every shape embeds A4, so on the Python SDK R1.4 ("`enforced_identity` survives the adapter") would be unverifiable in *all three* columns and C's R1 ✅ would not survive contact with C2's harness. A4 is amended to the Node SDK and the verdicts stand as written. No other row moves.
 
 ---
@@ -206,7 +207,7 @@ All resolved — see `spike-agt-integration.md`.
 
 | # | Item |
 |---|------|
-| F1 | Confirm by hand that Claude Code `PostToolUse.updatedToolOutput` rewrites tool results as documented |
+| ~~F1~~ | ✅ **Resolved: yes, conditionally.** Confirmed by hand against Claude Code 2.1.227 during V4 planning. `PostToolUse.hookSpecificOutput.updatedToolOutput` exists and rewrites tool results — but only when the replacement matches the tool's **own output schema**; a mismatched one is silently discarded and the *original* output is delivered to the model, with only an error attachment to show for it. And a `deny` at that gate does not suppress anything: `{"decision":"block"}` delivers the reason while the model still receives the real output. Both are recorded as watch-fors in §V4, which is also where the evidence lives. R3.8 confirms; risk row 1 retires |
 | F2 | Confirm an OpenCode plugin can express deny and modify through `tool.execute.before` / `.after` |
 | ~~F3~~ | ✅ **Resolved: Rego.** The premise was wrong — the SDK bundles OPA 0.70.0 as a platform package, so Rego needs no external binary and Cedar's only advantage disappears. Stock bundle verified 105/105 under the bundled OPA and system OPA 1.18.2. Closes D7 |
 
