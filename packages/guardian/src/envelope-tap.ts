@@ -14,12 +14,12 @@
  * "sink". Naming this side for the log it produces is what makes the pair
  * read as a pair when the second rail lands.
  *
- * The affordance tables in docs/shaping/ label N26 `writeEnvelopeTap()`. No
- * such function has ever existed here -- the callable names are
- * `createEnvelopeLogSink` and the `write` method on the `EnvelopeLogSink` it
- * returns. The affordance ID is spelled out in this comment so a reader
- * hunting N26 from the slices doc lands here rather than on a name that
- * matches nothing.
+ * The affordance tables in docs/shaping/ used to label N26
+ * `writeEnvelopeTap()`, a function that never existed here in any form; they
+ * now say `createEnvelopeLogSink()` -> `sink.write()`, which is what this
+ * module exports. The ID is spelled out in this comment so a reader hunting
+ * N26 from the slices doc lands here, and so that a future rename has to
+ * pass through both places at once.
  *
  * What "records the envelope" means here, precisely (global constraint 11,
  * as corrected by the whole-branch review's finding 2): the sink is handed
