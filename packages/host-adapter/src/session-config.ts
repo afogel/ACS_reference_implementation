@@ -116,8 +116,16 @@ export function sessionConfigPath(dir: string, sessionId: string): string {
  * timeout read. Anything less is treated as "not negotiated" rather than
  * trusted half-way: the caller then applies the ACS default, which is a
  * defined posture, where a half-read config is not.
+ *
+ * Exported because `get()` is not the only place this question is asked:
+ * `handshake` (N5) asks it of the ServerHello BEFORE storing one, so a
+ * Guardian returning a malformed hello fails loudly at the handshake rather
+ * than being written to disk and then rejected, unremarked, by every
+ * subsequent `get()` -- which is a silent re-handshake on every hook,
+ * forever. One predicate, so the two can never disagree about what
+ * "usable" means.
  */
-function isSessionConfig(value: unknown): value is SessionConfig {
+export function isSessionConfig(value: unknown): value is SessionConfig {
   if (typeof value !== "object" || value === null) {
     return false;
   }

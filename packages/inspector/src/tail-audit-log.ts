@@ -157,6 +157,14 @@ export function tailAuditLog({
   // only on the *first* tick of a gap -- see the comment at its use below)
   // and as the reset-once trigger consulted the moment existence returns.
   let missingSinceLastSeen = false;
+  // The same report-once discipline for the OTHER way a poll can fail: a
+  // read that throws on a log that does exist -- a permission error, or a
+  // path that is a directory. The missing-file branch above was given this
+  // treatment and this one was not, so the identical noise problem survived
+  // through a different branch: one stderr line per poll interval, forever,
+  // for a condition a human needs told once. Cleared by the first tick that
+  // completes a read, so a fault that comes back is reported again.
+  let pollFailing = false;
 
   // Entries the timer has parsed but nobody has consumed yet, and the
   // wake-up the drain loop below is currently parked on while that queue is
@@ -243,13 +251,30 @@ export function tailAuditLog({
           }
         }
       }
+
+      // Reached only when this tick read the log without throwing, so the
+      // next failure is a new incident and is reported. Deliberately not
+      // reached by the early `return` in the missing-file branch above: an
+      // absent log is not a successful read, and it has its own
+      // once-per-transition guard.
+      pollFailing = false;
     } catch (error) {
       // A timer callback, not a step inside the generator's own call stack:
       // nothing here is awaiting a promise that could catch a throw, so an
       // uncaught one would take the whole process down. Skip this tick
       // instead -- the next one resyncs on its own once the log is
       // readable again.
-      reportPollError(onPollError, error);
+      //
+      // Reported once per transition into failure, not once per tick. A
+      // permission error on a file that exists is a standing condition, and
+      // repeating it every `pollMs` buries the entries this tool exists to
+      // show under a wall of identical lines -- the same noise the
+      // missing-file case was fixed for, reached through this branch
+      // instead.
+      if (!pollFailing) {
+        pollFailing = true;
+        reportPollError(onPollError, error);
+      }
     }
   }
 

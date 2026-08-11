@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { appendFileSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmdirSync, truncateSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tailAuditLog, type AuditEntry } from "../src/tail-audit-log.ts";
@@ -227,6 +227,88 @@ describe("tailAuditLog (N51)", () => {
       await pending;
 
       expect(pollErrors).toEqual([]);
+    });
+  });
+
+  // The third way a poll can fail, and the one the report-once discipline
+  // did not reach: a log that EXISTS and cannot be read. Pointing the tail
+  // at a directory makes `existsSync` true and `statSync().size` non-zero,
+  // so the read is attempted and `readSync` throws EISDIR every tick --
+  // deterministic, no race needed. The missing-file case was fixed to report
+  // on the transition; this branch still reported once per tick, which is
+  // the same wall of identical lines through a different door.
+  it("reports an unreadable log once across several ticks, not once per tick", async () => {
+    await withTempDir(async (dir, _path) => {
+      const asDirectory = join(dir, "audit-as-dir");
+      mkdirSync(asDirectory);
+      // Non-zero st_size for the directory, so `size > offset` and the read
+      // is actually attempted rather than skipped.
+      writeFileSync(join(asDirectory, "child"), "x");
+      const pollErrors: unknown[] = [];
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path: asDirectory,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onPollError: (error) => pollErrors.push(error),
+      });
+
+      // next() runs the generator body to its first await, which starts the
+      // lazily-started timer -- so the sleep below covers several real ticks.
+      const pending = tail.next();
+      await Bun.sleep(POLL_MS * 8);
+      expect(pollErrors).toHaveLength(1);
+
+      controller.abort();
+      await pending;
+      unlinkSync(join(asDirectory, "child"));
+      rmdirSync(asDirectory);
+    });
+  });
+
+  // And the other half of "once per transition": a fault that clears and
+  // returns is a new incident and is reported again. Without the reset, one
+  // unreadable tick would silence every later failure for the life of the
+  // process -- which is the opposite failure, and just as bad.
+  it("reports again after a fault clears and returns", async () => {
+    await withTempDir(async (dir, _path) => {
+      const target = join(dir, "flapping.jsonl");
+      const pollErrors: unknown[] = [];
+      const controller = new AbortController();
+      const tail = tailAuditLog({
+        path: target,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onPollError: (error) => pollErrors.push(error),
+      });
+      const pending = tail.next();
+
+      // Fault 1: a directory where a log should be.
+      mkdirSync(target);
+      writeFileSync(join(target, "child"), "x");
+      await Bun.sleep(POLL_MS * 6);
+      expect(pollErrors).toHaveLength(1);
+
+      // It clears: a real, readable log at the same path.
+      unlinkSync(join(target, "child"));
+      rmdirSync(target);
+      writeFileSync(target, entryLine(1));
+      await Bun.sleep(POLL_MS * 6);
+      expect(pollErrors).toHaveLength(1);
+
+      // Fault 2, the same shape. A new incident, so it is reported again.
+      unlinkSync(target);
+      mkdirSync(target);
+      writeFileSync(join(target, "child"), "x");
+      await Bun.sleep(POLL_MS * 8);
+      expect(pollErrors).toHaveLength(2);
+
+      controller.abort();
+      await pending;
+      unlinkSync(join(target, "child"));
+      rmdirSync(target);
     });
   });
 

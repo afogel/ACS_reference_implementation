@@ -40,6 +40,7 @@ export {
   createFileSessionConfigStore,
   isSessionConfig,
   InvalidSessionIdError,
+  isSessionConfig,
   sessionConfigPath,
   type SessionConfig,
   type SessionConfigStore,

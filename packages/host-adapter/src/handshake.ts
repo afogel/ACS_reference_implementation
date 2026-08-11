@@ -96,15 +96,24 @@ export type HandshakeOptions = {
  * config to begin with.
  */
 export class SessionConfigNotStoredError extends Error {
-  /** Which of the two local failures this is -- see classifySessionFailure. */
-  readonly kind: "session_config_unstored";
-  /** The negotiated ServerHello, when one was negotiated. */
+  /** Which of the local failures this is -- see classifySessionFailure. */
+  readonly kind: "session_config_unstored" | "server_hello_invalid";
+  /** The negotiated ServerHello, when one was negotiated. Undefined for
+   * `server_hello_invalid`, where what arrived was not a usable config and
+   * so there is genuinely nothing to apply. */
   readonly config: SessionConfig | undefined;
 
-  constructor(message: string, { cause, config }: { cause?: unknown; config?: SessionConfig } = {}) {
+  constructor(
+    message: string,
+    {
+      kind = "session_config_unstored",
+      cause,
+      config,
+    }: { kind?: "session_config_unstored" | "server_hello_invalid"; cause?: unknown; config?: SessionConfig } = {},
+  ) {
     super(message, { cause });
     this.name = "SessionConfigNotStoredError";
-    this.kind = "session_config_unstored";
+    this.kind = kind;
     this.config = config;
   }
 }
@@ -155,12 +164,22 @@ export async function negotiateSessionConfig(
   // where the Guardian's ServerHello becomes this host's SessionConfig, and it
   // becomes one by being checked -- named for the wire while it is still only
   // an arrival, and for the store once it is one.
-  const serverHello: unknown = response.result;
+  //
+  // `get()` re-validates, so an unusable hello on disk is harmless to READ --
+  // but writing one has a consequence nothing else surfaces: every `get()`
+  // afterwards returns undefined, so every hook re-handshakes, forever, and
+  // the deployment silently pays a round trip per hook while running on the
+  // ACS default posture rather than the one its Guardian keeps declaring.
+  // Rejecting it here turns that into a reported failure that travels as
+  // `session_failure` on the audit entry (same route as an unstorable one),
+  // instead of nothing at all.
+  const serverHello = response.result as unknown;
   if (!isSessionConfig(serverHello)) {
-    throw new Error(
+    throw new SessionConfigNotStoredError(
       `handshake: the Guardian's ServerHello is not a usable session config -- expected an object with ` +
         `on_decision_failure "proceed" or "deny" and a numeric timeout_config.default_ms, got ` +
         `${JSON.stringify(serverHello)}`,
+      { kind: "server_hello_invalid" },
     );
   }
 

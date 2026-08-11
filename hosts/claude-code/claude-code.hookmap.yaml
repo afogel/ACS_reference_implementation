@@ -93,7 +93,14 @@ decisions:
   # `modifications` here, which handed Claude Code the raw ACS modifications
   # object -- a shape its updatedInput does not accept, so the rewrite would
   # have been reported and never taken effect (R1.6).
+  #
+  # A reason path was the one thing this entry was missing. A policy-ordered
+  # rewrite is the only decision that changes what runs without the transcript
+  # saying anything: the command silently differs from the one that was asked
+  # for, and every sibling entry above carries an explanation while this one
+  # did not.
   modify:
     output:
       hookSpecificOutput.permissionDecision:       { value: allow }
+      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
       hookSpecificOutput.updatedInput:             { from: applied_input }

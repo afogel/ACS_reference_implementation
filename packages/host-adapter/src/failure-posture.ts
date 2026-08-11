@@ -178,7 +178,15 @@ export type SessionFailureKind =
    * unwritable is a deployment quietly paying a round trip per hook, and one
    * whose declared posture depends on that round trip continuing to succeed.
    */
-  | "session_config_unstored";
+  | "session_config_unstored"
+  /**
+   * A ServerHello arrived and was not a usable session config at all. No
+   * posture was negotiated, so -- unlike the case above -- there is nothing
+   * to apply to this step either; the ACS default governs. Its own kind
+   * because the remedy is entirely different: this one is a Guardian
+   * emitting the wrong shape, not a host that cannot write to its own disk.
+   */
+  | "server_hello_invalid";
 
 /**
  * Names which of the two session-establishment failures happened. Total, for

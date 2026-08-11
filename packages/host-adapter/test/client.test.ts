@@ -10,7 +10,7 @@ import {
   GuardianResultCorrelationError,
   GuardianTimeoutError,
 } from "../src/guardian-client.ts";
-import { negotiateSessionConfig } from "../src/handshake.ts";
+import { negotiateSessionConfig, SessionConfigNotStoredError } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
 import { createSessionConfigStore } from "../src/session-config.ts";
 
@@ -421,6 +421,74 @@ describe("negotiateSessionConfig (N5)", () => {
     } finally {
       mock.stop(true);
     }
+  });
+});
+
+// C1: `handshake` used to cast `response.result` straight to SessionConfig
+// and store it unchecked. Harmless for READS -- `get()` re-validates, so a
+// junk file returns undefined -- but the consequence nothing surfaced is
+// that every `get()` afterwards returns undefined, so every hook
+// re-handshakes, forever, while the deployment runs on the ACS default
+// rather than the posture its Guardian keeps declaring. Silently.
+describe("handshake (N5) — a ServerHello that is not a usable session config", () => {
+  /** A stub answering `handshake/hello` with whatever `result` it is given. */
+  async function handshakeAgainst(result: unknown, store = createSessionConfigStore()) {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number };
+        return Response.json({ jsonrpc: "2.0", id: body.id, result });
+      },
+    });
+    try {
+      const url = `http://localhost:${server.port}/acs`;
+      const thrown = await handshake(
+        { url, agentId: "claude-code", sessionId: crypto.randomUUID() },
+        store,
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      return { thrown, store };
+    } finally {
+      await server.stop(true);
+    }
+  }
+
+  const unusable = [
+    ["an empty object", {}],
+    ["a posture that is neither value", { on_decision_failure: "maybe", timeout_config: { default_ms: 5000 } }],
+    ["no timeout_config at all", { on_decision_failure: "deny" }],
+    ["a non-numeric default_ms", { on_decision_failure: "deny", timeout_config: { default_ms: "5000" } }],
+  ] as const;
+
+  for (const [label, result] of unusable) {
+    it(`rejects ${label} rather than storing it`, async () => {
+      const { thrown, store } = await handshakeAgainst(result);
+      expect(thrown).toBeInstanceOf(SessionConfigNotStoredError);
+      expect((thrown as SessionConfigNotStoredError).kind).toBe("server_hello_invalid");
+      // Nothing was stored, so nothing has to be un-stored -- and the caller
+      // gets undefined from the error's `config` too, because a hello this
+      // shape negotiated no posture to apply to the current step either.
+      expect(store.get()).toBeUndefined();
+      expect((thrown as SessionConfigNotStoredError).config).toBeUndefined();
+    });
+  }
+
+  it("stores a usable ServerHello unchanged, extra fields and all", async () => {
+    const hello = {
+      negotiated_version: "0.1.0",
+      methods_evaluated: ["steps/toolCallRequest"],
+      selected_transport: "http",
+      timeout_config: { default_ms: 1234 },
+      on_decision_failure: "deny" as const,
+      // A field this slice never names: the store round-trips it, and the
+      // new validation must not start dropping it.
+      profiles_accepted: ["ACS-Core"],
+    };
+    const { thrown, store } = await handshakeAgainst(hello);
+    expect(thrown).toBeUndefined();
+    expect(store.get()).toEqual(hello);
   });
 });
 

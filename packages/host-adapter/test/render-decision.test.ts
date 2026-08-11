@@ -234,6 +234,18 @@ describe("renderDecision", () => {
     // The rewrite is only real if the original does not survive into what the
     // host is told to run.
     expect(JSON.stringify(hookSpecificOutput.updatedInput)).not.toContain("ghp_SECRET123456");
+    // And the transcript says WHY it changed. `modify` was the one entry in
+    // the real hookmap with no `reason_from`, so a policy-ordered rewrite
+    // reached a human as a command that silently differed from the one they
+    // asked for, while every sibling decision explained itself. Pinned
+    // against the whole output, so a `reason_from` pointed at the wrong field
+    // fails here rather than reading as "some reason surfaced".
+    expect(hookSpecificOutput).toEqual({
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      permissionDecisionReason: "redaction_applied",
+      updatedInput: { command: "echo [REDACTED]" },
+    });
   });
 
   it("loads the real claude-code.hookmap.yaml and renders a deny end to end", () => {
