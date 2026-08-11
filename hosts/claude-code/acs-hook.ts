@@ -277,7 +277,15 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
  * gates below exist is that this project has found nine of them.
  */
 function expectationFor(hookEventName: string): HookExpectation {
-  const expectation = HOOK_EXPECTATIONS[hookEventName];
+  // `hasOwnProperty`, not a bare index: a hookmap naming a hook `toString` or
+  // `constructor` would otherwise read an inherited function off
+  // Object.prototype, pass the `undefined` check, and then fail on a missing
+  // `assertDecisions` -- an unrelated TypeError in place of the message that
+  // says which hook is unknown. Same reasoning as render-decision.ts's
+  // RESERVED_SEGMENTS.
+  const expectation = Object.prototype.hasOwnProperty.call(HOOK_EXPECTATIONS, hookEventName)
+    ? HOOK_EXPECTATIONS[hookEventName]
+    : undefined;
   if (expectation === undefined) {
     throw new Error(
       `acs-hook: hook "${hookEventName}" is one this shim has no expectation for, so nothing here can say what ` +

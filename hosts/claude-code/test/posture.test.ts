@@ -664,6 +664,104 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
+  // The result gate's own arm of the same gate, and the fail-open it closes is
+  // the one V4's planning reproduced by hand: rendering deny as Claude Code's
+  // documented {"decision":"block","reason":…} delivered the real stdout to the
+  // model AND the block reason. The tool has already run at this event, so
+  // `block` alone REPORTS a withholding that did not happen -- the same
+  // "reported but never took effect" shape V3 found when V1 copied a raw
+  // modifications object into updatedInput. Only the replacing output withholds.
+  //
+  // loadHookmap cannot catch this either: the entry below is perfectly
+  // renderable, and which host field a renderable entry has to name is not the
+  // adapter's business (R3.2).
+  it("exits 2 (blocking) on a PostToolUse deny that declares block without a replacing output", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "reports-a-withholding.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n" +
+        "  PostToolUse:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n" +
+        // Renderable, plausible, and a log line pretending to be a suppression.
+        "      deny: { output: { decision: { value: block }, reason: { from: reasoning, type: string } } }\n",
+    );
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain("hooks.PostToolUse.decisions.deny");
+      expect(out.stderr).toContain("updatedToolOutput");
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
+  // Global Constraint 4, at the gate: an unexpected hookmap entry throws. A hook
+  // this shim has no expectation for is a hook whose declared decisions nothing
+  // checks and whose rendered output nothing checks, at an event whose semantics
+  // this shim has never been taught -- so it is refused rather than skipped. A
+  // skip here would be a tenth fail-open of exactly the established shape: the
+  // hook fires, the host reads no honoured decision, and the step runs
+  // ungoverned.
+  it("exits 2 (blocking) on a hookmap mapping a hook this shim has no expectation for, rather than skipping it", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "unknown-hook.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n" +
+        // Everything loadHookmap asks of a hook, at an event nothing here knows.
+        "  SessionStart:\n" +
+        "    acs_method: steps/sessionStart\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n",
+    );
+    try {
+      const out = await runShim(payload("ls -la"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain("SessionStart");
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
   // The other half of the gate: it must not fire on the hookmap this
   // deployment actually ships. Asserted twice over -- against the file's own
   // data (so adding a fourth value, e.g. reinstating a `defer` entry that
