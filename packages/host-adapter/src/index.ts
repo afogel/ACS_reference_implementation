@@ -29,7 +29,10 @@ export {
   type PostOptions,
 } from "./guardian-client.ts";
 export { renderDecision, type HostOutput } from "./render-decision.ts";
-export { type AcsDecision } from "./decision-message.ts";
+// The ACS decision message every seam below speaks, and the one refinement of
+// it a host reads directly. One stem, adjectives for stage: the third member,
+// `FailureResolvedAcsDecision`, is exported with the posture that produces it.
+export { type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 export {
   negotiateSessionConfig,
   SessionConfigNotStoredError,
@@ -66,14 +69,11 @@ export {
   DEFAULT_TIMEOUT_MS,
   type ApplyFailurePostureInput,
   type DeliveryFailureKind,
+  type FailureResolvedAcsDecision,
   type FailureStage,
-  type PostureDecision,
+  type HostFailureKind,
   type SessionFailureKind,
+  type StepFailureKind,
 } from "./failure-posture.ts";
-export {
-  applyModifications,
-  ModificationsInvalidError,
-  validateDecision,
-  type ValidateDecisionContext,
-  type ValidatedDecision,
-} from "./validate-decision.ts";
+export { applyModifications, ModificationsInvalidError } from "./modifications.ts";
+export { validateDecision, type ValidateDecisionContext } from "./validate-decision.ts";

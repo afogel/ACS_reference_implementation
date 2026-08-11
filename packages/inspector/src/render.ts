@@ -305,9 +305,10 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
   const outcomeLabel = entry.outcome === "proceeded" ? "PROCEEDED" : "BLOCKED";
   const outcomeColor = entry.outcome === "proceeded" ? YELLOW : RED;
   const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
-  // Same fallback renderEntry uses for a TapEntry with no method, and for the
-  // same reason: an entry written before any request could be built has no
-  // ACS method, and this renderer has no other vocabulary to fall back on.
+  // Same fallback renderEnvelopeLogEntry uses for a log line with no method,
+  // and for the same reason: an entry written before any request could be built
+  // has no ACS method, and this renderer has no other vocabulary to fall back
+  // on.
   const method = entry.method ?? "(no method)";
 
   const header = paint(

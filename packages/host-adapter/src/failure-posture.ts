@@ -29,7 +29,8 @@
  * failure is a property of the wire, not of whatever evaluates policy on
  * the other side of it.
  */
-import type { AuditSink } from "./audit-sink.ts";
+import type { AuditEvent, AuditSink } from "./audit-sink.ts";
+import type { AcsDecision } from "./decision-message.ts";
 import { GuardianTimeoutError } from "./guardian-client.ts";
 import { SessionConfigNotStoredError } from "./handshake.ts";
 import type { SessionConfig } from "./session-config.ts";
@@ -41,29 +42,56 @@ export const DEFAULT_POSTURE = "proceed" as const;
  * Matches the Guardian's declared default so the two agree by value. */
 export const DEFAULT_TIMEOUT_MS = 5000;
 
-export type DeliveryFailureKind =
-  | "timeout"
-  | "transport"
-  | "error_without_decision"
-  | "unknown"
+/**
+ * What went wrong ON THE WIRE: a request went out and no usable decision came
+ * back. §6.4's own case, and the only kinds `classifyDeliveryFailure` can
+ * produce.
+ *
+ * Narrow, and the narrowing IS the fix (PR #12 review, Critical). This type
+ * used to carry `host_configuration` and `decision_unrenderable` too, each
+ * under its own comment admitting it was "not a delivery failure at all" -- so
+ * `failure.kind` presented two precisely-known, entirely host-side causes under
+ * a delivery-shaped name, and `classifyDeliveryFailure` advertised a return it
+ * never actually produced. A type that lies is a lie the type system then
+ * teaches every reader. The two live in `HostFailureKind` below.
+ */
+export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decision" | "unknown";
+
+/**
+ * What went wrong ON THIS SIDE of the wire, when the wire was never the
+ * problem. Neither of these is reachable from `classifyDeliveryFailure`: the
+ * stage already knows which one happened (see `classifyStepFailure`), because
+ * for these two the failure object is the detail, not the diagnosis.
+ */
+export type HostFailureKind =
   /**
-   * Not a delivery failure at all: the request was never sent, because this
-   * host could not build one. Its own kind because "unknown" was actively
-   * misleading for it -- the cause is precisely known and entirely host-side,
-   * and an audit entry that files a host misconfiguration under an unknown
-   * delivery failure sends an incident review to the wrong process.
+   * The request was never sent, because this host could not build one. Its own
+   * kind because "unknown" was actively misleading for it -- the cause is
+   * precisely known and entirely host-side, and an audit entry that files a
+   * host misconfiguration under an unknown delivery failure sends an incident
+   * review to the wrong process.
    */
   | "host_configuration"
   /**
-   * Also not a delivery failure: a decision DID arrive and was honoured in
-   * principle -- what failed was this host expressing it (a decision string
-   * no hookmap entry names, or a hookmap gap). Same misattribution as
-   * `host_configuration` fixed one step earlier in the exchange: auditing it
-   * as "no decision arrived from the guardian" tells an incident reviewer to
-   * go and look at a Guardian that answered correctly, when the fault is in
-   * this host's own rendering table.
+   * A decision DID arrive and was honoured in principle -- what failed was
+   * this host expressing it (a decision string no hookmap entry names, or a
+   * hookmap gap). Same misattribution as `host_configuration` fixed one step
+   * earlier in the exchange: auditing it as "no decision arrived from the
+   * guardian" tells an incident reviewer to go and look at a Guardian that
+   * answered correctly, when the fault is in this host's own rendering table.
    */
   | "decision_unrenderable";
+
+/**
+ * Everything `AuditEntry.failure.kind` can name about one step: the wire's
+ * failures and this host's own.
+ *
+ * A union rather than one widened `DeliveryFailureKind`, so the honest half
+ * stays honest. A reader asking "what can a delivery failure be?" gets four
+ * answers; a reader asking "what can an audit entry say about a step?" gets
+ * six; and neither question is answered with the other one's list.
+ */
+export type StepFailureKind = DeliveryFailureKind | HostFailureKind;
 
 /**
  * WHERE in the exchange the failure happened. Three materially different
@@ -121,9 +149,19 @@ const TRANSPORT_ERROR_CODES = new Set([
 ]);
 
 /**
- * Names which of §6.4's failure modes happened, for the audit entry. Total:
- * an unrecognised shape is "unknown", never a throw -- this runs while the
- * host is already handling a failure.
+ * Names which of §6.4's DELIVERY failure modes happened, for the audit entry.
+ * Total: an unrecognised shape is "unknown", never a throw -- this runs while
+ * the host is already handling a failure.
+ *
+ * Half of the `classify<Role>Failure` pair, with `classifySessionFailure`: same
+ * verb, and now two accurate role nouns (PR #12 review, naming symmetry ×2).
+ * The review offered two routes to that and this is the second one -- rename
+ * the function until the name covers the kinds, or narrow the kinds until the
+ * name is true. The role here really is delivery (every kind it can return is a
+ * property of the wire, R3.2), so widening the name would have preserved the
+ * lie under better spelling. `classifyStepFailure` below is the genuinely wider
+ * role, and it stays private because nothing outside this module chooses a
+ * stage.
  */
 export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailureKind; message: string } {
   try {
@@ -236,7 +274,25 @@ export type ApplyFailurePostureInput = {
   sessionFailure?: unknown;
 };
 
-export type PostureDecision = {
+/**
+ * The ACS decision this function answers an absent one with -- the same
+ * `AcsDecision` message every other path hands the host (decision-message.ts),
+ * refined by what is additionally known about one that came from here.
+ *
+ * It used to be called `PostureDecision`, which named the wrong message (PR #12
+ * review, Important, twice): a posture is `proceed|deny` and this payload is
+ * `allow|deny`, so every reader had to translate a noun that said "posture"
+ * into a value that was a decision. The refinement is real and worth keeping
+ * typed, though, and it is the two facts a caller relies on:
+ *
+ *   - `decision` is `allow` or `deny` and never anything else, which is what
+ *     lets a caller's fallback render of it be unfailing (a hookmap that
+ *     loadHookmap accepted declares a renderable entry for both).
+ *   - `reasoning` and `reason_codes` are always present -- a step that ran
+ *     without a policy decision behind it must always say so, in prose a human
+ *     reads and in a code a machine reads.
+ */
+export type FailureResolvedAcsDecision = AcsDecision & {
   decision: "allow" | "deny";
   reasoning: string;
   reason_codes: string[];
@@ -251,10 +307,12 @@ export function applyFailurePosture({
   audit,
   stage = "delivery",
   sessionFailure,
-}: ApplyFailurePostureInput): PostureDecision {
+}: ApplyFailurePostureInput): FailureResolvedAcsDecision {
   const posture = sessionConfig?.on_decision_failure ?? DEFAULT_POSTURE;
-  const classified = classifyByStage(stage, failure);
-  const outcome = posture === "proceed" ? "proceeded" : "blocked";
+  // One resolution, read once, in the three vocabularies it is expressed in --
+  // see RESOLUTION_BY_POSTURE.
+  const { decision, outcome } = RESOLUTION_BY_POSTURE[posture];
+  const classified = classifyStepFailure(stage, failure);
 
   // Computed before the audit write, and written into it: "the guardian was
   // down for this whole session" (default) and "this deployment chose to
@@ -340,11 +398,35 @@ export function applyFailurePosture({
   }
 
   return {
-    decision: posture === "proceed" ? "allow" : "deny",
+    decision,
     reasoning: `${cause};${sessionNote} ${postureOrigin} -- on_decision_failure=${posture}, so this step was ${outcome}.`,
     reason_codes: [REASON_CODE_BY_STAGE[stage]],
   };
 }
+
+/**
+ * The one place a posture becomes the other two vocabularies this resolution is
+ * expressed in: the ACS decision the host is handed, and the outcome the audit
+ * entry records.
+ *
+ * One declaration, read once (PR #12 review, Important). It used to be two
+ * open-coded translations in the middle of `applyFailurePosture` -- the posture
+ * re-encoded as an outcome on one line and as a decision seventy lines later --
+ * which is three encodings of a single resolution inside one body, with nothing
+ * but proximity keeping them in step. Now they agree by construction.
+ *
+ * The three vocabularies are deliberately NOT collapsed into one; the note on
+ * `AuditEntry.outcome` is where that was weighed and why the audit rail keeps
+ * its own. Both of this table's value types are read off `AuditEvent`'s own
+ * declarations, so the table and the artifact cannot drift apart.
+ */
+const RESOLUTION_BY_POSTURE: Record<
+  AuditEvent["posture"],
+  { decision: "allow" | "deny"; outcome: AuditEvent["outcome"] }
+> = {
+  proceed: { decision: "allow", outcome: "proceeded" },
+  deny: { decision: "deny", outcome: "blocked" },
+};
 
 /** One reason code per stage, so the machine-readable half of the decision
  * carries the same distinction the prose does. */
@@ -355,13 +437,18 @@ const REASON_CODE_BY_STAGE: Record<FailureStage, string> = {
 };
 
 /**
- * The classified `{kind, message}` for a stage. Only "delivery" consults the
+ * The classified `{kind, message}` for one step, at the stage that failed --
+ * the whole role, of which delivery is one third. Only "delivery" consults the
  * failure value itself: the other two stages KNOW what happened -- the
  * failure object is the detail, not the diagnosis -- and running them
  * through classifyDeliveryFailure is what produced "unknown" for two
  * precisely-known, entirely host-side causes.
+ *
+ * `classifyStepFailure`, not `classifyByStage`: same `classify<Role>Failure`
+ * shape as the two exported classifiers, and it names what it returns rather
+ * than how it dispatches.
  */
-function classifyByStage(stage: FailureStage, failure: unknown): { kind: DeliveryFailureKind; message: string } {
+function classifyStepFailure(stage: FailureStage, failure: unknown): { kind: StepFailureKind; message: string } {
   switch (stage) {
     case "request":
       return { kind: "host_configuration", message: messageOf(failure) };

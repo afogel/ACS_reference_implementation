@@ -61,7 +61,29 @@ export type AuditEntry = {
    * for this whole session" and "this deployment chose to fail open" are
    * different incidents and the audit log is where that has to survive. */
   posture_source: "negotiated" | "default";
-  /** `proceeded` is the fail-open bypass §6.4 requires be recorded. */
+  /**
+   * What became of the step. `proceeded` is the fail-open bypass §6.4 requires
+   * be recorded.
+   *
+   * A THIRD vocabulary beside the wire posture (`proceed|deny`) and the ACS
+   * decision (`allow|deny`), and kept as one on purpose -- the review asks for a
+   * third stem only if the Inspector's badge genuinely needs it (PR #12,
+   * Important), and it does. Two things it buys, both visible on one rendered
+   * line of `bun run inspector`:
+   *
+   *   - `renderAuditEntry` prints the outcome and `posture=` side by side.
+   *     Mirroring the posture would print one word twice and lose which of the
+   *     two a reader is looking at: what this deployment declared, against what
+   *     became of this step.
+   *   - Mirroring the ACS decision would badge the line `ALLOW`/`DENY`, which
+   *     is the envelope stream's vocabulary for a step whose decision genuinely
+   *     arrived. Every line in THIS log is a step where none did, and that
+   *     difference is the entire thing §6.4 requires be visible.
+   *
+   * Past tense for the same reason: this field reports, it does not declare.
+   * Derived from the posture in exactly one place (failure-posture.ts's
+   * RESOLUTION_BY_POSTURE), so the two can never disagree about a step.
+   */
   outcome: "proceeded" | "blocked";
   failure: { kind: string; message: string };
   /**
