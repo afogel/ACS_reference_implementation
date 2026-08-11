@@ -42,14 +42,14 @@ Leave this running for the rest of the demo. `hosts/claude-code/acs-hook.ts` def
 
 ## Step 2 — wire the hook into Claude Code
 
-`hosts/claude-code/settings.json` registers the shim against `PreToolUse` for the `Bash` tool only (matching `policy/manifest.yaml`'s registered tools — this is the "one hook" of V1's name, not a general-purpose interception of every tool call). Install it as this repo's project-level Claude Code settings:
+`hosts/claude-code/settings.json` registers the shim for the `Bash` tool only (matching `policy/manifest.yaml`'s registered tools — not a general-purpose interception of every tool call). **When V1 shipped it registered `PreToolUse` alone**, which is the "one hook" of V1's name, and that is the half this runbook exercises. V4 added a `PostToolUse` entry beside it, against the same tool and the same command, so the result gate fires for a live agent too — nothing in this runbook exercises it, and nothing in it changes because of it. Install it as this repo's project-level Claude Code settings:
 
 ```bash
 mkdir -p .claude
 cp hosts/claude-code/settings.json .claude/settings.json
 ```
 
-(If you already have a `.claude/settings.json` here, merge the `hooks.PreToolUse` block in rather than overwriting.)
+(If you already have a `.claude/settings.json` here, merge the `hooks` blocks in rather than overwriting.)
 
 The registered command is:
 
