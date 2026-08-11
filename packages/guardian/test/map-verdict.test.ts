@@ -308,9 +308,28 @@ describe("mapVerdict — the modifications synthesis is per intervention point (
   // a rewrite reported as applied while the original is delivered -- the
   // fail-open class this project has closed eleven times.
   it("throws for a transform at a point with no modifications rule, rather than an empty modify", () => {
-    // The four mapped points with no synthesis rule, plus a point no row names
-    // at all: a missing row and a row missing its rule are the same gap.
-    for (const point of ["input", "output", "agent_startup", "agent_shutdown", "pre_model_call", "no_such_point"]) {
+    // Seven points, and THREE distinct kinds of gap, because they do not all
+    // mean the same thing:
+    //   - `input` / `output` / `agent_startup` / `agent_shutdown`: mapped to an
+    //     ACS method, given no synthesis rule. A property of this deployment --
+    //     a later slice could add a rule to any of them.
+    //   - `pre_model_call` / `post_model_call`: `acs_method: null` (D4, V7's red
+    //     cells). A point AGT supports that ACS v0.1.0 has no target for at all,
+    //     so there is nothing for a rule to describe. This is the one kind that
+    //     is a permanent property of the pinned SPEC VERSION rather than of this
+    //     deployment, and the most worth naming: it cannot be closed by writing
+    //     more mapping.
+    //   - `no_such_point`: no row names it. A missing row and a row missing its
+    //     rule reach the same `?.` and must not diverge.
+    for (const point of [
+      "input",
+      "output",
+      "agent_startup",
+      "agent_shutdown",
+      "pre_model_call",
+      "post_model_call",
+      "no_such_point",
+    ]) {
       expect(() => mapVerdict(transformVerdict, m, point)).toThrow(/no modifications rule/);
     }
   });

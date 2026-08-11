@@ -1059,10 +1059,30 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
       redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
     });
 
-    // §6.3's oneOf, asserted on the wire rather than in a unit test. The array
-    // is load-bearing and not a detail of the literal above: the host adapter
-    // iterates `redactions`, so an object keyed "0" would apply nothing while
-    // the decision still said modify.
+    // §6.3's oneOf, asserted on the wire rather than in a unit test, plus the
+    // array shape. The array is not a restatement of the literal above: an
+    // object keyed "0" fails CLOSED at the host, where applyModifications'
+    // non-array guard throws ModificationsInvalidError and validateDecision
+    // answers `deny` (packages/host-adapter/src/modifications.ts:250, tested at
+    // validate-decision.test.ts:214, and measured again for the object-keyed
+    // form specifically). So the wrong shape does NOT reach a host that applies
+    // nothing while reporting a rewrite -- that fail-open is already closed one
+    // hop later. What pinning it here buys is catching the wrong shape AT THE
+    // SOURCE, as a Guardian bug, instead of as a refused rewrite whose deny a
+    // reader then has to trace back across the wire.
+    //
+    // Neither mutation described above isolates these lines. Moving
+    // mapping.yaml's redaction_path fails mapVerdict's unit tests too, so it
+    // shows nothing this test adds; moving the manifest's policy_target fails
+    // this test at the `decision === "modify"` assertion, which predates it.
+    // The mutation that isolates them: hardcode "pre_tool_call" into
+    // server.ts's mapVerdict call while still evaluating the RESOLVED point.
+    // The suite goes 457 pass / 1 fail with the literal above the only failure
+    // -- the result gate answers a result payload with
+    // `parameter_overrides: {command: "TOKEN=[REDACTED]"}` while `decision`,
+    // `reason_codes` and `request_id` all stay perfect. A rewrite reported
+    // against a key the payload does not have, and nothing else in 459 tests
+    // notices. That is what these assertions are for.
     const mods = response.result?.modifications as Record<string, unknown>;
     expect(Array.isArray(mods.redactions)).toBe(true);
     expect("parameter_overrides" in mods).toBe(false);
