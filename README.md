@@ -92,7 +92,7 @@ which is exactly the JSON Claude Code's own hook protocol sends and expects back
 ### Verify
 
 ```bash
-bun test          # 76 tests across 12 files (75 pass, 1 skip), including the R3.2/R3.3 gates below
+bun test          # 83 tests across 12 files (82 pass, 1 skip), including the R3.2/R3.3 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
 ```
@@ -101,7 +101,7 @@ bun run typecheck # whole-workspace strict TypeScript check, zero errors
 
 ## Status
 
-V1 ("one host, one hook") is implemented: a Claude Code `PreToolUse` hook, a Guardian process serving ACS over HTTP, and AGT's unforked stock policy bundle deciding behind it — see the quickstart above and [`slices/v1/README.md`](slices/v1/README.md). R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host vocabulary in the AGT bridge) are enforced by [`test/invariants.test.ts`](test/invariants.test.ts), not left to inspection. Slices V2–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
+V1 ("one host, one hook") is implemented: a Claude Code `PreToolUse` hook, a Guardian process serving ACS over HTTP, and AGT's unforked stock policy bundle deciding behind it — see the quickstart above and [`slices/v1/README.md`](slices/v1/README.md). R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host *output* vocabulary in it either, and no host vocabulary in the AGT bridge) are enforced by [`test/invariants.test.ts`](test/invariants.test.ts), not left to inspection. Slices V2–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
 
 ## License
 

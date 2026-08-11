@@ -1,80 +1,195 @@
 /**
- * renderDecision (N3) turns an ACS decision result into Claude Code's
- * `hookSpecificOutput`, driven entirely by the hookmap's `decisions` block
- * (S1) -- never by a hardcoded decision -> output dispatch table in this
- * module. Which host output field a decision maps to, and which decision
- * field (if any) feeds a human-readable reason or an updated-input payload,
- * are both read off `hookmap.decisions[decision]`; changing the YAML
- * changes the render with no code change here.
+ * renderDecision (N3) turns an ACS decision into the output its host expects
+ * -- without naming one field of that output anywhere in this module.
  *
- * The single load-bearing behaviour: a `deny` decision's `reasoning`
- * string must land in `permissionDecisionReason` -- that's what a human
- * reads in the Claude Code transcript, and it's the entire payoff of the
- * slice's demo. This module gets there generically: `deny`'s hookmap entry
- * names `reason_from: reasoning`, and renderDecision copies whatever field
- * that names -- it never assumes "reasoning" is the field in code.
+ * The hookmap (S1) declares the whole shape. Each `decisions.<decision>` entry
+ * carries an `output` block whose keys are dotted paths into the object the
+ * host reads, and whose values say where each field's content comes from: a
+ * literal (`value:`) or a field of the arriving ACS decision (`from:`, with an
+ * optional `type:` the arriving value must have). This module walks that block
+ * and assembles the object. It knows ACS decisions, dotted paths, and nothing
+ * else; the field names, their nesting, and which of them a given decision
+ * even has are all data.
  *
- * R3.2: this module knows ACS decisions and Claude Code's hookSpecificOutput
- * shape, nothing else. No policy-runtime vocabulary appears here -- an
- * observe-only upstream signal has already become an ACS `allow` (with
- * policy_references) by the time a decision result reaches this module,
- * and it renders as a plain allow like any other, per R1.2: there is no
- * separate rendering path for it to invent.
+ * WHY THIS IS NOT MERELY TIDY (PR #10 review, Critical). The project's claim is
+ * that governance integration collapses from M*N to M+N: a host implements ACS
+ * once and any conformant policy runtime can govern it. Slice V5's second host
+ * is promised *this same module*, unchanged, plus a shim and a hookmap. Until
+ * this rewrite that promise was false -- three of one host's field names were
+ * baked into these types, and one of them was mandatory, so a second host
+ * would have had to fork the adapter or inherit the first host's vocabulary.
+ * The hookmap was data-driven; the TypeScript around it was not.
+ *
+ * Two things the previous shape could not express, and this one can:
+ *
+ *   - A field that sits OUTSIDE whatever wrapper the host nests its decision
+ *     in -- a top-level key alongside it. A path with no dot puts it there.
+ *   - A decision that carries no permission-style field at all. Nothing here
+ *     is mandatory.
+ *
+ * The wrapper itself, and the one field that is not a function of the decision
+ * (the name of the hook that asked), belong to the host shim: it wraps what
+ * this returns. That keeps this module's contract exactly "the output is a
+ * function of the decision and the hookmap".
+ *
+ * The single load-bearing behaviour, unchanged: a `deny` decision's
+ * `reasoning` string must reach the human reading the host's transcript. That
+ * happens here generically -- `deny`'s hookmap entry names the decision field
+ * to copy and the host path to copy it to, and this module copies whatever
+ * those two say.
+ *
+ * R3.2: no policy-runtime vocabulary here, and now no host vocabulary either
+ * -- test/invariants.test.ts gates both. An observe-only upstream signal has
+ * already become an ACS `allow` (with policy_references) by the time it
+ * reaches this module, per R1.2, and it is dispatched through the exact same
+ * `decisions.allow` entry a plain allow is: still one dispatch path, still
+ * driven by the hookmap alone.
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
 
-/** One decision's hookmap-declared rendering rule (S1's `decisions.<decision>` entry). */
-type DecisionRenderRule = {
-  permissionDecision: string;
-  reason_from?: string;
-  updatedInput_from?: string;
-};
-
-export type HookSpecificOutput = { hookEventName: string; permissionDecision: string } & Record<string, unknown>;
+/**
+ * A rendered host output: an ordinary JSON object whose keys this module never
+ * chose. A host shim receives one of these and hands it to its host -- it is
+ * the shim, not the adapter, that knows what the keys mean.
+ */
+export type HostOutput = Record<string, unknown>;
 
 /**
- * Renders `decisionResult` per `hookmap.decisions[decisionResult.decision]`.
- * `hookEventName` is the raw host hook name that produced the original
- * request (e.g. "PreToolUse", the same string passed to buildEnvelope),
- * carried through unchanged into the shape Claude Code expects.
+ * One field of a host output, as S1 declares it: exactly one source, plus an
+ * optional type the arriving value must have.
  *
- * Throws if the hookmap has no `decisions` block, or no entry for this
- * decision -- there is no default rendering and no partial output.
+ * `type` is a `typeof` string, and it is not decoration. A host field declared
+ * to hold prose ("the reason a human reads") must not be handed an object
+ * because some Guardian put one in the decision field it names: the host would
+ * either display a shape it cannot render or, worse, reject the whole output
+ * as malformed and treat the hook as having produced no decision -- a
+ * fail-open, from a decision that arrived perfectly well. A value of the wrong
+ * type leaves the field off, which is the same thing that happens when the
+ * decision does not carry the field at all.
  */
-export function renderDecision(
-  hookEventName: string,
-  decisionResult: AcsDecision,
-  hookmap: Hookmap,
-): { hookSpecificOutput: HookSpecificOutput } {
-  const rules = hookmap.decisions as Record<string, DecisionRenderRule> | undefined;
-  if (!rules) {
+type HostOutputField = {
+  /** A literal, copied through as-is. Mutually exclusive with `from`. */
+  value?: unknown;
+  /** The name of the ACS decision field whose value to copy. */
+  from?: string;
+  /** `typeof` the value must satisfy for a `from` field to be copied. */
+  type?: string;
+};
+
+/** One decision's hookmap-declared rendering rule (S1's `decisions.<decision>` entry). */
+type DecisionRenderRule = { output: Record<string, HostOutputField> };
+
+/**
+ * Path segments no output field may name. `__proto__` is the one that matters
+ * -- assigning to it through a plain object mutates the prototype instead of
+ * adding a key, so a hookmap naming it would produce an output missing the
+ * field it declared while changing something else entirely. The other two are
+ * rejected beside it rather than reasoned about individually.
+ */
+const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Writes `value` into `output` at a dotted `path`, creating the objects along
+ * the way.
+ *
+ * Every failure here is a throw rather than a skip or an overwrite. A hookmap
+ * that declares two fields at the same key, or one field nested underneath
+ * another, describes an output nobody can render as written -- and a renderer
+ * that silently picked one of the two would hand the host something that
+ * merely looks like a decision.
+ */
+function place(output: HostOutput, path: string, value: unknown): void {
+  const segments = path.split(".");
+  for (const segment of segments) {
+    if (segment.length === 0 || RESERVED_SEGMENTS.has(segment)) {
+      throw new Error(`renderDecision: output path "${path}" names the segment ${JSON.stringify(segment)}, which addresses no field`);
+    }
+  }
+
+  const leaf = segments[segments.length - 1] as string;
+  let cursor = output;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = cursor[segment];
+    if (existing === undefined) {
+      cursor[segment] = {};
+    } else if (!isPlainObject(existing)) {
+      throw new Error(
+        `renderDecision: output path "${path}" nests under "${segment}", which another field already holds a value at`,
+      );
+    }
+    cursor = cursor[segment] as HostOutput;
+  }
+  if (Object.prototype.hasOwnProperty.call(cursor, leaf)) {
+    throw new Error(`renderDecision: output path "${path}" is declared twice, or collides with a field nested under it`);
+  }
+  cursor[leaf] = value;
+}
+
+/**
+ * Renders `decision` per `hookmap.decisions[decision.decision]`, returning the
+ * host output that entry declares.
+ *
+ * Throws if the hookmap has no `decisions` block, has no entry for this
+ * decision, or has an entry this module cannot render -- there is no default
+ * rendering and no partial output. A caller that cannot render a decision
+ * still has a decision it must answer; answering it with half an output is the
+ * one thing this function will not do.
+ */
+export function renderDecision(decision: AcsDecision, hookmap: Hookmap): HostOutput {
+  const decisions = hookmap.decisions;
+  if (!isPlainObject(decisions)) {
     throw new Error("renderDecision: hookmap has no decisions block");
   }
-
-  const rule = rules[decisionResult.decision];
-  if (!rule) {
-    throw new Error(`renderDecision: hookmap has no decisions entry for ACS decision "${decisionResult.decision}"`);
+  if (!Object.prototype.hasOwnProperty.call(decisions, decision.decision)) {
+    throw new Error(`renderDecision: hookmap has no decisions entry for ACS decision "${decision.decision}"`);
   }
 
-  const hookSpecificOutput: HookSpecificOutput = {
-    hookEventName,
-    permissionDecision: rule.permissionDecision,
-  };
+  const rule = decisions[decision.decision];
+  if (!isPlainObject(rule) || !isPlainObject(rule.output) || Object.keys(rule.output).length === 0) {
+    // An entry that is null, or carries no `output` block, satisfies a bare
+    // presence check and then renders nothing -- an output with no decision in
+    // it, which a host reads as "the hook produced nothing" exactly as surely
+    // as a missing entry does, just more quietly.
+    throw new Error(
+      `renderDecision: hookmap's "decisions.${decision.decision}" entry needs a non-empty "output" block, ` +
+        `got ${JSON.stringify((rule as { output?: unknown } | null)?.output)}`,
+    );
+  }
 
-  if (rule.reason_from) {
-    const reason = decisionResult[rule.reason_from];
-    if (typeof reason === "string") {
-      hookSpecificOutput.permissionDecisionReason = reason;
+  const output: HostOutput = {};
+  for (const [path, field] of Object.entries((rule as DecisionRenderRule).output)) {
+    if (!isPlainObject(field)) {
+      throw new Error(
+        `renderDecision: hookmap's "decisions.${decision.decision}" output field "${path}" must be an object ` +
+          `naming "value" or "from", got ${JSON.stringify(field)}`,
+      );
     }
-  }
-
-  if (rule.updatedInput_from) {
-    const updatedInput = decisionResult[rule.updatedInput_from];
-    if (updatedInput !== undefined) {
-      hookSpecificOutput.updatedInput = updatedInput;
+    if (Object.prototype.hasOwnProperty.call(field, "value")) {
+      place(output, path, field.value);
+      continue;
     }
+    if (typeof field.from !== "string" || field.from.length === 0) {
+      // Not skipped: a field naming neither source is a hookmap typo, and
+      // rendering around it would produce an output missing a field its author
+      // believes is there.
+      throw new Error(
+        `renderDecision: hookmap's "decisions.${decision.decision}" output field "${path}" must name a literal ` +
+          `"value" or a non-empty string "from", got ${JSON.stringify(field.from)}`,
+      );
+    }
+    const carried = decision[field.from];
+    if (carried === undefined) {
+      continue;
+    }
+    if (field.type !== undefined && typeof carried !== field.type) {
+      continue;
+    }
+    place(output, path, carried);
   }
-
-  return { hookSpecificOutput };
+  return output;
 }

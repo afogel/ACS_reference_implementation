@@ -82,6 +82,30 @@ describe("architectural invariants", () => {
   });
 
   /**
+   * The other half of R3.2, and the one PR #10's review found false
+   * (Critical): the adapter is promised to slice V5's second host
+   * *unchanged*, so it must not name the FIRST host's output fields either.
+   * `renderDecision` used to declare `HookSpecificOutput` with a mandatory
+   * `permissionDecision`, and returned `{ hookSpecificOutput }` -- Claude
+   * Code's wire shape as the shared module's public API. A second host would
+   * have inherited that vocabulary or forked the module.
+   *
+   * All four names now live in hosts/claude-code/: two as data in
+   * claude-code.hookmap.yaml's output paths, and the wrapper in acs-hook.ts,
+   * which is what wraps. Same scope note as the gate above -- non-test `.ts`
+   * under packages/host-adapter/src only, with comments stripped, so a doc
+   * comment may still explain the boundary it must not cross in code.
+   */
+  it("the host adapter's source names no host output field", () => {
+    assertNoVocabulary("packages/host-adapter/src", [
+      "permissionDecision",
+      "permissionDecisionReason",
+      "updatedInput",
+      "hookSpecificOutput",
+    ]);
+  });
+
+  /**
    * R3.3 -- what makes slice V5's second host cost zero AGT code: the
    * bridge that knows AGT must never learn a specific host's wire shape,
    * or adding a host would mean touching this package too.

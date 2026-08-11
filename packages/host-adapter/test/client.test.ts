@@ -130,10 +130,9 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
-      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
-    );
+    ) as { hookSpecificOutput: Record<string, unknown> };
 
     expect(hookSpecificOutput.permissionDecision).toBe("deny");
     expect(typeof hookSpecificOutput.permissionDecisionReason).toBe("string");
@@ -147,11 +146,14 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
-      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
-    );
+    ) as { hookSpecificOutput: Record<string, unknown> };
 
-    expect(hookSpecificOutput).toEqual({ hookEventName: "PreToolUse", permissionDecision: "allow" });
+    // No `hookEventName` here: it is not a function of the decision, so the
+    // shim adds it as it wraps (PR #10 review, Critical). What a Claude Code
+    // process actually reads back, with that field in place, is pinned in
+    // hosts/claude-code/test/wire-shape.test.ts against the real shim.
+    expect(hookSpecificOutput).toEqual({ permissionDecision: "allow" });
   });
 });

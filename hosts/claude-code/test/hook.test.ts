@@ -87,10 +87,9 @@ describe("acs-hook.ts (N1) -- the Claude Code hook shim, run as a real subproces
     const response = await guardianClient.post(guardian.url, envelope);
     expect(response.error).toBeUndefined();
     const expected = renderDecision(
-      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
-    );
+    ) as { hookSpecificOutput: Record<string, unknown> };
 
     expect(reason).toBe(expected.hookSpecificOutput.permissionDecisionReason);
     expect(stderr).toBe("");
