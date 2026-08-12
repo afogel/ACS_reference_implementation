@@ -126,6 +126,32 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * True when some leaf of `container` is `value`, walking plain objects and
+ * arrays and comparing every leaf it bottoms out at. Used by `replacingOutput`
+ * to ask, of the fully-patched replacement, whether the value it just withheld
+ * still SURVIVES somewhere the leaf patch never touched -- a sibling that
+ * mirrors the leaf rather than one that merely sits beside it.
+ *
+ * WHOLE VALUES, NEVER A SUBSTRING SCAN. An earlier draft of this check
+ * serialised the replacement and asked whether it CONTAINED the original's
+ * serialisation. That is wrong in both directions, and one of them is
+ * catastrophic: an empty-string leaf serialises to `""`, whose interior is the
+ * empty string, and every replacement contains that -- so a tool that produced
+ * no output would have had every result withheld. Comparing whole values by
+ * `===` at each leaf has no such degenerate case, and it is the same equality
+ * `projectAppliedOutput`'s own landing check already uses for a prose leaf.
+ */
+function holdsValue(container: unknown, value: unknown): boolean {
+  if (isPlainObject(container)) {
+    return Object.values(container).some((leaf) => holdsValue(leaf, value));
+  }
+  if (Array.isArray(container)) {
+    return container.some((leaf) => holdsValue(leaf, value));
+  }
+  return container === value;
+}
+
+/**
  * `document` with its ACS-side projected leaf (`outputs[0].value`, the same
  * one `projectAppliedOutput` reads back) replaced by a constant, so two
  * documents differing ONLY at that leaf serialise identically. Used to ask
@@ -286,7 +312,57 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     );
   }
 
-  return patchedClone(container, segments, replacement, outputs.from);
+  let patched = patchedClone(container, segments, replacement, outputs.from);
+
+  // Every declared mirror, patched into the SAME clone -- so a container with
+  // two copies of the leaf ends the loop with neither copy left standing.
+  // `outputs.mirrors` is a list of further paths into `within`, not `from`
+  // repeated with a different tail, so each one is resolved the same way
+  // `from` itself was: split, checked against `within`'s own segments, then
+  // sliced down to the path inside the container `patchedClone` actually
+  // walks.
+  for (const mirror of outputs.mirrors ?? []) {
+    const mirrorSegments = pathSegments(mirror);
+    if (!withinSegments.every((segment, index) => mirrorSegments[index] === segment)) {
+      throw new Error(
+        `result-output: hookmap mirror ${JSON.stringify(mirror)} is not inside ` +
+          `${JSON.stringify(outputs.within)}, so it names no field of the object a replacement is patched into`,
+      );
+    }
+    patched = patchedClone(patched, mirrorSegments.slice(withinSegments.length), replacement, mirror);
+  }
+
+  // THE POST-CONDITION, and the reason `mirrors` is declared rather than
+  // inferred (§V5). Every check above is about the hookmap and the payload;
+  // this one is about what the fully-patched replacement actually contains --
+  // asked, deliberately, of the object this function is about to return,
+  // never of the hookmap's own declarations. See `holdsValue`'s own comment
+  // for why this compares whole values and never a serialised substring.
+  //
+  // ASKED BESIDE `outputs.from`, NOT OF IT -- the error text below says so,
+  // and means it: the leaf's own field is legitimately set to `replacement`,
+  // and `replacement` answering `original` is not this check's question to
+  // ask. `projectAppliedOutput` calls this with a leaf that a modification
+  // never touched (an ancestor edit landing somewhere else in the document)
+  // often enough that its OWN landing check exists for exactly that case, run
+  // right after this returns; asking the identical question HERE, over the
+  // leaf's own now-unchanged field, would answer it first and worse -- "some
+  // field carries its own copy" for a field that carries no copy of anything,
+  // it is simply the one field this call was never asked to change. So the
+  // leaf's own position is excluded from the walk, by a sentinel no real
+  // value can equal, and every OTHER field -- every declared mirror, and any
+  // undeclared one this hookmap never named -- is still checked in full.
+  const LEAF_POSITION_EXCLUDED = Symbol("result-output: the leaf's own field, not a sibling");
+  const besideTheLeaf = patchedClone(patched, segments, LEAF_POSITION_EXCLUDED, outputs.from);
+  if (holdsValue(besideTheLeaf, original)) {
+    throw new Error(
+      `result-output: the replacement still holds the value being replaced -- some field beside ` +
+        `${JSON.stringify(outputs.from)} carries its own copy, and withholding a leaf while a sibling keeps ` +
+        `it withholds nothing. Declare that field in this hook's "mirrors" so it is replaced too`,
+    );
+  }
+
+  return patched;
 }
 
 /**

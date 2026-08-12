@@ -37,6 +37,19 @@ export type HookmapOutputs = {
    * goes on the wire.
    */
   within: string;
+  /**
+   * Further paths inside `within` that hold their OWN COPY of the leaf, and
+   * must receive the same replacement.
+   *
+   * V4's discipline is to patch a clone so every sibling survives, and on a host
+   * whose siblings are unrelated fields that is exactly right. Measured on host
+   * #2: one sibling MIRRORS the leaf, so preserving it preserves the secret --
+   * a redaction that is clean, warns about nothing, is genuinely invisible to
+   * the model, and leaves the plaintext in the host's own session record. The
+   * property that makes the clone safe is the property that leaks, so the
+   * hookmap has to say where the copies are; nothing here could infer it.
+   */
+  mirrors?: string[];
 };
 
 /** The members every hook entry carries, whichever payload it builds. */
