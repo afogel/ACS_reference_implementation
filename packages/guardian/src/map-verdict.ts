@@ -158,10 +158,14 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * -- the same reason transform.path is checked against rule.when_path
  * above rather than trusted.
  *
- * Note what is NOT here: re-applying the substitution. The SDK already
- * returns the transformed value (verified: transformedPolicyTarget carries
- * the applied string alongside the verdict), so this moves a value rather
- * than recomputing one.
+ * Note what is NOT here: re-applying the substitution. `verdict.transform.value`
+ * is already the finished string -- AGT's own rule applies the substitution
+ * before the verdict is formed, confirmed against the pinned bundle by the
+ * SDK also reporting it as `transformedPolicyTarget` beside the verdict -- so
+ * this moves a value rather than recomputing one. The bridge does not forward
+ * that second field: it is the SDK's evidence for the claim, not the channel
+ * the value travels by, and `PolicyBridge.evaluate` answers with the verdict
+ * alone.
  */
 function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): AcsModifications {
   const transform = verdict.transform;

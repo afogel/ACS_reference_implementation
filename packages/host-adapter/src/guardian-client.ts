@@ -95,11 +95,25 @@ export class GuardianResultCorrelationError extends Error {
   }
 }
 
-/** Thrown when the negotiated timeout elapses with no response (§6.4). */
+/**
+ * Thrown when the negotiated timeout elapses with no response (§6.4).
+ *
+ * NAMES A MISSING RESPONSE, NOT A MISSING DECISION (PR #12 review, second
+ * pass). This is `post`'s error -- the wire primitive -- and `post` also
+ * carries `handshake/hello`, whose result is a ServerHello and which never
+ * asked for a decision at all. The message used to say "no decision within
+ * ...ms" regardless, and that string is not ephemeral: it becomes
+ * `AuditEntry.failure.message` through `classifyDeliveryFailure`, so a
+ * handshake that timed out could file a durable record blaming a missing
+ * decision on a round trip that never sought one. Where a decision genuinely
+ * was sought, `applyFailurePosture` already writes "no decision arrived from
+ * the guardian for <method>" around this, so nothing is lost by this layer
+ * reporting only what it knows: nothing came back.
+ */
 export class GuardianTimeoutError extends Error {
   readonly timeoutMs: number;
   constructor(timeoutMs: number) {
-    super(`guardianClient.post: no decision within ${timeoutMs}ms`);
+    super(`guardianClient.post: no response within ${timeoutMs}ms`);
     this.name = "GuardianTimeoutError";
     this.timeoutMs = timeoutMs;
   }

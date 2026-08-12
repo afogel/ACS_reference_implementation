@@ -29,7 +29,7 @@ const EVENT = {
   posture: "proceed",
   posture_source: "negotiated",
   outcome: "proceeded",
-  failure: { kind: "timeout", message: "no decision within 5000ms" },
+  failure: { kind: "timeout", message: "no response within 5000ms" },
 } as const;
 
 function readEntries(path: string): AuditEntry[] {

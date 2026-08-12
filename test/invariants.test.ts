@@ -187,7 +187,7 @@ describe("architectural invariants", () => {
    * "host-adapter" widened this list the moment N51 landed: the Inspector
    * now also tails S14, a host-side artifact, and declares its own
    * AuditEntry rather than importing the adapter's for exactly the same
-   * reason it re-declares TapEntry rather than importing the Guardian's
+   * reason it re-declares EnvelopeLogEntry rather than importing the Guardian's
    * (see tail-audit-log.ts's module doc). Without this third entry, the
    * gate would still pass -- but it would no longer be testing the claim
    * this task exists to make, and a gate that passes without covering what

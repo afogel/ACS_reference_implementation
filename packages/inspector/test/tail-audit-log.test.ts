@@ -26,7 +26,7 @@ function entryLine(seq: number, overrides: Partial<AuditEntry> = {}): string {
     posture: "proceed",
     posture_source: "negotiated",
     outcome: "proceeded",
-    failure: { kind: "timeout", message: "no decision within 5000ms" },
+    failure: { kind: "timeout", message: "no response within 5000ms" },
     ...overrides,
   };
   return `${JSON.stringify(entry)}\n`;
@@ -398,7 +398,7 @@ describe("tailAuditLog (N51)", () => {
         posture: "proceed",
         posture_source: "negotiated",
         outcome: "proceeded",
-        failure: { kind: "timeout", message: "no decision within 5000ms" },
+        failure: { kind: "timeout", message: "no response within 5000ms" },
       };
       const line = `${JSON.stringify(entry)}\n`;
       const bytes = Buffer.from(line, "utf8");

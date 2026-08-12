@@ -7,25 +7,34 @@
  * decision is for, and being the only place that says what their answers mean
  * as a decision:
  *
- * 1. `modify` -- modifications.ts decides whether §6.3's rewrite can be
- *    honoured as written and applies it, or throws. A throw is a DENY,
- *    never a best-effort partial apply and never a reported-but-unapplied
- *    one.
+ * 1. `modify` -- decision-modify.ts applies §6.3's rewrite if it can be
+ *    honoured as written, and denies if it cannot. Never a best-effort
+ *    partial apply and never a reported-but-unapplied one.
  * 2. `ask` -- decision-expiry.ts substitutes an expired one with its
  *    `ask_details.timeout_disposition`.
  * 3. `defer` -- decision-expiry.ts substitutes an expired one with its
  *    `defer_details.timeout_decision`.
  *
+ * THE THREE ARE PEERS, and now read as three of one thing (PR #12 review,
+ * second pass). Each is `resolve<Disposition>(decision, ...) ->
+ * ValidatedAcsDecision`, each never throws, and each lives in a module beside
+ * the knowledge it needs -- so "all three fail closed" is one property checked
+ * one way, rather than three seams with three shapes. `resolveModify` used to
+ * be a private function inside THIS module while its two peers were exported
+ * from another, which made the trio look like one special case and two
+ * siblings.
+ *
  * This module used to own all three jobs plus the apply step, in 514 lines
  * under a name that admitted to one of them: "validate" said nothing about
  * *applying* a rewrite to a tool call's arguments, nor about *substituting* a
  * decision for an expired one. Both are things a reader has to know this
- * module does, and neither was discoverable from its name or its size.
+ * module does, and neither was discoverable from its name or its size. What is
+ * left is a switch and nothing else.
  *
- * Neither collaborator names a decision it was not given: `resolveModify`
- * below is the only translation from "this rewrite cannot be honoured" to
- * "deny", and decision-expiry.ts's two resolvers are the only substitutions
- * of an expired outcome. Everything else that arrives leaves untouched.
+ * No resolver names a decision it was not given: `resolveModify` is the only
+ * translation from "this rewrite cannot be honoured" to "deny", and
+ * decision-expiry.ts's two resolvers are the only substitutions of an expired
+ * outcome. Everything else that arrives leaves untouched.
  *
  * Global Constraint 1 (binding on this whole module): no branch here may
  * alter an arriving `deny` -- switching on `decision` below, `deny` has no
@@ -45,9 +54,9 @@
  * own header.
  */
 
-import { deny, type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
+import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { resolveAsk, resolveDefer } from "./decision-expiry.ts";
-import { applyModifications, ModificationsInvalidError } from "./modifications.ts";
+import { resolveModify } from "./decision-modify.ts";
 
 export type { ValidatedAcsDecision };
 
@@ -63,30 +72,6 @@ export type ValidateDecisionContext = {
    * against. Unused by every other decision. */
   originalArguments: Record<string, unknown>;
 };
-
-/**
- * Applies a `modify`'s rewrite to the arguments that went out on the wire,
- * or denies. `applyModifications` throws rather than half-applying, and this
- * is the one place that turns such a throw into a decision -- deliberately
- * here rather than in modifications.ts, which owns §6.3 and owns no decision
- * vocabulary at all.
- *
- * A throw that is *not* a `ModificationsInvalidError` is stringified into
- * the same deny rather than escaping: an unexpected failure inside the apply
- * step is still a rewrite that did not happen, and letting it propagate
- * would leave the host with a `modify` it never applied, or with no decision
- * at all. Fail closed either way, with whatever the failure said as the
- * audited reason.
- */
-function resolveModify(decision: AcsDecision, originalArguments: Record<string, unknown>): ValidatedAcsDecision {
-  try {
-    const applied_input = applyModifications(originalArguments, decision.modifications);
-    return { ...decision, applied_input };
-  } catch (error) {
-    const reason = error instanceof ModificationsInvalidError ? error.message : String(error);
-    return deny(`guardian's modifications could not be applied: ${reason}`, "modifications_invalid");
-  }
-}
 
 /**
  * Sequences R1.8's three mandatory fail-closed cases: each recognized

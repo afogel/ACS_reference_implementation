@@ -325,7 +325,7 @@ describe("renderAuditEntry — N51", () => {
         posture: "proceed",
         posture_source: "negotiated",
         outcome: "proceeded",
-        failure: { kind: "timeout", message: "no decision within 5000ms" },
+        failure: { kind: "timeout", message: "no response within 5000ms" },
       },
       { color: false },
     );
@@ -370,7 +370,7 @@ describe("renderAuditEntry — N51", () => {
       posture: "proceed",
       posture_source: "default",
       outcome: "proceeded",
-      failure: { kind: "timeout", message: "no decision within 5000ms" },
+      failure: { kind: "timeout", message: "no response within 5000ms" },
     } as const;
 
     const withSessionFailure = renderAuditEntry(
@@ -380,7 +380,7 @@ describe("renderAuditEntry — N51", () => {
     expect(withSessionFailure.split("\n")).toHaveLength(3);
     expect(withSessionFailure).toContain("session_failure=session_config_unstored: EACCES: permission denied");
     // The step's own failure is still reported as the step's own.
-    expect(withSessionFailure).toContain("failure=timeout: no decision within 5000ms");
+    expect(withSessionFailure).toContain("failure=timeout: no response within 5000ms");
 
     expect(renderAuditEntry(base, { color: false }).split("\n")).toHaveLength(2);
   });

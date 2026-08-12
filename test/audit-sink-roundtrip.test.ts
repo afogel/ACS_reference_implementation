@@ -14,7 +14,7 @@ import { tailAuditLog, type AuditEntry as InspectorAuditEntry } from "../package
 /**
  * The contract test that keeps two independent AuditEntry declarations
  * honest -- the same job test/envelope-tap-roundtrip.test.ts does for
- * TapEntry, and the reason the R5.2 import gate is meaningful rather than
+ * EnvelopeLogEntry, and the reason the R5.2 import gate is meaningful rather than
  * merely inconvenient. The Inspector declares its own type BECAUSE it must
  * not import the adapter's; that duplication is only safe while something
  * fails when the two drift.
@@ -101,11 +101,46 @@ afterEach(() => {
  *
  * Deliberately not `as` casts between the two, and deliberately not
  * exported -- an `as` here would silence exactly what is being checked.
+ *
+ * THE FIELD SETS ARE COMPARED, NOT THE FIELD TYPES, and the one place they
+ * legitimately differ is why (PR #12 review, second pass). `failure.kind` is
+ * `StepFailureKind` on the writer, because N6 builds it and the union is true
+ * by construction -- that is the whole point of carrying the taxonomy to the
+ * durable boundary. It stays `string` on the reader, because the Inspector
+ * parses a file it did not write and `isAuditEntryShape` checks only that the
+ * field IS a string. Narrowing the reader's type to the union would make the
+ * declaration claim something its own guard does not check, which is the defect
+ * class this branch has now fixed twice; validating membership instead would
+ * make the Inspector DROP an audit line whose kind it does not recognise, and a
+ * reader that silently discards records of fail-open proceeds is worse than one
+ * that renders an unfamiliar word.
+ *
+ * So the drift this test exists to catch -- a field added or dropped on one
+ * side -- is checked by key parity in both directions, which is what `toEqual`
+ * cannot see either. Assignability is still asserted in the direction that must
+ * hold at runtime: everything the adapter writes must be readable as what the
+ * Inspector expects.
  */
+type SameKeys<Adapter, Inspector> = [keyof Adapter] extends [keyof Inspector]
+  ? [keyof Inspector] extends [keyof Adapter]
+    ? true
+    : { adapterIsMissing: Exclude<keyof Inspector, keyof Adapter> }
+  : { inspectorIsMissing: Exclude<keyof Adapter, keyof Inspector> };
+
+const _entryFieldsMatch: SameKeys<Required<AdapterAuditEntry>, Required<InspectorAuditEntry>> = true;
+const _failureFieldsMatch: SameKeys<
+  Required<AdapterAuditEntry>["failure"],
+  Required<InspectorAuditEntry>["failure"]
+> = true;
+const _sessionFailureFieldsMatch: SameKeys<
+  Required<AdapterAuditEntry>["session_failure"],
+  Required<InspectorAuditEntry>["session_failure"]
+> = true;
 const _inspectorAcceptsWhatTheAdapterWrites: Required<InspectorAuditEntry> = {} as Required<AdapterAuditEntry>;
-const _adapterAcceptsWhatTheInspectorReads: Required<AdapterAuditEntry> = {} as Required<InspectorAuditEntry>;
+void _entryFieldsMatch;
+void _failureFieldsMatch;
+void _sessionFailureFieldsMatch;
 void _inspectorAcceptsWhatTheAdapterWrites;
-void _adapterAcceptsWhatTheInspectorReads;
 
 describe("S14 write -> N51 read: every field survives", () => {
   for (const outcome of ["proceeded", "blocked"] as const) {
@@ -118,7 +153,7 @@ describe("S14 write -> N51 read: every field survives", () => {
         posture: outcome === "proceeded" ? "proceed" : "deny",
         posture_source: "negotiated",
         outcome,
-        failure: { kind: "timeout", message: "no decision within 5000ms" },
+        failure: { kind: "timeout", message: "no response within 5000ms" },
       });
 
       // toEqual, not toMatchObject: an extra field on either side is drift,
@@ -132,7 +167,7 @@ describe("S14 write -> N51 read: every field survives", () => {
         posture: outcome === "proceeded" ? "proceed" : "deny",
         posture_source: "negotiated",
         outcome,
-        failure: { kind: "timeout", message: "no decision within 5000ms" },
+        failure: { kind: "timeout", message: "no response within 5000ms" },
       });
     });
   }

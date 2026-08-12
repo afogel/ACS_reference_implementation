@@ -30,9 +30,27 @@
  * the other side of it.
  */
 import type { AuditEvent, AuditSink } from "./audit-sink.ts";
+import type {
+  DeliveryFailureKind,
+  FailureStage,
+  SessionFailureKind,
+  StepFailureKind,
+} from "./failure-kinds.ts";
 import type { AcsDecision } from "./decision-message.ts";
 import { GuardianTimeoutError } from "./guardian-client.ts";
 import { SessionConfigNotStoredError, type ResolvedSessionConfig } from "./handshake.ts";
+
+// The failure taxonomies this module classifies into live in
+// `./failure-kinds.ts`, shared with the audit sink that stores them, and are
+// re-exported here so every existing importer of N6 still finds them where it
+// always did.
+export type {
+  DeliveryFailureKind,
+  FailureStage,
+  HostFailureKind,
+  SessionFailureKind,
+  StepFailureKind,
+} from "./failure-kinds.ts";
 
 /** handshake.json's own default, and R1.7's (D8 closed here). */
 export const DEFAULT_POSTURE = "proceed" as const;
@@ -40,78 +58,6 @@ export const DEFAULT_POSTURE = "proceed" as const;
 /** Used when no handshake completed, so no timeout was negotiated either.
  * Matches the Guardian's declared default so the two agree by value. */
 export const DEFAULT_TIMEOUT_MS = 5000;
-
-/**
- * What went wrong ON THE WIRE: a request went out and no usable decision came
- * back. §6.4's own case, and the only kinds `classifyDeliveryFailure` can
- * produce.
- *
- * Narrow, and the narrowing IS the fix (PR #12 review, Critical). This type
- * used to carry `host_configuration` and `decision_unrenderable` too, each
- * under its own comment admitting it was "not a delivery failure at all" -- so
- * `failure.kind` presented two precisely-known, entirely host-side causes under
- * a delivery-shaped name, and `classifyDeliveryFailure` advertised a return it
- * never actually produced. A type that lies is a lie the type system then
- * teaches every reader. The two live in `HostFailureKind` below.
- */
-export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decision" | "unknown";
-
-/**
- * What went wrong ON THIS SIDE of the wire, when the wire was never the
- * problem. Neither of these is reachable from `classifyDeliveryFailure`: the
- * stage already knows which one happened (see `classifyStepFailure`), because
- * for these two the failure object is the detail, not the diagnosis.
- */
-export type HostFailureKind =
-  /**
-   * The request was never sent, because this host could not build one. Its own
-   * kind because "unknown" was actively misleading for it -- the cause is
-   * precisely known and entirely host-side, and an audit entry that files a
-   * host misconfiguration under an unknown delivery failure sends an incident
-   * review to the wrong process.
-   */
-  | "host_configuration"
-  /**
-   * A decision DID arrive and was honoured in principle -- what failed was
-   * this host expressing it (a decision string no hookmap entry names, or a
-   * hookmap gap). Same misattribution as `host_configuration` fixed one step
-   * earlier in the exchange: auditing it as "no decision arrived from the
-   * guardian" tells an incident reviewer to go and look at a Guardian that
-   * answered correctly, when the fault is in this host's own rendering table.
-   */
-  | "decision_unrenderable";
-
-/**
- * Everything `AuditEntry.failure.kind` can name about one step: the wire's
- * failures and this host's own.
- *
- * A union rather than one widened `DeliveryFailureKind`, so the honest half
- * stays honest. A reader asking "what can a delivery failure be?" gets four
- * answers; a reader asking "what can an audit entry say about a step?" gets
- * six; and neither question is answered with the other one's list.
- */
-export type StepFailureKind = DeliveryFailureKind | HostFailureKind;
-
-/**
- * WHERE in the exchange the failure happened. Three materially different
- * incidents, and the audit record has to tell them apart -- an entry that
- * confuses them sends an incident review to the wrong process, which is the
- * defect this type replaced a boolean to fix:
- *
- *   "delivery" -- a request went out and no usable decision came back.
- *                 §6.4's own case, and the default for every ordinary call
- *                 site.
- *   "request"  -- no request was ever built, so nothing was asked of
- *                 anything. Host-side configuration, and the reasoning must
- *                 not name a Guardian that was never contacted.
- *   "render"   -- a decision arrived and was honoured in principle; this
- *                 host could not express it.
- *
- * A boolean could only express two of the three, and a second boolean would
- * have admitted a combination that means nothing ("nothing was sent, and a
- * decision arrived").
- */
-export type FailureStage = "delivery" | "request" | "render";
 
 /** A JSON-RPC error object, as it arrives in a response that carried no decision. */
 type ErrorLike = { code?: unknown; message?: unknown };
@@ -194,36 +140,6 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
     return { kind: "unknown", message: "<unprintable failure>" };
   }
 }
-
-/** What went wrong establishing this session's negotiated config, for
- * `AuditEntry.session_failure`. */
-export type SessionFailureKind =
-  /**
-   * The handshake never came back with a ServerHello: the Guardian was
-   * unreachable, timed out, or answered with a JSON-RPC error. Nothing was
-   * negotiated, so there is no posture to lose -- `posture_source: "default"`
-   * on the same entry already says the ACS default applied, and in a
-   * Guardian-down session EVERY entry carries this.
-   */
-  | "handshake_failed"
-  /**
-   * A ServerHello arrived and this host could not keep it. Materially
-   * different from the above and the reason this field is not one constant:
-   * a posture WAS negotiated. It is applied to the step that negotiated it,
-   * and every LATER hook in the session re-handshakes because the file the
-   * next subprocess would have read is not there -- so a store that stays
-   * unwritable is a deployment quietly paying a round trip per hook, and one
-   * whose declared posture depends on that round trip continuing to succeed.
-   */
-  | "session_config_unstored"
-  /**
-   * A ServerHello arrived and was not a usable session config at all. No
-   * posture was negotiated, so -- unlike the case above -- there is nothing
-   * to apply to this step either; the ACS default governs. Its own kind
-   * because the remedy is entirely different: this one is a Guardian
-   * emitting the wrong shape, not a host that cannot write to its own disk.
-   */
-  | "server_hello_invalid";
 
 /**
  * Names which of the two session-establishment failures happened. Total, for

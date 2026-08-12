@@ -123,7 +123,7 @@ Every slice ends in something demo-able.
 | N6 | P1 | `@acs/host-adapter` | `applyFailurePosture()` — no decision within timeout → negotiated posture (default `proceed`); audits every fail-open proceed | call | → S14, → N3 | — |
 | N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults; **applies** §6.3's modifications to produce the host's rewritten input | call | → N3, → N6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error | call | → N26 | → N4 |
-| N51 | P4 | inspector | `tailAuditSinks()` | observe | → U23 | — |
+| N51 | P4 | inspector | `tailAuditLog()` | observe | → U23 | — |
 | S13 | P1 | store | `negotiated session config` — **file-backed per session** (see the resolved blocker below); V1 built the in-memory half | — | — | → N6 |
 | S14 | P1 | store | `audit sink` — every fail-open proceed, per §6.4's MUST | — | — | → N51 |
 

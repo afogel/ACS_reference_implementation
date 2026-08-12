@@ -28,6 +28,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { SessionFailureKind, StepFailureKind } from "./failure-kinds.ts";
 
 export type AuditEntry = {
   /**
@@ -85,7 +86,20 @@ export type AuditEntry = {
    * RESOLUTION_BY_POSTURE), so the two can never disagree about a step.
    */
   outcome: "proceeded" | "blocked";
-  failure: { kind: string; message: string };
+  /**
+   * What went wrong with THIS step, classified.
+   *
+   * `kind` carries the taxonomy rather than a bare `string` (PR #12 review,
+   * second pass). N6 goes to some trouble to tell a delivery failure from a
+   * host-side one -- `DeliveryFailureKind` was deliberately narrowed for it,
+   * and `HostFailureKind` exists so a host misconfiguration is not filed as an
+   * unknown delivery failure -- and this is the only boundary that outlives the
+   * process, so a widening here is where all of that would have been lost. It is
+   * also the only place an incident review ever reads: a value this union does
+   * not contain is a value nothing downstream was written to interpret, and
+   * `string` invited exactly that.
+   */
+  failure: { kind: StepFailureKind; message: string };
   /**
    * Present only when establishing this session's negotiated config failed
    * -- a handshake that never completed, or a ServerHello that could not be
@@ -98,7 +112,7 @@ export type AuditEntry = {
    * closed ends up failing open, and `posture_source: "default"` alone says
    * that happened without saying why.
    */
-  session_failure?: { kind: string; message: string };
+  session_failure?: { kind: SessionFailureKind; message: string };
 };
 
 export type AuditEvent = Omit<AuditEntry, "seq" | "recorded_at">;

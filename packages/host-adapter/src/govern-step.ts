@@ -58,21 +58,36 @@
  */
 import { buildEnvelope, unwrapArguments, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
 import type { AuditSink } from "./audit-sink.ts";
-import { applyFailurePosture, DEFAULT_TIMEOUT_MS, type FailureStage } from "./failure-posture.ts";
+import {
+  applyFailurePosture,
+  DEFAULT_TIMEOUT_MS,
+  type FailureResolvedAcsDecision,
+  type FailureStage,
+} from "./failure-posture.ts";
 import type { GuardianClient } from "./guardian-client.ts";
-import type { AcsDecision } from "./decision-message.ts";
+import type { ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
 import { validateDecision } from "./validate-decision.ts";
 
 /**
- * Which stage of the exchange produced the decision a step was governed by.
+ * What became of this step's decision -- one axis, four values.
  *
- * `"guardian"` is the only one that is not a failure: a decision arrived and
- * was honoured. The other three are `FailureStage`, the stage whose failure the
- * deployment's posture answered, and each is a different audit incident.
+ * `"honoured"` means no stage failed: a decision arrived from the Guardian and
+ * this host acted on it. The other three are `FailureStage`, the stage whose
+ * failure the deployment's posture answered instead, and each is a different
+ * audit incident.
+ *
+ * IT USED TO BE TWO AXES IN ONE STRING (PR #12 review, second pass). The
+ * success value was `"guardian"`, which names WHO answered, beside three values
+ * that name WHERE the exchange broke -- so a reader comparing them had to
+ * notice that one member of the union was answering a different question from
+ * the other three, and any fifth value would have had to pick a side. Naming
+ * the success case for what happened to the decision, rather than for the party
+ * that sent it, puts all four on the axis the type is actually for: this is not
+ * a directory of participants, it is the fate of one step's decision.
  */
-export type DecisionStage = "guardian" | FailureStage;
+export type DecisionStage = "honoured" | FailureStage;
 
 export type GovernStepInput = {
   /** The host's own event name, as `buildEnvelope` reads it against the hookmap. */
@@ -96,19 +111,46 @@ export type GovernStepInput = {
   audit: AuditSink;
 };
 
-/** What a host is told once a step has been governed. */
-export type GovernedStep = {
-  /**
-   * The host output to write, rendered from `decision` through the hookmap.
-   * Its keys are the hookmap's, never this module's.
-   */
-  output: HostOutput;
-  /** The decision this step was governed by. Always present: there is no path
-   * out of `governStep` that produces an output without one. */
-  decision: AcsDecision;
-  /** Where `decision` came from -- see DecisionStage. */
-  stage: DecisionStage;
-};
+/**
+ * What a host is told once a step has been governed: the output to write, the
+ * decision it renders, and what became of that decision.
+ *
+ * A DISCRIMINATED UNION, so the refinement each path produced survives the seam
+ * (PR #12 review, second pass). The public story these modules tell is one stem
+ * with adjectives for stage -- `AcsDecision` off the wire, `ValidatedAcsDecision`
+ * after N7 has applied §6.3 and substituted any expired outcome,
+ * `FailureResolvedAcsDecision` after N6's posture answered an absent one -- and
+ * this type used to declare `decision: AcsDecision`, widening every one of them
+ * back to the base at the one seam that exists so a host shim does not have to
+ * inspect a bag. A caller holding a `stage: "honoured"` step could not see that
+ * `applied_input` was the field to read; a caller holding a failure-resolved one
+ * could not see that `reasoning` and `reason_codes` are guaranteed present.
+ *
+ * Discriminating on `stage` rather than declaring a bare union of the two,
+ * because the correspondence is exact and is a property of `governStep`'s
+ * control flow: the only route that returns `"honoured"` is the one that
+ * rendered a validated decision, and every other route came from
+ * `resolveByPosture`. Stating it here is what lets a caller narrow with the
+ * field it already reads.
+ */
+export type GovernedStep =
+  | {
+      /**
+       * The host output to write, rendered from `decision` through the hookmap.
+       * Its keys are the hookmap's, never this module's.
+       */
+      output: HostOutput;
+      /** A decision that arrived and was honoured, after N7's last word on it. */
+      decision: ValidatedAcsDecision;
+      stage: "honoured";
+    }
+  | {
+      output: HostOutput;
+      /** The decision N6's posture answered an absent one with. */
+      decision: FailureResolvedAcsDecision;
+      /** The stage whose failure the posture answered -- see DecisionStage. */
+      stage: FailureStage;
+    };
 
 /**
  * Governs one step: build the ACS request, ask the Guardian for a decision,
@@ -182,7 +224,7 @@ export async function governStep({
   // never throws, so the `if` below (not a catch) is the delivery failure this
   // stage exists for; the `try` covers the rest, which cannot throw today and
   // would still be a request that produced no decision if it ever did.
-  let decision: AcsDecision;
+  let decision: ValidatedAcsDecision;
   try {
     // The same values that just went out on the wire, unwrapped from ACS's
     // `{value, provenance?}` argument shape -- so a `modify` decision's
@@ -211,7 +253,7 @@ export async function governStep({
   // different incident, and auditing it as "no decision arrived" would send an
   // incident reviewer to a Guardian that answered correctly.
   try {
-    return { output: renderDecision(decision, hookmap), decision, stage: "guardian" };
+    return { output: renderDecision(decision, hookmap), decision, stage: "honoured" };
   } catch (failure) {
     return resolveByPosture(failure, "render", envelope);
   }

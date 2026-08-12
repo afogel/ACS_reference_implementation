@@ -84,7 +84,7 @@ describe("governStep — a decision that arrived", () => {
       sink,
     );
 
-    expect(governed.stage).toBe("guardian");
+    expect(governed.stage).toBe("honoured");
     expect(governed.decision.decision).toBe("deny");
     expect(governed.output).toEqual({ outcome: "stop", note: "blocked by policy" });
     // Nothing failed to be delivered, so nothing is recorded as a failure.
@@ -104,7 +104,7 @@ describe("governStep — a decision that arrived", () => {
     );
 
     expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
-      stage: "guardian",
+      stage: "honoured",
       decision: "allow",
     });
     expect(events).toEqual([]);
@@ -128,7 +128,7 @@ describe("governStep — a decision that arrived", () => {
     );
 
     expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
-      stage: "guardian",
+      stage: "honoured",
       decision: "deny",
     });
     expect(events).toEqual([]);

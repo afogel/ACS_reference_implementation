@@ -74,6 +74,10 @@ export function resolveAsk(decision: AcsDecision, elapsedMs: number): ValidatedA
  * defaulting to `deny`; returns the decision untouched while it is still
  * inside its window.
  *
+ * Both routes out of an expired defer are a `deny`, including the one
+ * `timeout_decision: "ask"` names -- see the branch itself for why an ask this
+ * host cannot make well-formed is denied rather than emitted.
+ *
  * `resolution_timeout_ms` is already milliseconds -- the missing `* 1000`
  * below is deliberate and is the difference between this resolver and
  * `resolveAsk`, not an omission.
@@ -96,10 +100,44 @@ export function resolveDefer(decision: AcsDecision, elapsedMs: number): Validate
   const details = deferDetails as Record<string, unknown>;
   const timeoutMs = details.resolution_timeout_ms as number;
   if (elapsedMs > timeoutMs) {
-    const timeoutDecision = details.timeout_decision === "ask" ? "ask" : "deny";
+    if (details.timeout_decision === "ask") {
+      // defer-details.json permits `timeout_decision: "ask"`, and this host
+      // cannot carry it out. Denying closed rather than substituting one is the
+      // only honest answer available here (PR #12 review, second pass).
+      //
+      // WHAT THE OBVIOUS SUBSTITUTION WOULD PRODUCE. An `ask` requires
+      // `ask_details` -- response-envelope.json makes it conditionally required
+      // on the decision, and ask-details.json requires `approver`, `question`
+      // and `timeout_seconds` inside it. `defer_details` carries none of the
+      // three. So the substitution that used to happen here emitted
+      // `{decision: "ask"}` with no details at all: a message ACS's own schema
+      // rejects, and one this module's PEER would reject too -- `resolveAsk`
+      // denies exactly that shape as `ask_details_invalid`. Nothing re-enters
+      // N7 after a substitution, so it was never asked; the malformed ask went
+      // straight to the host's renderer.
+      //
+      // AND INVENTING THE MISSING FIELDS IS WORSE THAN DENYING. `approver` is
+      // an identity -- who is permitted to answer this question -- and there is
+      // no honest value for it here. A host that fabricates one has forged the
+      // load-bearing field of an approval request, in a governance tool, to
+      // avoid saying "I cannot ask this". That the resulting ASK would then be
+      // approved by whoever the fabrication happened to name is the whole
+      // objection.
+      //
+      // Its own reason code, not `defer_expired`: an operator reading this
+      // needs to know the deployment declared an escalation their Guardian did
+      // not supply the means to make, which is a configuration fault to fix
+      // and not merely a window that closed.
+      return deny(
+        `defer expired after ${elapsedMs}ms (timeout ${timeoutMs}ms) and declares ` +
+          `timeout_decision=ask, but defer_details carries no approver, question or timeout_seconds for the ` +
+          `ask_details an ACS ask requires -- so this host has no well-formed question to raise and denies instead`,
+        "defer_ask_unaskable",
+      );
+    }
     return {
-      decision: timeoutDecision,
-      reasoning: `defer expired after ${elapsedMs}ms (timeout ${timeoutMs}ms); falling back to timeout_decision=${timeoutDecision}`,
+      decision: "deny",
+      reasoning: `defer expired after ${elapsedMs}ms (timeout ${timeoutMs}ms); falling back to timeout_decision=deny`,
       reason_codes: ["defer_expired"],
     };
   }

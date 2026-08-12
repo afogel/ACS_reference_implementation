@@ -283,7 +283,7 @@ All resolved — see `spike-agt-integration.md`.
 | N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U31 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21, → U22 | — |
-| N51 | P4 | inspector | `tailAuditSinks()` — host-side fail-open audit events and negotiated posture | observe | → U23 | — |
+| N51 | P4 | inspector | `tailAuditLog()` — host-side fail-open audit events and negotiated posture | observe | → U23 | — |
 
 ### Data Stores
 
@@ -379,7 +379,7 @@ flowchart TB
         U22["U22: session chain view"]
         U23["U23: posture badge"]
         N50["N50: tailEnvelopeLog()"]
-        N51["N51: tailAuditSinks()"]
+        N51["N51: tailAuditLog()"]
     end
 
     subgraph P5["P5: Conformance Report"]

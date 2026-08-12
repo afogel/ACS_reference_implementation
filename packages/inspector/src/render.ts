@@ -298,7 +298,7 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
  * which now spells the split out) -- the two logs cannot be joined on it.
  * Labelled `audit_session` here, deliberately not `session`, so nothing
  * reads this value as comparable to an id printed anywhere near a rendered
- * TapEntry.
+ * EnvelopeLogEntry.
  */
 export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;

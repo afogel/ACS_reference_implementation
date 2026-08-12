@@ -53,8 +53,9 @@ anything here; a host-originated score is the design.
    allow — watch for that field specifically in the `warn` section below.
 3. `transform` carries the rewritten argument in `modifications.parameter_overrides`,
    keyed by the argument name `mapping.yaml` declares (`command`). Nothing recomputes the
-   substitution on the host side — the AGT SDK already applies it
-   (`transformedPolicyTarget`), and `mapVerdict` only moves that value into ACS's shape.
+   substitution on the host side — the AGT rule applies it before the verdict is formed,
+   so `verdict.transform.value` is already the finished string and `mapVerdict` only moves
+   that value into ACS's shape.
 4. The two posture runs at the end both kill a live Guardian mid-session. Watch the
    `permissionDecision` flip between `allow` (proceed) and `deny` (deny) even though
    **nothing about the tool call itself changed** — only the negotiated posture did.
@@ -284,8 +285,8 @@ Captured, verbatim:
 `modifications.parameter_overrides.command` is the value a host actually applies in place
 of the original argument (`applyModifications`, N7, `packages/host-adapter/src/modifications.ts`)
 — this is not a suggestion the host has to interpret, it is the literal replacement
-string, already computed by AGT's own SDK (`transformedPolicyTarget`) and only carried
-across by `mapVerdict`.
+string, already computed by AGT's own rule and carried on `verdict.transform.value`, only
+moved into ACS's shape by `mapVerdict`.
 
 ## warn (arrives as ACS `allow`, with **non-empty** `policy_references` — R1.2's load-bearing half)
 

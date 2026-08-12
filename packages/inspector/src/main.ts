@@ -48,19 +48,19 @@ const fromStart = argv.includes("--from-start");
 // artifact, so the pair reads as a pair, and so each flag rhymes with the env
 // var that overrides the same thing.
 const envelopeLogFlag = flagValue(argv, "--envelope-log");
-const auditPathFlag = flagValue(argv, "--audit-path");
+const auditLogFlag = flagValue(argv, "--audit-log");
 
-for (const [flag, value] of [["--envelope-log", envelopeLogFlag] as const, ["--audit-path", auditPathFlag] as const]) {
+for (const [flag, value] of [["--envelope-log", envelopeLogFlag] as const, ["--audit-log", auditLogFlag] as const]) {
   if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
     console.error(
-      "usage: bun run inspector -- [--from-start] [--envelope-log <envelope log>] [--audit-path <audit log>]",
+      "usage: bun run inspector -- [--from-start] [--envelope-log <envelope log>] [--audit-log <audit log>]",
     );
     process.exit(2);
   }
 }
 
 const path = envelopeLogFlag ?? process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
-const auditPath = auditPathFlag ?? process.env.ACS_AUDIT_LOG ?? DEFAULT_AUDIT_LOG;
+const auditPath = auditLogFlag ?? process.env.ACS_AUDIT_LOG ?? DEFAULT_AUDIT_LOG;
 const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 
 const controller = new AbortController();

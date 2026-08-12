@@ -154,11 +154,11 @@ subprocess per hook):
 | `ACS_ON_DECISION_FAILURE` | `proceed` | The failure posture this deployment declares in its ServerHello — what a host should do when *no decision arrives at all*. `proceed` is the ACS default (R1.7, `handshake.json`'s own `default`); `deny` fails closed. Any other value **throws at startup** rather than falling back, because guessing which posture a typo meant is the silent bypass this project exists to remove |
 | `ACS_GUARDIAN_PORT` | `8787` | Port for the `POST /acs` JSON-RPC endpoint |
 | `ACS_MANIFEST_PATH` | `policy/manifest.yaml` | The AGT manifest, which names the policy bundle and any annotators. `policy/manifest.drift.yaml` is the second one V3 added to make `warn` reachable |
-| `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope tap (S6) records every envelope crossing the wire, in both directions, before validation |
+| `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope log sink (S6) records every envelope crossing the wire, in both directions, before validation |
 
 **The Inspector** (`bun run inspector`): reads `ACS_ENVELOPE_LOG` and
 `ACS_AUDIT_LOG` with the same defaults, and both are overridable on the
-command line (`--path`, `--audit-path`), which takes precedence. It also
+command line (`--envelope-log`, `--audit-log`), which takes precedence. It also
 honours the conventional `NO_COLOR`, and colours nothing when stdout is not
 a TTY.
 

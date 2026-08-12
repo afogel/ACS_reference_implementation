@@ -94,8 +94,8 @@ describe("agt-bridge — the optional annotator dispatcher", () => {
     try {
       const manifestPath = buildManifest({ bundleDir: bundle.dir, annotator: true });
       const bridge = createBridge(manifestPath, { annotator: () => 0.9 });
-      const r = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
-      expect(r.verdict).toMatchObject({ decision: "warn", reason: "drift_detected" });
+      const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
+      expect(verdict).toMatchObject({ decision: "warn", reason: "drift_detected" });
     } finally {
       bundle.cleanup();
     }
@@ -116,9 +116,9 @@ describe("agt-bridge — the optional annotator dispatcher", () => {
           throw new Error("boom");
         },
       });
-      const r = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
-      expect(r.verdict.decision).toBe("deny");
-      expect(r.verdict.reason).toBe("runtime_error:annotation_failed");
+      const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
+      expect(verdict.decision).toBe("deny");
+      expect(verdict.reason).toBe("runtime_error:annotation_failed");
     } finally {
       bundle.cleanup();
     }

@@ -321,6 +321,55 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     ).toBe("defer");
   });
 
+  // PR #12 review, second pass. defer-details.json permits
+  // `timeout_decision: "ask"`, and this used to emit `{decision: "ask"}` with
+  // no `ask_details` -- a message ACS's own schema rejects, and one this
+  // module's peer resolver would deny as `ask_details_invalid` if anything
+  // ever asked it. Nothing does: no substitution re-enters N7, so the
+  // malformed ask went straight to the host's renderer.
+  describe("an expired defer whose timeout_decision is ask", () => {
+    const askOnTimeout = {
+      reason: "low_confidence",
+      resolution_method: "human_approval",
+      resolution_timeout_ms: 50,
+      timeout_decision: "ask",
+    };
+
+    const expired = () =>
+      validateDecision(
+        { decision: "defer", reasoning: "r", defer_details: askOnTimeout },
+        { elapsedMs: 500, originalArguments: ARGS },
+      );
+
+    it("denies closed rather than raising a question it cannot form", () => {
+      expect(expired().decision).toBe("deny");
+    });
+
+    it("names the configuration fault, not merely an expiry", () => {
+      // Its own code: an operator needs to know the deployment declared an
+      // escalation the Guardian gave it no means to make.
+      expect(expired().reason_codes).toEqual(["defer_ask_unaskable"]);
+      expect(expired().reasoning).toContain("timeout_decision=ask");
+    });
+
+    it("never emits an ask whose ask_details its own peer would reject", () => {
+      // The precise defect: an `ask` reaching a host with no approver,
+      // question or timeout_seconds behind it.
+      const substituted = expired();
+      expect(substituted.decision).not.toBe("ask");
+      expect(substituted.ask_details).toBeUndefined();
+    });
+
+    it("still returns the defer untouched inside its window", () => {
+      expect(
+        validateDecision(
+          { decision: "defer", reasoning: "r", defer_details: askOnTimeout },
+          { elapsedMs: 10, originalArguments: ARGS },
+        ).decision,
+      ).toBe("defer");
+    });
+  });
+
   // Fix round 1, item 1: DEFER's own boundary, pinned the same way as ASK's
   // above. resolution_timeout_ms: 50 -- below, exactly at, and just past.
   it("expires a defer strictly after its resolution_timeout_ms, not at or before it", () => {

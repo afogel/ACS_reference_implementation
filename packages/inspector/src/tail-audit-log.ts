@@ -11,7 +11,7 @@
  * S14 is written on the other side of the wire from S6: something that
  * negotiates a failure posture, not anything running a policy decision.
  * This package still imports nothing from it. AuditEntry is re-declared
- * here for the same reason TapEntry is: the round-trip contract test at
+ * here for the same reason EnvelopeLogEntry is: the round-trip contract test at
  * test/audit-sink-roundtrip.test.ts is what keeps the two declarations in
  * agreement, and importing the other side's type would make that agreement
  * a tautology instead of a check.
