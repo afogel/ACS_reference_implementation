@@ -558,11 +558,35 @@ export function applyModifications(
 
   // Structural comparison, not `===`: a target may hold an object or an
   // array, where `===` is reference equality and a structurally identical
-  // replacement would read as a change. `modificationDocument` and `result`
-  // are both built by spreads from the same source (here, and in
-  // `setAtPath`'s own clone-per-level), so key order is preserved along
-  // every path this walks and the serialisation is stable between the two
-  // sides of each comparison.
+  // replacement would read as a change.
+  //
+  // WHAT THE STABLE-SERIALISATION CLAIM COVERS, AND WHAT IT DOES NOT.
+  // `modificationDocument` and `result` are both built by spreads from the
+  // same source (here, and in `setAtPath`'s own clone-per-level), so every
+  // CONTAINER this walks through -- everything besides the target's own
+  // value -- keeps the key order it already had, on both sides. The VALUE AT
+  // THE TARGET is not covered by that: for a redaction's `replacement` or a
+  // `parameter_overrides` entry, that value arrives verbatim from the
+  // Guardian's own JSON, in whatever key order it was written, never derived
+  // from `modificationDocument`'s -- there is nothing here to keep stable.
+  //
+  // THE RESIDUAL THIS LEAVES: an object-valued replacement whose keys are
+  // permuted from the original's, but is otherwise identical, reads as
+  // CHANGED. `parameter_overrides: {env: {B: 2, A: 1}}` against
+  // `{env: {A: 1, B: 2}}` is semantically a no-op and this check does not
+  // catch it -- a narrowed remainder of the defect class this post-condition
+  // exists to close (the prior behaviour missed every no-change
+  // modification; this misses only a permuted-key one). NOT a guarantee
+  // about this function, only about what reaches it today (`setAtPath`'s own
+  // note above makes the same distinction, for the same reason): this
+  // deployment's policy runtime synthesizes `parameter_overrides` bound to a
+  // single named argument rather than emitting an arbitrary Guardian-authored
+  // object there, so an object-valued override is not something it produces
+  // -- the same reachability class as the cases this check does refuse, and
+  // the same reason those were still worth guarding. Canonicalising key
+  // order would close it, and is deliberately not done here: that is a
+  // behaviour change with its own hazards, for a case nothing reachable
+  // needs closed.
   //
   // A replacement EQUAL to the value already there is refused too, not only
   // a replacement that resolves to the identical reference. That is the
