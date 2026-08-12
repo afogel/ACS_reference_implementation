@@ -77,7 +77,7 @@ describe("mapVerdict", () => {
   // the table changes behaviour.
   describe("field_synthesis.reason_codes.wrap is read, not assumed", () => {
     it("wraps per the declared mode, on the shipped mapping", () => {
-      expect(mapVerdict({ decision: "deny", reason: "r" }, m).reason_codes).toEqual(["r"]);
+      expect(mapVerdict({ decision: "deny", reason: "r" }, m, "pre_tool_call").reason_codes).toEqual(["r"]);
     });
 
     it("throws for a wrap mode this mapping cannot express, rather than array-wrapping anyway", () => {
@@ -90,7 +90,7 @@ describe("mapVerdict", () => {
         field_synthesis: { ...m.field_synthesis, reason_codes: { source: "verdict.reason", wrap: "csv" } },
       } as unknown as Mapping;
 
-      expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode)).toThrow(
+      expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode, "pre_tool_call")).toThrow(
         /field_synthesis\.reason_codes\.wrap as "csv"/,
       );
     });

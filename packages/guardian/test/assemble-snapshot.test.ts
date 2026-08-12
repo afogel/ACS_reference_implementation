@@ -272,14 +272,14 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   // wire-reachable and because "empty output" is exactly the shape someone
   // might later be tempted to answer with an allow -- a tenth fail-open.
   it("assembles an empty outputs array, and AGT fails closed on it", async () => {
-    const snapshot = assembleResultSnapshot(makeResultEnvelope({ outputs: [] }));
+    const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope({ outputs: [] }));
     expect(snapshot.tool_result.outputs).toEqual([]);
 
     const bridge = createBridge("policy/manifest.yaml");
-    const result = await bridge.evaluate("post_tool_call", snapshot);
+    const verdict = await bridge.evaluate("post_tool_call", snapshot);
 
-    expect(result.verdict.decision).toBe("deny");
-    expect(result.verdict.reason).toBe("runtime_error:path_missing");
+    expect(verdict.decision).toBe("deny");
+    expect(verdict.reason).toBe("runtime_error:path_missing");
   });
 
   // The high-value integration test, the result-gate twin of the pre-tool one
@@ -291,10 +291,10 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope());
     const bridge = createBridge("policy/manifest.yaml");
 
-    const result = await bridge.evaluate("post_tool_call", snapshot);
+    const verdict = await bridge.evaluate("post_tool_call", snapshot);
 
-    expect(result.verdict.decision).toBe("transform");
-    expect(result.verdict.reason).toBe("redaction_applied");
-    expect(result.verdict.transform?.value).toBe("TOKEN=[REDACTED]");
+    expect(verdict.decision).toBe("transform");
+    expect(verdict.reason).toBe("redaction_applied");
+    expect(verdict.transform?.value).toBe("TOKEN=[REDACTED]");
   });
 });

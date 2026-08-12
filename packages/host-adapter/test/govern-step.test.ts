@@ -386,7 +386,7 @@ describe("governStep — a result gate whose named output no replacement can be 
     });
 
     expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
-      stage: "guardian",
+      stage: "honoured",
       decision: "deny",
     });
     // The whole object, because a replacement missing a sibling field is the one

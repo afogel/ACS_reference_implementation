@@ -83,9 +83,9 @@ import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 
 /**
- * Every snapshot message this Guardian can send an intervention point. One
- * Both gates, since V4; each gate this Guardian learns to assemble adds its
- * own point-specific type here.
+ * Every snapshot message this Guardian can send an intervention point -- both
+ * gates, since V4. Each gate this Guardian learns to assemble adds its own
+ * point-specific type here.
  *
  * Declared so the bridge seam carries the message rather than erasing it.
  * `PolicyBridge` is parameterised by the snapshot its holder sends, and this

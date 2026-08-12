@@ -13,12 +13,12 @@ const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds
 describe("the shipped bundle redacts at the result gate", () => {
   it("returns a transform carrying the fully substituted output", async () => {
     const bridge = createBridge(MANIFEST);
-    const result = await bridge.evaluate("post_tool_call", {
+    const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash" },
       tool_result: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] },
     });
-    expect(result.verdict).toEqual({
+    expect(verdict).toEqual({
       decision: "transform",
       reason: "redaction_applied",
       transform: { path: "$policy_target", value: "TOKEN=[REDACTED]" },
@@ -31,22 +31,22 @@ describe("the shipped bundle redacts at the result gate", () => {
   // the ACS payload (Task 3) and nothing else would notice if it stopped.
   it("fails closed when the snapshot carries no tool_call", async () => {
     const bridge = createBridge(MANIFEST);
-    const result = await bridge.evaluate("post_tool_call", {
+    const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_result: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] },
     });
-    expect(result.verdict.decision).toBe("deny");
-    expect(result.verdict.reason).toBe("runtime_error:path_missing");
+    expect(verdict.decision).toBe("deny");
+    expect(verdict.reason).toBe("runtime_error:path_missing");
   });
 
   it("leaves output with nothing to redact as a clean allow", async () => {
     const bridge = createBridge(MANIFEST);
-    const result = await bridge.evaluate("post_tool_call", {
+    const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash" },
       tool_result: { outputs: [{ value: "hello world" }] },
     });
-    expect(result.verdict).toEqual({ decision: "allow" });
+    expect(verdict).toEqual({ decision: "allow" });
   });
 
   // The pre-tool gate must be untouched by adding a point below it in the
@@ -54,11 +54,11 @@ describe("the shipped bundle redacts at the result gate", () => {
   // edit turning out not to be additive.
   it("leaves the pre-tool deny exactly as it was", async () => {
     const bridge = createBridge(MANIFEST);
-    const result = await bridge.evaluate("pre_tool_call", {
+    const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash", args: { command: "rm -rf / " } },
     });
-    expect(result.verdict.decision).toBe("deny");
-    expect(result.verdict.reason).toBe("destructive_shell_command_blocked");
+    expect(verdict.decision).toBe("deny");
+    expect(verdict.reason).toBe("destructive_shell_command_blocked");
   });
 });

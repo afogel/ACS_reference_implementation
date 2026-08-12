@@ -22,9 +22,17 @@ import { applyModifications } from "./modifications.ts";
 import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
 
 /**
- * Applies a `modify`'s rewrite to the arguments that went out on the wire, or
- * denies. `applyModifications` throws rather than half-applying, and this is the
- * one place that turns such a throw into a decision.
+ * Applies a `modify`'s rewrite to the ACS-side document the decision's pointers
+ * address, or denies.
+ *
+ * Its own module, beside decision-expiry.ts's two resolvers, because R1.8's
+ * three cases are peers (PR #12 review, second pass) -- see this module's
+ * header. What follows is what the resolver itself has to get right.
+ *
+ * `applyModifications` throws rather than half-applying, and this
+ * is the one place that turns such a throw into a decision -- deliberately
+ * here rather than in modifications.ts, which owns §6.3 and owns no decision
+ * vocabulary at all.
  *
  * A throw that is *not* a `ModificationsInvalidError` becomes the same deny
  * rather than escaping: an unexpected failure inside the apply step is still a
@@ -42,6 +50,30 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  * the transcript and written to the audit trail, and a deny is only as useful as
  * its stated reason.
  *
+ * WHAT NEITHER GATE ASKS IS WHETHER THE APPLIED DOCUMENT DIFFERS FROM THE ONE IT
+ * WAS APPLIED TO, and at the request gate nothing downstream asks either. A
+ * `modify` whose `parameter_overrides` set an argument to the value it already
+ * held, or whose redaction replaces one with itself, applies cleanly and returns
+ * an `applied_input` identical to what went out on the wire. Measured:
+ * `parameter_overrides: {command: "cat .env"}` against `{command: "cat .env"}`
+ * returns `modify` with `applied_input {"command":"cat .env"}` -- the policy said
+ * rewrite, nothing was rewritten, the original command runs, and the audit trail
+ * says the decision was honoured. That is this branch's own fail-open family, one
+ * gate over from the result gate, where `appliedOutput`'s landing check now
+ * refuses the same shape.
+ *
+ * NOT CLOSED HERE, and the reason is that the honest repair is bigger than the
+ * hole. A leaf-shaped check has no analogue at this gate: a request payload has no
+ * single leaf, so "did anything change" would have to be "did every modification
+ * change the document at its OWN target" -- a per-modification comparison, in
+ * `modifications.ts`'s apply step where both documents and every target are in
+ * hand. That check would also close the result gate's remaining bundled case (see
+ * `appliedOutput`), which is the argument for doing it once, there, rather than
+ * twice by gate. What makes it safe to defer rather than urgent: `mapVerdict`
+ * synthesizes one override from the bound `$policy_target` and throws otherwise,
+ * so no Guardian in this deployment emits a no-change rewrite, and the failure is
+ * a false record rather than a bypass of a decision that arrived.
+ *
  * THE PROJECTION IS INSIDE THIS TRY, and deliberately so. At a result gate the
  * applied document still has to be projected onto the output object the host
  * holds (`appliedOutput`), and that projection can fail for reasons of exactly
@@ -53,13 +85,6 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  * where a caller's delivery-failure posture would answer them instead -- and a
  * `proceed` posture there is an unredacted output delivered because a redaction
  * could not be expressed. Fail-closed by construction, not by posture.
- *
- * That it happens HERE and not in `validateDecision` is what keeps the
- * orchestrator a switch (PR #13 review, Important). V4 gave this resolver a
- * second job, and doing it one level up would have grown a third silent job
- * under a name that already understates the two it has -- "validate" says
- * nothing about applying a rewrite, and less than nothing about projecting one
- * onto a host's own output shape.
  */
 export function resolveModify(
   decision: AcsDecision,

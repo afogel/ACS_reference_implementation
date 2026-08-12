@@ -82,7 +82,7 @@ import {
   type FailureStage,
 } from "./failure-posture.ts";
 import type { GuardianClient } from "./guardian-client.ts";
-import type { ValidatedAcsDecision } from "./decision-message.ts";
+import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
 import { assertOutputIsReplaceable, withResultOutput, type HostOutputTarget } from "./result-output.ts";
