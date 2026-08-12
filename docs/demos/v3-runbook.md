@@ -449,6 +449,14 @@ The negotiated session file it wrote:
 {"negotiated_version":"0.1.0","methods_evaluated":["steps/toolCallRequest"],"selected_transport":"http","timeout_config":{"default_ms":5000},"on_decision_failure":"proceed"}
 ```
 
+> **Correction (V4, slice #5) — `methods_evaluated` has a second entry now.** This capture and
+> the `deny` one below are V3's, and they stay: a re-run today writes
+> `["steps/toolCallRequest","steps/toolCallResult"]`, because V4 added the result gate and
+> corrected both sides of the handshake to declare it (they had gone on naming the request
+> method alone). Nothing else in these two files changes, and `on_decision_failure` — the field
+> this section is about — is unaffected. See `slices/v4/README.md` and
+> [`docs/demos/v4-runbook.md`](v4-runbook.md).
+
 **The Guardian is killed here.** A second hook call, same session, same command changed
 to `rm -rf /` to make the point that the posture — not the command — decides the outcome
 once the Guardian is gone:

@@ -222,6 +222,30 @@ a `steps/toolCallRequest` and its decision before the command runs, a `steps/too
 and its decision after. The first hook call of a session adds the `handshake/hello` pair in
 front, which is why the numbering above starts the result pair at `#5`.
 
+**And that handshake now says the gate exists.** The session config it negotiates, written to
+`.acs/sessions/<session_id>.json` and read by every later hook subprocess:
+
+```json
+{"negotiated_version":"0.1.0","methods_evaluated":["steps/toolCallRequest","steps/toolCallResult"],"selected_transport":"http","timeout_config":{"default_ms":5000},"on_decision_failure":"proceed"}
+```
+
+That second entry is V4's, and it was missing until this runbook was written — the ClientHello
+offered `steps/toolCallRequest` alone and the ServerHello answered with the same one method,
+while both sides went on to send, evaluate and honour result envelopes. Nothing in this
+deployment reads the field, which is exactly why a whole slice shipped without noticing. It is
+not cosmetic: `spec/acs/specification/v0.1.0/handshake.json:80` defines `methods_evaluated` as
+the "Subset of the client's methods_implemented that this Guardian will actually evaluate", and
+says a client "MUST treat" anything absent from it as ALLOW-by-default. A conformant host would
+have been told, by the Guardian's own answer, to ignore every decision this slice's gate makes.
+
+Both declarations are pinned to what the code does rather than to a literal, by
+`test/handshake-declares-what-it-evaluates.test.ts`: it drives a candidate envelope for every
+method `mapping.yaml` maps through a live Guardian and asserts that the set it does **not**
+answer `method_not_dispatched` for is exactly the set the ServerHello declares — equality, in
+both directions, because over-declaring claims enforcement that does not exist. Two more cases
+check the spec's subset rule against the ClientHello the adapter really sends, and that every
+`acs_method` the shipped hookmap maps is one the adapter declares.
+
 ## A clean result is left alone
 
 Same Guardian, nothing secret in the output:
@@ -517,18 +541,12 @@ repaired in V4**. None of them is implied to be fixed anywhere above.
   no capture in this runbook comes from the CLI at all, so the version does not bear on them,
   but it does bear on the inherited stderr line above and on the "present in 2.1.227's schema"
   claims in the hookmap.
-- **The handshake still declares only the request method.** The ClientHello sends
-  `methods_implemented: ["steps/toolCallRequest"]` (`packages/host-adapter/src/handshake.ts:231`)
-  and the ServerHello answers `methods_evaluated: ["steps/toolCallRequest"]`
-  (`packages/guardian/src/handshake.ts:49-50`), captured from the same run as every decision
-  above — while both sides then go on to send, evaluate and honour `steps/toolCallResult`.
-  Nothing in this deployment reads either field, so the demo is unaffected; but
-  `spec/acs/specification/v0.1.0/handshake.json:80` says of `methods_evaluated` that "Methods
-  listed by the client but absent here are NOT evaluated … Clients MAY still emit them for audit
-  but MUST treat them as ALLOW-by-default", so a conformant host that *did* read it would be
-  required to skip the very gate this slice adds. Found while writing this runbook, not repaired in it: correcting either
-  constant changes what crosses the wire, which is a behaviour change and not a documentation
-  one. It belongs on the next whole-branch review's list, and it is a V7 matrix cell.
+- **Nothing on this host *reads* `methods_evaluated`.** Both sides now declare the result method
+  and the declaration is pinned to the dispatch (see "The two envelopes it crossed"), so the wire
+  is honest for a host that reads it — but this host is not that host: it asks the Guardian at
+  every mapped hook regardless of what the ServerHello said it evaluates. Acting on the
+  negotiated method set belongs to no slice yet, and the fix here is the declaration, not the
+  behaviour it would drive.
 - **Timestamps, request ids and session ids above are real** — genuine UUIDs and wall-clock
   times from the actual run — and will not match a re-run's. What should match on a re-run is
   every `decision`, `reason_codes`, `policy_references`, `modifications` and

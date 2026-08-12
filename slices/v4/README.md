@@ -30,7 +30,7 @@ slice's own evidence is *why* the wording is right: the naive replacement is sil
 and the original delivered, and the documented blocking form suppresses nothing. Meeting the
 reliability condition turns out to be a contract-level job done once for every runtime.
 
-Four things had to exist before that claim could be tested live, and all four are structural
+Five things had to exist before that claim could be made honestly, and all five are structural
 rather than configuration:
 
 - **The shape is the mechanism.** Claude Code validates a replacement against the tool's own
@@ -61,6 +61,24 @@ rather than configuration:
   renders `block` **and** a shape-preserving replacing output. The two modifications this host
   cannot apply (`modified_content`, and a redaction that never reaches the projected leaf) both
   become withholding denies for that reason.
+
+- **The handshake had to say the gate exists.** A slice that adds a method to the wire has not
+  finished until the wire says so. Until V4 corrected them, the ClientHello offered
+  `steps/toolCallRequest` alone and the ServerHello answered with the same one method, while
+  both sides sent, evaluated and honoured `steps/toolCallResult` — and `handshake.json` defines
+  `methods_evaluated` as the "Subset of the client's methods_implemented that this Guardian will
+  actually evaluate", adding that a client "MUST treat" anything absent from it as
+  ALLOW-by-default. So a conformant host was being told, by the Guardian's own answer, to ignore
+  every decision this slice's gate makes. Nothing in this deployment reads the field, which is
+  precisely why nothing caught it. Both declarations now name both methods, and neither is left
+  to a literal someone must remember to edit:
+  `test/handshake-declares-what-it-evaluates.test.ts` drives a candidate envelope for every
+  method `mapping.yaml` maps through a live Guardian and asserts the set it does **not** answer
+  `method_not_dispatched` for is *exactly* what the ServerHello declares — equality in both
+  directions, because over-declaring claims enforcement that does not exist and is the worse
+  failure. Two further cases hold the spec's subset rule against the ClientHello the adapter
+  really sends, and require every `acs_method` the shipped hookmap maps to be one the adapter
+  declares.
 
 Also delivered, and each one is a place a gate learned a distinction rather than a guard being
 relaxed: array-index descent in `N7`'s `modifications.ts` (`/outputs/0/value` *is* the redaction
@@ -144,15 +162,11 @@ it are corrected in place there.
   unreachable outright: `redact.replacement` is user-editable, so a replacement equal to the
   matched text yields an identical value, at the cost of withholding a legitimate tool result
   entirely.
-- **A handshake that declares the gate it added.** The ClientHello still sends
-  `methods_implemented: ["steps/toolCallRequest"]` and the ServerHello still answers
-  `methods_evaluated: ["steps/toolCallRequest"]`, while both sides send, evaluate and honour
-  `steps/toolCallResult`. Nothing in this deployment reads either field, so no behaviour here
-  depends on it — but `handshake.json` says a client "MUST treat" a method absent from
-  `methods_evaluated` as ALLOW-by-default, so a conformant host reading it would skip this
-  slice's whole gate. Found while writing the runbook and **not repaired**, because correcting
-  either constant changes what crosses the wire. Recorded for the next whole-branch review and
-  for V7's matrix.
+- **A host that *acts* on the negotiated method set.** Both sides now declare the result method
+  (see above), so the wire is honest for a host that reads `methods_evaluated` — but this host
+  is not one: it asks the Guardian at every hook its hookmap maps, whatever the ServerHello
+  said. Reading the negotiated set and standing down for a method the Guardian does not evaluate
+  belongs to no slice yet.
 - **A failing tool call.** Claude Code fires a separate `PostToolUseFailure` event (present in
   2.1.227's hook schema) which this slice does not wire, so `PostToolUse` genuinely means
   success and `exit_status` is a hookmap **literal**, not a field read — the payload carries no

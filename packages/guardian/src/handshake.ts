@@ -3,11 +3,39 @@
  * handshake.json's ServerHello $def
  * (spec/acs/specification/v0.1.0/handshake.json).
  *
- * `methods_evaluated` is exactly the set this Guardian wires up.
- * `on_decision_failure` reports the deployment's declared posture; this
- * responder only declares it on the wire, and applying that posture --
- * falling back to fail-open or fail-closed once a decision fails to arrive --
- * happens elsewhere.
+ * Scope:
+ *   - `methods_evaluated` is exactly the set this Guardian actually
+ *     dispatches -- two since V4, and pinned against the dispatch by
+ *     test/handshake-declares-what-it-evaluates.test.ts rather than by this
+ *     sentence. See METHODS_EVALUATED below for why it is checked and not
+ *     derived.
+ *   - `on_decision_failure` ships the spec default, "proceed" (fail-open).
+ *     D8 closes on "proceed" as the default. This responder is now deployment-
+ *     configurable (N28): one binary can demo both halves of V3 without a rebuild.
+ *     Applying the declared posture (N6/N7) is V3 work. A value that is neither
+ *     posture throws rather than falling back -- guessing which posture a typo
+ *     meant is the silent bypass this slice removes.
+ *
+ * WHY THIS IS NOT CALLED `handshakeResponder` (PR #10 review, Important, and
+ * fix wave finding 7 before it -- honesty, not a scope increase): this
+ * function never reads the incoming ClientHello. The client (host-adapter's
+ * `negotiateSessionConfig`) genuinely sends one, but every field below is a
+ * constant, returned unconditionally. So "negotiated_version" and
+ * "selected_transport" are DECLARED by this Guardian, not actually negotiated
+ * against what the client proposed, and a name containing "responder" claimed
+ * a negotiation the body does not perform. `build<Message>` says exactly what
+ * happens: it assembles the one message this side of the handshake owns. That
+ * distinction matters in a reference implementation of a wire *contract*.
+ * Real negotiation (reading ClientHello, picking a mutually-supported
+ * version/transport, rejecting what isn't) is future work, not attempted here
+ * -- see the matching note in docs/demos/v1-runbook.md.
+ *
+ * Naming symmetry with the host side: each side of this exchange now names its
+ * own message once, with the same `<verb><Message>` morphology --
+ * `buildServerHello` here, `negotiateSessionConfig` in
+ * packages/host-adapter/src/handshake.ts. The asymmetry between "build" and
+ * "negotiate" is deliberate and is the truth about the code: the host really
+ * does perform an exchange, and this side really does return constants.
  */
 
 export type ServerHello = {
@@ -21,8 +49,43 @@ export type ServerHello = {
 /** The ACS spec version every schema and mapping in this repo is pinned to. */
 const NEGOTIATED_VERSION = "0.1.0";
 
-/** Only intervention point wired (mapping.yaml's pre_tool_call). */
-const METHODS_EVALUATED = ["steps/toolCallRequest"];
+/**
+ * The methods this Guardian actually dispatches -- exactly the two gated
+ * branches in server.ts (`isToolCallRequest` -> `assembleSnapshot`,
+ * `isToolCallResult` -> `assembleResultSnapshot`). Anything else falls to
+ * `method_not_dispatched`.
+ *
+ * V4 (slice #5) ADDED THE SECOND ENTRY, and the omission it fixes was a real
+ * one rather than untidy bookkeeping. This list said "steps/toolCallRequest"
+ * alone under a comment reading "only intervention point wired in V1" while
+ * V4's own gate evaluated result envelopes for real -- and handshake.json's
+ * text for this field is not advisory: "Methods listed by the client but
+ * absent here are NOT evaluated; the Guardian's enforcement does not cover
+ * them. Clients MAY still emit them for audit but MUST treat them as
+ * ALLOW-by-default." So a conformant host reading this ServerHello was being
+ * told, by the Guardian's own answer, to ignore every decision the result gate
+ * makes. This host does not read the field -- which is exactly why nothing
+ * caught it -- but a wire contract that declares one thing and does another is
+ * the failure this repository exists to remove.
+ *
+ * BOTH DIRECTIONS ARE WRONG, and the over-declaring one is worse: a method
+ * named here that no branch dispatches claims enforcement that does not exist,
+ * which a host is entitled to rely on. So the relationship is checked rather
+ * than trusted -- test/handshake-declares-what-it-evaluates.test.ts drives a
+ * candidate envelope for every method mapping.yaml maps through a live
+ * Guardian and asserts that the set it does not answer `method_not_dispatched`
+ * for is EXACTLY this list.
+ *
+ * It stays a literal on purpose. The dispatch it must agree with is two
+ * predicate-gated branches, deliberately not a table (server.ts says why: a
+ * point-driven dispatch would hand one method's envelope to another method's
+ * assembler and return a well-formed verdict for the wrong policy). There is
+ * no expression in this module that can read "what server.ts branches on", so
+ * deriving from, say, validate-envelope's method constants would pin a
+ * NARROWER relationship -- that a predicate exists -- while leaving both
+ * failures above reachable. The test derives what the code cannot.
+ */
+const METHODS_EVALUATED = ["steps/toolCallRequest", "steps/toolCallResult"];
 
 /**
  * Deployment-chosen default; handshake.json's timeout_config.default_ms
