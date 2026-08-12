@@ -166,7 +166,7 @@ Plan: `docs/superpowers/plans/2026-08-10-v3-dispositions-and-postures.md`.
 
 ## V4: Output redaction on Claude Code
 
-**Demo:** AGT's own Claude Code package documents that it cannot redact tool output. Here is a tool result redacted by AGT's stock `redact` policy, delivered through `updatedToolOutput` **in the tool's own output shape** — which is the condition that makes it work at all.
+**Demo:** AGT's own Claude Code package documents that it cannot ***reliably*** redact tool output, and does not *claim* parity. Here is a tool result redacted by AGT's stock `redact` policy, delivered through `updatedToolOutput` **in the tool's own output shape** — which is the condition that makes it reliable, and therefore the condition AGT's wording was scoping around.
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|

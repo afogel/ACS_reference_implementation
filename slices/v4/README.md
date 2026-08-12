@@ -1,6 +1,6 @@
 # V4: Output redaction on Claude Code
 
-**Demo:** AGT's own package documents that Claude Code cannot redact tool output. Here it is, redacted, by AGT's stock `redact` policy.
+**Demo:** AGT's own package documents that Claude Code cannot *reliably* redact tool output. Here it is, redacted, by AGT's stock `redact` policy — in the tool's own output shape, which is the condition that makes it reliable.
 
 **Master doc:** [`docs/shaping/acs-reference-impl-slices.md`](../../docs/shaping/acs-reference-impl-slices.md) §V4 — authoritative for this slice's scope.
 

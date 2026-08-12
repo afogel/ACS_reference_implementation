@@ -2,9 +2,11 @@
 
 **The demo, in the slice's own words** (from `docs/shaping/acs-reference-impl-slices.md` §V4):
 
-> AGT's own Claude Code package documents that it cannot redact tool output. Here is a tool
-> result redacted by AGT's stock `redact` policy, delivered through `updatedToolOutput`
-> **in the tool's own output shape** — which is the condition that makes it work at all.
+> AGT's own Claude Code package documents that it cannot ***reliably*** redact tool output,
+> and does not *claim* parity. Here is a tool result redacted by AGT's stock `redact` policy,
+> delivered through `updatedToolOutput` **in the tool's own output shape** — which is the
+> condition that makes it reliable, and therefore the condition AGT's wording was scoping
+> around.
 
 This runbook is written from a real run against this tree. Every JSON block below is pasted
 from an actual hook response, `curl`, or envelope log — not composed, not hand-derived. Where
