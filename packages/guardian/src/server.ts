@@ -5,11 +5,11 @@
  * inside the handler is by the JSON-RPC `method` field, never by URL path.
  *
  * Composes every earlier task, in order, for `steps/toolCallRequest`:
- *   validateEnvelope (Task 5) -> assembleSnapshot (Task 4) ->
+ *   validateEnvelope (Task 5) -> assemblePreToolCallSnapshot (Task 4) ->
  *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot)
  *   (Task 2) -> mapVerdict(verdict, mapping) (Task 3) -> response envelope.
  *
- * assembleSnapshot / bridge.evaluate / mapVerdict are wrapped in a try/catch
+ * assemblePreToolCallSnapshot / bridge.evaluate / mapVerdict are wrapped in a try/catch
  * (fix wave finding 1): an unhandled throw here -- e.g. mapVerdict's own
  * require_policy_references check, or a genuine AGT runtime error -- would
  * otherwise escape this handler, and Bun.serve's default error page for an
@@ -32,7 +32,8 @@
  */
 import { fileURLToPath } from "node:url";
 import { createBridge, type PolicyBridge } from "agt-bridge";
-import { assembleSnapshot } from "./assemble-snapshot.ts";
+import { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
+import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
@@ -40,7 +41,20 @@ import {
   validateEnvelope,
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
-import { buildServerHello } from "./handshake.ts";
+import { buildServerHello, type ServerHello } from "./handshake.ts";
+
+/**
+ * Every snapshot message this Guardian can send an intervention point. One
+ * member at this slice; each gate this Guardian learns to assemble adds its
+ * own point-specific type here.
+ *
+ * Declared so the bridge seam carries the message rather than erasing it (PR
+ * #10 review, second pass). `PolicyBridge` is parameterised by the snapshot
+ * its holder sends, and this is what this holder sends -- so `bridge.evaluate`
+ * below is checked against the assemblers' own output types instead of against
+ * "any object at all", which is what `Record<string, unknown>` had made of it.
+ */
+type GuardianSnapshot = AgtPreToolCallSnapshot;
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
@@ -60,13 +74,13 @@ const ACS_PATH = "/acs";
  */
 const ENVELOPE_INVALID_CODE = -32010;
 const METHOD_NOT_DISPATCHED_CODE = -32011;
-/** A throw from assembleSnapshot, bridge.evaluate, or mapVerdict -- e.g.
+/** A throw from assemblePreToolCallSnapshot, bridge.evaluate, or mapVerdict -- e.g.
  * mapVerdict's own require_policy_references check, or any AGT runtime
  * error. See fix wave finding 1's comment above handleAcsRequest's
  * tool-call branch for why this must never be dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
-type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: Record<string, unknown> };
+type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
 type JsonRpcFailure = {
   jsonrpc: "2.0";
   id: string | number | null;
@@ -116,7 +130,7 @@ async function handleAcsRequest(
   // The role, not `ReturnType<typeof createBridge>` (PR #10 review): this
   // handler depends on something it can tell to evaluate a snapshot, not on
   // the shape one factory happens to return.
-  bridge: PolicyBridge,
+  bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;
@@ -151,11 +165,11 @@ async function handleAcsRequest(
   // predicate lives beside the payload check it stands for
   // (validate-envelope.ts), so this branch cannot come to disagree with the
   // module that decided whether `params.payload` was validated as a tool
-  // call. It also narrows the envelope, which is what lets assembleSnapshot
+  // call. It also narrows the envelope, which is what lets assemblePreToolCallSnapshot
   // take the tool-call view rather than any request at all.
   if (isToolCallRequest(envelope)) {
     try {
-      const snapshot = assembleSnapshot(envelope);
+      const snapshot = assemblePreToolCallSnapshot(envelope);
       // The intervention point comes from mapping.yaml's own
       // `intervention_points` table, not from a literal here (PR #10 review,
       // Critical): that table is what V7's conformance matrix publishes, and
@@ -164,16 +178,10 @@ async function handleAcsRequest(
       // defaulting to a point -- evaluating the wrong policy and calling the
       // result a decision is the one outcome worse than a reported failure.
       const point = resolveInterventionPoint(envelope.method, mapping);
-      const { verdict } = await bridge.evaluate(point, snapshot);
+      const verdict = await bridge.evaluate(point, snapshot);
       const decision = mapVerdict(verdict, mapping);
 
-      const result: Record<string, unknown> = {
-        type: "final",
-        acs_version: envelope.params.acs_version,
-        request_id: envelope.params.request_id,
-        ...decision,
-      };
-      return successResponse(envelope.id, result);
+      return successResponse(envelope.id, finalResult(envelope.params, decision));
     } catch (error) {
       // Fix wave finding 1 -- see the module-level comment above. This is
       // deliberately a bare JSON-RPC error, not an ACS `deny` decision
@@ -193,7 +201,7 @@ async function handleAcsRequest(
   });
 }
 
-function successResponse(id: string | number, result: Record<string, unknown>): JsonRpcSuccess {
+function successResponse(id: string | number, result: AcsFinalResult | ServerHello): JsonRpcSuccess {
   return { jsonrpc: "2.0", id, result };
 }
 

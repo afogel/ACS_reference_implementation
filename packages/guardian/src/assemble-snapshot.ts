@@ -1,5 +1,5 @@
 /**
- * assembleSnapshot converts a validated ACS request envelope (method
+ * assemblePreToolCallSnapshot converts a validated ACS request envelope (method
  * `steps/toolCallRequest`) into the AGT snapshot for `pre_tool_call`,
  * shaped per AGT-SNAPSHOT-1.0.md §2.5.
  *
@@ -54,7 +54,7 @@ export type AgtPreToolCallSnapshot = {
   };
 };
 
-export function assembleSnapshot(envelope: ToolCallRequestEnvelope): AgtPreToolCallSnapshot {
+export function assemblePreToolCallSnapshot(envelope: ToolCallRequestEnvelope): AgtPreToolCallSnapshot {
   const { payload, request_id } = envelope.params;
 
   // Unwrap every argument. AGT reads raw values (e.g. args.command must be

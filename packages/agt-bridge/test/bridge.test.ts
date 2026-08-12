@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeAll } from "bun:test";
+import { AgentControl } from "agent-control-specification";
 import { createBridge, type PolicyBridge } from "../src/index.ts";
 
 const snapshotFor = (command: string) => ({
@@ -11,34 +12,46 @@ beforeAll(() => { bridge = createBridge("policy/manifest.yaml"); });
 
 describe("agt-bridge", () => {
   it("denies a destructive shell command using the stock bundle", async () => {
-    const r = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
-    expect(r.verdict.decision).toBe("deny");
-    expect(r.verdict.reason).toBe("destructive_shell_command_blocked");
-    expect(r.verdict.message).toContain("matched pattern");
+    const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
+    expect(verdict.decision).toBe("deny");
+    expect(verdict.reason).toBe("destructive_shell_command_blocked");
+    expect(verdict.message).toContain("matched pattern");
   });
 
   it("denies the -fr spelling too", async () => {
-    const r = await bridge.evaluate("pre_tool_call", snapshotFor("rm -fr / --no-preserve-root"));
-    expect(r.verdict.decision).toBe("deny");
+    const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("rm -fr / --no-preserve-root"));
+    expect(verdict.decision).toBe("deny");
   });
 
   it("allows benign commands", async () => {
     for (const cmd of ["ls -la", "git status"]) {
-      expect((await bridge.evaluate("pre_tool_call", snapshotFor(cmd))).verdict.decision).toBe("allow");
+      expect((await bridge.evaluate("pre_tool_call", snapshotFor(cmd))).decision).toBe("allow");
     }
   });
 
   // Guards Correction C2 — the failure mode this catches is a SILENT fail-open.
   it("surfaces the policy config to Rego (guards the ./ bundle-path landmine)", async () => {
-    const r = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
-    expect(r.verdict.decision).not.toBe("allow");
+    const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
+    expect(verdict.decision).not.toBe("allow");
   });
 
   // Guards Correction C1 — this is why the bridge is Node, not Python.
-  it("returns input and enforced identity as distinct fields", async () => {
-    const r = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
-    expect(r.inputIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(r.enforcedIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
+  //
+  // Asserted against the SDK DIRECTLY, not through `evaluate`. C1 is a claim
+  // about what the Node SDK computes, and `PolicyBridge.evaluate` answers with
+  // a verdict rather than a bag carrying it (PR #10 review, second pass), so
+  // routing this through the bridge would have meant keeping three fields on
+  // every answer that nothing reads in order to assert one of them here. The
+  // subject of the correction is the SDK, so the subject of the test is too --
+  // which is a stronger test, not a weaker one: it fails if the SDK stops
+  // returning distinct identities, where the old one could also fail for a
+  // change in this package's own pass-through.
+  it("the Node SDK returns input and enforced identity as distinct fields", async () => {
+    const control = AgentControl.fromPath("policy/manifest.yaml");
+    const result = await control.evaluateInterventionPoint("pre_tool_call" as never, snapshotFor("ls -la") as never);
+
+    expect(result.inputIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.enforcedIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
   it("createBridge's result satisfies the role", async () => {
@@ -48,7 +61,7 @@ describe("agt-bridge", () => {
     const asRole: PolicyBridge = createBridge("policy/manifest.yaml");
 
     expect(typeof asRole.evaluate).toBe("function");
-    expect((await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).verdict.decision).toBe("deny");
+    expect((await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).decision).toBe("deny");
   });
 
   it("a caller that never touches createBridge can satisfy the role too", async () => {
@@ -59,11 +72,11 @@ describe("agt-bridge", () => {
     // `ReturnType<typeof createBridge>` (PR #10 review).
     const standIn: PolicyBridge = {
       async evaluate(point, snapshot) {
-        return { verdict: { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` } };
+        return { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` };
       },
     };
 
-    const r = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));
-    expect(r.verdict.reason).toBe("pre_tool_call:envelope,tool_call");
+    const verdict = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));
+    expect(verdict.reason).toBe("pre_tool_call:envelope,tool_call");
   });
 });

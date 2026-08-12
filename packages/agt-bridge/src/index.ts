@@ -8,21 +8,19 @@ export type AgtVerdict = {
   result_labels?: string[];
 };
 
-export type BridgeResult = {
-  verdict: AgtVerdict;
-  inputIdentity?: string;
-  enforcedIdentity?: string;
-  transformedPolicyTarget?: unknown;
-};
-
 /**
- * The snapshot a caller hands an intervention point: the policy input
- * document, as JSON. Deliberately as open as the wire it models -- each
- * intervention point has its own snapshot shape (AGT-SNAPSHOT-1.0.md), and the
- * shape for a given point is the assembling caller's knowledge, not this
- * bridge's. What the alias buys is that the seam names the message rather than
- * passing an anonymous dict: a caller reading `evaluate(point, snapshot:
- * InterventionSnapshot)` is told what to build.
+ * What any snapshot is, structurally: the policy input document, as JSON.
+ *
+ * A CONSTRAINT, NOT A MESSAGE, and the distinction is this alias's whole job
+ * (PR #10 review, second pass). It used to be `evaluate`'s parameter type, so
+ * an assembler's named snapshot -- `AgtPreToolCallSnapshot` -- widened back
+ * into an anonymous dict at the one seam it was built to cross, and the seam
+ * would then accept literally any object. Each intervention point has its own
+ * snapshot shape (AGT-SNAPSHOT-1.0.md §2.5) and that shape is the assembling
+ * caller's knowledge rather than this bridge's, so this package cannot name
+ * the messages -- but it can refuse to erase them: `PolicyBridge` below is
+ * parameterised by the snapshot its holder actually sends, and this alias is
+ * the bound that parameter satisfies.
  */
 export type InterventionSnapshot = Record<string, unknown>;
 
@@ -45,9 +43,26 @@ export type InterventionSnapshot = Record<string, unknown>;
  * The AGT half of the name stays out of the type, which matters: the Guardian
  * depends on this role, not on AGT, and R3.3's gate is what keeps that honest
  * in the other direction.
+ *
+ * ANSWERS WITH A VERDICT, not with a bag carrying one (PR #10 review, second
+ * pass). `evaluate` used to return a `BridgeResult` -- the verdict plus
+ * `inputIdentity`, `enforcedIdentity` and `transformedPolicyTarget` -- and its
+ * only production caller destructured `{ verdict }` off it and dropped the
+ * rest. Three fields nothing read, on every answer, so the collaboration read
+ * as "here is a result, go and ask it what you wanted" rather than "here is the
+ * verdict you asked for". Those three are facts about the SDK's own evaluation
+ * rather than about this step's outcome, and the correction that made them
+ * worth confirming (C1) is confirmed where it belongs, against the SDK
+ * directly, in this package's own test.
+ *
+ * PARAMETERISED BY THE SNAPSHOT, so a holder's named message survives the seam.
+ * `createBridge` answers with the general `PolicyBridge`, since it can evaluate
+ * any point; a holder that assembles particular snapshots declares which ones
+ * it sends (`PolicyBridge<AgtPreToolCallSnapshot>`), and its own call sites are
+ * then checked against that message instead of against "any object at all".
  */
-export type PolicyBridge = {
-  evaluate(point: string, snapshot: InterventionSnapshot): Promise<BridgeResult>;
+export type PolicyBridge<S extends InterventionSnapshot = InterventionSnapshot> = {
+  evaluate(point: string, snapshot: S): Promise<AgtVerdict>;
 };
 
 /**
@@ -64,14 +79,9 @@ export function createBridge(manifestPath: string): PolicyBridge {
   const control = AgentControl.fromPath(manifestPath);
 
   return {
-    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<BridgeResult> {
+    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {
       const result = await control.evaluateInterventionPoint(point as never, snapshot as never);
-      return {
-        verdict: result.verdict as AgtVerdict,
-        inputIdentity: result.inputIdentity,
-        enforcedIdentity: result.enforcedIdentity,
-        transformedPolicyTarget: result.transformedPolicyTarget,
-      };
+      return result.verdict as AgtVerdict;
     },
   };
 }

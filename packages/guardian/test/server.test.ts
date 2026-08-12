@@ -145,7 +145,7 @@ describe("startGuardian POST /acs", () => {
 });
 
 // Fix wave finding 1 -- a real fail-open bug: an unhandled throw from
-// assembleSnapshot/bridge.evaluate/mapVerdict inside handleAcsRequest used
+// assemblePreToolCallSnapshot/bridge.evaluate/mapVerdict inside handleAcsRequest used
 // to escape uncaught, and Bun.serve's default error page for a rejected
 // fetch() is `text/html`, not JSON. guardianClient.post's `res.json()` would
 // then throw a SyntaxError instead of surfacing a JSON-RPC error, and

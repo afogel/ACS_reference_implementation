@@ -8,5 +8,5 @@ export {
   type AcsRequestEnvelope,
   type ToolCallRequestEnvelope,
 } from "./validate-envelope.ts";
-export { assembleSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
+export { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
 export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";

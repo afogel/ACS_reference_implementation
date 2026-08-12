@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { createBridge } from "agt-bridge";
-import { assembleSnapshot, type ToolCallRequestEnvelope } from "../src/assemble-snapshot.ts";
+import { assemblePreToolCallSnapshot, type ToolCallRequestEnvelope } from "../src/assemble-snapshot.ts";
 
 function makeEnvelope(overrides: {
   toolName?: string;
@@ -34,7 +34,7 @@ function makeEnvelope(overrides: {
   } as unknown as ToolCallRequestEnvelope;
 }
 
-describe("assembleSnapshot", () => {
+describe("assemblePreToolCallSnapshot", () => {
   it("maps params.payload.tool.name to tool_call.name, and unwraps each argument's .value into tool_call.args, dropping provenance", () => {
     const envelope = makeEnvelope({
       toolName: "run_shell",
@@ -43,7 +43,7 @@ describe("assembleSnapshot", () => {
       },
     });
 
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
 
     expect(snapshot.tool_call.name).toBe("run_shell");
     expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /" });
@@ -55,7 +55,7 @@ describe("assembleSnapshot", () => {
   it("keeps tool_call.args.command a STRING, not a nested wrapper or object", () => {
     const envelope = makeEnvelope({ args: { command: { value: "rm -rf /" } } });
 
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
 
     expect(typeof snapshot.tool_call.args.command).toBe("string");
     expect(snapshot.tool_call.args.command).toBe("rm -rf /");
@@ -64,7 +64,7 @@ describe("assembleSnapshot", () => {
   it("always emits envelope.budgets with all four counters zeroed, even though the envelope says nothing about budgets", () => {
     const envelope = makeEnvelope();
 
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
 
     expect(snapshot.envelope).toEqual({
       budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 },
@@ -74,7 +74,7 @@ describe("assembleSnapshot", () => {
   it("carries params.request_id onto tool_call.id", () => {
     const envelope = makeEnvelope({ requestId: "2c3e4f50-1234-4abc-9def-000000000000" });
 
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
 
     expect(snapshot.tool_call.id).toBe("2c3e4f50-1234-4abc-9def-000000000000");
   });
@@ -86,9 +86,9 @@ describe("assembleSnapshot", () => {
   it("reads nothing but the envelope: no session-derived key appears anywhere in the output", () => {
     const envelope = makeEnvelope();
 
-    // No cast: assembleSnapshot returns a named snapshot message now, so what
+    // No cast: assemblePreToolCallSnapshot returns a named snapshot message now, so what
     // these read is the type it declares rather than an anonymous dict.
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
 
     expect(Object.keys(snapshot).sort()).toEqual(["envelope", "tool_call"]);
     expect(Object.keys(snapshot.envelope)).toEqual(["budgets"]);
@@ -109,10 +109,10 @@ describe("assembleSnapshot", () => {
       args: { command: { value: "rm -rf /", provenance: { source: "user" } } },
     });
 
-    const snapshot = assembleSnapshot(envelope);
+    const snapshot = assemblePreToolCallSnapshot(envelope);
     const bridge = createBridge("policy/manifest.yaml");
-    const result = await bridge.evaluate("pre_tool_call", snapshot);
+    const verdict = await bridge.evaluate("pre_tool_call", snapshot);
 
-    expect(result.verdict.decision).toBe("deny");
+    expect(verdict.decision).toBe("deny");
   });
 });
