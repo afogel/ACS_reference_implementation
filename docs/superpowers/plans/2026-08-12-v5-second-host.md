@@ -275,9 +275,10 @@ the one piece of host semantics the shim owns:
 | `HostOutput` key | Applied as |
 |---|---|
 | `args.<name>` | assign into the live `output.args` |
-| `result.output` | assign into the live `output.output` |
-| `result.metadata.output` | assign into the live `output.metadata.output` (the mirror) |
+| `result` | merge the whole patched clone over the live output object — lands the leaf **and** its mirrors together |
 | `refuse.reason` | **throw** `new Error(reason)` |
+
+⚠️ **Corrected during execution.** These rows said `result.output` and `result.metadata.output`, naming two leaves. `applied_output` is the **whole patched clone of `outputs.within`**, so naming a leaf assigns an *object* to a string field and buries the mirror inside a value the host never unpacks — defeating Task 2 entirely. Host #1 escapes this by construction: its `updatedToolOutput` genuinely takes the whole payload object. The invariant, stated once: **a decision-output path must name a sink that accepts the whole `within` container.** The request gate already obeyed it (`args: { from: applied_input }`); the result gate did not.
 
 So the hookmap — pure data, S2 — decides which disposition throws and which mutates, and the
 adapter still names nothing. A request-gate `deny` declares `refuse.reason`; a result-gate
@@ -701,11 +702,11 @@ hooks:
       # Measured both ways.
       deny:
         output:
-          result.output: { from: applied_output }
+          result: { from: applied_output }
           reason.text: { from: reasoning, type: string }
       modify:
         output:
-          result.output: { from: applied_output }
+          result: { from: applied_output }
           reason.text: { from: reasoning, type: string }
 ```
 
