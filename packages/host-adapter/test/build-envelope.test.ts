@@ -460,6 +460,29 @@ describe("buildEnvelope", () => {
         expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"Broken" declares neither/);
       });
 
+      // V4 is what makes this typo plausible, which is why it is pinned now
+      // rather than left as a type the YAML never has to satisfy: the entry
+      // type gained a sibling `outputs:` MAP beside the scalar `arguments:`,
+      // so `arguments: {from: ...}` written by analogy is a realistic hookmap
+      // mistake. Before the check it died inside `resolvePath` as a bare
+      // `TypeError: path.replace is not a function` -- fail-closed, so not a
+      // fail-open, but the only throw in this function that named neither the
+      // hook nor the member at fault. The hook name is asserted explicitly
+      // here, not just the phrase, because three of the tests around this one
+      // originally claimed to name the hook and matched a pattern that did
+      // not.
+      it("throws, naming the hook, when `arguments` is a map rather than a path", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallRequest",
+          tool_name: "$.tool_name",
+          arguments: { from: "$.tool_input" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "arguments" as \{"from":"\$\.tool_input"\}/,
+        );
+      });
+
       it("throws, naming the hook, when `outputs` carries no `from` path", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallResult",

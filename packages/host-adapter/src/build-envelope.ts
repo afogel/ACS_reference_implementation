@@ -393,6 +393,24 @@ function buildPayload(
   }
 
   if (argumentsPath !== undefined) {
+    // `arguments` is a SCALAR path, and V4 is what makes getting that wrong
+    // plausible: this entry type now has a sibling `outputs:` whose own paths
+    // are members of a MAP (`from` / `within`), so an author writing
+    // `arguments: {from: $.tool_input}` by analogy is a realistic hookmap
+    // typo rather than a hypothetical one. Unchecked it died inside
+    // `resolvePath` as a bare `TypeError: path.replace is not a function` --
+    // fail-closed, so never a fail-open, but naming neither the hook nor the
+    // member at fault, which every other check in this function does. The
+    // `outputs` branch below is type-checked member by member with
+    // hook-naming throws; this V1-era branch was the one that was not.
+    if (typeof argumentsPath !== "string") {
+      throw new Error(
+        `buildEnvelope: hookmap entry for hook "${event}" declares "arguments" as ` +
+          `${JSON.stringify(argumentsPath)} -- "arguments" names the argument bag with a single ` +
+          `JSONPath-lite string, unlike "outputs", whose own paths are members of a map`,
+      );
+    }
+
     const rawArguments = resolvePath(payload, argumentsPath);
     const args: Record<string, AcsArgument> = {};
     if (rawArguments !== null && typeof rawArguments === "object") {
