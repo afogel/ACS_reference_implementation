@@ -47,12 +47,23 @@
  * no runtime dependency on the Guardian or policy-bridge packages -- it talks
  * to the Guardian only over the wire, at whatever `url` the caller gives.
  */
+import type { AcsRequestEnvelope } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
 
-/** The minimal JSON-RPC 2.0 request shape this client sends. Loose on
- * `params` on purpose: buildEnvelope's ACS request params and handshake's
- * ClientHello params are different shapes, and this module doesn't need
- * to know either -- it moves whatever `params` object it's given. */
+/**
+ * The minimal JSON-RPC 2.0 request shape this client sends -- the TRANSPORT
+ * shape, used by `post` alone.
+ *
+ * Loose on `params` on purpose: `post` carries whatever a caller hands it, and
+ * its one non-decision caller is the handshake, whose ClientHello params are
+ * not an ACS request at all.
+ *
+ * NOT the shim-facing vocabulary (PR #10 review, second pass). `requestDecision`
+ * used to take one of these, so the seam between a producer speaking
+ * `AcsRequestEnvelope` and a consumer speaking `AcsDecision` was the one place
+ * the ACS noun evaporated and JSON-RPC's took its place. It now takes the ACS
+ * request message, and this stays the internal transport type underneath it.
+ */
 export type JsonRpcRequest = {
   jsonrpc: "2.0";
   method: string;
@@ -113,8 +124,12 @@ export type GuardianClient = {
   /**
    * Asks for the decision on `envelope` and answers with a message. Never
    * throws -- see DecisionOrFailure.
+   *
+   * Takes the ACS request message and answers with an ACS decision: both ends of
+   * this method are ACS's vocabulary, and JSON-RPC is the transport it happens to
+   * travel over (see JsonRpcRequest).
    */
-  requestDecision(envelope: JsonRpcRequest): Promise<DecisionOrFailure>;
+  requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure>;
   /**
    * The wire primitive: POSTs `envelope` as JSON, parses the JSON-RPC
    * response, and returns it once its `id` is confirmed to match the
@@ -149,7 +164,7 @@ export function createGuardianClient(url: string): GuardianClient {
   return {
     post,
 
-    async requestDecision(envelope: JsonRpcRequest): Promise<DecisionOrFailure> {
+    async requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure> {
       let response: JsonRpcResponse;
       try {
         response = await post(envelope);
