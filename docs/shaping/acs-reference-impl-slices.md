@@ -382,6 +382,21 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 
 ---
 
+**⚠️ Found by V5, pre-existing, and NOT V5's to repair — six hookmap faults that are decidable without a payload are answered by the delivery posture, so under `proceed` the step runs ungoverned.** V5 put three static checks on the wrong seam in three consecutive review rounds — `mirrors`, then the `exit_status` both-forms refusal, then the request gate's scopability — and each time the symptom was identical: `buildEnvelope` throws, `govern-step` catches it at stage `"request"`, `applyFailurePosture` answers, and under `proceed` (the spec default, and what this deployment ships) the tool call proceeds with an audited fail-open. Fixing V5's three exposed that the seam already carries six more, every one of them a property of the hookmap alone:
+
+| Fault, decidable from the hookmap with no payload | Where it throws today | Measured under the default posture |
+|---|---|---|
+| `outputs` declared with no `exit_status.literal` or `.from` | `exitStatusOf` | exit 0, `proceeded` |
+| `outputs.from` empty or missing | `buildPayload` | exit 0, `proceeded` |
+| `outputs.within` empty or missing | `buildPayload` | exit 0, `proceeded` |
+| `outputs.from` not inside `outputs.within` | `buildPayload` | exit 0, `proceeded` |
+| `arguments` declared as a non-string | `buildPayload` | exit 0, `proceeded` |
+| an entry declaring **neither** `arguments` nor `outputs` | `buildPayload` | exit 0, `proceeded` |
+
+The rule these keep violating is one sentence: **a fault decidable from the hookmap alone belongs at `loadHookmap`, where it exits 2; only a fault that needs the invocation's payload belongs where the posture can answer it.** The two live in adjacent code, which is why they keep being confused. `govern-step.ts` already draws exactly this line for a different pair and explains it at length — what is missing is that `buildPayload`'s own checks were never held to it.
+
+Not repaired in V5 because every one predates this slice, none is reachable through either shipped hookmap (both are pinned by tests that load them), and the repair is a single sweep of one module rather than six edits — the same argument §V4 made for parking its landing check rather than doing it twice by gate. Recorded here, with a destination, rather than left in a review transcript.
+
 ## Risks and dependencies
 
 | # | Risk | Slice | Handling |

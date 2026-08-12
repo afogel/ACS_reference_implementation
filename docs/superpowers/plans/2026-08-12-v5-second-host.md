@@ -259,7 +259,9 @@ Nothing else. The ratio is honest: of eight tasks, six trace directly to §V5's 
    the ones this slice could get wrong.
    ⚠️ **`sessionID` and `metadata` are deliberately NOT on that list**, and listing them would
    make the gate fail for the wrong reason. `namesTerm` is case-insensitive, and the adapter
-   legitimately speaks both: `sessionId` is **ACS's** `metadata.session_id` across six files,
+   legitimately speaks both: `sessionId` is **ACS's** `metadata.session_id` across four files
+   (measured with the gate's own predicate — the "six" this said before counted `session_id`,
+   which `\bsessionID\b` does not match),
    and `metadata` is the **ACS envelope's own** block, in code since V1. A gate that fails on
    day one gets loosened until it passes, which is worse than not having it. What protects
    R3.2 for those two is that they are ACS vocabulary the adapter is *supposed* to speak.
