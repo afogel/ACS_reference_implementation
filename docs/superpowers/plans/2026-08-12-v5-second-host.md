@@ -255,8 +255,14 @@ Nothing else. The ratio is honest: of eight tasks, six trace directly to §V5's 
 2. **No new fail-open.** Twelve are recorded in `govern-step.ts`'s header. Every refusal added
    here fails **closed**, and the header's count is updated once, in Task 2, or not at all.
 3. **The adapter never names an OpenCode field.** `packages/host-adapter/src` may not contain
-   `tool.execute`, `sessionID`, `callID`, `metadata`, or `attachments`. Task 7 gates it, and
-   mutation-tests the terms this slice could get wrong.
+   `tool.execute`, `callID`, `attachments`, or `refuse`. Task 7 gates those and mutation-tests
+   the ones this slice could get wrong.
+   ⚠️ **`sessionID` and `metadata` are deliberately NOT on that list**, and listing them would
+   make the gate fail for the wrong reason. `namesTerm` is case-insensitive, and the adapter
+   legitimately speaks both: `sessionId` is **ACS's** `metadata.session_id` across six files,
+   and `metadata` is the **ACS envelope's own** block, in code since V1. A gate that fails on
+   day one gets loosened until it passes, which is worse than not having it. What protects
+   R3.2 for those two is that they are ACS vocabulary the adapter is *supposed* to speak.
 4. **The shim is the only host-specific code**, and it is thin the way `acs-hook.ts` is thin:
    it holds no decision logic, branches on no disposition, and calls `governStep`.
 5. **Every fail-open proceed is audited** (§6.4), through `governStep` — unchanged.
@@ -282,8 +288,10 @@ the one piece of host semantics the shim owns:
 
 So the hookmap — pure data, S2 — decides which disposition throws and which mutates, and the
 adapter still names nothing. A request-gate `deny` declares `refuse.reason`; a result-gate
-`deny` declares `result.output` **and** the mirror, and no `refuse` key, because Evidence §7
-showed a throw there cannot scrub the mirror.
+`deny` declares `result` — the **container**, which carries the leaf and its mirrors together —
+and no `refuse` key, because Evidence §7 showed a throw there cannot scrub the mirror.
+*(This sentence said `result.output` **and** the mirror until the correction above retracted
+it; naming two leaves is exactly the form that assigns an object to a string field.)*
 
 **The applier is all-or-nothing.** It validates every key it is handed *before* assigning any
 of them, because a half-applied mutation is the one outcome worse than a refusal — the same
