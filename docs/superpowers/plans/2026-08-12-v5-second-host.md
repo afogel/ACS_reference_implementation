@@ -294,6 +294,25 @@ rule `govern-step.ts` states for writing half an output.
 
 Closes both holes V4 measured and parked here.
 
+> **⚠️ Amended during execution, and the amendment is a correction to this plan's own
+> reasoning.** This task was written on §V4's claim that *one* check closes both holes.
+> Building it disproved that: run against V4's three recorded bundle fixtures, a per-target
+> "did this change" comparison passes **all three**, because every declared target genuinely
+> moves (`/exit_status` `"success"`→`"failure"`, `/tool/name` `"Bash"`→`"[REDACTED]"`, the
+> `outputs` override growing to two elements). The Step 1 test below used
+> `replacement: "success"` against `exit_status: "success"` — a *no-op*, which is a different
+> and easier case than the ones V4 actually recorded.
+>
+> The two holes ask different questions. The **request-gate** one is about **value**: a target
+> left exactly as found — caught by the per-target comparison in `applyModifications`, which
+> stays gate-agnostic. The **result-gate bundle** one is about **observability**: its non-leaf
+> half changes the ACS document legitimately, and is a false report only because nothing but
+> `outputs[0].value` is ever projected onto the host — which needs leaf knowledge
+> `modifications.ts` deliberately lacks. So it is **two** checks, each in the file that already
+> holds what it needs, the second being a comparison in `projectAppliedOutput` asking whether
+> the applied document differs from the original anywhere **but** the projected leaf.
+> §V4 and §V5 are amended in this PR.
+
 **Files:**
 - Modify: `packages/host-adapter/src/modifications.ts` (`applyModifications`, lines 463–494)
 - Test: `packages/host-adapter/test/modifications.test.ts`
