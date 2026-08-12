@@ -73,7 +73,7 @@
  * it returns, which is what lets the same function serve a second host with a
  * different wire shape (see render-decision.ts).
  */
-import { buildEnvelope, modificationTarget, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
+import { buildEnvelope, modificationDocumentOf, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
 import type { AuditSink } from "./audit-sink.ts";
 import {
   applyFailurePosture,
@@ -85,7 +85,7 @@ import type { GuardianClient } from "./guardian-client.ts";
 import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
-import { assertOutputIsReplaceable, withResultOutput, type HostOutputTarget } from "./result-output.ts";
+import { assertOutputIsReplaceable, withResultOutput, type HostOutputLocation } from "./result-output.ts";
 import { validateDecision } from "./validate-decision.ts";
 
 /**
@@ -234,7 +234,7 @@ export async function governStep({
   // resolve to an inherited `Object.prototype` member the way the guard's own
   // lookup could have.
   const outputs = hookmap.hooks[hookEventName]?.outputs ?? undefined;
-  const outputTarget: HostOutputTarget | undefined = outputs === undefined ? undefined : { payload, outputs };
+  const outputLocation: HostOutputLocation | undefined = outputs === undefined ? undefined : { payload, outputs };
 
   /**
    * Every render in this function, and the one thing every render at a result
@@ -250,7 +250,7 @@ export async function governStep({
    * defect whichever route reached it.
    */
   function render(decision: AcsDecision): HostOutput {
-    return renderDecision(hookEventName, withResultOutput(decision, outputTarget), hookmap);
+    return renderDecision(hookEventName, withResultOutput(decision, outputLocation), hookmap);
   }
 
   /**
@@ -372,9 +372,9 @@ export async function governStep({
   // Over-blocking on the safe side, deliberately -- including for a decision that
   // would have been an `allow` -- because the alternative is a policy decision
   // arriving and being discarded.
-  if (outputTarget !== undefined) {
+  if (outputLocation !== undefined) {
     try {
-      assertOutputIsReplaceable(outputTarget);
+      assertOutputIsReplaceable(outputLocation);
     } catch (failure) {
       throw new Error(
         `governStep: hook "${hookEventName}" is a gate whose output an arriving decision has to be able to ` +
@@ -398,9 +398,9 @@ export async function governStep({
     // arguments bag, unwrapped from ACS's `{value, provenance?}` shape; at a gate
     // that sees what a step produced it is the result payload, because that is
     // what a result-gate pointer names (`/outputs/0/value` addresses no argument,
-    // and there are no arguments at that step). `modificationTarget` reads which
+    // and there are no arguments at that step). `modificationDocumentOf` reads which
     // from the envelope it just built.
-    const originalArguments = modificationTarget(envelope);
+    const modificationDocument = modificationDocumentOf(envelope);
 
     const answer = await guardian.requestDecision(envelope, { timeoutMs });
     const elapsedMs = performance.now() - startedAt;
@@ -412,7 +412,7 @@ export async function governStep({
     // A decision arrived, so no posture may touch this step's outcome. N7 is
     // the host's own last word on it -- §6.3's rewrite, and any expired
     // ask/defer outcome -- and it substitutes only decisions, never failures.
-    decision = validateDecision(answer.decision, { elapsedMs, originalArguments, outputTarget });
+    decision = validateDecision(answer.decision, { elapsedMs, modificationDocument, outputLocation });
   } catch (failure) {
     return resolveByPosture(failure, "delivery", envelope);
   }

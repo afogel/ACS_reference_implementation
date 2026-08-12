@@ -453,7 +453,7 @@ describe("the result gate, end to end through the real shim and a real Guardian"
   // deny instead.
   //
   // MEASURED, on the tree before the refusal existed and again by mutating it
-  // away (delete the landing check in `result-output.ts`'s `appliedOutput` and
+  // away (delete the landing check in `result-output.ts`'s `projectAppliedOutput` and
   // return the projection unconditionally): 481 pass / 5 fail, and this gate
   // writes
   //

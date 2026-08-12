@@ -19,7 +19,7 @@
 
 import { deny, type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 import { applyModifications } from "./modifications.ts";
-import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
+import { projectAppliedOutput, type HostOutputLocation } from "./result-output.ts";
 
 /**
  * Applies a `modify`'s rewrite to the ACS-side document the decision's pointers
@@ -59,7 +59,7 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  * returns `modify` with `applied_input {"command":"cat .env"}` -- the policy said
  * rewrite, nothing was rewritten, the original command runs, and the audit trail
  * says the decision was honoured. That is this branch's own fail-open family, one
- * gate over from the result gate, where `appliedOutput`'s landing check now
+ * gate over from the result gate, where `projectAppliedOutput`'s landing check now
  * refuses the same shape.
  *
  * NOT CLOSED HERE, and the reason is that the honest repair is bigger than the
@@ -68,7 +68,7 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  * change the document at its OWN target" -- a per-modification comparison, in
  * `modifications.ts`'s apply step where both documents and every target are in
  * hand. That check would also close the result gate's remaining bundled case (see
- * `appliedOutput`), which is the argument for doing it once, there, rather than
+ * `projectAppliedOutput`), which is the argument for doing it once, there, rather than
  * twice by gate. What makes it safe to defer rather than urgent: `mapVerdict`
  * synthesizes one override from the bound `$policy_target` and throws otherwise,
  * so no Guardian in this deployment emits a no-change rewrite, and the failure is
@@ -76,7 +76,7 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
  *
  * THE PROJECTION IS INSIDE THIS TRY, and deliberately so. At a result gate the
  * applied document still has to be projected onto the output object the host
- * holds (`appliedOutput`), and that projection can fail for reasons of exactly
+ * holds (`projectAppliedOutput`), and that projection can fail for reasons of exactly
  * the same kind as the apply itself -- a leaf the payload does not have, a
  * replacement of a type the host's output shape does not admit. Both are a
  * rewrite that did not land, so both belong to the same sentence: `deny`,
@@ -89,14 +89,14 @@ import { appliedOutput, type HostOutputTarget } from "./result-output.ts";
 export function resolveModify(
   decision: AcsDecision,
   modificationDocument: Record<string, unknown>,
-  outputTarget: HostOutputTarget | undefined,
+  outputLocation: HostOutputLocation | undefined,
 ): ValidatedAcsDecision {
   try {
     const applied = applyModifications(modificationDocument, decision.modifications);
-    if (outputTarget === undefined) {
+    if (outputLocation === undefined) {
       return { ...decision, applied_input: applied };
     }
-    return { ...decision, applied_output: appliedOutput(applied, outputTarget) };
+    return { ...decision, applied_output: projectAppliedOutput(applied, outputLocation) };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return deny(`guardian's modifications could not be applied: ${reason}`, "modifications_invalid");

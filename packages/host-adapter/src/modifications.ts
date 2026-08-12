@@ -7,9 +7,9 @@
  * WHICH document that is belongs to the caller and never to this module (V4):
  * the arguments a step was asked to run with at a gate that decides whether it
  * runs, the result payload it produced at a gate that sees what it produced --
- * `modificationTarget` is where the choice is made. Everything here is the same
+ * `modificationDocumentOf` is where the choice is made. Everything here is the same
  * job either way, because a JSON pointer against a structured document does not
- * care which document it is. The parameter is still called `originalArguments`,
+ * care which document it is. The parameter is still called `modificationDocument`,
  * which is the narrower of the two; the refusals it produces are worded for
  * both, because those are read by a human in an audit trail.
  *
@@ -131,7 +131,7 @@ function isArrayIndex(segment: string, length: number): boolean {
  * Walks `segments` through the ACS document that actually went out on the wire
  * and throws unless every segment names a field that is really there.
  *
- * WHICH document is the caller's to say (`modificationTarget`): the arguments a
+ * WHICH document is the caller's to say (`modificationDocumentOf`): the arguments a
  * step was asked to run with at a gate that decides whether it runs, the result
  * payload it produced at a gate that sees what it produced. The refusal below
  * names neither, and that is deliberate rather than vague -- this text is
@@ -160,7 +160,7 @@ function isArrayIndex(segment: string, length: number): boolean {
  * element is a target at all. Replacing an array wholesale (a
  * single-segment `/items`) is separately, and still, fine.
  */
-function assertTargetExists(originalArguments: Record<string, unknown>, segments: string[], label: string): void {
+function assertTargetExists(modificationDocument: Record<string, unknown>, segments: string[], label: string): void {
   const absent = (index: number): ModificationsInvalidError =>
     new ModificationsInvalidError(
       `${label} addresses "/${segments.slice(0, index + 1).join("/")}", which is not present in the ACS document ` +
@@ -168,7 +168,7 @@ function assertTargetExists(originalArguments: Record<string, unknown>, segments
         "leave the original value in place",
     );
 
-  let current: unknown = originalArguments;
+  let current: unknown = modificationDocument;
   for (const [index, segment] of segments.entries()) {
     if (Array.isArray(current)) {
       if (!isArrayIndex(segment, current.length)) {
@@ -241,14 +241,14 @@ function assertValidRedactionEntry(entry: unknown): Redaction {
  * nothing this module can apply, so the Guardian's intent is exactly as
  * undeterminable as it is for a combination §6.3 forbids outright.
  *
- * `originalArguments` is a parameter of this function and not only of the
+ * `modificationDocument` is a parameter of this function and not only of the
  * apply step because half of what makes a `modifications` object honourable
  * is whether its targets exist in the arguments the Guardian evaluated. A
  * rule about the object alone cannot see that.
  */
 export function assertValidModifications(
   modifications: unknown,
-  originalArguments: Record<string, unknown>,
+  modificationDocument: Record<string, unknown>,
 ): Modifications {
   if (typeof modifications !== "object" || modifications === null) {
     throw new ModificationsInvalidError(
@@ -375,10 +375,10 @@ export function assertValidModifications(
   // Last, because it is the only rule that needs the wire's own arguments:
   // every target must already be there. See assertTargetExists.
   for (const redactionTarget of redactionTargets) {
-    assertTargetExists(originalArguments, redactionTarget, `redaction path "/${redactionTarget.join("/")}"`);
+    assertTargetExists(modificationDocument, redactionTarget, `redaction path "/${redactionTarget.join("/")}"`);
   }
   for (const key of overrideKeys) {
-    assertTargetExists(originalArguments, [key], `parameter_overrides key "${key}"`);
+    assertTargetExists(modificationDocument, [key], `parameter_overrides key "${key}"`);
   }
 
   return mods;
@@ -443,12 +443,12 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
 }
 
 /**
- * Applies §6.3's `modifications` to `originalArguments`, returning a new
- * object -- `originalArguments` is never mutated: a later step reuses the
- * same argument object that went out on the wire. Validates first
- * (`assertValidModifications`, which also checks every target against these
- * same arguments); throws `ModificationsInvalidError` rather than applying
- * anything on a violation.
+ * Applies §6.3's `modifications` to `modificationDocument`, returning a new
+ * object -- `modificationDocument` is never mutated (Global Constraint 4: a
+ * later step reuses the same argument object that went out on the wire).
+ * Validates first (`assertValidModifications`, which also checks every
+ * target against these same arguments); throws `ModificationsInvalidError`
+ * rather than applying anything on a violation.
  *
  * `modified_content` (wholesale replacement) has no target in either structured
  * document a step's modifications can address, so validation refuses it outright
@@ -456,17 +456,17 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
  * structured-edit shape, with every target already known to exist.
  */
 export function applyModifications(
-  originalArguments: Record<string, unknown>,
+  modificationDocument: Record<string, unknown>,
   modifications: unknown,
 ): Record<string, unknown> {
-  const mods = assertValidModifications(modifications, originalArguments);
+  const mods = assertValidModifications(modifications, modificationDocument);
 
-  let result: Record<string, unknown> = { ...originalArguments };
+  let result: Record<string, unknown> = { ...modificationDocument };
 
   // The top-level target is always `result` itself, never an array: the
   // line above builds `result` with an object-literal spread
-  // (`{ ...originalArguments }`), and `Array.isArray()` of that is false at
-  // runtime no matter what `originalArguments` was -- a compile-time type
+  // (`{ ...modificationDocument }`), and `Array.isArray()` of that is false at
+  // runtime no matter what `modificationDocument` was -- a compile-time type
   // annotation could not make this true if the runtime shape disagreed.
   // `setAtPath`'s `unknown` return is therefore always the object branch
   // here; the cast reflects that runtime fact, not a new assumption.

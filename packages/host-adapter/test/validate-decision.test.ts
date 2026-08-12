@@ -8,7 +8,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("passes a modify whose modifications are well formed, and applies them", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "redacted", modifications: { parameter_overrides: { command: "echo [REDACTED]" } } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("modify");
     expect(out.applied_input).toEqual({ command: "echo [REDACTED]", timeout: 30 });
@@ -21,7 +21,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
         reasoning: "r",
         modifications: { modified_content: "whole", parameter_overrides: { command: "x" } },
       },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
@@ -34,7 +34,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
         reasoning: "r",
         modifications: { redactions: [{ path: "/command" }], parameter_overrides: { command: "x" } },
       },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("deny");
   });
@@ -48,7 +48,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("denies two redaction paths that overlap each other", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/a/b" }] } },
-      { elapsedMs: 10, originalArguments: { a: { b: 1, keep: "important" } } },
+      { elapsedMs: 10, modificationDocument: { a: { b: 1, keep: "important" } } },
     );
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
@@ -58,7 +58,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("denies two identical redaction paths", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/a" }] } },
-      { elapsedMs: 10, originalArguments: { a: "x" } },
+      { elapsedMs: 10, modificationDocument: { a: "x" } },
     );
     expect(out.decision).toBe("deny");
   });
@@ -66,7 +66,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("still allows two redactions on genuinely disjoint paths", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/b" }] } },
-      { elapsedMs: 10, originalArguments: { a: "x", b: "y", c: "keep" } },
+      { elapsedMs: 10, modificationDocument: { a: "x", b: "y", c: "keep" } },
     );
     expect(out.decision).toBe("modify");
     expect(out.applied_input).toEqual({ a: "[REDACTED]", b: "[REDACTED]", c: "keep" });
@@ -79,13 +79,13 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
         reasoning: "r",
         modifications: { redactions: [{ path: "/env/TOKEN" }], parameter_overrides: { env: {} } },
       },
-      { ...FRESH, originalArguments: { env: { TOKEN: "t" } } },
+      { ...FRESH, modificationDocument: { env: { TOKEN: "t" } } },
     );
     expect(out.decision).toBe("deny");
   });
 
   it("denies a modify carrying no modifications at all", () => {
-    const out = validateDecision({ decision: "modify", reasoning: "r" }, { ...FRESH, originalArguments: ARGS });
+    const out = validateDecision({ decision: "modify", reasoning: "r" }, { ...FRESH, modificationDocument: ARGS });
     expect(out.decision).toBe("deny");
   });
 
@@ -96,11 +96,11 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("denies a redaction with an empty path -- it would redact nothing while reporting success", () => {
     expect(validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "" }] } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     ).decision).toBe("deny");
     expect(validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/" }] } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     ).decision).toBe("deny");
   });
 
@@ -110,7 +110,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("denies a redaction with a missing or non-string path even with no parameter_overrides present", () => {
     expect(validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{}] } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     ).decision).toBe("deny");
   });
 
@@ -129,7 +129,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
         // "cmd", not "command": one character away from the real argument.
         modifications: { parameter_overrides: { cmd: "echo [REDACTED]" } },
       },
-      { ...FRESH, originalArguments: { command: "echo ghp_SECRET123456" } },
+      { ...FRESH, modificationDocument: { command: "echo ghp_SECRET123456" } },
     );
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
@@ -145,7 +145,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
         reasoning: "redacted",
         modifications: { redactions: [{ path: "/env/TOKEN" }] },
       },
-      { ...FRESH, originalArguments: { command: "echo ghp_SECRET123456" } },
+      { ...FRESH, modificationDocument: { command: "echo ghp_SECRET123456" } },
     );
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
@@ -166,7 +166,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("applies a redaction addressing an array element, and keeps the array an array", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/items/0" }] } },
-      { ...FRESH, originalArguments: { items: ["a", "b"] } },
+      { ...FRESH, modificationDocument: { items: ["a", "b"] } },
     );
     expect(out.decision).toBe("modify");
     expect(out.applied_input).toEqual({ items: ["[REDACTED]", "b"] });
@@ -181,14 +181,14 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
     it(`denies a redaction path or override key naming ${segment}, and says why`, () => {
       const redaction = validateDecision(
         { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: `/${segment}` }] } },
-        { ...FRESH, originalArguments: ARGS },
+        { ...FRESH, modificationDocument: ARGS },
       );
       expect(redaction.decision).toBe("deny");
       expect(redaction.reasoning).toContain(`reserved segment "${segment}"`);
 
       const override = validateDecision(
         { decision: "modify", reasoning: "r", modifications: { parameter_overrides: { [segment]: "x" } } },
-        { ...FRESH, originalArguments: ARGS },
+        { ...FRESH, modificationDocument: ARGS },
       );
       expect(override.decision).toBe("deny");
       expect(override.reasoning).toContain(`reserved segment "${segment}"`);
@@ -209,7 +209,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("denies a modify carrying only modified_content, for want of a target in an arguments object", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { modified_content: "echo [REDACTED]" } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("deny");
     expect(out.applied_input).toBeUndefined();
@@ -225,7 +225,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
     for (const modifications of [{ redactions: [null] }, { redactions: "abc" }, { redactions: [42] }]) {
       const out = validateDecision(
         { decision: "modify", reasoning: "r", modifications },
-        { ...FRESH, originalArguments: ARGS },
+        { ...FRESH, modificationDocument: ARGS },
       );
       expect(out.decision).toBe("deny");
       expect(out.reasoning).toContain("modifications cannot be honoured as specified");
@@ -236,7 +236,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   it("reports a clean ModificationsInvalidError for a non-object parameter_overrides", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { parameter_overrides: ["command"] } },
-      { ...FRESH, originalArguments: ARGS },
+      { ...FRESH, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("deny");
     expect(out.reasoning).toContain("parameter_overrides must be an object");
@@ -250,7 +250,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
       reasoning: "approval required",
       ask_details: { approver: { type: "user" }, question: "ok?", timeout_seconds: 60 },
     };
-    expect(validateDecision(ask, { ...FRESH, originalArguments: ARGS }).decision).toBe("ask");
+    expect(validateDecision(ask, { ...FRESH, modificationDocument: ARGS }).decision).toBe("ask");
   });
 
   it("substitutes an expired ask with its timeout_disposition", () => {
@@ -260,7 +260,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
         reasoning: "approval required",
         ask_details: { approver: { type: "user" }, question: "ok?", timeout_seconds: 1, timeout_disposition: "allow" },
       },
-      { elapsedMs: 2_000, originalArguments: ARGS },
+      { elapsedMs: 2_000, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("allow");
     expect(out.reason_codes).toContain("ask_expired");
@@ -275,7 +275,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
         reasoning: "approval required",
         ask_details: { approver: { type: "user" }, question: "ok?", timeout_seconds: 1 },
       },
-      { elapsedMs: 2_000, originalArguments: ARGS },
+      { elapsedMs: 2_000, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("deny");
   });
@@ -295,7 +295,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
         reasoning: "approval required",
         ask_details: { approver: { type: "user" }, question: "ok?", timeout_seconds: 1 },
       },
-      { elapsedMs: 500, originalArguments: ARGS },
+      { elapsedMs: 500, modificationDocument: ARGS },
     );
     expect(out.decision).toBe("ask");
   });
@@ -309,19 +309,19 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     expect(
       validateDecision(
         { decision: "ask", reasoning: "r", ask_details: askDetails },
-        { elapsedMs: 999, originalArguments: ARGS },
+        { elapsedMs: 999, modificationDocument: ARGS },
       ).decision,
     ).toBe("ask");
     expect(
       validateDecision(
         { decision: "ask", reasoning: "r", ask_details: askDetails },
-        { elapsedMs: 1_000, originalArguments: ARGS },
+        { elapsedMs: 1_000, modificationDocument: ARGS },
       ).decision,
     ).toBe("ask");
     expect(
       validateDecision(
         { decision: "ask", reasoning: "r", ask_details: askDetails },
-        { elapsedMs: 1_001, originalArguments: ARGS },
+        { elapsedMs: 1_001, modificationDocument: ARGS },
       ).decision,
     ).not.toBe("ask");
   });
@@ -335,11 +335,11 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     // read as not-expired instead). No separate conversion case needed here
     // the way ASK needed one above.
     expect(
-      validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 500, originalArguments: ARGS })
+      validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 500, modificationDocument: ARGS })
         .decision,
     ).toBe("deny");
     expect(
-      validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 10, originalArguments: ARGS })
+      validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 10, modificationDocument: ARGS })
         .decision,
     ).toBe("defer");
   });
@@ -361,7 +361,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     const expired = () =>
       validateDecision(
         { decision: "defer", reasoning: "r", defer_details: askOnTimeout },
-        { elapsedMs: 500, originalArguments: ARGS },
+        { elapsedMs: 500, modificationDocument: ARGS },
       );
 
     it("denies closed rather than raising a question it cannot form", () => {
@@ -387,7 +387,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
       expect(
         validateDecision(
           { decision: "defer", reasoning: "r", defer_details: askOnTimeout },
-          { elapsedMs: 10, originalArguments: ARGS },
+          { elapsedMs: 10, modificationDocument: ARGS },
         ).decision,
       ).toBe("defer");
     });
@@ -400,27 +400,27 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     expect(
       validateDecision(
         { decision: "defer", reasoning: "r", defer_details: deferDetails },
-        { elapsedMs: 49, originalArguments: ARGS },
+        { elapsedMs: 49, modificationDocument: ARGS },
       ).decision,
     ).toBe("defer");
     expect(
       validateDecision(
         { decision: "defer", reasoning: "r", defer_details: deferDetails },
-        { elapsedMs: 50, originalArguments: ARGS },
+        { elapsedMs: 50, modificationDocument: ARGS },
       ).decision,
     ).toBe("defer");
     expect(
       validateDecision(
         { decision: "defer", reasoning: "r", defer_details: deferDetails },
-        { elapsedMs: 51, originalArguments: ARGS },
+        { elapsedMs: 51, modificationDocument: ARGS },
       ).decision,
     ).not.toBe("defer");
   });
 
   it("denies an ask or defer whose details are missing entirely", () => {
-    expect(validateDecision({ decision: "ask", reasoning: "r" }, { ...FRESH, originalArguments: ARGS }).decision)
+    expect(validateDecision({ decision: "ask", reasoning: "r" }, { ...FRESH, modificationDocument: ARGS }).decision)
       .toBe("deny");
-    expect(validateDecision({ decision: "defer", reasoning: "r" }, { ...FRESH, originalArguments: ARGS }).decision)
+    expect(validateDecision({ decision: "defer", reasoning: "r" }, { ...FRESH, modificationDocument: ARGS }).decision)
       .toBe("deny");
   });
 });
@@ -428,16 +428,16 @@ describe("validateDecision — ASK and DEFER expiry", () => {
 describe("validateDecision — everything else passes through", () => {
   it("leaves allow and deny exactly as they arrived", () => {
     const allow = { decision: "allow", reason_codes: ["drift_detected"], policy_references: [{ policy_id: "agt_stock", rule_id: "drift_detected" }] };
-    expect(validateDecision(allow, { ...FRESH, originalArguments: ARGS })).toEqual(allow);
+    expect(validateDecision(allow, { ...FRESH, modificationDocument: ARGS })).toEqual(allow);
     const deny = { decision: "deny", reasoning: "blocked", reason_codes: ["destructive_shell_command_blocked"] };
-    expect(validateDecision(deny, { ...FRESH, originalArguments: ARGS })).toEqual(deny);
+    expect(validateDecision(deny, { ...FRESH, modificationDocument: ARGS })).toEqual(deny);
   });
 
   // An arriving deny is honoured. There is no path in this
   // module that can turn one into anything else.
   it("never rewrites a deny", () => {
     for (const elapsed of [0, 1, 1_000_000]) {
-      expect(validateDecision({ decision: "deny", reasoning: "r" }, { elapsedMs: elapsed, originalArguments: ARGS }).decision)
+      expect(validateDecision({ decision: "deny", reasoning: "r" }, { elapsedMs: elapsed, modificationDocument: ARGS }).decision)
         .toBe("deny");
     }
   });
@@ -463,7 +463,7 @@ describe("validateDecision — the result gate projects the applied document ont
     },
     outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
   };
-  /** The result payload the pointer below addresses -- what `modificationTarget`
+  /** The result payload the pointer below addresses -- what `modificationDocument`
    * answers for a result envelope, and NOT an arguments bag. */
   const RESULT_DOCUMENT = { tool: { name: "Bash" }, exit_status: "success", outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] };
   const REDACT = {
@@ -475,8 +475,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("lands the applied leaf in `applied_output`, a clone of `within` with every sibling intact", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: OUTPUT_TARGET,
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: OUTPUT_TARGET,
     });
 
     expect(out.decision).toBe("modify");
@@ -495,7 +495,7 @@ describe("validateDecision — the result gate projects the applied document ont
   });
 
   it("does not mutate the payload the host handed us", () => {
-    validateDecision(REDACT, { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET });
+    validateDecision(REDACT, { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET });
 
     expect(OUTPUT_TARGET.payload.tool_response.stdout).toBe("TOKEN=ghp_ABCDEF123456");
   });
@@ -508,8 +508,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("denies, rather than throwing, when the replacement is not a shape the host's own leaf admits", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: {
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: {
         payload: { tool_response: { stdout: 42, stderr: "" } },
         outputs: OUTPUT_TARGET.outputs,
       },
@@ -544,7 +544,7 @@ describe("validateDecision — the result gate projects the applied document ont
         reasoning: "redaction_applied",
         modifications: { redactions: [{ path: "/outputs/0/value", replacement: 42 }] },
       },
-      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
     );
 
     expect(out.decision).toBe("deny");
@@ -567,8 +567,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("type-checks the field it patches, not one a re-parsed path resolves to", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: {
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: {
         payload: { tool_response: { raw: "prose", $raw: false } },
         outputs: { from: "$.tool_response.$raw", within: "$.tool_response" },
       },
@@ -589,8 +589,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("refuses a path pair where `within` is not a leading part of `from`", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: {
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: {
         payload: { tool_response: { stdout: "TOKEN=ghp_ABCDEF123456" }, other: { stdout: "x" } },
         outputs: { from: "$.other.stdout", within: "$.tool_response" },
       },
@@ -610,8 +610,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("denies a rewrite whose hookmap path names a prototype segment rather than a field", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: {
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: {
         payload: { tool_response: { stdout: "TOKEN=ghp_ABCDEF123456" } },
         outputs: { from: "$.tool_response.__proto__", within: "$.tool_response" },
       },
@@ -629,8 +629,8 @@ describe("validateDecision — the result gate projects the applied document ont
   it("denies a rewrite whose leaf the host payload does not have", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
-      originalArguments: RESULT_DOCUMENT,
-      outputTarget: { payload: { tool_response: { stderr: "" } }, outputs: OUTPUT_TARGET.outputs },
+      modificationDocument: RESULT_DOCUMENT,
+      outputLocation: { payload: { tool_response: { stderr: "" } }, outputs: OUTPUT_TARGET.outputs },
     });
 
     expect(out.decision).toBe("deny");
@@ -661,7 +661,7 @@ describe("validateDecision — the result gate projects the applied document ont
     it(`denies a rewrite that lands somewhere the host cannot be handed: ${JSON.stringify(modifications)}`, () => {
       const out = validateDecision(
         { decision: "modify", reasoning: "redaction_applied", modifications },
-        { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+        { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
       );
 
       expect(out.decision).toBe("deny");
@@ -690,7 +690,7 @@ describe("validateDecision — the result gate projects the applied document ont
         reasoning: "redaction_applied",
         modifications: { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=ghp_ABCDEF123456" }] },
       },
-      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
     );
 
     expect(out.decision).toBe("deny");
@@ -717,7 +717,7 @@ describe("validateDecision — the result gate projects the applied document ont
         reasoning: "redaction_applied",
         modifications: { parameter_overrides: { outputs: [{ value: "TOKEN=[REDACTED]" }] } },
       },
-      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
     );
     expect(landed.decision).toBe("modify");
     expect(landed.applied_output).toEqual({
@@ -733,7 +733,7 @@ describe("validateDecision — the result gate projects the applied document ont
         reasoning: "redaction_applied",
         modifications: { parameter_overrides: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] } },
       },
-      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
     );
     expect(unchanged.decision).toBe("deny");
     expect(unchanged.reason_codes).toContain("modifications_invalid");
@@ -765,7 +765,7 @@ describe("validateDecision — the result gate projects the applied document ont
     it(`reports applied for a bundle whose non-leaf half is dropped (recorded, not closed): ${JSON.stringify(modifications)}`, () => {
       const out = validateDecision(
         { decision: "modify", reasoning: "redaction_applied", modifications },
-        { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+        { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
       );
 
       expect(out.decision).toBe("modify");
@@ -788,7 +788,7 @@ describe("validateDecision — the result gate projects the applied document ont
   it("denies a modified_content result modification, naming the outputs as well as the arguments", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { modified_content: "wholesale replacement" } },
-      { ...FRESH, originalArguments: RESULT_DOCUMENT, outputTarget: OUTPUT_TARGET },
+      { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
     );
 
     expect(out.decision).toBe("deny");

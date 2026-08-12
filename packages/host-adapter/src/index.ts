@@ -9,9 +9,8 @@
 export {
   buildEnvelope,
   loadHookmap,
-  modificationTarget,
+  modificationDocumentOf,
   toSessionUuid,
-  unwrapArguments,
   type Hookmap,
   type HookmapHookEntry,
   type HookmapOutputs,
@@ -89,14 +88,14 @@ export {
 } from "./failure-posture.ts";
 export { applyModifications, ModificationsInvalidError } from "./modifications.ts";
 // The result gate's replacing output, and the target a caller has to name for
-// one. `HostOutputTarget` is a member type of the exported
+// one. `HostOutputLocation` is a member type of the exported
 // `ValidateDecisionContext`, so a caller that builds a context could not name it
 // through this barrel otherwise -- the same reason `AuditEvent` is above.
 export {
-  appliedOutput,
+  projectAppliedOutput,
   replacingOutput,
   withResultOutput,
   WITHHELD_OUTPUT,
-  type HostOutputTarget,
+  type HostOutputLocation,
 } from "./result-output.ts";
 export { validateDecision, type ValidateDecisionContext } from "./validate-decision.ts";

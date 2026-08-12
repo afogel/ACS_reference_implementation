@@ -17,8 +17,10 @@ intervention_points:
   pre_tool_call:
     # R1.6 -- this leaf's argument name ("command") must agree with
     # mapping.yaml's intervention_points.pre_tool_call.modifications
-    # .policy_target_argument, which is how AGT's transform ($policy_target)
-    # lands as ACS parameter_overrides.
+    # .into_argument, which is how AGT's transform ($policy_target)
+    # lands as ACS parameter_overrides. Derived and checked in
+    # test/path-dialects.test.ts, so the agreement is a failing test rather than
+    # a comment asking a reader to compare two files.
     #
     # That key was under mapping.yaml's field_synthesis until V4 (slice #5),
     # when the synthesis moved per-intervention-point: the same transform is a
@@ -53,16 +55,25 @@ intervention_points:
   post_tool_call:
     # R1.6, the result-gate half (V4, slice #5). This leaf must agree with
     # mapping.yaml's intervention_points.post_tool_call.modifications
-    # .redaction_path, which is how AGT's transform ($policy_target) lands as
+    # .into_path, which is how AGT's transform ($policy_target) lands as
     # an ACS redaction: the two address the SAME leaf in two notations --
     # "$.tool_result.outputs[0].value" here is AGT's JSONPath over the
     # snapshot, "/outputs/0/value" there is the ACS JSON pointer into the
     # result payload the host applies it to. This is the SECOND of the two
     # places mapping.yaml and this file touch, exactly as
-    # policy_target_argument is for the request gate above: change one and the
-    # other is wrong, and nothing in either file can tell.
+    # into_argument is for the request gate above: change one and the
+    # other is wrong, and nothing in either FILE can tell.
     #
-    # What can tell is packages/guardian/test/server.test.ts's result-gate
+    # test/path-dialects.test.ts is what tells (PR #13 review): it derives the
+    # ACS pointer from this JSONPath and fails if the two stop describing one
+    # leaf, for every point mapping.yaml gives a modifications rule. Before it,
+    # the agreement was three comments telling a reader to go and check another
+    # file, which is a tax every new host or gate multiplies. The end-to-end
+    # test below still matters for what it covers, and it is no longer the only
+    # thing standing between an edit here and a demo that quietly stops
+    # redacting.
+    #
+    # That end-to-end test is packages/guardian/test/server.test.ts's result-gate
     # redaction test: it evaluates through this manifest and asserts the pointer
     # mapping.yaml supplies comes back on the wire, which makes it the only
     # test whose assertion spans both halves. Moving this leaf also fails

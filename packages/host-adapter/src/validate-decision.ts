@@ -51,7 +51,7 @@
 import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { resolveAsk, resolveDefer } from "./decision-expiry.ts";
 import { resolveModify } from "./decision-modify.ts";
-import type { HostOutputTarget } from "./result-output.ts";
+import type { HostOutputLocation } from "./result-output.ts";
 
 export type { ValidatedAcsDecision };
 
@@ -69,13 +69,13 @@ export type ValidateDecisionContext = {
    *
    * Named for the gate that decides whether a step RUNS, where the document IS
    * the tool-call arguments that went out on the wire -- `buildEnvelope`'s
-   * `modificationTarget` answers with exactly those there. At a gate that sees
+   * `modificationDocumentOf` answers with exactly those there. At a gate that sees
    * what a step PRODUCED the pointers address the result payload instead
    * (`/outputs/0/value` names nothing in an arguments bag; there isn't one at
-   * that step), so that is the document, and `outputTarget` below is what
+   * that step), so that is the document, and `outputLocation` below is what
    * carries the applied result the rest of the way.
    */
-  originalArguments: Record<string, unknown>;
+  modificationDocument: Record<string, unknown>;
   /**
    * Present only at a gate whose ACS payload is a PROJECTION of an output object
    * the host already holds -- i.e. a result gate. It says where to project the
@@ -87,7 +87,7 @@ export type ValidateDecisionContext = {
    * is a tool input, a projected output object is a tool result. See
    * `ValidatedAcsDecision`.
    */
-  outputTarget?: HostOutputTarget;
+  outputLocation?: HostOutputLocation;
 };
 
 /**
@@ -99,11 +99,11 @@ export type ValidateDecisionContext = {
  * the pass-through branch untouched.
  */
 export function validateDecision(decision: AcsDecision, context: ValidateDecisionContext): ValidatedAcsDecision {
-  const { elapsedMs, originalArguments, outputTarget } = context;
+  const { elapsedMs, modificationDocument, outputLocation } = context;
 
   switch (decision.decision) {
     case "modify":
-      return resolveModify(decision, originalArguments, outputTarget);
+      return resolveModify(decision, modificationDocument, outputLocation);
 
     case "ask":
       return resolveAsk(decision, elapsedMs);

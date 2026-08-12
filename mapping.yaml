@@ -44,32 +44,42 @@ intervention_points:
     # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
     # as modifications.parameter_overrides keyed by argument name, per
     # modifications.json ("Replacement values for tool call arguments, keyed by
-    # argument name"). policy_target_argument names which key, and must agree
-    # with policy/manifest.yaml's pre_tool_call policy_target -- this is one of
-    # the two places the two files touch.
+    # argument name"). into_argument names which key, and must agree with
+    # policy/manifest.yaml's pre_tool_call policy_target -- this is one of the
+    # two places the two files touch, and the agreement is CHECKED rather than
+    # asked for: test/path-dialects.test.ts derives this value from that one and
+    # fails if either moves. That check is why this comment no longer ends by
+    # telling a reader to go and compare three files by hand.
     modifications:
       from: verdict.transform
       when_path: "$policy_target"
       into: parameter_overrides
-      policy_target_argument: command
+      into_argument: command
   post_tool_call:
     acs_method: "steps/toolCallResult"
     # AGT's redact rule returns the FULLY substituted text (verified against
     # the pinned bundle), so `replacement` carries the finished string, not a
     # marker the host would have to interpret.
     #
-    # redaction_path is the ACS JSON pointer for the same leaf this point's
+    # into_path is the ACS JSON pointer for the same leaf this point's
     # policy_target addresses: policy/manifest.yaml declares
     # policy_target: "$.tool_result.outputs[0].value", and the pointer into the
     # result payload for that leaf is "/outputs/0/value". That agreement is the
     # SECOND of the two places mapping.yaml and policy/manifest.yaml touch,
-    # exactly as policy_target_argument is for the request gate above: change
-    # one and the other is wrong.
+    # exactly as into_argument is for the request gate above -- and, like that
+    # one, it is derived and checked in test/path-dialects.test.ts rather than
+    # left to whoever edits one file remembering the other.
+    #
+    # The HOST's own dialect (the hookmap's outputs.from, "$.tool_response
+    # .stdout") is deliberately NOT derived from either: it addresses the host's
+    # payload, whose shape this project does not define. Absorbing that
+    # difference is what the hookmap is for and why the same adapter serves a
+    # second host.
     modifications:
       from: verdict.transform
       when_path: "$policy_target"
       into: redactions
-      redaction_path: "/outputs/0/value"
+      into_path: "/outputs/0/value"
   agent_startup: { acs_method: "steps/sessionStart" }
   agent_shutdown: { acs_method: "steps/sessionEnd" }
   input: { acs_method: "steps/userMessage" }

@@ -240,7 +240,7 @@ describe("renderDecision", () => {
   // two names stop agreeing.
   it("loads the real hookmap and renders a modify with updatedInput carrying the applied arguments", () => {
     const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
-    const originalArguments = { command: "echo ghp_SECRET123456" };
+    const modificationDocument = { command: "echo ghp_SECRET123456" };
 
     const validated = validateDecision(
       {
@@ -248,7 +248,7 @@ describe("renderDecision", () => {
         reasoning: "redaction_applied",
         modifications: { parameter_overrides: { command: "echo [REDACTED]" } },
       },
-      { elapsedMs: 10, originalArguments },
+      { elapsedMs: 10, modificationDocument },
     );
 
     const rendered = renderDecision("PreToolUse", validated, real);

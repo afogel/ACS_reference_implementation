@@ -1042,7 +1042,7 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     //
     // Each half is separately covered; neither cover is the AGREEMENT. Both
     // measured by mutation rather than assumed:
-    //   - Move mapping.yaml's redaction_path and mapVerdict's unit tests fail
+    //   - Move mapping.yaml's into_path and mapVerdict's unit tests fail
     //     as well -- they pin that pointer against the real mapping file.
     //   - Move this manifest's policy_target and every mapVerdict unit test
     //     still passes: they never read the manifest. Three other tests do fail
@@ -1072,7 +1072,7 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     // reader then has to trace back across the wire.
     //
     // Neither mutation described above isolates these lines. Moving
-    // mapping.yaml's redaction_path fails mapVerdict's unit tests too, so it
+    // mapping.yaml's into_path fails mapVerdict's unit tests too, so it
     // shows nothing this test adds; moving the manifest's policy_target fails
     // this test at the `decision === "modify"` assertion, which predates it.
     // The mutation that isolates them: hardcode "pre_tool_call" into

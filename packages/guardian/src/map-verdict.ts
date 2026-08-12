@@ -45,6 +45,13 @@ type WrapMode = "array";
  * nothing, so `into` is still read from the mapping (not hardcoded) and
  * checked at synthesis time against the values this mapping can express.
  *
+ * ONE STEM FOR "WHERE THE REWRITE LANDS" (PR #13 review). The two members'
+ * land fields were `policy_target_argument` and `redaction_path` -- two
+ * unrelated nouns for one slot, neither of which said it was the slot. They are
+ * `into_argument` and `into_path` now, so `into` reads as the discriminant it is
+ * and the field beside it says which thing of that shape, in the same words on
+ * both rows.
+ *
  * V4 widened this from a single member to two the way that constraint requires
  * -- by adding a member and a CHECKED value for it, never by casting an
  * arbitrary `into` into the output key. `modified_content`, §6.3's third and
@@ -56,7 +63,8 @@ type ModificationsRule =
       when_path: string;
       /** The request gate rewrites a tool ARGUMENT, named by the mapping. */
       into: "parameter_overrides";
-      policy_target_argument: string;
+      /** Which argument. */
+      into_argument: string;
     }
   | {
       from: string;
@@ -64,7 +72,8 @@ type ModificationsRule =
       /** The result gate rewrites the result payload's own leaf, addressed by
        * an ACS JSON pointer the mapping supplies. */
       into: "redactions";
-      redaction_path: string;
+      /** Which leaf. */
+      into_path: string;
     };
 
 /** One row of mapping.yaml's intervention_points table. `modifications` is
@@ -235,7 +244,7 @@ function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: s
   // mapping actually declared without casting a checked value back out.
   const declaredInto: string = rule.into;
   if (rule.into === "parameter_overrides") {
-    return { [rule.into]: { [rule.policy_target_argument]: transform.value } };
+    return { [rule.into]: { [rule.into_argument]: transform.value } };
   }
   if (rule.into === "redactions") {
     // ACS's redaction `replacement` is a string (modifications.json), and
@@ -249,7 +258,7 @@ function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: s
           `${rule.from}.value is ${typeof transform.value}`,
       );
     }
-    return { [rule.into]: [{ path: rule.redaction_path, replacement: transform.value }] };
+    return { [rule.into]: [{ path: rule.into_path, replacement: transform.value }] };
   }
   throw new Error(
     `mapping.yaml declares intervention_points.${point}.modifications.into as ` +

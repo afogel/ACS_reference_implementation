@@ -7,7 +7,7 @@ import {
   buildEnvelope,
   loadHookmap,
   toSessionUuid,
-  unwrapArguments,
+  modificationDocumentOf,
   type Hookmap,
   type HookmapHookEntry,
 } from "../src/build-envelope.ts";
@@ -334,19 +334,87 @@ describe("buildEnvelope", () => {
     });
   });
 
-  describe("unwrapArguments", () => {
+  // `modificationDocumentOf`, not `unwrapArguments` (PR #13 review). The
+  // unwrapping verb is module-private now and takes a request payload, so the
+  // shape these used to pin -- an envelope with no arguments answered with the
+  // empty bag -- is unrepresentable rather than merely discouraged. What is
+  // public, and what apply work goes through, is the document collaborator.
+  // PR #13 review, Important. The hookmap path language had two resolvers: one
+  // here with no reserved-segment guard, and one in result-output.ts with the
+  // guard, whose own comment called itself "the third place in this codebase to
+  // need it and the first without". They are one collaborator now
+  // (hookmap-path.ts), so the guard is a property of the notation rather than of
+  // whichever module last remembered it.
+  //
+  // The failure this closes on THIS side is not a crash. `$.tool_input.__proto__`
+  // resolves through INHERITED lookup, so it satisfies every "is it present?"
+  // check and answers with `Object.prototype` -- which buildEnvelope then walks
+  // as if it were the tool's own argument bag, putting prototype members on the
+  // wire as ACS arguments. Measured before the fix: an envelope whose
+  // `arguments` carried the prototype's members, sent to a Guardian, and
+  // governed as though the tool had asked for them.
+  describe("a hookmap path naming a reserved segment", () => {
+    const reserved = (path: string): Hookmap => ({
+      ...hookmap,
+      hooks: {
+        ...hookmap.hooks,
+        PreToolUse: {
+          acs_method: "steps/toolCallRequest",
+          tool_name: "$.tool_name",
+          arguments: path,
+          decisions: PRE_TOOL_USE_DECISIONS,
+        },
+      },
+    });
+
+    it("throws rather than resolving through the prototype chain", () => {
+      expect(() => buildEnvelope("PreToolUse", preToolUsePayload, reserved("$.tool_input.__proto__"))).toThrow(
+        /reserved segment "__proto__"/,
+      );
+    });
+
+    it("refuses the other two beside it", () => {
+      for (const segment of ["prototype", "constructor"]) {
+        expect(() => buildEnvelope("PreToolUse", preToolUsePayload, reserved(`$.tool_input.${segment}`))).toThrow(
+          /addresses no field a host or tool produced/,
+        );
+      }
+    });
+
+    it("still resolves an ordinary path", () => {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload, reserved("$.tool_input"));
+      expect(envelope.params.payload.arguments).toEqual({
+        command: { value: "rm -rf /" },
+        description: { value: "clean up" },
+      });
+    });
+  });
+
+  describe("modificationDocumentOf", () => {
     it("unwraps the {value, provenance?} shape buildEnvelope just wrote, keyed by argument name", () => {
       const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
       const envelope = buildEnvelope("PreToolUse", preToolUsePayload, parsed);
 
-      expect(unwrapArguments(envelope)).toEqual({ command: "rm -rf /", description: "clean up" });
+      expect(modificationDocumentOf(envelope)).toEqual({ command: "rm -rf /", description: "clean up" });
     });
 
-    it("returns an empty object for an envelope with no arguments", () => {
+    it("answers the empty bag for a request envelope that genuinely carries no arguments", () => {
       const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
       const envelope = buildEnvelope("PreToolUse", { ...preToolUsePayload, tool_input: {} }, parsed);
 
-      expect(unwrapArguments(envelope)).toEqual({});
+      expect(modificationDocumentOf(envelope)).toEqual({});
+    });
+
+    it("does not reach back into the envelope it read", () => {
+      // Global Constraint 4: the apply step reads this document, and an
+      // envelope is also what the audit and envelope logs record.
+      const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload, parsed);
+
+      const document = modificationDocumentOf(envelope);
+      document.command = "mutated";
+
+      expect(envelope.params.payload.arguments?.command).toEqual({ value: "rm -rf /" });
     });
   });
 
@@ -394,19 +462,23 @@ describe("buildEnvelope", () => {
       expect(envelope.params.payload.arguments).toEqual({ command: { value: "ls" } });
     });
 
-    // Review finding: the early return in `unwrapArguments` that answers a
-    // result payload had no test at all, and the two that exist both feed it a
-    // PreToolUse envelope. Deleting the guard left the whole suite green while
-    // `Object.entries(undefined)` throws -- and it throws inside governStep's
-    // "delivery" try, which answers a throw with the deployment's failure
-    // posture. So the untested guard was the difference between a step going on
-    // to ask for a decision and a step resolved by posture without ever asking,
-    // which under a `proceed` posture is the fail-open the guard exists to
-    // close. Mutation-tested: with the early return removed, this case fails.
-    it("unwrapArguments answers the empty bag for a result envelope, which has no `arguments` member to unwrap", () => {
+    // The document a result-gate pointer is resolved against is the result
+    // PAYLOAD, never an arguments bag. `/outputs/0/value` names nothing in one,
+    // and there are no arguments at this step -- so answering with the empty
+    // bag, which is what the old `unwrapArguments` did here, made every
+    // result-gate `modify` fail closed as `deny(modifications_invalid)`: a deny
+    // where a redaction was asked for, which is the one thing this gate exists
+    // to do. That branch is now unrepresentable rather than tested against
+    // (PR #13 review): the unwrapping verb takes a request payload and does not
+    // compile for this envelope. This pins the answer that replaced it.
+    it("answers with the result payload itself, which is what a result-gate pointer addresses", () => {
       const envelope = buildEnvelope("PostToolUse", payload, hookmap);
 
-      expect(unwrapArguments(envelope)).toEqual({});
+      const document = modificationDocumentOf(envelope);
+
+      expect(document).toEqual(envelope.params.payload as unknown as Record<string, unknown>);
+      expect(document.outputs).toBeDefined();
+      expect(document).not.toBe(envelope.params.payload);
     });
 
     // Review finding: every case above builds against the hand-written fixture,

@@ -32,6 +32,7 @@
  * without being read, which is exactly what lets a second host reuse it.
  */
 import type { HookmapOutputs } from "./build-envelope.ts";
+import { pathSegments, resolvePath, resolveSegments } from "./hookmap-path.ts";
 import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 
 /**
@@ -41,8 +42,15 @@ import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
  * Both members together, because neither is usable alone -- the paths say where
  * to look and the payload is what they are resolved against, and a caller
  * holding one without the other could not build a replacement at all.
+ *
+ * `HostOutputLocation`, not `HostOutputTarget` (PR #13 review). "Target" was
+ * doing three jobs on one path -- the ACS document modifications apply to, this
+ * host-side pair, and §6.3's own pointer targets -- so a reader met the word
+ * three times meaning three things. The ACS side is now
+ * `modificationDocumentOf`, this is a LOCATION (where the host keeps the output,
+ * and how to address it), and "target" is left to mean what §6.3 means by it.
  */
-export type HostOutputTarget = {
+export type HostOutputLocation = {
   /** The raw host payload the hook was invoked with. */
   payload: Record<string, unknown>;
   /** S1's `outputs` block for the hook that asked. */
@@ -73,81 +81,6 @@ const DENY = "deny";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Path segments that address a JavaScript object's prototype machinery rather
- * than a field a tool actually produced -- the same set, for the same reason, as
- * modifications.ts's and render-decision.ts's.
- *
- * This is the third place in this codebase to need the guard and was the first
- * without it. `outputs.from: $.tool_response.__proto__` resolves through
- * INHERITED lookup, so it satisfies every check both sides make -- `within` is an
- * object, the path extends it, and the leaf is "present" -- and then
- * `clone["__proto__"] = replacement` sets a prototype instead of creating an own
- * property. The clone comes back byte-identical to the payload, the decision
- * reports an applied rewrite, and nothing withheld anything: reported-as-applied
- * with nothing applied, which is the defect class this module exists to close.
- *
- * Nothing is reachable today -- for a prose replacement the leaf's `typeof`
- * (`object` for `__proto__`, `function` for `constructor`) fails the comparison
- * in `replacingOutput` first, and `assertOutputIsReplaceable` now runs that
- * comparison before any decision is sought. That is a guard holding by
- * coincidence of another guard's shape, which is exactly how the two places that
- * already have this one describe what they are for.
- */
-const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
-
-/** JSONPath-lite (`$.foo.bar`) split into its field names -- the same notation
- * and the same leading-`$` tolerance `buildEnvelope` resolves. */
-function pathSegments(path: string): string[] {
-  const segments = path
-    .replace(/^\$\.?/, "")
-    .split(".")
-    .filter(Boolean);
-  for (const segment of segments) {
-    if (RESERVED_SEGMENTS.has(segment)) {
-      throw new Error(
-        `result-output: hookmap path ${JSON.stringify(path)} names the reserved segment ` +
-          `${JSON.stringify(segment)}, which addresses no field a tool produced -- a replacement patched at one ` +
-          `would set a prototype rather than the field, and report a rewrite that changed nothing`,
-      );
-    }
-  }
-  return segments;
-}
-
-/**
- * Walks ALREADY-SPLIT segments through an object. Everything that reads a value
- * out of a payload here goes through this, and nothing re-joins segments into a
- * path to look one up again.
- *
- * WHY THAT IS A RULE AND NOT A PREFERENCE. This function used to be reached by
- * `resolve(container, segments.join("."))`, which re-parses -- and `pathSegments`
- * strips a leading `$`, because a hookmap path may start with one. So a leaf
- * segment of `$raw` was READ as `raw` while `patchedClone` still PATCHED `$raw`:
- * the type check inspected one field and the replacement landed in another.
- * Measured with `from: $.tool_response.$raw`, `within: $.tool_response` and a
- * payload carrying both `{raw: "prose", $raw: false}`, the guard passed on the
- * string and the built replacement put prose where a boolean was -- exactly the
- * shape the host discards while delivering the original, produced by the check
- * that exists to prevent it. A round trip through the string form is a second
- * parse, and two parses of one path are two paths.
- */
-function resolveSegments(root: Record<string, unknown>, segments: string[]): unknown {
-  let current: unknown = root;
-  for (const segment of segments) {
-    if (!isPlainObject(current)) {
-      return undefined;
-    }
-    current = current[segment];
-  }
-  return current;
-}
-
-/** One hookmap path, parsed once and resolved against a payload. */
-function resolve(payload: Record<string, unknown>, path: string): unknown {
-  return resolveSegments(payload, pathSegments(path));
 }
 
 /**
@@ -230,8 +163,8 @@ function patchedClone(
  * decision is sought, so no failure here can reach a gate that is already holding
  * one.
  */
-export function replacingOutput(target: HostOutputTarget, replacement: unknown): Record<string, unknown> {
-  const { payload, outputs } = target;
+export function replacingOutput(location: HostOutputLocation, replacement: unknown): Record<string, unknown> {
+  const { payload, outputs } = location;
 
   // The two paths first, the payload after -- `buildEnvelope`'s own ordering, for
   // its own reason: a malformed pair of paths is a hookmap fault and an
@@ -258,7 +191,7 @@ export function replacingOutput(target: HostOutputTarget, replacement: unknown):
     );
   }
 
-  const container = resolve(payload, outputs.within);
+  const container = resolvePath(payload, outputs.within);
   if (!isPlainObject(container)) {
     throw new Error(
       `result-output: hookmap path ${JSON.stringify(outputs.within)} does not resolve to an object in this ` +
@@ -324,13 +257,22 @@ export function replacingOutput(target: HostOutputTarget, replacement: unknown):
  * patch, so what is checked is the very projection that would be performed. The
  * clone is discarded -- the answer is in whether it could be made.
  */
-export function assertOutputIsReplaceable(target: HostOutputTarget): void {
-  replacingOutput(target, WITHHELD_OUTPUT);
+export function assertOutputIsReplaceable(location: HostOutputLocation): void {
+  replacingOutput(location, WITHHELD_OUTPUT);
 }
 
 /**
  * The applied ACS result payload, projected onto the host's own output object:
  * §6.3's rewrite, landed where the host reads it.
+ *
+ * `projectAppliedOutput`, not `appliedOutput` (PR #13 review). The old name was
+ * the FIELD it fills -- `ValidatedAcsDecision.applied_output` -- while the
+ * function projects the applied document onto the host's shape and then asks
+ * whether the rewrite reached the leaf at all. Its sibling `applyModifications`
+ * already means "apply §6.3", so two functions shared a stem while doing
+ * different jobs, and neither name said which. The verb here is the projection;
+ * the landing check is the question the projection has to answer before it can
+ * claim to have landed, which is why it stays inside rather than beside.
  *
  * The leaf is read back from `outputs[0].value` -- the one place `buildEnvelope`
  * put it, from the same `outputs.from` path this projects it back through. The
@@ -410,9 +352,9 @@ export function assertOutputIsReplaceable(target: HostOutputTarget): void {
  * over-refusal on the safe side, deliberately, and the same side as the
  * preflight's.
  */
-export function appliedOutput(
+export function projectAppliedOutput(
   appliedDocument: Record<string, unknown>,
-  target: HostOutputTarget,
+  location: HostOutputLocation,
 ): Record<string, unknown> {
   const outputs = appliedDocument.outputs;
   const first = Array.isArray(outputs) ? (outputs[0] as unknown) : undefined;
@@ -429,8 +371,8 @@ export function appliedOutput(
   // those failing is a different incident from a rewrite that went somewhere
   // this gate cannot carry -- so it gets to speak first, on the same reasoning
   // this module already orders its own checks by.
-  const replacement = replacingOutput(target, first.value);
-  if (first.value === resolve(target.payload, target.outputs.from)) {
+  const replacement = replacingOutput(location, first.value);
+  if (first.value === resolvePath(location.payload, location.outputs.from)) {
     throw new Error(
       `result-output: applying these modifications left "outputs[0].value" -- the one leaf of the ACS result ` +
         `payload this gate can carry back to the host -- exactly as the step produced it, so the replacement ` +
@@ -459,14 +401,14 @@ export function appliedOutput(
  *   - `modify` is checked, not changed. Its replacement was built by N7's apply
  *     step, and a `modify` reaching a render without one would render an empty
  *     wrapper too -- a rewrite reported and never applied, R1.6's own failure.
- *     Unreachable while `validateDecision` is given this gate's target, which is
+ *     Unreachable while `validateDecision` is given this gate's location, which is
  *     why it is a throw and not a repair.
  *
  *     THE TWO HALVES ARE NOT GUARDED THE SAME WAY, and the asymmetry is worth
  *     knowing. The deny above cannot fail to build its replacement, structurally:
  *     `assertOutputIsReplaceable` establishes that before any decision is sought.
  *     This one rests on a call-site invariant instead -- that whoever hands this
- *     function a target handed `validateDecision` the same one -- and if that ever
+ *     function a location handed `validateDecision` the same one -- and if that ever
  *     broke, this throw would land in the render stage's catch and a delivery
  *     posture would answer a rewrite, which is exactly the shape the deny half no
  *     longer has. Left stated rather than closed: telling it apart from a
@@ -477,16 +419,16 @@ export function appliedOutput(
  *     replacement at all: the output is delivered as the tool produced it, and an
  *     unnecessary replacement is a chance to get the shape wrong for no benefit.
  *
- * `target` is `undefined` at a gate that decides whether a step RUNS. Nothing is
+ * `location` is `undefined` at a gate that decides whether a step RUNS. Nothing is
  * withheld there -- the step's own output does not exist yet -- so every decision
  * passes through.
  */
-export function withResultOutput(decision: AcsDecision, target: HostOutputTarget | undefined): AcsDecision {
-  if (target === undefined) {
+export function withResultOutput(decision: AcsDecision, location: HostOutputLocation | undefined): AcsDecision {
+  if (location === undefined) {
     return decision;
   }
   if (decision.decision === DENY) {
-    return { ...decision, applied_output: replacingOutput(target, WITHHELD_OUTPUT) } satisfies ValidatedAcsDecision;
+    return { ...decision, applied_output: replacingOutput(location, WITHHELD_OUTPUT) } satisfies ValidatedAcsDecision;
   }
   if (decision.decision === "modify" && (decision as ValidatedAcsDecision).applied_output === undefined) {
     throw new Error(

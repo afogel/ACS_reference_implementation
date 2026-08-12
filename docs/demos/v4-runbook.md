@@ -213,9 +213,14 @@ agree on:
   entry at the result gate, because they are editing different documents. A point with no
   `modifications` rule cannot express a transform at all, and `mapVerdict` throws rather than
   answering with a `modify` the host has nothing to apply.
-- **`/outputs/0/value`** is `mapping.yaml`'s `redaction_path`, and it addresses the same leaf
-  `policy/manifest.yaml:72`'s `policy_target: "$.tool_result.outputs[0].value"` names in AGT's
-  own notation. Change one and the other is wrong; nothing in either file can tell.
+- **`/outputs/0/value`** is `mapping.yaml`'s `into_path`, and it addresses the same leaf
+  `policy/manifest.yaml`'s `policy_target: "$.tool_result.outputs[0].value"` names in AGT's
+  own notation. Change one and the other is wrong, and nothing in either *file* can tell —
+  [`test/path-dialects.test.ts`](../../test/path-dialects.test.ts) is what tells, deriving the
+  ACS pointer from the AGT JSONPath for every gated point and failing if they stop describing
+  one leaf. The host's own dialect (`$.tool_response.stdout`, in the hookmap) is deliberately
+  not derived from either: it addresses a document this project does not define, and absorbing
+  that difference is what the hookmap is for.
 - **No `reasoning`.** Not an elision — the field is genuinely absent, and that is the gap
   recorded below.
 

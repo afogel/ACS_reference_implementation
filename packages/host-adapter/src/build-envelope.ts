@@ -11,6 +11,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { resolvePath } from "./hookmap-path.ts";
 
 /**
  * A hookmap value the host sent no field for: the constant this hook always
@@ -280,33 +281,44 @@ export function loadHookmap(path: string): Hookmap {
 /**
  * Unwraps ACS's `{value, provenance?}` argument shape back into a plain
  * `{argName: value}` bag -- the same values `buildEnvelope` just put on the
- * wire. Knowledge of the ACS argument wrapper belongs here, next to the
- * type that defines it, not duplicated in every host shim that needs the
- * unwrapped form (e.g. to hand a `modify` decision's `parameter_overrides`
- * something to apply against, per N7's `validateDecision`).
+ * wire. Knowledge of the ACS argument wrapper belongs here, next to the type
+ * that defines it, not duplicated in every host shim that needs the unwrapped
+ * form.
  *
- * A result payload has no arguments to unwrap -- `arguments` is a member of the
- * request payload alone -- so it unwraps to the empty bag. That is a fact about
- * the payload shape, not a failure: throwing here would hand a caller an
- * exception for an envelope it built correctly, and a caller answering
- * exceptions with a failure posture would then resolve a perfectly good step by
- * posture instead of by the decision it was about to go and ask for.
+ * TAKES A REQUEST PAYLOAD, AND ONLY A REQUEST PAYLOAD (PR #13 review). It used
+ * to take a whole envelope and answer the empty bag for a result one, on the
+ * reasoning that a result payload has no arguments and that this is a fact
+ * rather than a failure. The fact is true; the empty bag was the problem. Handed
+ * to the apply step it made every result-gate `modify` fail closed as
+ * `deny(modifications_invalid)` -- a deny where a redaction was asked for, which
+ * is the one thing the result gate exists to do -- and it did so silently,
+ * because an empty bag is a perfectly good value. `modificationDocumentOf` below
+ * is the safe collaborator and the only one apply work goes through.
+ *
+ * So the shape that produced that answer is now unrepresentable rather than
+ * discouraged: the parameter is the request payload, `AcsToolCallResultPayload`
+ * declares `arguments?: never`, and a caller reaching here with the wrong one
+ * does not compile. It is not exported from the package barrel either -- leaving
+ * the old verb on the public surface, beside a safe one, is how the next caller
+ * picks the wrong one.
  */
-export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, unknown> {
-  const { payload } = envelope.params;
-  if (payload.arguments === undefined) {
-    return {};
-  }
-  const originalArguments: Record<string, unknown> = {};
+function unwrapArguments(payload: AcsToolCallRequestPayload): Record<string, unknown> {
+  const unwrapped: Record<string, unknown> = {};
   for (const [key, argument] of Object.entries(payload.arguments)) {
-    originalArguments[key] = argument.value;
+    unwrapped[key] = argument.value;
   }
-  return originalArguments;
+  return unwrapped;
 }
 
 /**
  * The ACS-side document a decision's §6.3 `modifications` pointers address --
  * for whichever of the two payload shapes this envelope carries.
+ *
+ * `modificationDocument`, not `modificationDocument` (PR #13 review): "target" was
+ * doing three jobs on one path -- this function, the host-side output location,
+ * and §6.3's own pointer targets -- so a reader met the word three times meaning
+ * three things. What this answers with is a DOCUMENT: the JSON the pointers are
+ * resolved against.
  *
  * A request payload's pointers address its ARGUMENTS: `/env/TOKEN` names an
  * argument field, so the document is the unwrapped bag above and the applied
@@ -315,7 +327,7 @@ export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, un
  * A result payload's pointers address the PAYLOAD ITSELF: the pointer for the
  * leaf that went out is `/outputs/0/value`, which names nothing inside an
  * arguments bag -- there isn't one at this step, and inventing one was never an
- * option (see `unwrapArguments`'s own note). Handing `unwrapArguments`' honest
+ * option (see `unwrapArguments`'s own note). Handing that function's honest
  * empty bag to the apply step made every result-gate `modify` fail closed as
  * `deny(modifications_invalid)`: not a leak, but a deny where a redaction was
  * asked for, which is the one thing the result gate exists to do. So the
@@ -332,29 +344,12 @@ export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, un
  * siblings. Projecting the applied document back onto the host's shape is
  * result-output.ts's job, and the reason `HookmapOutputs.within` is declared.
  */
-export function modificationTarget(envelope: AcsRequestEnvelope): Record<string, unknown> {
+export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<string, unknown> {
   const { payload } = envelope.params;
   if (payload.arguments !== undefined) {
-    return unwrapArguments(envelope);
+    return unwrapArguments(payload);
   }
   return { ...(payload as Record<string, unknown>) };
-}
-
-/**
- * Resolves a JSONPath-lite reference (`$.foo.bar`, or `$` alone) against a
- * raw hook payload. Only dotted field access is supported: every hookmap path
- * is a single top-level field, and nothing here needs array indexing or filters.
- */
-function resolvePath(payload: Record<string, unknown>, path: string): unknown {
-  const segments = path.replace(/^\$\.?/, "").split(".").filter(Boolean);
-  let current: unknown = payload;
-  for (const segment of segments) {
-    if (current === null || typeof current !== "object") {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
 }
 
 /**
