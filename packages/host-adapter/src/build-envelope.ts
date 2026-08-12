@@ -91,6 +91,11 @@ export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
   arguments: string;
   outputs?: never;
   exit_status?: never;
+  // §V5 review, fix round 1, Important 1: a request gate's own paths (`$.tool`,
+  // `$.args`) resolve for every tool a host fires the hook for, so it needs no
+  // scoping -- and, symmetrically with every other exclusive-union member in
+  // this type, must not be given any. See HookmapResultHookEntry.tools.
+  tools?: never;
 };
 
 /** A hook asking after a step ran: builds a tool-call-result payload. */
@@ -103,6 +108,19 @@ export type HookmapResultHookEntry = HookmapHookEntryCommon & {
    * read for a host that reports one (see HookmapFieldRead).
    */
   exit_status: HookmapLiteral | HookmapFieldRead;
+  /**
+   * §V5 review, fix round 1, Important 1: the tool names this result gate's
+   * OWN `outputs`/`exit_status` paths are actually shaped for -- host #2's
+   * hooks fire for every tool with no matcher, and `metadata` is per-tool
+   * (measured on 1.18.15: only `bash` carries `metadata.exit`/`metadata.output`;
+   * `read` carries `preview`, `grep` carries `matches`, and it is a DIFFERENT
+   * mirror per tool, not merely a missing one). Host #1 gets this scoping for
+   * free from its settings.json matcher (`^Bash$`); host #2 has none, so it has
+   * to be declared data instead, honoured by the shim (Task 6). Undeclared
+   * (`undefined`) means "every tool", matching host #1's own hookmap, which
+   * needs no scoping at all because its matcher already provides it.
+   */
+  tools?: string[];
 };
 
 /**
@@ -327,15 +345,60 @@ function assertMirrorsWellFormed(hookmap: Hookmap, path: string): void {
     }
   }
 }
+
+/**
+ * Rejects a hookmap entry whose `tools` is malformed, AT LOAD TIME -- the
+ * same seam `assertMirrorsWellFormed` uses, and for the identical reason: a
+ * throw reached only from `buildEnvelope`/`buildPayload` is caught by
+ * `governStep` and answered with the deployment's NEGOTIATED delivery
+ * posture, which can be `proceed`. A hookmap that provably cannot scope its
+ * own result gate must not get to govern a step anyway; it has to be a hard
+ * stop here, before `governStep` is ever reached.
+ *
+ * §V5 review, fix round 1, Important 1. This task ships the SHAPE check only
+ * -- `tools`, when present, is a non-empty list of non-empty strings.
+ * Whether a given invocation's tool is actually IN that list is Task 6's
+ * concern (the shim honouring it); nothing in this module reads `tools` at
+ * all yet, the same division `outputs.mirrors` has between this file (shape)
+ * and result-output.ts (use).
+ */
+function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
+    if (!isPlainObject(entry)) {
+      continue;
+    }
+    // `?? undefined` for the same YAML reason every other check in this file
+    // uses it: a key written with nothing after it parses to `null`, present
+    // and unusable, not absent.
+    const rawTools = (entry as { tools?: unknown }).tools ?? undefined;
+    if (rawTools === undefined) {
+      continue;
+    }
+    if (
+      !Array.isArray(rawTools) ||
+      rawTools.length === 0 ||
+      rawTools.some((tool) => typeof tool !== "string" || tool.length === 0)
+    ) {
+      throw new Error(
+        `loadHookmap: ${path}'s "hooks.${hookEventName}.tools" is ${JSON.stringify(rawTools)} -- when present, ` +
+          `"tools" must be a non-empty list of non-empty tool-name strings`,
+      );
+    }
+  }
+}
+
+/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
  * assertRenderableDecisions. Also throws if any entry's `outputs.mirrors` is
  * malformed or names a field outside `outputs.within` -- see
- * assertMirrorsWellFormed. */
+ * assertMirrorsWellFormed. Also throws if any entry's `tools` is malformed --
+ * see assertToolsWellFormed. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);
   assertMirrorsWellFormed(hookmap, path);
+  assertToolsWellFormed(hookmap, path);
   return hookmap;
 }
 
@@ -410,6 +473,65 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
 }
 
 /**
+ * `success` / `failure`, per ACS's own enum -- from whichever form this
+ * hook's `exit_status` declares.
+ *
+ * A host that reports a numeric exit code is mapped here, in the adapter,
+ * rather than in the hookmap: the hookmap is data, and "0 means success" is a
+ * fact about process exit codes, not a per-host choice. A host whose gate
+ * genuinely cannot fail (Claude Code's PostToolUse) keeps V4's literal form,
+ * handled by the same function so `buildPayload` has one call site for
+ * either.
+ *
+ * §V5 review, fix round 1, Minor 1: an entry naming BOTH a non-empty `literal`
+ * and a non-empty `from` used to silently prefer `literal` -- the one shape
+ * `buildPayload` refuses everywhere else in this file ("an entry names
+ * exactly one payload shape"). A stale literal left beside a newly added path
+ * would report every step `success` regardless of what the path actually
+ * resolves to, and say nothing. Refused here instead, before either form is
+ * read.
+ *
+ * The malformed/absent case -- neither a non-empty `literal` nor a non-empty
+ * `from` -- throws V4's own pinned message, reworded (Minor 2) to name both
+ * legal forms: a `from`-shaped typo (`fromm:`, say) used to be told to add a
+ * literal, which is not the fix for it.
+ */
+function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<string, unknown>): string {
+  const hasLiteral =
+    isPlainObject(rawExitStatus) && typeof rawExitStatus.literal === "string" && rawExitStatus.literal.length > 0;
+  const hasFrom =
+    isPlainObject(rawExitStatus) && typeof rawExitStatus.from === "string" && rawExitStatus.from.length > 0;
+
+  if (hasLiteral && hasFrom) {
+    throw new Error(
+      `buildEnvelope: hookmap entry for hook "${event}" declares both "exit_status.literal" and ` +
+        `"exit_status.from" -- an entry names exactly one form`,
+    );
+  }
+
+  if (hasLiteral) {
+    return (rawExitStatus as { literal: string }).literal;
+  }
+
+  if (hasFrom) {
+    const from = (rawExitStatus as { from: string }).from;
+    const raw = resolvePath(payload, from);
+    if (raw === undefined) {
+      throw new Error(
+        `buildEnvelope: hookmap path ${JSON.stringify(from)} for hook "${event}"'s "exit_status" resolves to ` +
+          `no value in this payload, so this gate cannot say whether the step succeeded`,
+      );
+    }
+    return raw === 0 || raw === "0" || raw === "success" ? "success" : "failure";
+  }
+
+  throw new Error(
+    `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
+      `"exit_status.literal" or "exit_status.from"`,
+  );
+}
+
+/**
  * The payload half of an envelope, built from whichever of the two shapes the
  * hookmap entry declares.
  *
@@ -426,44 +548,6 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
  * a step it had been described wrongly, rather than the hookmap being reported
  * broken here where it can be fixed.
  */
-/**
- * `success` / `failure`, per ACS's own enum -- from whichever form this
- * hook's `exit_status` declares.
- *
- * A host that reports a numeric exit code is mapped here, in the adapter,
- * rather than in the hookmap: the hookmap is data, and "0 means success" is a
- * fact about process exit codes, not a per-host choice. A host whose gate
- * genuinely cannot fail (Claude Code's PostToolUse) keeps V4's literal form,
- * handled by the same function so `buildPayload` has one call site for
- * either.
- *
- * The malformed/absent case -- neither a non-empty `literal` nor a non-empty
- * `from` -- throws V4's own pinned message unchanged: a hookmap that names
- * neither form is the same fault it always was, not a new one this form
- * introduces.
- */
-function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<string, unknown>): string {
-  if (isPlainObject(rawExitStatus) && typeof rawExitStatus.literal === "string" && rawExitStatus.literal.length > 0) {
-    return rawExitStatus.literal;
-  }
-
-  if (isPlainObject(rawExitStatus) && typeof rawExitStatus.from === "string" && rawExitStatus.from.length > 0) {
-    const raw = resolvePath(payload, rawExitStatus.from);
-    if (raw === undefined) {
-      throw new Error(
-        `buildEnvelope: hookmap path ${JSON.stringify(rawExitStatus.from)} for hook "${event}"'s "exit_status" ` +
-          `resolves to no value in this payload, so this gate cannot say whether the step succeeded`,
-      );
-    }
-    return raw === 0 || raw === "0" || raw === "success" ? "success" : "failure";
-  }
-
-  throw new Error(
-    `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
-      `"exit_status.literal"`,
-  );
-}
-
 function buildPayload(
   event: string,
   payload: Record<string, unknown>,

@@ -6,11 +6,25 @@
 # Every path below was MEASURED against OpenCode 1.18.15 with a probe plugin,
 # not read off its published types -- where the two disagree, the measurement
 # wins. See Task 3's brief for the measurements themselves.
+#
+# `reason.text` IS CURRENTLY INERT ON THIS HOST. It is declared at every
+# disposition below because an empty `output` block fails
+# `assertRenderableDecisions` -- the field is structurally required, not
+# functionally wired. OpenCode's hooks return `void` and expose no field this
+# host reads an explanation back from; the one channel that DOES carry text is
+# the thrown message on a request-gate deny (see `refuse.reason` below). So a
+# rewrite's or a redaction's reasoning has nowhere to land on this host yet.
+# Task 4 either names a real sink for it or keeps it declared-inert
+# deliberately -- this is stated here so it does not silently look wired.
 host: opencode
 hooks:
   # The request gate. OpenCode hands the plugin `{tool, sessionID, callID}` and a
   # mutable `{args}`; the shim (Task 4) assembles those into one payload object so
   # these paths have something to resolve against.
+  #
+  # No `tools:` here, and none belongs here -- see the result gate's own
+  # comment on why IT needs one. This gate's paths ($.tool, $.args) resolve for
+  # every tool OpenCode fires the hook for, so it governs everything.
   tool.execute.before:
     acs_method: steps/toolCallRequest
     tool_name: $.tool
@@ -42,6 +56,20 @@ hooks:
   tool.execute.after:
     acs_method: steps/toolCallResult
     tool_name: $.tool
+    # SCOPED TO bash ONLY, and this is data because host #2 has no matcher to
+    # get it from. OpenCode fires this hook for EVERY tool, and `metadata` is
+    # PER-TOOL -- measured on 1.18.15 across four tools: `bash`'s metadata is
+    # {exit, output, truncated}, which is what `outputs`/`exit_status` below
+    # are shaped for; `read`'s is {display, loaded, preview, truncated} (no
+    # `exit`, and `preview` is ITS OWN mirror, not this one); `grep`'s is
+    # {matches, truncated}; an invalid call's is {truncated} alone. Host #1
+    # gets this scoping for free from settings.json's anchored `^Bash$`
+    # matcher (§V4: "the exposure is the matcher's to hold rather than the
+    # gate's"); host #2 has no matcher, so the equivalent has to be declared
+    # here instead, for the shim (Task 6) to honour. This task ships the data
+    # and its load-time shape validation only -- nothing in the adapter reads
+    # `tools` yet.
+    tools: [bash]
     outputs:
       from: $.result.output
       within: $.result
@@ -64,11 +92,24 @@ hooks:
       # mutations on the throw path and rebuilds `metadata` from its own pre-hook
       # copy, so the secret survives on disk however early it is scrubbed.
       # Measured both ways.
+      #
+      # `result`, NOT `result.output` (§V5 review, fix round 1, Critical 1):
+      # `applied_output` is the WHOLE patched clone of the object at
+      # `outputs.within` -- `replacingOutput` returns `patchedClone(container,
+      # ...)`, container included, mirror included -- not the leaf alone. Host
+      # #1's own `hookSpecificOutput.updatedToolOutput` is correct by
+      # construction because it genuinely takes the whole payload object; this
+      # host's equivalent sink is `result` itself, the same relation the
+      # request gate's `args: { from: applied_input }` already has to
+      # `outputs.within`'s counterpart on that side. Naming the leaf
+      # (`result.output`) would assign the WHOLE container to a field that is
+      # a string on this host, burying the mirror's own patched copy one level
+      # too deep for OpenCode to ever apply.
       deny:
         output:
-          result.output: { from: applied_output }
+          result: { from: applied_output }
           reason.text: { from: reasoning, type: string }
       modify:
         output:
-          result.output: { from: applied_output }
+          result: { from: applied_output }
           reason.text: { from: reasoning, type: string }

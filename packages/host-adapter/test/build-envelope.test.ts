@@ -672,15 +672,18 @@ describe("buildEnvelope", () => {
       // describe block below for the check's new (and only) home, and that
       // block's own comment for why living only here was the fault.
 
-      it("throws, naming the hook, when `exit_status` names no literal", () => {
+      it("throws, naming the hook, when `exit_status` names neither a literal nor a path", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallResult",
           tool_name: "$.tool_name",
           outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
         });
 
+        // §V5 review, fix round 1, Minor 2: the message now names BOTH legal
+        // forms -- before this fix a `from`-shaped typo (`fromm:`, say) was
+        // told to add a literal, which was never the actual fix for it.
         expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
-          /hook "Broken" declares "outputs" without a non-empty "exit_status\.literal"/,
+          /hook "Broken" declares "outputs" without a non-empty "exit_status\.literal" or "exit_status\.from"/,
         );
       });
 
@@ -772,10 +775,95 @@ describe("buildEnvelope", () => {
       ).toThrow(/"\$\.result\.metadata\.exit"/);
     });
 
-    it("still throws the pre-existing message when `exit_status` is missing entirely", () => {
+    it("still throws the pre-existing message when `exit_status` is missing entirely, now naming both legal forms", () => {
       expect(() => buildEnvelope("tool.execute.after", resultPayload(0), fieldReadHookmap(undefined))).toThrow(
-        /declares "outputs" without a non-empty "exit_status\.literal"/,
+        /declares "outputs" without a non-empty "exit_status\.literal" or "exit_status\.from"/,
       );
+    });
+
+    // §V5 review, fix round 1, Minor 1: an entry naming BOTH forms used to
+    // silently prefer `literal` -- the one shape this file refuses everywhere
+    // else ("an entry names exactly one payload shape"). A stale literal left
+    // beside a newly added path would report every step `success` regardless
+    // of what the path actually resolves to, and never say so.
+    it("throws, naming the hook, when `exit_status` declares both `literal` and `from`", () => {
+      expect(() =>
+        buildEnvelope(
+          "tool.execute.after",
+          resultPayload(1),
+          fieldReadHookmap({ literal: "success", from: "$.result.metadata.exit" }),
+        ),
+      ).toThrow(/hook "tool.execute.after" declares both "exit_status\.literal" and "exit_status\.from"/);
+    });
+  });
+
+  /**
+   * §V5 review, fix round 1, Important 1: host #2's result gate fires for
+   * every tool with no matcher, and `metadata` is per-tool -- so the gate
+   * has to declare which tool its own `outputs`/`exit_status` paths are
+   * actually shaped for. This task ships the SHAPE check only, at the same
+   * load-time seam `assertMirrorsWellFormed` uses and for the identical
+   * reason: a hookmap that cannot express its own scope must not get to
+   * govern a step via a posture-answered `buildEnvelope` throw. Nothing in
+   * this module reads `tools` yet -- Task 6 wires the shim to honour it.
+   */
+  describe("loadHookmap — hooks.<name>.tools is validated at load time (§V5 review, fix round 1, Important 1)", () => {
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-tools-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+
+    // A minimal, otherwise well-formed PostToolUse entry -- `decisions`
+    // included, so a throw pins the `tools` check specifically.
+    const POST_TOOL_USE =
+      "host: opencode\nhooks:\n  PostToolUse:\n    acs_method: steps/toolCallResult\n" +
+      "    tool_name: $.tool_name\n    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+      "    exit_status: { literal: success }\n" +
+      "    decisions:\n" +
+      "      allow: { output: { x: { value: y } } }\n" +
+      "      deny: { output: { x: { value: y } } }\n";
+
+    it("loads a result-gate entry that declares `tools`", () => {
+      const ok = `${POST_TOOL_USE}    tools: [bash]\n`;
+      withHookmapFile(ok, (path) => {
+        const loaded = loadHookmap(path);
+        expect(loaded.hooks.PostToolUse?.tools).toEqual(["bash"]);
+      });
+    });
+
+    it("throws, at load time, when `tools` is not an array", () => {
+      const broken = `${POST_TOOL_USE}    tools: bash\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"hooks\.PostToolUse\.tools" is "bash"/);
+      });
+    });
+
+    it("throws, at load time, when `tools` is an empty array", () => {
+      const broken = `${POST_TOOL_USE}    tools: []\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"hooks\.PostToolUse\.tools" is \[\]/);
+      });
+    });
+
+    it("throws, at load time, when `tools` contains an empty string", () => {
+      const broken = `${POST_TOOL_USE}    tools: [bash, ""]\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"hooks\.PostToolUse\.tools" is/);
+      });
+    });
+
+    it("a hook declaring no `tools` at all loads unaffected -- undeclared means every tool", () => {
+      withHookmapFile(POST_TOOL_USE, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+        expect(loadHookmap(path).hooks.PostToolUse?.tools).toBeUndefined();
+      });
     });
   });
 });

@@ -4,10 +4,10 @@
   "type": "module",
   "version": "0.1.0",
   "dependencies": {
-    "host-adapter": "workspace:*",
-    "@opencode-ai/plugin": "1.18.15"
+    "host-adapter": "workspace:*"
   },
   "devDependencies": {
-    "guardian": "workspace:*"
+    "guardian": "workspace:*",
+    "@opencode-ai/plugin": "1.18.15"
   }
 }

@@ -42,10 +42,33 @@ describe("opencode.hookmap.yaml", () => {
     expect(Object.keys(requestDecisions.deny!.output)).toContain("refuse.reason");
     // Measured: a throw at the result gate discards the mutation channel, so the
     // mirror keeps the secret. Deny there withholds by replacing, never by throwing.
+    //
+    // §V5 review, fix round 1, Critical 1: the sink is `result`, the
+    // CONTAINER at `outputs.within` -- not `result.output`, a leaf. `result`
+    // is a string on this host; `applied_output` is the whole patched clone
+    // of the `outputs.within` object, mirror included, so naming the leaf
+    // would assign an object to a string field and bury the mirror's own
+    // patched copy one level too deep for OpenCode to ever apply.
     const resultDecisions = hooks["tool.execute.after"]!.decisions as DecisionsShape;
     const resultDeny = Object.keys(resultDecisions.deny!.output);
-    expect(resultDeny).toContain("result.output");
+    expect(resultDeny).toContain("result");
+    expect(resultDeny).not.toContain("result.output");
     expect(resultDeny).not.toContain("refuse.reason");
+  });
+
+  it("scopes the result gate to bash, and leaves the request gate scoped to every tool", () => {
+    // §V5 review, fix round 1, Important 1: OpenCode fires this hook for
+    // every tool with no matcher, and `metadata` is per-tool -- only `bash`
+    // carries `metadata.exit`/`metadata.output`, which this gate's `outputs`
+    // and `exit_status` paths are shaped for. Host #1 gets the equivalent
+    // scoping for free from settings.json's anchored `^Bash$` matcher; host
+    // #2 has none, so it is declared here instead.
+    const hooks = loadHookmap(HOOKMAP).hooks;
+    expect(hooks["tool.execute.after"]?.tools).toEqual(["bash"]);
+    // The request gate's own paths ($.tool, $.args) resolve for every tool,
+    // so it must not be scoped at all -- undeclared `tools` means "every
+    // tool", the same as host #1's hookmap, which declares none.
+    expect(hooks["tool.execute.before"]?.tools).toBeUndefined();
   });
 
   it("builds a wire payload of exactly {tool, exit_status, outputs:[{value}]}, with no mirrors anywhere in it", () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Glob } from "bun";
 
 /**
@@ -137,6 +139,12 @@ describe("architectural invariants", () => {
       // and nowhere else.
       "updatedToolOutput",
       "hookSpecificOutput",
+      // V5 (slice #6, host #2), §V5 review fix round 1, Minor 4: the same gap
+      // this list closed for V4's `updatedToolOutput` -- host #2's own deny
+      // channel, `refuse.reason` in opencode.hookmap.yaml, is a field name this
+      // adapter must stay just as ignorant of as host #1's. It lives in that
+      // hookmap as data and nowhere in packages/host-adapter/src.
+      "refuse",
     ]);
   });
 
@@ -326,6 +334,47 @@ describe("the import gate itself", () => {
     ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
 
     expect(ignored).toEqual(ignored.map(({ line }) => ({ line, found: false })));
+  });
+});
+
+describe("the host-vocabulary gate itself", () => {
+  /**
+   * §V5 review, fix round 1, Minor 4: adding "refuse" to the term list above
+   * is worth nothing if the gate it was added to cannot actually catch it --
+   * a term added to a list nobody exercises is exactly the "reads as coverage
+   * while enforcing nothing" failure this whole suite exists to avoid (see
+   * `readSourceFiles`'s own emptiness-check comment). Run against a scratch
+   * directory rather than the real `packages/host-adapter/src` -- the real
+   * tree is what the gate ABOVE already exercises, and it must stay clean;
+   * this checks the CHECK, the same split "the import gate itself" and "the
+   * source-file filter itself" already make for their own helpers.
+   */
+  function withScratchSourceFile(code: string, fn: (dir: string) => void): void {
+    const dir = mkdtempSync(join(tmpdir(), "acs-invariants-vocab-"));
+    try {
+      writeFileSync(join(dir, "leak.ts"), code);
+      fn(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("catches 'refuse' when it appears in real code, not just when it's declared forbidden", () => {
+    withScratchSourceFile('export function refuse(reason: string): void {\n  throw new Error(reason);\n}\n', (dir) => {
+      expect(() => assertNoVocabulary(dir, ["refuse"])).toThrow();
+    });
+  });
+
+  it("stays quiet when 'refuse' appears only in a comment, which stripComments removes", () => {
+    withScratchSourceFile("// this module must never refuse to compile\nexport const ok = true;\n", (dir) => {
+      expect(() => assertNoVocabulary(dir, ["refuse"])).not.toThrow();
+    });
+  });
+
+  it("stays quiet on ordinary code naming none of the forbidden terms", () => {
+    withScratchSourceFile("export function allow(): boolean {\n  return true;\n}\n", (dir) => {
+      expect(() => assertNoVocabulary(dir, ["refuse"])).not.toThrow();
+    });
   });
 });
 

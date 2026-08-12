@@ -28,10 +28,10 @@
       "name": "opencode-host",
       "version": "0.1.0",
       "dependencies": {
-        "@opencode-ai/plugin": "1.18.15",
         "host-adapter": "workspace:*",
       },
       "devDependencies": {
+        "@opencode-ai/plugin": "1.18.15",
         "guardian": "workspace:*",
       },
     },
