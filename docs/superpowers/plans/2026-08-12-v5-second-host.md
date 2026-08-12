@@ -480,9 +480,23 @@ it("patches every declared mirror as well as the leaf", () => {
   });
 });
 
-it("refuses when a mirror is left holding what the leaf held", () => {
-  const undeclared = { ...location, outputs: { from: "$.result.output", within: "$.result" } };
-  expect(() => replacingOutput(undeclared, "[REDACTED]")).toThrow(/still holds/);
+// ⚠️ SUPERSEDED DURING EXECUTION — kept struck rather than deleted, because this
+// exact sketch is what the shipped design had to reject. It declares NO mirrors
+// and expects a refusal; gating the survivor scan on `mirrors` being non-empty
+// makes that case explicitly exempt, and it had to be, because the same shape on
+// the shipped host (an empty `stdout` beside an empty `stderr`) turned every
+// silent command into a blocking stop. The shipped test declares ONE mirror and
+// misses a SECOND.
+// ~~it("refuses when a mirror is left holding what the leaf held", () => {
+//   const undeclared = { ...location, outputs: { from: "$.result.output", within: "$.result" } };
+//   expect(() => replacingOutput(undeclared, "[REDACTED]")).toThrow(/still holds/);
+// });~~
+it("refuses when a DECLARED-mirrors hookmap leaves another field holding the leaf", () => {
+  const missesOne = {
+    payload: { result: { output: "SECRET", metadata: { output: "SECRET" }, echo: "SECRET" } },
+    outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+  };
+  expect(() => replacingOutput(missesOne, "[REDACTED]")).toThrow(/still holds/);
 });
 
 // The degenerate case the substring form got wrong. A tool that produced no
