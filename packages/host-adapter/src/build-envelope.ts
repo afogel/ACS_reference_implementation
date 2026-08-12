@@ -387,18 +387,125 @@ function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
   }
 }
 
+/**
+ * Rejects a hookmap entry whose `exit_status` declares BOTH `literal` and
+ * `from`, AT LOAD TIME -- the same seam `assertMirrorsWellFormed` and
+ * `assertToolsWellFormed` use, and for the identical reason: a throw reached
+ * only from `exitStatusOf` (via `buildPayload`/`buildEnvelope`) is caught by
+ * `governStep` and answered with the deployment's NEGOTIATED delivery
+ * posture, which can be `proceed`.
+ *
+ * §V5 review, fix round 2, Important 1. Fix round 1's own refusal for this
+ * shape landed inside `exitStatusOf` -- reachable only through that payload-
+ * dependent seam. Measured with a both-forms hookmap under
+ * `on_decision_failure: proceed`: `stage: request | decision: allow |
+ * outcome: proceeded` -- the tool's output delivered UNGOVERNED. BEFORE fix
+ * round 1's refusal existed, that same hookmap was governed with a WRONG
+ * exit_status, which was the defect fix round 1 closed. As placed, the fix
+ * traded "governed on a lie" for "not governed at all" under the default
+ * posture -- the worse of the two. A both-forms entry needs no payload to
+ * detect; it is visible from the hookmap alone, exactly like `mirrors` and
+ * `tools`, so it belongs at this load-time seam instead.
+ *
+ * `exitStatusOf` keeps its OWN runtime throw for the one case that genuinely
+ * cannot move here: an unresolvable `from` path, which needs a specific
+ * invocation's payload to even ask the question.
+ */
+function assertExitStatusNotBothForms(hookmap: Hookmap, path: string): void {
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
+    const exitStatus = isPlainObject(entry) ? (entry as { exit_status?: unknown }).exit_status : undefined;
+    if (!isPlainObject(exitStatus)) {
+      continue;
+    }
+    const hasLiteral = typeof exitStatus.literal === "string" && exitStatus.literal.length > 0;
+    const hasFrom = typeof exitStatus.from === "string" && exitStatus.from.length > 0;
+    if (hasLiteral && hasFrom) {
+      throw new Error(
+        `loadHookmap: ${path}'s "hooks.${hookEventName}.exit_status" declares both "literal" and "from" -- ` +
+          `an entry names exactly one form`,
+      );
+    }
+  }
+}
+
+/**
+ * Rejects a hookmap entry that declares `arguments` (a request-gate shape)
+ * and ALSO declares `outputs` (a result gate's own output/mirror
+ * declaration) or `tools` (a result gate's own tool-scoping declaration), AT
+ * LOAD TIME.
+ *
+ * §V5 review, fix round 2, Important 2. `HookmapRequestHookEntry` types
+ * `outputs`, `exit_status` and `tools` all `?: never` -- but a hookmap
+ * arrives as `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks
+ * against parsed YAML, so that promise binds nothing at runtime. Measured: an
+ * entry declaring `arguments` alongside `tools` (or alongside `outputs`, with
+ * `mirrors` nested inside it) loads clean today and round-trips the extra
+ * field untouched.
+ *
+ * Nothing is wrong YET -- the shipped hookmap's request gate declares
+ * neither, and hookmap.test.ts pins that -- but the request gate is the one
+ * gate that MUST govern every tool (that is the entire reason it takes no
+ * `tools` list), and the moment Task 6 honours `tools`, a `tools:` added
+ * here by analogy with the result gate would silently narrow it, with no
+ * refusal anywhere. An `outputs` declaration carries the identical risk one
+ * level further in, since `outputs.mirrors` lives inside it. Refused here,
+ * at the same load-time seam as `assertToolsWellFormed` and
+ * `assertExitStatusNotBothForms`, so a hookmap of this shape is a hard stop
+ * rather than something `buildPayload`'s own pre-existing (and unremoved)
+ * "declares both" check would otherwise only catch through the same
+ * posture-answered seam every other check above closes.
+ *
+ * `exit_status` is deliberately NOT covered here: an entry declaring
+ * `arguments` alongside `exit_status` alone (no `outputs`) is inert today,
+ * not a live fail-open risk the way `tools` will become the moment Task 6
+ * reads it -- `buildPayload`'s `arguments` branch never looks at
+ * `exit_status`. Out of this review's two Important findings; not this
+ * task's to close.
+ */
+function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
+    if (!isPlainObject(entry)) {
+      continue;
+    }
+    const raw = entry as { arguments?: unknown; outputs?: unknown; tools?: unknown };
+    const hasArguments = typeof raw.arguments === "string" && raw.arguments.length > 0;
+    if (!hasArguments) {
+      continue;
+    }
+    if (raw.outputs !== undefined && raw.outputs !== null) {
+      throw new Error(
+        `loadHookmap: ${path}'s "hooks.${hookEventName}" declares "arguments" (a request-gate shape) and ` +
+          `also declares "outputs" -- an entry names exactly one payload shape, and the request gate must ` +
+          `govern every tool, so it cannot also carry a result gate's own output/mirror declaration`,
+      );
+    }
+    if (raw.tools !== undefined && raw.tools !== null) {
+      throw new Error(
+        `loadHookmap: ${path}'s "hooks.${hookEventName}" declares "arguments" (a request-gate shape) and ` +
+          `also declares "tools" -- the request gate takes no tool scoping and must govern every tool, ` +
+          `which is the entire reason it has no "tools" list to narrow`,
+      );
+    }
+  }
+}
+
 /** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
  * assertRenderableDecisions. Also throws if any entry's `outputs.mirrors` is
  * malformed or names a field outside `outputs.within` -- see
  * assertMirrorsWellFormed. Also throws if any entry's `tools` is malformed --
- * see assertToolsWellFormed. */
+ * see assertToolsWellFormed. Also throws if any entry's `exit_status`
+ * declares both `literal` and `from` -- see assertExitStatusNotBothForms.
+ * Also throws if a request-gate entry (one declaring `arguments`) also
+ * declares `outputs` or `tools` -- see assertRequestGateUnscopable. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);
   assertMirrorsWellFormed(hookmap, path);
   assertToolsWellFormed(hookmap, path);
+  assertExitStatusNotBothForms(hookmap, path);
+  assertRequestGateUnscopable(hookmap, path);
   return hookmap;
 }
 
@@ -488,13 +595,17 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
  * `buildPayload` refuses everywhere else in this file ("an entry names
  * exactly one payload shape"). A stale literal left beside a newly added path
  * would report every step `success` regardless of what the path actually
- * resolves to, and say nothing. Refused here instead, before either form is
- * read.
+ * resolves to, and say nothing. Refused -- but not here any more (§V5 review,
+ * fix round 2, Important 1): see `assertExitStatusNotBothForms`, run from
+ * `loadHookmap`, for where that refusal lives now and why.
  *
  * The malformed/absent case -- neither a non-empty `literal` nor a non-empty
  * `from` -- throws V4's own pinned message, reworded (Minor 2) to name both
  * legal forms: a `from`-shaped typo (`fromm:`, say) used to be told to add a
- * literal, which is not the fix for it.
+ * literal, which is not the fix for it. Left at THIS seam, unlike the
+ * both-forms case: a pre-existing gap (same class as `outputs.from`'s and
+ * `outputs.within`'s own misplaced checks, noted where they live in
+ * `buildPayload`), not one this review's two Important findings named.
  */
 function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<string, unknown>): string {
   const hasLiteral =
@@ -502,13 +613,16 @@ function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<str
   const hasFrom =
     isPlainObject(rawExitStatus) && typeof rawExitStatus.from === "string" && rawExitStatus.from.length > 0;
 
-  if (hasLiteral && hasFrom) {
-    throw new Error(
-      `buildEnvelope: hookmap entry for hook "${event}" declares both "exit_status.literal" and ` +
-        `"exit_status.from" -- an entry names exactly one form`,
-    );
-  }
-
+  // The both-forms case used to throw HERE (§V5 review, fix round 1, Minor 1)
+  // -- moved to `assertExitStatusNotBothForms`, run from `loadHookmap` (§V5
+  // review, fix round 2, Important 1). A throw reached only from this
+  // function is caught by `governStep` and answered with the deployment's
+  // NEGOTIATED delivery posture, which can be `proceed`; measured with a
+  // both-forms hookmap under that posture: `outcome: proceeded`, the tool's
+  // output delivered UNGOVERNED. A both-forms entry needs no payload to
+  // detect -- it is visible from the hookmap alone, exactly like `mirrors`
+  // and `tools` -- so, like them, it is a load-time hard stop instead. See
+  // that function's own doc comment for the measured before/after.
   if (hasLiteral) {
     return (rawExitStatus as { literal: string }).literal;
   }

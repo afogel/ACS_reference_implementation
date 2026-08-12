@@ -781,19 +781,139 @@ describe("buildEnvelope", () => {
       );
     });
 
-    // §V5 review, fix round 1, Minor 1: an entry naming BOTH forms used to
-    // silently prefer `literal` -- the one shape this file refuses everywhere
-    // else ("an entry names exactly one payload shape"). A stale literal left
-    // beside a newly added path would report every step `success` regardless
-    // of what the path actually resolves to, and never say so.
-    it("throws, naming the hook, when `exit_status` declares both `literal` and `from`", () => {
-      expect(() =>
-        buildEnvelope(
-          "tool.execute.after",
-          resultPayload(1),
-          fieldReadHookmap({ literal: "success", from: "$.result.metadata.exit" }),
-        ),
-      ).toThrow(/hook "tool.execute.after" declares both "exit_status\.literal" and "exit_status\.from"/);
+    // §V5 review, fix round 1, Minor 1 introduced this refusal; fix round 2,
+    // Important 1 MOVED it to `loadHookmap` (see the "loadHookmap --
+    // hooks.<name>.exit_status is validated at load time" describe block
+    // below) for the same reason `outputs.mirrors`' own check lives there and
+    // not in `buildPayload`: a throw reachable only from `buildEnvelope` is
+    // caught by `governStep` and answered with the deployment's negotiated
+    // posture, which can be `proceed` -- measured, under that posture, as the
+    // tool's output delivered UNGOVERNED. `buildEnvelope` itself no longer
+    // refuses this shape at all -- proven directly, so a future re-addition
+    // of the per-invocation check does not silently duplicate this one
+    // without anyone noticing the two had drifted (the same proof the
+    // mirrors describe block makes for its own check).
+    it("buildEnvelope itself no longer refuses a both-forms `exit_status` -- only loadHookmap does", () => {
+      const envelope = buildEnvelope(
+        "tool.execute.after",
+        resultPayload(1),
+        fieldReadHookmap({ literal: "success", from: "$.result.metadata.exit" }),
+      );
+
+      expect(envelope.params.payload.exit_status).toBe("success");
+    });
+  });
+
+  /**
+   * §V5 review, fix round 2, Important 1: fix round 1's both-forms refusal
+   * lived inside `exitStatusOf`, reached only from `buildEnvelope` --
+   * measured, under the deployment's negotiated `proceed` posture, as the
+   * tool's output delivered UNGOVERNED rather than refused. A both-forms
+   * entry needs no payload to detect, exactly like `outputs.mirrors` and
+   * `tools`, so it is a load-time hard stop here instead.
+   */
+  describe("loadHookmap — hooks.<name>.exit_status is validated at load time (§V5 review, fix round 2, Important 1)", () => {
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-exit-status-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+
+    const POST_TOOL_USE =
+      "host: opencode\nhooks:\n  PostToolUse:\n    acs_method: steps/toolCallResult\n" +
+      "    tool_name: $.tool_name\n    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+      "    decisions:\n" +
+      "      allow: { output: { x: { value: y } } }\n" +
+      "      deny: { output: { x: { value: y } } }\n";
+
+    it("throws, at load time, when `exit_status` declares both `literal` and `from`", () => {
+      const broken = `${POST_TOOL_USE}    exit_status: { literal: success, from: $.tool_response.exit }\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(
+          /"hooks\.PostToolUse\.exit_status" declares both "literal" and "from"/,
+        );
+      });
+    });
+
+    it("accepts a well-formed literal-only `exit_status`", () => {
+      const ok = `${POST_TOOL_USE}    exit_status: { literal: success }\n`;
+      withHookmapFile(ok, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+      });
+    });
+
+    it("accepts a well-formed field-read-only `exit_status`", () => {
+      const ok = `${POST_TOOL_USE}    exit_status: { from: $.tool_response.exit }\n`;
+      withHookmapFile(ok, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+      });
+    });
+  });
+
+  /**
+   * §V5 review, fix round 2, Important 2: the request gate is the one gate
+   * that MUST govern every tool -- `tools?: never` and `outputs?: never` on
+   * `HookmapRequestHookEntry` say so at the type level, but a hookmap arrives
+   * as `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks
+   * against parsed YAML. Measured: an entry declaring `arguments` alongside
+   * `tools` (or `outputs`) loaded clean before this fix.
+   */
+  describe("loadHookmap — the request gate cannot be scoped (§V5 review, fix round 2, Important 2)", () => {
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-request-scope-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+
+    const PRE_TOOL_USE =
+      "host: opencode\nhooks:\n  PreToolUse:\n    acs_method: steps/toolCallRequest\n" +
+      "    tool_name: $.tool_name\n    arguments: $.tool_input\n" +
+      "    decisions:\n" +
+      "      allow: { output: { x: { value: y } } }\n" +
+      "      deny: { output: { x: { value: y } } }\n";
+
+    it("throws, at load time, when a request-gate entry also declares `tools`", () => {
+      const broken = `${PRE_TOOL_USE}    tools: [bash]\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(
+          /"hooks\.PreToolUse" declares "arguments" \(a request-gate shape\) and also declares "tools"/,
+        );
+      });
+    });
+
+    it("throws, at load time, when a request-gate entry also declares `outputs`", () => {
+      const broken =
+        `${PRE_TOOL_USE}    outputs: { from: $.tool_input.command, within: $.tool_input, ` +
+        `mirrors: [$.tool_input.other] }\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(
+          /"hooks\.PreToolUse" declares "arguments" \(a request-gate shape\) and also declares "outputs"/,
+        );
+      });
+    });
+
+    it("a request-gate entry declaring neither loads unaffected", () => {
+      withHookmapFile(PRE_TOOL_USE, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+      });
+    });
+
+    it("still loads the real opencode.hookmap.yaml's request gate, which declares neither", () => {
+      const parsed = loadHookmap("hosts/opencode/opencode.hookmap.yaml");
+      expect(parsed.hooks["tool.execute.before"]?.outputs).toBeUndefined();
+      expect(parsed.hooks["tool.execute.before"]?.tools).toBeUndefined();
     });
   });
 
