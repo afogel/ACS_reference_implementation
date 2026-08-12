@@ -21,6 +21,17 @@ import { resolvePath } from "./hookmap-path.ts";
  */
 export type HookmapLiteral = { literal: string };
 
+/**
+ * An exit status read from the payload rather than fixed by the hookmap.
+ *
+ * V5 (slice #6): Claude Code's PostToolUse fires only for the success case,
+ * so `HookmapLiteral` was the whole truth for host #1, not a gap. Host #2's
+ * result gate reports a real `metadata.exit` number instead, so `exit_status`
+ * needs a PATH here, resolved the same way `outputs.from` is -- against the
+ * raw hook payload, at the same seam.
+ */
+export type HookmapFieldRead = { from: string };
+
 /** Where a result-gate hook's output lives in the raw hook payload. */
 export type HookmapOutputs = {
   /** JSONPath-lite (`$.foo.bar`) to the leaf that becomes `outputs[0].value`. */
@@ -86,8 +97,12 @@ export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
 export type HookmapResultHookEntry = HookmapHookEntryCommon & {
   arguments?: never;
   outputs: HookmapOutputs;
-  /** The exit status this hook means -- see HookmapLiteral for why a literal. */
-  exit_status: HookmapLiteral;
+  /**
+   * The exit status this hook means. A literal for a host whose gate genuinely
+   * cannot fail (Claude Code's PostToolUse -- see HookmapLiteral); a field
+   * read for a host that reports one (see HookmapFieldRead).
+   */
+  exit_status: HookmapLiteral | HookmapFieldRead;
 };
 
 /**
@@ -411,6 +426,44 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
  * a step it had been described wrongly, rather than the hookmap being reported
  * broken here where it can be fixed.
  */
+/**
+ * `success` / `failure`, per ACS's own enum -- from whichever form this
+ * hook's `exit_status` declares.
+ *
+ * A host that reports a numeric exit code is mapped here, in the adapter,
+ * rather than in the hookmap: the hookmap is data, and "0 means success" is a
+ * fact about process exit codes, not a per-host choice. A host whose gate
+ * genuinely cannot fail (Claude Code's PostToolUse) keeps V4's literal form,
+ * handled by the same function so `buildPayload` has one call site for
+ * either.
+ *
+ * The malformed/absent case -- neither a non-empty `literal` nor a non-empty
+ * `from` -- throws V4's own pinned message unchanged: a hookmap that names
+ * neither form is the same fault it always was, not a new one this form
+ * introduces.
+ */
+function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<string, unknown>): string {
+  if (isPlainObject(rawExitStatus) && typeof rawExitStatus.literal === "string" && rawExitStatus.literal.length > 0) {
+    return rawExitStatus.literal;
+  }
+
+  if (isPlainObject(rawExitStatus) && typeof rawExitStatus.from === "string" && rawExitStatus.from.length > 0) {
+    const raw = resolvePath(payload, rawExitStatus.from);
+    if (raw === undefined) {
+      throw new Error(
+        `buildEnvelope: hookmap path ${JSON.stringify(rawExitStatus.from)} for hook "${event}"'s "exit_status" ` +
+          `resolves to no value in this payload, so this gate cannot say whether the step succeeded`,
+      );
+    }
+    return raw === 0 || raw === "0" || raw === "success" ? "success" : "failure";
+  }
+
+  throw new Error(
+    `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
+      `"exit_status.literal"`,
+  );
+}
+
 function buildPayload(
   event: string,
   payload: Record<string, unknown>,
@@ -520,13 +573,7 @@ function buildPayload(
     // comment for the measured before/after. `from` and `within`, immediately
     // above, have the identical misplacement and are pre-existing; not moved
     // by this task.
-    const exitStatus = isPlainObject(entry.exit_status) ? entry.exit_status.literal : undefined;
-    if (typeof exitStatus !== "string" || exitStatus.length === 0) {
-      throw new Error(
-        `buildEnvelope: hookmap entry for hook "${event}" declares "outputs" without a non-empty ` +
-          `"exit_status.literal"`,
-      );
-    }
+    const exitStatus = exitStatusOf(event, entry.exit_status, payload);
 
     const value = resolvePath(payload, from);
     if (value === undefined) {

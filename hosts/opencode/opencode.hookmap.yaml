@@ -1,0 +1,74 @@
+# S2 -- the ONLY per-host artifact besides the plugin shim (N10).
+#
+# Same shape as claude-code.hookmap.yaml, against the same adapter. What differs
+# is entirely data, which is the slice's whole claim.
+#
+# Every path below was MEASURED against OpenCode 1.18.15 with a probe plugin,
+# not read off its published types -- where the two disagree, the measurement
+# wins. See Task 3's brief for the measurements themselves.
+host: opencode
+hooks:
+  # The request gate. OpenCode hands the plugin `{tool, sessionID, callID}` and a
+  # mutable `{args}`; the shim (Task 4) assembles those into one payload object so
+  # these paths have something to resolve against.
+  tool.execute.before:
+    acs_method: steps/toolCallRequest
+    tool_name: $.tool
+    arguments: $.args
+    decisions:
+      # `refuse.reason` is this host's deny channel and there is no other:
+      # measured, `output.status = "deny"` and `output.decision = "deny"` are
+      # both ACCEPTED and IGNORED, and the tool runs. Throwing is what stops it.
+      allow:
+        output:
+          reason.text: { from: reasoning, type: string }
+      deny:
+        output:
+          refuse.reason: { from: reasoning, type: string }
+      # No native "ask" at this hook -- `permission.ask` is a different event
+      # this slice does not wire -- so ask fails CLOSED, the same least-wrong
+      # mapping V1 made for Claude Code's absent `defer`.
+      ask:
+        output:
+          refuse.reason: { from: reasoning, type: string }
+      defer:
+        output:
+          refuse.reason: { from: reasoning, type: string }
+      modify:
+        output:
+          args: { from: applied_input }
+          reason.text: { from: reasoning, type: string }
+  # The result gate.
+  tool.execute.after:
+    acs_method: steps/toolCallResult
+    tool_name: $.tool
+    outputs:
+      from: $.result.output
+      within: $.result
+      # THE MIRROR. `metadata` carries its own copy of the output; a redaction
+      # that patches only the leaf leaves the plaintext in OpenCode's session
+      # record while the model correctly sees the redaction. Measured.
+      mirrors:
+        - $.result.metadata.output
+    # A REAL field read, not a literal. Claude Code's PostToolUse payload carries
+    # no exit code, so V4 shipped `{literal: success}` and recorded the gap;
+    # OpenCode's `metadata.exit` supplies one.
+    exit_status: { from: $.result.metadata.exit }
+    decisions:
+      allow:
+        output:
+          reason.text: { from: reasoning, type: string }
+      # Deny WITHHOLDS BY REPLACING, and deliberately does not throw. A throw
+      # here does withhold from the model -- better than Claude Code, where
+      # `block` delivers the real stdout -- but OpenCode DISCARDS the plugin's
+      # mutations on the throw path and rebuilds `metadata` from its own pre-hook
+      # copy, so the secret survives on disk however early it is scrubbed.
+      # Measured both ways.
+      deny:
+        output:
+          result.output: { from: applied_output }
+          reason.text: { from: reasoning, type: string }
+      modify:
+        output:
+          result.output: { from: applied_output }
+          reason.text: { from: reasoning, type: string }

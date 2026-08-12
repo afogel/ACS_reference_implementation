@@ -697,4 +697,85 @@ describe("buildEnvelope", () => {
       });
     });
   });
+
+  /**
+   * V5 (slice #6, Task 3): `exit_status` learns a second form. V4 shipped only
+   * `HookmapLiteral` because Claude Code's PostToolUse payload carries no exit
+   * code -- `PostToolUse` fires for the success case only, so `{literal: success}`
+   * was the whole truth, not a gap papered over. Host #2's result gate reports a
+   * real `metadata.exit` number, so the hookmap now can name a PATH instead of a
+   * constant. `"0 means success"` is a fact about process exit codes, decided
+   * once here rather than per-host, which is why the mapping lives in this
+   * function rather than in host #2's hookmap.
+   */
+  describe("exit_status: field-read form (V5, host #2)", () => {
+    // Mirrors host #2's own tool.execute.after entry (Task 3's
+    // opencode.hookmap.yaml) closely enough to exercise the new form, without
+    // depending on that file existing yet.
+    function fieldReadHookmap(exitStatus: unknown): Hookmap {
+      return {
+        host: "opencode",
+        hooks: {
+          "tool.execute.after": {
+            acs_method: "steps/toolCallResult",
+            tool_name: "$.tool",
+            outputs: { from: "$.result.output", within: "$.result" },
+            exit_status: exitStatus,
+            decisions: POST_TOOL_USE_DECISIONS,
+          } as unknown as HookmapHookEntry,
+        },
+      };
+    }
+
+    function resultPayload(exit: unknown): Record<string, unknown> {
+      return {
+        session_id: "6c616a11-495a-4f05-878a-c1bfaa29f0e5",
+        tool: "bash",
+        result: { output: "x", metadata: { exit } },
+      };
+    }
+
+    it("reads exit_status from the payload when the hookmap names a path", () => {
+      const envelope = buildEnvelope("tool.execute.after", resultPayload(0), fieldReadHookmap({ from: "$.result.metadata.exit" }));
+
+      expect(envelope.params.payload.exit_status).toBe("success");
+    });
+
+    it("maps a non-zero exit to failure", () => {
+      const envelope = buildEnvelope("tool.execute.after", resultPayload(1), fieldReadHookmap({ from: "$.result.metadata.exit" }));
+
+      expect(envelope.params.payload.exit_status).toBe("failure");
+    });
+
+    it("still accepts the literal form -- Claude Code's hookmap is unchanged", () => {
+      const postToolUsePayload = {
+        session_id: "6c616a11-495a-4f05-878a-c1bfaa29f0e5",
+        hook_event_name: "PostToolUse",
+        tool_name: "Bash",
+        tool_response: { stdout: "ok", stderr: "" },
+      };
+
+      const envelope = buildEnvelope("PostToolUse", postToolUsePayload, hookmap);
+
+      expect(envelope.params.payload.exit_status).toBe("success");
+    });
+
+    it("throws, naming the path, when a field-read `exit_status` resolves to no value in this payload", () => {
+      const noMetadata = {
+        session_id: "6c616a11-495a-4f05-878a-c1bfaa29f0e5",
+        tool: "bash",
+        result: { output: "x" },
+      };
+
+      expect(() =>
+        buildEnvelope("tool.execute.after", noMetadata, fieldReadHookmap({ from: "$.result.metadata.exit" })),
+      ).toThrow(/"\$\.result\.metadata\.exit"/);
+    });
+
+    it("still throws the pre-existing message when `exit_status` is missing entirely", () => {
+      expect(() => buildEnvelope("tool.execute.after", resultPayload(0), fieldReadHookmap(undefined))).toThrow(
+        /declares "outputs" without a non-empty "exit_status\.literal"/,
+      );
+    });
+  });
 });
