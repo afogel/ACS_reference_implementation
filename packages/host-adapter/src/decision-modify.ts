@@ -94,7 +94,7 @@ export function resolveModify(
     if (outputLocation === undefined) {
       return { ...decision, applied_input: applied };
     }
-    return { ...decision, applied_output: projectAppliedOutput(applied, outputLocation) };
+    return { ...decision, applied_output: projectAppliedOutput(applied, modificationDocument, outputLocation) };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return deny(`guardian's modifications could not be applied: ${reason}`, "modifications_invalid");

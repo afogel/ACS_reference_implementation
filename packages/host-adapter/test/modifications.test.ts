@@ -169,3 +169,35 @@ describe("applyModifications — §6.3", () => {
       .toEqual({ command: "echo hi" });
   });
 });
+
+describe("every modification has to land at its own target", () => {
+  it("denies a parameter_override that rewrites a value to itself", () => {
+    expect(() =>
+      applyModifications({ command: "cat .env" }, { parameter_overrides: { command: "cat .env" } }),
+    ).toThrow(ModificationsInvalidError);
+  });
+
+  it("denies a bundle whose non-leaf half changes nothing", () => {
+    const document = { outputs: [{ value: "SECRET" }], exit_status: "success" };
+    expect(() =>
+      applyModifications(document, {
+        redactions: [
+          { path: "/outputs/0/value", replacement: "[REDACTED]" },
+          { path: "/exit_status", replacement: "success" },
+        ],
+      }),
+    ).toThrow(ModificationsInvalidError);
+  });
+
+  it("still applies a bundle where every modification changes its own target", () => {
+    const document = { outputs: [{ value: "SECRET" }], exit_status: "success" };
+    expect(
+      applyModifications(document, {
+        redactions: [
+          { path: "/outputs/0/value", replacement: "[REDACTED]" },
+          { path: "/exit_status", replacement: "failure" },
+        ],
+      }),
+    ).toEqual({ outputs: [{ value: "[REDACTED]" }], exit_status: "failure" });
+  });
+});

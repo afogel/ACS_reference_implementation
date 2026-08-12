@@ -74,6 +74,43 @@ function pointerSegments(pointer: string): string[] {
 }
 
 /**
+ * Walks already-split JSON-pointer segments through a document, honouring
+ * the same array-index rule `assertTargetExists` and `setAtPath` use: a
+ * numeric segment descends into an array by index, everything else is a
+ * plain-object field lookup. Answers `undefined` at the first level that has
+ * neither, rather than throwing -- callers of this function are reading a
+ * value that has already been shown to exist (§V5's post-condition below
+ * only ever calls it with a target `assertTargetExists` accepted), and its
+ * only two callers there compare two `undefined`s as equal on purpose.
+ *
+ * NOT `hookmap-path.ts`'s `resolveSegments`, on purpose, despite the
+ * identical shape (`(root, segments) -> unknown`). That one resolves a
+ * hookmap's own path notation, which is dot-only and never addresses an
+ * array element by design (see its header) -- so it answers `undefined` for
+ * ANY segment that lands on an array, array element or not. §6.3's pointers
+ * routinely do address one (`/outputs/0/value`), and importing that resolver
+ * here would have made every array-descending target compare as unchanged
+ * regardless of whether it was, turning the post-condition below into a
+ * blanket refusal of exactly the array-shaped modifications this module's
+ * own suite depends on applying. Same name, two notations; this is this
+ * module's own.
+ */
+function resolveTarget(document: unknown, segments: string[]): unknown {
+  let current: unknown = document;
+  for (const segment of segments) {
+    if (Array.isArray(current)) {
+      current = current[Number(segment)];
+      continue;
+    }
+    if (typeof current !== "object" || current === null) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+/**
  * True when `a` and `b` are the same target, or one is an ancestor of the
  * other -- i.e. one segment list is a prefix of the other. This single
  * check covers all three overlap kinds §6.3 forbids: exact equality (both
@@ -448,6 +485,40 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
  * document a step's modifications can address, so validation refuses it outright
  * -- a valid `modifications` reaching the apply loops below is always the
  * structured-edit shape, with every target already known to exist.
+ *
+ * THE POST-CONDITION BELOW is what closes the request-gate hole V4 measured
+ * and recorded rather than closing (§V4, §V5): a `modify` whose
+ * `parameter_overrides` sets an argument to the value it already held, or
+ * whose redaction replaces one with itself, used to apply cleanly and return
+ * an `applied_input` identical to what went out on the wire -- the policy
+ * said rewrite, nothing was rewritten, and the audit trail said the decision
+ * was honoured. Asked here, gate-agnostically, rather than "did the whole
+ * document change" at either gate: a document-level check would miss a
+ * no-op target bundled beside a real one, and a request payload has no
+ * single leaf the way a result payload does, so there is no narrower
+ * question to ask there instead.
+ *
+ * IT ALSO SUBSUMES THE SINGLE-TARGET FORM of `projectAppliedOutput`'s own
+ * landing check at the result gate (a redaction or override whose only
+ * target is the one leaf that gate projects, replaced with the value
+ * already there) -- this function now refuses that before the projection is
+ * ever attempted, which is why that check's docstring is worded as a
+ * fallback rather than the first word on it.
+ *
+ * WHAT IT DOES NOT CLOSE is the result gate's OTHER hole: a `modify`
+ * bundling a leaf edit that changes its own target with a non-leaf edit
+ * that ALSO changes its own target, where the leaf edit lands and the
+ * non-leaf one is silently unobservable because nothing beyond that one
+ * leaf is ever projected onto the host's output object. Every target in
+ * such a bundle genuinely changes -- this function's own question, asked
+ * per target, answers "yes" to each of them -- so there is nothing for a
+ * document-agnostic check to catch here; telling a target that changed but
+ * did not LAND apart from one that changed and did needs to know which
+ * target is the leaf, which is gate-specific knowledge this module does not
+ * have and R3.2 does not let it acquire. That closing is
+ * `projectAppliedOutput`'s own, in `result-output.ts`, which already knows
+ * the leaf and now also asks whether anything ELSE about the document
+ * changed alongside it.
  */
 export function applyModifications(
   modificationDocument: Record<string, unknown>,
@@ -456,6 +527,12 @@ export function applyModifications(
   const mods = assertValidModifications(modifications, modificationDocument);
 
   let result: Record<string, unknown> = { ...modificationDocument };
+
+  // Each modification's own target, in declaration order -- recorded here,
+  // beside the write that lands it, so the post-condition below asks about
+  // the target the policy author named rather than reconstructing it from
+  // `mods` a second time.
+  const targets: string[][] = [];
 
   // The top-level target is always `result` itself, never an array: the
   // line above builds `result` with an object-literal spread
@@ -467,15 +544,43 @@ export function applyModifications(
   if (mods.parameter_overrides) {
     for (const [key, value] of Object.entries(mods.parameter_overrides)) {
       result = setAtPath(result, [key], value) as Record<string, unknown>;
+      targets.push([key]);
     }
   }
 
   if (mods.redactions) {
     for (const redaction of mods.redactions) {
-      result = setAtPath(result, pointerSegments(redaction.path), redaction.replacement ?? "[REDACTED]") as Record<
-        string,
-        unknown
-      >;
+      const segments = pointerSegments(redaction.path);
+      result = setAtPath(result, segments, redaction.replacement ?? "[REDACTED]") as Record<string, unknown>;
+      targets.push(segments);
+    }
+  }
+
+  // Structural comparison, not `===`: a target may hold an object or an
+  // array, where `===` is reference equality and a structurally identical
+  // replacement would read as a change. `modificationDocument` and `result`
+  // are both built by spreads from the same source (here, and in
+  // `setAtPath`'s own clone-per-level), so key order is preserved along
+  // every path this walks and the serialisation is stable between the two
+  // sides of each comparison.
+  //
+  // A replacement EQUAL to the value already there is refused too, not only
+  // a replacement that resolves to the identical reference. That is the
+  // ruling on what a legitimately no-change `modifications` means, and it is
+  // this project's own precedent: `projectAppliedOutput` already refuses the
+  // same shape for the one leaf a result gate can see. A Guardian that wants
+  // the document delivered as produced has `allow` for exactly that, and a
+  // `modify` this function cannot tell apart from one is not a rewrite it
+  // can report as applied. An over-refusal, on the safe side, and the same
+  // side as every other refusal in this module.
+  for (const segments of targets) {
+    const before = resolveTarget(modificationDocument, segments);
+    const after = resolveTarget(result, segments);
+    if (JSON.stringify(before) === JSON.stringify(after)) {
+      throw new ModificationsInvalidError(
+        `the modification targeting "/${segments.join("/")}" left that target exactly as it found it, so the ` +
+          "rewrite it reports is one that nothing carried out",
+      );
     }
   }
 

@@ -126,6 +126,27 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * `document` with its ACS-side projected leaf (`outputs[0].value`, the same
+ * one `projectAppliedOutput` reads back) replaced by a constant, so two
+ * documents differing ONLY at that leaf serialise identically. Used to ask
+ * "did anything besides the leaf change" without naming what changed --
+ * `JSON.stringify` on the result does that.
+ *
+ * Falls back to `document` untouched when `outputs[0]` is not an object --
+ * the shape the leaf lives in is itself either present or a real
+ * difference, and comparing the untouched fallback still reports that
+ * difference rather than masking it by pretending a leaf was found.
+ */
+function withoutProjectedLeaf(document: Record<string, unknown>): unknown {
+  const outputs = document.outputs;
+  if (!Array.isArray(outputs) || !isPlainObject(outputs[0])) {
+    return document;
+  }
+  const [first, ...rest] = outputs;
+  return { ...document, outputs: [{ ...(first as Record<string, unknown>), value: null }, ...rest] };
+}
+
+/**
  * Returns a clone of `container` with `segments` set to `replacement`, cloning
  * every level the path descends through.
  *
@@ -402,6 +423,7 @@ export function assertOutputIsReplaceable(location: HostOutputLocation): void {
  */
 export function projectAppliedOutput(
   appliedDocument: Record<string, unknown>,
+  originalDocument: Record<string, unknown>,
   location: HostOutputLocation,
 ): Record<string, unknown> {
   const outputs = appliedDocument.outputs;
@@ -430,6 +452,28 @@ export function projectAppliedOutput(
         `is one that nothing carried out`,
     );
   }
+
+  // THE BUNDLE CHECK (§V5). The leaf landed -- the check above would already
+  // have refused otherwise -- so ask whether anything ELSE about the document
+  // changed too, by comparing both documents with that one projected leaf
+  // subtracted out. Anything left over is a modification that changed its own
+  // target (`applyModifications`'s own post-condition already refused the
+  // no-op form of this) in a document nothing downstream ever reads: applied,
+  // honourable, and unobservable, reported as part of an applied `modify`
+  // with no record of whether it reached anything.
+  const appliedElsewhere = JSON.stringify(withoutProjectedLeaf(appliedDocument));
+  const originalElsewhere = JSON.stringify(withoutProjectedLeaf(originalDocument));
+  if (appliedElsewhere !== originalElsewhere) {
+    throw new Error(
+      `result-output: applying these modifications changed more of the ACS result payload than the one leaf ` +
+        `this gate projects onto the host's output object -- "outputs[0].value" landed, but the document ` +
+        `differs from what the step produced somewhere else too, and nothing besides that one leaf is ever ` +
+        `projected there. Each such edit is honourable on its own and none of them is malformed; bundled here, ` +
+        `the ones beside the leaf are applied to a document nothing downstream reads, and reporting the whole ` +
+        `"modify" applied claims a rewrite for a part of it that never reached anything`,
+    );
+  }
+
   return replacement;
 }
 

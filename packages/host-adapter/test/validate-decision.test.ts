@@ -680,6 +680,13 @@ describe("validateDecision — the result gate projects the applied document ont
   // produced has `allow` for it; a `modify` indistinguishable from one is not a
   // rewrite this host can report. An over-refusal, deliberately, on the same
   // side as `assertOutputIsReplaceable`'s.
+  //
+  // CAUGHT ONE SEAM EARLIER NOW (§V5): this redaction's own target
+  // (`/outputs/0/value`) is a no-op on the ACS document itself, so
+  // `applyModifications`'s post-condition (modifications.ts) refuses it before
+  // `projectAppliedOutput` -- and its own landing check, whose refusal this test
+  // used to pin -- is ever reached. The ruling this test demonstrates is
+  // unchanged; only which check states it is.
   it("denies a redaction that replaces the leaf with the value it already had", () => {
     const out = validateDecision(
       {
@@ -697,8 +704,8 @@ describe("validateDecision — the result gate projects the applied document ont
     // the second half of the refusal's sentence, and without this assertion that
     // half could be deleted with the whole suite still passing -- so the test
     // would pass for a reason other than the one its name claims.
-    expect(out.reasoning).toContain("replaced that leaf with the value already there");
-    expect(out.reasoning).toContain("exactly as the step produced it");
+    expect(out.reasoning).toContain('the modification targeting "/outputs/0/value"');
+    expect(out.reasoning).toContain("left that target exactly as it found it");
   });
 
   // The ancestor pointer, which is why this refusal asks whether the rewrite
@@ -736,20 +743,21 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(unchanged.reason_codes).toContain("modifications_invalid");
   });
 
-  // RECORDED, NOT CLOSED, and the test says which. The landing check asks about
-  // one leaf, so a `modifications` object bundling a leaf edit with a non-leaf one
-  // passes: the leaf changed, the non-leaf edit was silently dropped, and the
-  // whole `modify` is reported applied. Each of these non-leaf edits ALONE is
-  // denied by the cases above -- it is the bundling that hides it.
+  // CLOSED BY V5, and the test says so. The landing check asks about one leaf,
+  // so a `modifications` object bundling a leaf edit with a non-leaf one used to
+  // pass: the leaf changed, the non-leaf edit was silently dropped, and the
+  // whole `modify` was reported applied. Each of these non-leaf edits ALONE is
+  // denied by the cases above -- it was the bundling that hid it.
   //
-  // This asserts the CURRENT behaviour so that closing it is a visible change
-  // rather than a silent one, and so that a reader cannot mistake the gap for
-  // untested ground. No secret reaches the model (the leaf redaction landed), so
-  // what this pins is a false audit and transcript record: a best-effort partial
-  // apply reported as a full one, which is what modifications.ts's header forbids
-  // and what a per-modification check in the apply step would close, at both
-  // gates at once. `mapVerdict` emits exactly one redaction, so nothing in this
-  // deployment produces the shape.
+  // `projectAppliedOutput`'s bundle check (result-output.ts, §V5) now catches
+  // every one of these: the leaf still lands, so the landing check above stays
+  // silent, but comparing both documents with that one leaf subtracted out finds
+  // the non-leaf edit every time. No secret ever reached the model here (the
+  // leaf redaction did land) -- what V4 recorded was a false audit and
+  // transcript record, a best-effort partial apply reported as a full one, and
+  // that is what closes now. `mapVerdict` emits exactly one redaction, so
+  // nothing in this deployment produces the shape either way; the test still
+  // pins the adapter's own behaviour rather than leaving it to that.
   for (const modifications of [
     { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/exit_status" }] },
     {
@@ -759,21 +767,17 @@ describe("validateDecision — the result gate projects the applied document ont
     { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/tool/name" }] },
     { parameter_overrides: { outputs: [{ value: "TOKEN=[REDACTED]" }, { value: "nothing projects this" }] } },
   ]) {
-    it(`reports applied for a bundle whose non-leaf half is dropped (recorded, not closed): ${JSON.stringify(modifications)}`, () => {
+    it(`denies a bundle whose non-leaf half would have been dropped (closed by V5): ${JSON.stringify(modifications)}`, () => {
       const out = validateDecision(
         { decision: "modify", reasoning: "redaction_applied", modifications },
         { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },
       );
 
-      expect(out.decision).toBe("modify");
-      // The leaf edit DID land, which is why nothing leaks -- and why the leaf
-      // comparison cannot see the other half.
-      expect(out.applied_output).toEqual({
-        stdout: "TOKEN=[REDACTED]",
-        stderr: "",
-        interrupted: false,
-        isImage: false,
-      });
+      expect(out.decision).toBe("deny");
+      expect(out.reason_codes).toContain("modifications_invalid");
+      // Never an "applied" that applied only part of itself.
+      expect(out.applied_output).toBeUndefined();
+      expect(out.reasoning).toContain("changed more of the ACS result payload than the one leaf");
     });
   }
 
