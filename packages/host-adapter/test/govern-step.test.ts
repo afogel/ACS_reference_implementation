@@ -7,9 +7,12 @@ import type { ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
 /**
- * `governStep` is the exchange a host shim collaborates with, factored out
- * so a second host does not have to reproduce it -- including the parts
- * that close a fail-open. Its properties are pinned HERE, at the
+ * `governStep` is the exchange that used to live inside
+ * hosts/claude-code/acs-hook.ts, and the reason it moved is that slice V5's
+ * second host would otherwise have had to reproduce it -- including the parts
+ * where the fail-opens govern-step.ts's own header counts were closed -- the
+ * count lives there, once, rather than being restated here to go stale
+ * separately. So the properties are pinned HERE, at the
  * collaborator, and not only end to end through one host's subprocess
  * (hosts/claude-code/test/posture.test.ts, which still proves the whole thing
  * against a real Guardian).

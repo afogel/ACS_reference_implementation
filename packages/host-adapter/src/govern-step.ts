@@ -11,10 +11,21 @@
  * own stage directly, rather than a shim re-deriving which stage failed by
  * inspecting boolean flags after something has already gone wrong.
  *
- * This exchange is where a fail-open can hide: something throws, silently
- * no-ops, or emits an output the host does not recognise, letting the tool
- * call run ungoverned and unaudited. This function is the single place that
- * closes each of those paths:
+ * That matters more here than it usually would, because this exchange is where
+ * TWELVE separate fail-opens were found and closed across four slices, and every
+ * one had the same shape: something throws, silently no-ops, or emits an output
+ * the host does not recognise, so the tool call runs ungoverned and unaudited.
+ *
+ * THE COUNT IS STATED HERE AND NOWHERE ELSE, deliberately. It is countable
+ * rather than rhetorical -- each one is a distinct route to that shape, each was
+ * measured before it was closed, and each has a test that fails if it reopens --
+ * and three of the twelve are V4's, which is exactly how a number repeated in
+ * two places goes stale in one of them: this header said "nine ... across three
+ * slices" while the note at `assertOutputIsReplaceable` below said "the
+ * twelfth". Both notes now point back here instead of carrying their own copy.
+ *
+ * The properties they cost, all of which this function is now the single place
+ * to read:
  *
  *   - A decision that ARRIVED always outranks a posture. A response carrying
  *     both an `error` and a `result` that names a decision means a decision
@@ -52,9 +63,10 @@
  *     decision itself failed, which `loadHookmap` makes unreachable for a hook
  *     it does map (see `resolveByPosture` below) -- and all three are left as
  *     throws rather than repaired, because half an output is the one thing a
- *     governance hook must never write. The middle one is the twelfth fail-open
- *     closed here: asked any later it arrives with a decision in hand, and the
- *     posture answers a question the decision had already answered.
+ *     governance hook must never write. The middle one is one of the fail-opens
+ *     this header counts, and it is the ORDERING that closes it: asked any later
+ *     it arrives with a decision in hand, and the posture answers a question the
+ *     decision had already answered.
  *
  * This module knows ACS and hookmaps, and nothing else: no policy-runtime
  * vocabulary, and no host vocabulary -- it never names a field of the output
@@ -321,7 +333,8 @@ export async function governStep({
   // this is where that is established -- once, before anything is asked of a
   // Guardian and before anything is audited.
   //
-  // THE TWELFTH FAIL-OPEN, AND IT IS CLOSED BY THIS ORDERING. Building the
+  // ONE OF THE FAIL-OPENS THIS MODULE'S HEADER COUNTS, AND IT IS CLOSED BY THIS
+  // ORDERING RATHER THAN BY ANY REPAIR HERE. Building the
   // replacement is what a `deny` at a result gate withholds WITH (see
   // `withResultOutput`), and it can fail -- a payload whose named leaf is not
   // prose is a leaf no replacement can be expressed for at all. Asked at the

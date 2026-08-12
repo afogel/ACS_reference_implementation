@@ -112,9 +112,13 @@ describe("architectural invariants", () => {
    * one host's vocabulary the shared module's public API, and a second host
    * would have to inherit it or fork the module.
    *
-   * All four names now live in hosts/claude-code/: two as data in
-   * claude-code.hookmap.yaml's output paths, and the wrapper in acs-hook.ts,
-   * which is what wraps. Same scope note as the gate above -- non-test `.ts`
+   * Every name the gate below lists now lives in hosts/claude-code/: all but
+   * one as data in claude-code.hookmap.yaml's output paths, and the remaining
+   * one -- the wrapper -- in acs-hook.ts, which is what wraps, and in the
+   * hookmap as the dotted prefix those paths sit under. Stated by relation
+   * rather than by count on purpose: this is the gate whose job is catching
+   * stale declarations, and it carried one ("all four names") from the moment
+   * V4 added a fifth. Same scope note as the gate above -- non-test `.ts`
    * under packages/host-adapter/src only, with comments stripped, so a doc
    * comment may still explain the boundary it must not cross in code.
    */

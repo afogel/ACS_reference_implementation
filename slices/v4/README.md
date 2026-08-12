@@ -100,8 +100,11 @@ carries it (V7's): both documents §6.3's pointers can address here are field-ad
 structures, and an opaque string is a field of neither. That is a fact about the payload shapes
 these two gates govern, not a gap in §6.3 and not a missing branch in the adapter — a step
 whose payload *is* an opaque body would have an obvious target for it. The same V3 row also
-says `mapVerdict` "synthesizes `parameter_overrides` and throws on anything else", which is now
-per-point: `parameter_overrides` at the request gate, `redactions` at the result gate.
+says "`mapping.yaml` synthesizes `parameter_overrides` and `mapVerdict` throws on anything
+else" — quoted with its subjects where V3 put them, because the synthesis rule is `mapping.yaml`'s
+and the throw is `mapVerdict`'s, and those are not the same thing to get wrong. What changes is
+the first half: the synthesis is now **per intervention point** — `parameter_overrides` at the
+request gate, `redactions` at the result gate. `mapVerdict` still throws on anything else.
 
 **The `redact` rule ships in `policy/lib/data.json`, and one consequence reaches V3's runbook.**
 V3 added that rule for one capture and reverted it; V4's tracked file carries it permanently,

@@ -105,8 +105,9 @@ every point in this narration except where a section is actively showing its own
 ## allow
 
 No edit needed — this is the tracked `policy/lib/data.json` exactly as committed. When V3 shipped
-that meant the destructive-command patterns alone; **since V4 the tracked file also carries the
-`redact` block** the `transform` section below used to add. Re-run against it, `ls -la` is still
+that meant the destructive-command patterns alone; **since V4 the tracked file also carries a
+`redact` block**, of which the one the `transform` section below used to add is a subset — V4
+ships a second pattern beside it (`policy/lib/data.json:12-15`). Re-run against it, `ls -la` is still
 the clean allow captured here — the redaction patterns match secrets, and this command carries
 none.
 
@@ -263,7 +264,10 @@ That also means the rule is live at *every* intervention point, not just this on
 V4's own demo turns on — see [`docs/demos/v4-runbook.md`](v4-runbook.md), and
 `docs/shaping/acs-reference-impl-slices.md` §V4 for why a second config document was rejected.
 The diff, as V3 captured it (against blob `2530d81`; V4's tracked file is `7130eed`, and the
-`redact` block below is now part of it):
+`redact` block below is **a subset of what ships** there — V4 added a second pattern,
+`AKIA[0-9A-Z]{16}`, beside this one and put the array on a single line, so the tracked block is
+neither this text nor this formatting. Read the diff as the edit V3 actually made, not as a
+quotation of the current file; `policy/lib/data.json:12-15` is the current file):
 
 ```diff
 diff --git a/policy/lib/data.json b/policy/lib/data.json
