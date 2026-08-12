@@ -465,7 +465,23 @@ it("refuses when a mirror is left holding what the leaf held", () => {
   const undeclared = { ...location, outputs: { from: "$.result.output", within: "$.result" } };
   expect(() => replacingOutput(undeclared, "[REDACTED]")).toThrow(/still holds/);
 });
+
+// The degenerate case the substring form got wrong. A tool that produced no
+// output must still be replaceable -- otherwise every empty result is withheld.
+it("does not refuse an empty leaf just because the empty string is everywhere", () => {
+  const empty = {
+    payload: { result: { output: "", metadata: { output: "", exit: 0 } } },
+    outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+  };
+  expect(replacingOutput(empty, "[REDACTED]")).toEqual({
+    output: "[REDACTED]",
+    metadata: { output: "[REDACTED]", exit: 0 },
+  });
+});
 ```
+
+`holdsValue(container, value)` is a small recursive walk in this module: true when
+any leaf of `container` is structurally equal to `value`. Whole values, never substrings.
 
 - [ ] **Step 2: Run it, expect FAIL** — `mirrors` is not a member of `HookmapOutputs`, so the
   first case leaves `metadata.output` at `"SECRET"` and the second does not throw.
@@ -516,7 +532,16 @@ In `result-output.ts`, after the leaf patch inside `replacingOutput`:
   // to hand back a replacement in which the value being withheld survives. Fails
   // closed: the caller turns this into a withholding deny, exactly as it does
   // for every other way a replacement cannot be built.
-  if (JSON.stringify(replacement).includes(JSON.stringify(original).slice(1, -1))) {
+  //
+  // WHOLE-VALUE EQUALITY, NEVER A SUBSTRING SCAN. An earlier draft of this
+  // check serialised the replacement and asked whether it CONTAINED the
+  // original's serialisation. That is wrong in both directions and one of them
+  // is catastrophic: an empty-string leaf serialises to `""`, whose interior is
+  // the empty string, and every replacement contains that -- so a tool that
+  // produced no output would have every result withheld. Comparing whole values
+  // has no such degenerate case, and it is the same equality the leaf's own
+  // landing check uses.
+  if (holdsValue(replacement, original)) {
     throw new Error(
       `result-output: the replacement still holds the value being replaced -- some field beside ` +
         `${JSON.stringify(outputs.from)} carries its own copy, and withholding a leaf while a sibling keeps ` +
@@ -651,12 +676,54 @@ hooks:
           reason.text: { from: reasoning, type: string }
 ```
 
-`exit_status: {from: ...}` is a **new hookmap form** — V4's type is `HookmapLiteral` only. Add
-`HookmapFieldRead = { from: string }` beside it and teach `buildPayload` to resolve it, keeping
-the literal form working for Claude Code.
+- [ ] **Step 4: `exit_status` learns the field-read form**
 
-- [ ] **Step 4: Run it, expect PASS** — `bun test hosts/opencode/test/hookmap.test.ts`.
-- [ ] **Step 5: Commit** — `Slice: #6`, affordance `S2`.
+A **new hookmap form**: V4's `exit_status` type is `HookmapLiteral` only, and this hookmap
+declares `{from: $.result.metadata.exit}`. Its own failing test first, in
+`packages/host-adapter/test/build-envelope.test.ts`:
+
+```ts
+it("reads exit_status from the payload when the hookmap names a path", () => {
+  const envelope = buildEnvelope("tool.execute.after", 
+    { tool: "bash", result: { output: "x", metadata: { exit: 0 } } }, hookmapWithFieldRead);
+  expect(envelope.params.payload.exit_status).toBe("success");
+});
+
+it("maps a non-zero exit to failure", () => { /* metadata.exit = 1 -> "failure" */ });
+
+it("still accepts the literal form", () => { /* Claude Code's hookmap is unchanged */ });
+```
+
+Then, in `build-envelope.ts`:
+
+```ts
+/** An exit status read from the payload rather than fixed by the hookmap. */
+export type HookmapFieldRead = { from: string };
+
+/**
+ * `success` / `failure`, per ACS's own enum. A host that reports a numeric exit
+ * code is mapped here rather than in the hookmap, because the hookmap is data
+ * and "0 means success" is a fact about process exit codes, not a per-host
+ * choice. A host whose gate genuinely cannot fail keeps V4's literal form.
+ */
+function exitStatusOf(entry: HookmapResultHookEntry, payload: Record<string, unknown>): string {
+  if ("literal" in entry.exit_status) return entry.exit_status.literal;
+  const raw = resolvePath(payload, entry.exit_status.from);
+  if (raw === undefined) {
+    throw new Error(
+      `build-envelope: hookmap path ${JSON.stringify(entry.exit_status.from)} for "exit_status" resolves to ` +
+        `no value in this payload, so this gate cannot say whether the step succeeded`,
+    );
+  }
+  return raw === 0 || raw === "0" || raw === "success" ? "success" : "failure";
+}
+```
+
+`HookmapResultHookEntry.exit_status` becomes `HookmapLiteral | HookmapFieldRead`. Claude Code's
+hookmap declares the literal and is untouched.
+
+- [ ] **Step 5: Run it, expect PASS** — `bun test hosts/opencode/test/hookmap.test.ts packages/host-adapter/test/build-envelope.test.ts`, then the full suite.
+- [ ] **Step 6: Commit** — `Slice: #6`, affordance `S2`.
 
 ---
 
@@ -769,7 +836,17 @@ export const AcsPlugin: Plugin = async () => {
 - [ ] **Step 1: Write the failing test** — a destructive command is denied by throwing, and the
   reason is the Guardian's own; a `transform` rewrites `output.args` in place.
 
+A **live Guardian**, exactly as `hosts/claude-code/test/hook.test.ts:84` does it — the plugin
+reads `ACS_GUARDIAN_URL` when it is constructed, so the port has to be set before `AcsPlugin` runs:
+
 ```ts
+let guardian: StartedGuardian;
+beforeAll(async () => {
+  guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+  process.env.ACS_GUARDIAN_URL = guardian.url;
+});
+afterAll(async () => { await guardian.stop(); });
+
 it("denies a destructive command by throwing, with the policy's reason", async () => {
   const hooks = await AcsPlugin({} as never);
   const output = { args: { command: "rm -rf /" } };
@@ -866,42 +943,80 @@ it("withholds a denied result by replacing rather than throwing", async () => {
 **This task is the demo.** The slice's deliverable is the diff.
 
 **Files:**
-- Modify: `test/invariants.test.ts`
+- Modify: `test/invariants.test.ts` — the fifth grep gate
+- Create: `scripts/verify-zero-diff.sh` — the zero-diff proof
+- Modify: `package.json` — `"verify:zero-diff": "bash scripts/verify-zero-diff.sh"`
 
 **Interfaces:**
 - Consumes: the existing gate helpers in `test/invariants.test.ts`
-- Produces: two new gates.
+- Produces: one new gate, and `bun run verify:zero-diff`.
+
+**Why the zero-diff proof is a script, not a `bun test` case.** It needs git history and a base
+ref, which is exactly the shape of `verify:pin` — the repo's existing precedent for a check that
+depends on something outside the working tree (there, a network clone). No test in this repo
+shells out to git, and one that did would fail for anyone whose checkout lacks the base branch,
+and permanently once the stack merges and `slice/v4` is deleted. As a script it takes the base
+as an argument, defaults to the stack's parent, and says what it compared.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 it("the adapter names no OpenCode field", () => {
-  // Fifth gate, same shape as the four before it. `metadata` is the term this
-  // slice could most plausibly get wrong -- it is the mirror's own field name,
-  // and `result-output.ts` is where a shortcut would put it.
-  for (const term of ["tool.execute", "sessionID", "callID", "metadata", "attachments"]) {
+  // Fifth gate, same shape as the four before it. `attachments` is the term
+  // this slice could most plausibly get wrong: it is the field OpenCode has at
+  // runtime and does not declare in its own type, so a shortcut in
+  // `result-output.ts` naming it explicitly is the mistake to catch.
+  for (const term of ["tool.execute", "callID", "attachments"]) {
     expect(sourceFilesUnder("packages/host-adapter/src").filter((f) => namesTerm(f, term))).toEqual([]);
   }
 });
-
-it("the second host cost zero lines in the Guardian, the bridge, or AGT (R3.4)", () => {
-  const changed = execSync("git diff --name-only slice/v4...HEAD", { encoding: "utf8" }).split("\n").filter(Boolean);
-  const frozen = changed.filter((p) =>
-    p.startsWith("packages/guardian/src/") || p.startsWith("packages/agt-bridge/src/") ||
-    p.startsWith("policy/") || p === "agt.lock" || p === "mapping.yaml");
-  expect(frozen).toEqual([]);
-});
 ```
 
-- [ ] **Step 2: Run it, expect FAIL** — mutation-test the fifth gate by adding `metadata` to a
-  comment in `result-output.ts`, confirm it fails, remove it. The other four terms pass whether
-  or not the fifth is in the list, which is why it is the one to prove.
+**Two terms are deliberately NOT in that list, and the reason is the gate's own validity.**
+`namesTerm` is case-insensitive (`test/invariants.test.ts:68`), and the adapter legitimately
+uses both:
 
-- [ ] **Step 3: Minimal implementation** — the gates are the deliverable; if the zero-diff gate
-  fails, the *offending change* moves, not the gate.
+- **`sessionID`** case-insensitively matches `sessionId`, which six adapter files use — it is
+  **ACS's** own `metadata.session_id`, not OpenCode's field. Gating it would fail on day one.
+- **`metadata`** appears in `build-envelope.ts` and `handshake.ts` as the **ACS envelope's own
+  `metadata` block**. Same collision.
+
+Listing either would produce a gate that fails for the wrong reason, and "loosen the gate until
+it passes" is how a gate stops meaning anything. What protects R3.2 for those two is that they
+are ACS vocabulary the adapter is *supposed* to speak.
+
+- [ ] **Step 2: Run it, expect FAIL** — mutation-test the fifth gate by adding `attachments` to
+  a comment in `result-output.ts`, confirm it fails, remove it. The other two terms pass whether
+  or not it is in the list, which is why it is the one to prove.
+
+  **Keep `result-output.ts`'s prose host-neutral anyway.** It now discusses the mirror at
+  length, and although `metadata` cannot be gated, the module's own header claims it "names no
+  host field". Say "a sibling that duplicates the leaf", not the host's field name — the gate
+  cannot enforce this one, so the discipline has to.
+
+- [ ] **Step 3: Minimal implementation** — the script:
+
+```bash
+#!/usr/bin/env bash
+# R3.4, mechanically. The second host must cost zero lines in the Guardian, the
+# bridge, or AGT -- the slice's demo IS this diff. Same shape as verify-pin.sh:
+# a check that needs git history, so it is a script rather than a bun test.
+set -euo pipefail
+base="${1:-slice/v4}"
+frozen='^(packages/guardian/src/|packages/agt-bridge/src/|policy/|agt\.lock$|mapping\.yaml$)'
+changed="$(git diff --name-only "$base"...HEAD | grep -E "$frozen" || true)"
+if [ -n "$changed" ]; then
+  echo "verify-zero-diff: R3.4 violated -- these are frozen for this slice:" >&2
+  echo "$changed" >&2
+  exit 1
+fi
+echo "verify-zero-diff: zero changed lines under the Guardian, the bridge, or AGT (vs $base)"
+```
 
 - [ ] **Step 4: Run it, expect PASS** — `bun test test/invariants.test.ts`, then
-  `bun test`, `bun run typecheck`, `bun run verify:pin`.
+  `bun test`, `bun run typecheck`, `bun run verify:pin`, `bun run verify:zero-diff`.
+  Mutation-test the script too: touch a comment in `packages/guardian/src/server.ts`, confirm it
+  exits 1, revert.
 
 - [ ] **Step 5: Commit** — `Slice: #6`.
 
