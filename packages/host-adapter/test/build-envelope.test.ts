@@ -603,6 +603,59 @@ describe("buildEnvelope", () => {
         );
       });
 
+      // §V5 review, Minor 4: `mirrors` gets the same load-time treatment as
+      // `from` and `within`, immediately above -- an entry accepted here and
+      // rejected the first time a hook actually fires (as a bare `TypeError`
+      // deep inside `replacingOutput`'s mirror validation) is a load-time gap
+      // this function closes everywhere else.
+      it("throws, naming the hook, when `outputs.mirrors` is not a list of strings", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: { from: "$.tool_response.stdout", within: "$.tool_response", mirrors: 42 },
+          exit_status: { literal: "success" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/hook "Broken" declares "outputs\.mirrors" as 42/);
+      });
+
+      it("throws, naming the hook, when a declared mirror is not a field inside `outputs.within`", () => {
+        const broken = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: {
+            from: "$.tool_response.stdout",
+            within: "$.tool_response",
+            mirrors: ["$.tool_input.command"],
+          },
+          exit_status: { literal: "success" },
+        });
+
+        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
+          /hook "Broken" declares "outputs\.mirrors" entry .* which is not a field inside "outputs\.within"/,
+        );
+      });
+
+      it("accepts a well-formed `outputs.mirrors` list and builds the envelope normally -- `mirrors` is unread here", () => {
+        const withMirror = withBrokenEntry({
+          acs_method: "steps/toolCallResult",
+          tool_name: "$.tool_name",
+          outputs: {
+            from: "$.tool_response.stdout",
+            within: "$.tool_response",
+            mirrors: ["$.tool_response.stderr"],
+          },
+          exit_status: { literal: "success" },
+        });
+
+        const envelope = buildEnvelope("Broken", payload, withMirror);
+        expect(envelope.params.payload).toEqual({
+          tool: { name: "Bash" },
+          exit_status: "success",
+          outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }],
+        });
+      });
+
       it("throws, naming the hook, when `exit_status` names no literal", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallResult",

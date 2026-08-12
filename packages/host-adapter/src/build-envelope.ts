@@ -472,6 +472,42 @@ function buildPayload(
       );
     }
 
+    // `mirrors` gets the same load-time treatment as `from` and `within`
+    // (§V5, Minor 4 review finding): optional, but when an entry declares it
+    // at all, a malformed value should be a load-time refusal here, not a
+    // per-invocation `TypeError` the first time a hook actually fires.
+    // `?? undefined` for the same YAML reason `argumentsPath`/`outputs`
+    // above use it -- a key written with nothing after it parses to `null`,
+    // a key present and unusable, not a key absent, and this module treats
+    // that the same as "no mirrors declared" rather than as a malformed one.
+    const rawMirrors = (isPlainObject(outputs) ? outputs.mirrors : undefined) ?? undefined;
+    if (rawMirrors !== undefined) {
+      if (!Array.isArray(rawMirrors) || rawMirrors.some((mirror) => typeof mirror !== "string" || mirror.length === 0)) {
+        throw new Error(
+          `buildEnvelope: hookmap entry for hook "${event}" declares "outputs.mirrors" as ` +
+            `${JSON.stringify(rawMirrors)} -- when present, "mirrors" must be a list of non-empty JSONPath-lite ` +
+            `strings, each a further path inside "outputs.within"`,
+        );
+      }
+      // The same containment rule as `from`'s, checked the same way, for the
+      // same reason: an entry accepted here and rejected the first time a
+      // replacement is actually patched is a load-time gap this module closes
+      // everywhere else in this function. The runtime (result-output.ts)
+      // still re-checks this on every invocation rather than trusting this
+      // pass -- see that module's own note on why "the loader accepted it" is
+      // not "the caller established it".
+      for (const mirror of rawMirrors as string[]) {
+        if (!mirror.startsWith(`${within}.`) || mirror.length <= within.length + 1) {
+          throw new Error(
+            `buildEnvelope: hookmap entry for hook "${event}" declares "outputs.mirrors" entry ` +
+              `${JSON.stringify(mirror)}, which is not a field inside "outputs.within" ${JSON.stringify(within)} ` +
+              `-- a mirror is a further path into the same object the leaf lives in, the same relation ` +
+              `"outputs.from" has to it`,
+          );
+        }
+      }
+    }
+
     const exitStatus = isPlainObject(entry.exit_status) ? entry.exit_status.literal : undefined;
     if (typeof exitStatus !== "string" || exitStatus.length === 0) {
       throw new Error(

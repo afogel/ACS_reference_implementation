@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { loadHookmap } from "../src/build-envelope.ts";
 import {
   assertOutputIsReplaceable,
   projectAppliedOutput,
@@ -32,9 +33,25 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
     });
   });
 
-  it("refuses when a mirror is left holding what the leaf held", () => {
-    const undeclared = { ...location, outputs: { from: "$.result.output", within: "$.result" } };
-    expect(() => replacingOutput(undeclared, "[REDACTED]")).toThrow(/still holds/);
+  // §V5 review, Critical 1 correction: the FIRST version of this test used a
+  // hookmap declaring NO mirrors at all and expected a throw. That defect --
+  // the post-condition firing on two independently-equal fields with nothing
+  // declared -- is exactly what broke the shipped host (see the dedicated
+  // describe block below). The corrected design only scans for an undeclared
+  // duplicate once a hookmap has ALREADY declared at least one mirror, so the
+  // case this test now pins is "declared one, missed another."
+  it("refuses when one mirror is declared but a second, undeclared one is left holding the original", () => {
+    const partial: HostOutputLocation = {
+      payload: {
+        result: {
+          output: "SECRET",
+          metadata: { output: "SECRET" }, // declared below
+          echo: { output: "SECRET" }, // NOT declared
+        },
+      },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+    };
+    expect(() => replacingOutput(partial, "[REDACTED]")).toThrow(/still holds/);
   });
 
   // The degenerate case the substring form got wrong. A tool that produced no
@@ -107,27 +124,208 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
 });
 
 /**
- * `assertOutputIsReplaceable` calls `replacingOutput` with `WITHHELD_OUTPUT`
- * BEFORE any decision is sought (`governStep`'s own preflight, see
- * govern-step.ts). So a hookmap entry missing a mirror declaration is refused
- * there too -- not as a withholding deny, but as a blocking stop for the
- * deployment: the same throw, reached one route earlier.
+ * §V5 review, Critical 1: a defect in the ORIGINAL design, not merely its
+ * implementation. The first cut of the post-condition walked the whole
+ * fully-patched replacement (leaf excluded) and refused whenever `original`
+ * turned up anywhere in it -- regardless of whether ANY mirror was declared.
+ * Structural equality alone cannot distinguish "one field is a copy of
+ * another" from "two fields independently hold the same value," and the
+ * second case is the ORDINARY one for a silent command: Claude Code's real
+ * `tool_response` is `{stdout, stderr, interrupted, isImage,
+ * noOutputExpected}`, and `touch`, `mkdir`, `cd`, `export`, a successful
+ * `grep -q` all produce `stdout === "" && stderr === ""` -- two
+ * independently-empty fields, not a mirror. The corrected design only scans
+ * for an undeclared duplicate once a hookmap has declared at least one
+ * mirror (see the describe block above); a hookmap declaring none, like
+ * Claude Code's, is never scanned at all.
  */
-describe("replacingOutput — the same refusal, reached from the preflight (§V5)", () => {
-  it("blocks the deployment at the preflight when a hookmap is missing a mirror declaration", () => {
+describe("replacingOutput — two independently-equal fields are not a mirror (§V5 review, Critical 1)", () => {
+  it("does not refuse two independently-equal fields when no mirrors are declared", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "", sibling: "" } },
+      outputs: { from: "$.result.output", within: "$.result" },
+    };
+    expect(replacingOutput(location, "[REDACTED]")).toEqual({ output: "[REDACTED]", sibling: "" });
+  });
+
+  // The exact shape, loaded from the SHIPPED hookmap file rather than typed
+  // out by hand, so this test tracks the real file rather than a belief
+  // about it -- and the exact scenario the review verified end-to-end: an
+  // empty stdout beside an empty stderr, at the result gate, must not become
+  // a blocking preflight stop.
+  it("does not block a silent command through the shipped Claude Code hookmap shape at the result gate", () => {
+    const hookmap = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
+    const outputs = hookmap.hooks.PostToolUse?.outputs;
+    if (outputs === undefined) {
+      throw new Error('test fixture assumption broken: "PostToolUse" declares no "outputs" block');
+    }
+
+    const location: HostOutputLocation = {
+      payload: {
+        tool_response: { stdout: "", stderr: "", interrupted: false, isImage: false, noOutputExpected: true },
+      },
+      outputs,
+    };
+
+    // The preflight -- `governStep`'s own guard, run before any decision is
+    // sought -- must not block the deployment over this shape.
+    expect(() => assertOutputIsReplaceable(location)).not.toThrow();
+
+    // And an actual withholding replacement must still be buildable, every
+    // sibling field intact.
+    expect(replacingOutput(location, WITHHELD_OUTPUT)).toEqual({
+      stdout: WITHHELD_OUTPUT,
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+      noOutputExpected: true,
+    });
+  });
+});
+
+/**
+ * §V5 review, Important 2: a declared mirror gets none of the leaf's own
+ * three guards for free, which is a NEW fail-open of the exact shape this
+ * module has closed for the leaf twelve times over -- reachable from a
+ * one-token hookmap typo. Each guard here mirrors one of `replacingOutput`'s
+ * existing leaf checks; see that function's own doc comment for the mapping.
+ */
+describe("replacingOutput — a declared mirror gets the leaf's own three guards (§V5 review, Important 2)", () => {
+  it("refuses a mirror equal to `within` itself, rather than writing a stray key", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "SECRET", metadata: { output: "SECRET" } } },
-      outputs: { from: "$.result.output", within: "$.result" },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result"] },
+    };
+    expect(() => replacingOutput(location, "[REDACTED]")).toThrow(/names the same object as "outputs\.within"/);
+  });
+
+  it("refuses a mirror that resolves to no value in the payload (a hookmap typo)", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "SECRET", metadata: { output: "SECRET" } } },
+      // "outpt" -- a typo for "output". The payload only has "metadata.output".
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.outpt"] },
+    };
+    expect(() => replacingOutput(location, "[REDACTED]")).toThrow(/resolves to no value in this payload/);
+  });
+
+  it("refuses an object-valued mirror a string replacement would clobber", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "SECRET", metadata: { output: "SECRET", exit: 0 } } },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata"] },
+    };
+    expect(() => replacingOutput(location, "[REDACTED]")).toThrow(
+      /is a string where this tool produced a object/,
+    );
+  });
+
+  it("refuses a mirror that overlaps the leaf itself", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "SECRET" } },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.output"] },
+    };
+    expect(() => replacingOutput(location, "[REDACTED]")).toThrow(
+      /are not disjoint \(equal, ancestor, or descendant\)/,
+    );
+  });
+
+  // The overlap has to be refused explicitly and BEFORE any patch -- not left
+  // to whichever symptom declaration order happens to produce. Before this
+  // check, descendant-then-ancestor silently collapsed the descendant's edit
+  // (no throw at all); ancestor-then-descendant threw `patchedClone`'s
+  // generic, unrelated "no object to descend through". Both orders now throw
+  // the SAME explicit refusal.
+  it("refuses two overlapping mirrors the same way regardless of declaration order", () => {
+    const payload = { result: { output: "SECRET", m: { output: "SECRET" } } };
+
+    const descendantFirst: HostOutputLocation = {
+      payload,
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.m.output", "$.result.m"] },
+    };
+    const ancestorFirst: HostOutputLocation = {
+      payload,
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.m", "$.result.m.output"] },
+    };
+
+    expect(() => replacingOutput(descendantFirst, "[REDACTED]")).toThrow(
+      /are not disjoint \(equal, ancestor, or descendant\)/,
+    );
+    expect(() => replacingOutput(ancestorFirst, "[REDACTED]")).toThrow(
+      /are not disjoint \(equal, ancestor, or descendant\)/,
+    );
+  });
+});
+
+/**
+ * `assertOutputIsReplaceable` calls `replacingOutput` with `WITHHELD_OUTPUT`
+ * BEFORE any decision is sought (`governStep`'s own preflight, see
+ * govern-step.ts). So a hookmap entry that declares a mirror but misses
+ * another is refused there too -- not as a withholding deny, but as a
+ * blocking stop for the deployment: the same throw, reached one route
+ * earlier.
+ */
+describe("replacingOutput — the same refusal, reached from the preflight (§V5)", () => {
+  it("blocks the deployment at the preflight when one mirror is declared and a second is missed", () => {
+    const location: HostOutputLocation = {
+      payload: {
+        result: {
+          output: "SECRET",
+          metadata: { output: "SECRET" }, // declared
+          echo: { output: "SECRET" }, // NOT declared
+        },
+      },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
     };
     expect(() => assertOutputIsReplaceable(location)).toThrow(/still holds/);
   });
 
-  it("passes the preflight once the mirror is declared", () => {
+  it("passes the preflight once every mirror is declared", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "SECRET", metadata: { output: "SECRET" } } },
       outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
     };
     expect(() => assertOutputIsReplaceable(location)).not.toThrow();
+  });
+
+  // §V5 review, Critical 1: a hookmap declaring NO mirrors passes the
+  // preflight too, even though the payload below has two independently-equal
+  // fields -- exactly the shape that broke the shipped host.
+  it("passes the preflight when no mirrors are declared, even with two independently-equal fields", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "", sibling: "" } },
+      outputs: { from: "$.result.output", within: "$.result" },
+    };
+    expect(() => assertOutputIsReplaceable(location)).not.toThrow();
+  });
+});
+
+/**
+ * §V5 review, Important 3: the leaf mask (excluding the leaf's own field from
+ * the undeclared-duplicate scan, so a modification that never touched the
+ * leaf does not pre-empt `projectAppliedOutput`'s own landing check with this
+ * function's "still holds" message) has to extend to every DECLARED mirror
+ * too, not the leaf alone. With a mirror declared, a modification targeting
+ * something other than the leaf (`/exit_status`, `/tool/name` -- the exact
+ * family the original leaf-mask deviation was made to fix) leaves the mirror
+ * position patched with `original` as well as the leaf -- and an unmasked
+ * mirror position would make the scan fire the SAME misleading message one
+ * field over.
+ */
+describe("projectAppliedOutput — the leaf mask extends to declared mirrors (§V5 review, Important 3)", () => {
+  it("reports the landing check's own message, not a false mirror refusal, when a modification never touches the leaf", () => {
+    const location: HostOutputLocation = {
+      payload: { result: { output: "SECRET", metadata: { output: "SECRET" }, exit_status: "success" } },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+    };
+    // The leaf is untouched in the applied document (still "SECRET"); only
+    // `exit_status` changed. Both the leaf's own field AND the declared
+    // mirror's are left holding `original` by this -- correctly, since
+    // nothing was ever asked to change either of them.
+    const appliedDocument = { tool: { name: "t" }, exit_status: "failure", outputs: [{ value: "SECRET" }] };
+    const originalDocument = { tool: { name: "t" }, exit_status: "success", outputs: [{ value: "SECRET" }] };
+
+    expect(() => projectAppliedOutput(appliedDocument, originalDocument, location)).toThrow(
+      /exactly as the step produced it/,
+    );
   });
 });
 

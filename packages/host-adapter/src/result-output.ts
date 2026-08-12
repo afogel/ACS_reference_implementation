@@ -152,6 +152,30 @@ function holdsValue(container: unknown, value: unknown): boolean {
 }
 
 /**
+ * True when two already-split paths are NOT disjoint -- equal, or one an
+ * ancestor of the other. The same test `modifications.ts`'s own
+ * `segmentsOverlap` makes for two redaction paths, duplicated here rather
+ * than imported: this module names no host-field vocabulary and no §6.3
+ * vocabulary, and importing from `modifications.ts` would pull that module's
+ * own redaction/override types across a boundary that has none today. Three
+ * lines is cheaper than a new cross-module dependency for this module to own.
+ *
+ * Used to refuse an overlapping leaf/mirror pair BEFORE any patch is
+ * applied, so the refusal is the same regardless of which path a hookmap
+ * author happened to list first -- see `replacingOutput`'s own note on why
+ * that matters (§V5 review, Important 2): patching a descendant then an
+ * ancestor silently collapses the descendant's edit, while the reverse order
+ * throws a confusing, unrelated "no object to descend through" error from
+ * `patchedClone`. Neither is this check's job to rely on; this asks the
+ * question directly, before either can happen.
+ */
+function pathsOverlap(a: string[], b: string[]): boolean {
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  return shorter.every((segment, index) => segment === longer[index]);
+}
+
+/**
  * `document` with its ACS-side projected leaf (`outputs[0].value`, the same
  * one `projectAppliedOutput` reads back) replaced by a constant, so two
  * documents differing ONLY at that leaf serialise identically. Used to ask
@@ -211,7 +235,8 @@ function patchedClone(
 
 /**
  * The one way a replacing output is ever built: a clone of the object at
- * `outputs.within`, with the leaf at `outputs.from` replaced.
+ * `outputs.within`, with the leaf at `outputs.from` replaced, and every
+ * declared `outputs.mirrors` path replaced alongside it.
  *
  * Every failure mode is a throw, because each means the replacement would be a
  * shape the host may decline, and a declined replacement delivers the original.
@@ -312,15 +337,14 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     );
   }
 
-  let patched = patchedClone(container, segments, replacement, outputs.from);
-
-  // Every declared mirror, patched into the SAME clone -- so a container with
-  // two copies of the leaf ends the loop with neither copy left standing.
-  // `outputs.mirrors` is a list of further paths into `within`, not `from`
-  // repeated with a different tail, so each one is resolved the same way
-  // `from` itself was: split, checked against `within`'s own segments, then
-  // sliced down to the path inside the container `patchedClone` actually
-  // walks.
+  // Every declared mirror, VALIDATED IN FULL before any patch is applied --
+  // inside `within`, a real field inside it (not `within` itself), disjoint
+  // from the leaf and from every other declared mirror, present in the
+  // payload, and the same `typeof` as `replacement`. See this function's own
+  // doc comment for why each of these mirrors one of the leaf's own guards,
+  // and why the overlap check has to run before any write happens rather
+  // than after.
+  const mirrors: { mirror: string; relative: string[]; original: unknown }[] = [];
   for (const mirror of outputs.mirrors ?? []) {
     const mirrorSegments = pathSegments(mirror);
     if (!withinSegments.every((segment, index) => mirrorSegments[index] === segment)) {
@@ -329,37 +353,101 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
           `${JSON.stringify(outputs.within)}, so it names no field of the object a replacement is patched into`,
       );
     }
-    patched = patchedClone(patched, mirrorSegments.slice(withinSegments.length), replacement, mirror);
+    const relative = mirrorSegments.slice(withinSegments.length);
+    if (relative.length === 0) {
+      throw new Error(
+        `result-output: hookmap mirror ${JSON.stringify(mirror)} names the same object as "outputs.within" ` +
+          `${JSON.stringify(outputs.within)} itself, not a field inside it -- a mirror stands in the same ` +
+          `relation to "within" that "outputs.from" does`,
+      );
+    }
+    mirrors.push({ mirror, relative, original: undefined });
   }
 
-  // THE POST-CONDITION, and the reason `mirrors` is declared rather than
-  // inferred (§V5). Every check above is about the hookmap and the payload;
-  // this one is about what the fully-patched replacement actually contains --
-  // asked, deliberately, of the object this function is about to return,
-  // never of the hookmap's own declarations. See `holdsValue`'s own comment
-  // for why this compares whole values and never a serialised substring.
-  //
-  // ASKED BESIDE `outputs.from`, NOT OF IT -- the error text below says so,
-  // and means it: the leaf's own field is legitimately set to `replacement`,
-  // and `replacement` answering `original` is not this check's question to
-  // ask. `projectAppliedOutput` calls this with a leaf that a modification
-  // never touched (an ancestor edit landing somewhere else in the document)
-  // often enough that its OWN landing check exists for exactly that case, run
-  // right after this returns; asking the identical question HERE, over the
-  // leaf's own now-unchanged field, would answer it first and worse -- "some
-  // field carries its own copy" for a field that carries no copy of anything,
-  // it is simply the one field this call was never asked to change. So the
-  // leaf's own position is excluded from the walk, by a sentinel no real
-  // value can equal, and every OTHER field -- every declared mirror, and any
-  // undeclared one this hookmap never named -- is still checked in full.
-  const LEAF_POSITION_EXCLUDED = Symbol("result-output: the leaf's own field, not a sibling");
-  const besideTheLeaf = patchedClone(patched, segments, LEAF_POSITION_EXCLUDED, outputs.from);
-  if (holdsValue(besideTheLeaf, original)) {
-    throw new Error(
-      `result-output: the replacement still holds the value being replaced -- some field beside ` +
-        `${JSON.stringify(outputs.from)} carries its own copy, and withholding a leaf while a sibling keeps ` +
-        `it withholds nothing. Declare that field in this hook's "mirrors" so it is replaced too`,
-    );
+  for (const { mirror, relative } of mirrors) {
+    if (pathsOverlap(segments, relative)) {
+      throw new Error(
+        `result-output: hookmap mirror ${JSON.stringify(mirror)} and leaf path ${JSON.stringify(outputs.from)} ` +
+          `are not disjoint (equal, ancestor, or descendant) -- a mirror names a field DIFFERENT from the leaf, ` +
+          `not the leaf itself or a container it sits inside`,
+      );
+    }
+  }
+  for (let i = 0; i < mirrors.length; i += 1) {
+    for (let j = i + 1; j < mirrors.length; j += 1) {
+      const first = mirrors[i] as { mirror: string; relative: string[] };
+      const second = mirrors[j] as { mirror: string; relative: string[] };
+      if (pathsOverlap(first.relative, second.relative)) {
+        throw new Error(
+          `result-output: hookmap mirrors ${JSON.stringify(first.mirror)} and ${JSON.stringify(second.mirror)} ` +
+            `are not disjoint (equal, ancestor, or descendant) -- patching one after the other would silently ` +
+            `overwrite whichever was patched first`,
+        );
+      }
+    }
+  }
+
+  for (const entry of mirrors) {
+    const mirrorOriginal = resolveSegments(container, entry.relative);
+    if (mirrorOriginal === undefined) {
+      throw new Error(
+        `result-output: hookmap mirror ${JSON.stringify(entry.mirror)} resolves to no value in this payload, so ` +
+          `patching it would ADD a field this tool never produced -- a shape the host may decline, and a ` +
+          `declined replacement delivers the original output`,
+      );
+    }
+    if (typeof mirrorOriginal !== typeof replacement) {
+      throw new Error(
+        `result-output: the replacement for hookmap mirror ${JSON.stringify(entry.mirror)} is a ` +
+          `${typeof replacement} where this tool produced a ${typeof mirrorOriginal} -- the host validates a ` +
+          `replacement against the tool's own output shape and delivers the ORIGINAL when it does not match, ` +
+          `so a replacement of the wrong type withholds nothing and redacts nothing`,
+      );
+    }
+    entry.original = mirrorOriginal;
+  }
+
+  // The writes: the leaf first, then every declared mirror into the SAME
+  // clone -- so a container with two copies of the leaf ends the loop with
+  // neither copy left standing. Every pair above is already known disjoint,
+  // so the order among the mirrors themselves cannot change the result.
+  let patched = patchedClone(container, segments, replacement, outputs.from);
+  for (const entry of mirrors) {
+    patched = patchedClone(patched, entry.relative, replacement, entry.mirror);
+  }
+
+  // POST-CONDITION 1: every declared mirror actually holds `replacement` now
+  // -- see this function's own doc comment for why this is asked directly
+  // rather than trusted from the write above.
+  for (const entry of mirrors) {
+    const landed = resolveSegments(patched, entry.relative);
+    if (landed !== replacement) {
+      throw new Error(
+        `result-output: hookmap mirror ${JSON.stringify(entry.mirror)} does not hold the replacement after ` +
+          `being patched -- the replacement this function is about to return would not actually withhold what ` +
+          `it claims to at that field`,
+      );
+    }
+  }
+
+  // POST-CONDITION 2, ONLY WHEN AT LEAST ONE MIRROR IS DECLARED: see this
+  // function's own doc comment for why the scan is gated this way, and why
+  // the leaf AND every declared mirror -- not the leaf alone -- are excluded
+  // from it by a sentinel no real value can equal.
+  if (mirrors.length > 0) {
+    const EXCLUDED = Symbol("result-output: leaf or declared mirror, not an undeclared duplicate");
+    let masked = patchedClone(patched, segments, EXCLUDED, outputs.from);
+    for (const entry of mirrors) {
+      masked = patchedClone(masked, entry.relative, EXCLUDED, entry.mirror);
+    }
+    if (holdsValue(masked, original)) {
+      throw new Error(
+        `result-output: the replacement still holds the value being replaced -- some field beside ` +
+          `${JSON.stringify(outputs.from)} and its declared mirrors carries its own copy, and withholding a ` +
+          `leaf while an undeclared sibling keeps it withholds nothing. Declare that field in this hook's ` +
+          `"mirrors" so it is replaced too`,
+      );
+    }
   }
 
   return patched;
