@@ -268,7 +268,7 @@ describe("architectural invariants", () => {
     // them; one that stopped returning the shim would leave a gate that scans
     // something irrelevant and always passes. Pinned to the exact list, so a
     // second shim has to be added here consciously.
-    expect(scanned.map(({ file }) => file).sort()).toEqual(["claude-code/acs-hook.ts"]);
+    expect(scanned.map(({ file }) => file).sort()).toEqual(["claude-code/acs-hook.ts", "opencode/acs-plugin.ts"]);
 
     for (const { file, code } of scanned) {
       for (const spec of ["agt-bridge", "guardian"]) {
