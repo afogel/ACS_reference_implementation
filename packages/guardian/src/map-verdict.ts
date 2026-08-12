@@ -20,8 +20,13 @@ type FieldSource = { source: string };
  * field (verdict.reason) can take to satisfy ACS's `string[]`. `wrap` is
  * required here (not optional) precisely so there is no third case to
  * handle: a string source is always wrapped, never cast unsound. */
-type WrappedFieldSource = { source: string; wrap: "array" };
+type WrappedFieldSource = { source: string; wrap: WrapMode };
 type FieldLiteral = { literal: string };
+
+/** The wrap modes this mapping can express. One member today; the point of
+ * naming the set is that `applyWrap` below refuses everything outside it
+ * rather than silently doing the one thing it knows. */
+type WrapMode = "array";
 
 export type Mapping = {
   acs_version: string;
@@ -105,6 +110,37 @@ function readVerdictField(verdict: AgtVerdict, source: { source: string }): unkn
   return verdict[field];
 }
 
+/**
+ * Applies a field_synthesis leaf's declared `wrap` to the string it read.
+ *
+ * This exists because the declaration used to be one the runtime ignored (PR
+ * #10 review, second pass): `wrap: array` was required on the type, written in
+ * mapping.yaml, and published by V7's matrix as part of the table -- while
+ * `mapVerdict` built `[value]` from a hardcoded literal and never looked. That
+ * is the same defect class as the `pre_tool_call` hardcode `resolveInterventionPoint`
+ * closed, one table row over: editing the declaration changed nothing, so the
+ * mapping could claim a synthesis the code did not perform and nothing would
+ * fail.
+ *
+ * An unrecognised mode is a THROW, and the alternative is worse than a reported
+ * failure for the same reason every other failure in this module is. `loadMapping`
+ * casts the parsed YAML with `as Mapping` and validates nothing, so `wrap` at
+ * runtime is whatever the file says; defaulting an unknown mode to array-wrapping
+ * would synthesize a `reason_codes` the mapping did not ask for and hand it to a
+ * host as a decision's machine-readable half. The Guardian's evaluation catch
+ * turns this into an honoured `deny` (§6.4, R1.5), which is the honest answer to
+ * a mapping this code cannot carry out.
+ */
+function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
+  if (wrap !== "array") {
+    throw new Error(
+      `mapping.yaml declares field_synthesis.${leaf}.wrap as ${JSON.stringify(wrap)}, but this mapping can ` +
+        `only express "array"`,
+    );
+  }
+  return [value];
+}
+
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
@@ -121,7 +157,7 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
 
   const reasonForCodes = readVerdictField(verdict, fs.reason_codes);
   if (typeof reasonForCodes === "string") {
-    out.reason_codes = [reasonForCodes];
+    out.reason_codes = applyWrap(reasonForCodes, fs.reason_codes.wrap, "reason_codes");
   }
 
   const ruleId = readVerdictField(verdict, fs.policy_references.rule_id);

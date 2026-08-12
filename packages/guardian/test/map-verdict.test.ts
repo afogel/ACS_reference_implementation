@@ -52,6 +52,32 @@ describe("mapVerdict", () => {
   it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
     expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
   });
+
+  // PR #10 review, second pass: `field_synthesis.reason_codes.wrap` was
+  // required on the type and written in mapping.yaml while mapVerdict built
+  // `[value]` from a literal -- the same "declared but unread" defect the
+  // hardcoded `pre_tool_call` was. These read the declaration rather than the
+  // literal, so an edit to the table changes behaviour.
+  describe("field_synthesis.reason_codes.wrap is read, not assumed", () => {
+    it("wraps per the declared mode, on the shipped mapping", () => {
+      expect(mapVerdict({ decision: "deny", reason: "r" }, m).reason_codes).toEqual(["r"]);
+    });
+
+    it("throws for a wrap mode this mapping cannot express, rather than array-wrapping anyway", () => {
+      // loadMapping casts the parsed YAML and validates nothing, so a mapping
+      // declaring an unknown mode type-checks and reaches mapVerdict. Silently
+      // array-wrapping it would synthesize a reason_codes the mapping never
+      // asked for and hand it to a host as a decision's machine-readable half.
+      const unknownMode = {
+        ...m,
+        field_synthesis: { ...m.field_synthesis, reason_codes: { source: "verdict.reason", wrap: "csv" } },
+      } as unknown as Mapping;
+
+      expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode)).toThrow(
+        /field_synthesis\.reason_codes\.wrap as "csv"/,
+      );
+    });
+  });
 });
 
 // PR #10 review, Critical: the intervention_points table used to be a claim
