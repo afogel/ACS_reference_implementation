@@ -85,7 +85,7 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R3.3 | The AGT bridge contains zero host-specific code — verifiable by inspection | Must-have |
 | R3.4 | Adding the second host requires zero new AGT code | Must-have |
 | R3.5 | Claude Code is host #1 | Decided |
-| R3.6 | 🟡 OpenCode is host #2 — in-process TS plugin against Claude Code's subprocess hooks | Leaning yes |
+| R3.6 | ✅ OpenCode is host #2 — in-process TS plugin against Claude Code's subprocess hooks | **Confirmed** (D1, V5 planning) |
 | R3.7 | No runtime swap. AGT is the only policy runtime in the demo | Decided |
 | R3.8 | ✅ Show that a capability frozen out of one AGT host module is reachable through the contract, framed as capability drift rather than defect | **Confirmed** (F1, V4 planning) |
 | **R4** | **AGT gains, doesn't lose** | Must-have |
@@ -518,7 +518,7 @@ flowchart TB
 |---|---|
 | R3.2 — host adapter has zero AGT-specific code | N2/N3/N4 name no AGT concept. The only per-host artifacts are S1 and S2, both pure data |
 | R3.3 — AGT bridge has zero host-specific code | N30/N31 receive an assembled snapshot. Nothing in P3.1 knows a host exists |
-| R3.4 — second host costs no AGT code | P2 reuses N2/N3/N4 verbatim. Only S2 and the N10 shim are new |
+| R3.4 — second host costs no AGT code | P2 reuses N2/N3/N4 verbatim. Only S2 and the N10 shim are new. ⚠️ **Amended by V5 planning, and the amendment is narrower than it looks** — two adapter changes land beside them, both in `packages/host-adapter` where *both* hosts already share code, and neither in the Guardian, the bridge or AGT: the per-modification landing check §V4 parked here, and `outputs.mirrors`, which exists because OpenCode's result payload carries a **second copy** of the leaf a redaction replaces (risk row 17). A shim-local workaround for that would have been exactly the per-host fork this requirement forbids, so putting it in the shared adapter is what keeps R3.4 true rather than what bends it. V5's own gate asserts zero changed lines under `packages/guardian/src`, `packages/agt-bridge/src`, `policy/`, `agt.lock` and `mapping.yaml` |
 | R6.1 — AGT stays stateless | Every store lives in P3, never P3.1 |
 | R6.2 — session state in the Guardian | S3, S4, S5 |
 | R1.5 — AGT's evaluation fail-closed survives | N27 returns an explicit `deny` **decision**, so §6.4's "honor any decision that arrives" carries AGT's invariant intact |
@@ -533,7 +533,7 @@ flowchart TB
 
 | # | Decision | Status | Why it matters |
 |---|----------|--------|----------------|
-| D1 | R3.6 — confirm OpenCode as host #2, replacing Copilot CLI | Recommended, unconfirmed | Same "AGT already supports it" property, far lower setup friction, and the sharpest architectural contrast with Claude Code |
+| ~~D1~~ | R3.6 — confirm OpenCode as host #2, replacing Copilot CLI | ✅ **Decided: confirmed** (V5 planning) | Confirmed by running OpenCode **1.18.15**, not by reading it: the plugin API expresses both gates against an unchanged adapter. The "sharpest architectural contrast with Claude Code" turned out to be sharper than this row assumed, and in a way that is the point — Claude Code's shim *writes a document*, OpenCode's hooks return `void` and *mutate what they are handed*, so the same rendered `HostOutput` is applied rather than printed. Two conditions attach, both recorded in §V5 and risk rows 17/18 |
 | D2 | R3.7 — swap the runtime too? | Decided: no | Keeps every arm one Microsoft recognizes; costs the vendor-neutrality demonstration |
 | D3 | R5.4 — hook coverage | Open | All 19 is a spec exercise; the 8 AGT consumes is the minimum that proves R1 |
 | D4 | R1.1 — spec `steps/modelCall` for v0.2 as part of this work, or map AGT's two model-call points onto existing hooks and declare the seam | Open | Decides whether this is an implementation project or a spec-and-implementation project |
