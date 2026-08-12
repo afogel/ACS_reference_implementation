@@ -299,6 +299,55 @@ describe("replacingOutput — the same refusal, reached from the preflight (§V5
 });
 
 /**
+ * §V5 review, Important 2: gating post-condition 2 on `mirrors.length > 0`
+ * (the describe block above) exempts a host that declares no mirrors, but it
+ * NARROWS the "holds the same value ⇒ is a copy" conflation to
+ * mirror-declaring hosts rather than removing it -- see `result-output.ts`'s
+ * own prose beside the scan for why neither the conflation nor this
+ * over-refusal is fixable from a payload alone. These two cases are KNOWN,
+ * DELIBERATE over-refusals: recorded here the way V4 recorded cases it
+ * measured and did not close (see slices/v4/README.md's own
+ * "(recorded, not closed)" convention), not a regression to chase -- a
+ * future reader who reproduces one of these should not spend an afternoon
+ * looking for a bug that isn't here.
+ */
+describe("replacingOutput — the over-refusal the scan narrows but cannot remove (§V5 review, Important 2)", () => {
+  // Reproduced exactly as the review measured it: an unrelated field INSIDE
+  // `within`, but outside the declared mirror, that happens to be empty too.
+  it("refuses when an unrelated field coincidentally holds the same empty value too (recorded, not closed)", () => {
+    const location: HostOutputLocation = {
+      payload: {
+        result: {
+          output: "",
+          metadata: { output: "", error: "" }, // "error" is coincidence, not a copy of "output"
+          title: "ls -q",
+        },
+      },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+    };
+    // Blocked at the preflight -- exactly the "blocking stop, no audit" shape
+    // a genuine leak gets, for a field that never held a copy of anything.
+    expect(() => assertOutputIsReplaceable(location)).toThrow(/still holds/);
+  });
+
+  // Reproduced exactly as the review measured it: an unrelated sibling
+  // outside `metadata` entirely, coincidentally equal to a non-empty leaf.
+  it("refuses when an unrelated field coincidentally holds the same non-empty value too (recorded, not closed)", () => {
+    const location: HostOutputLocation = {
+      payload: {
+        result: {
+          output: "ok",
+          metadata: { output: "ok" },
+          status: "ok", // coincidence, not a copy of "output"
+        },
+      },
+      outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
+    };
+    expect(() => replacingOutput(location, "[REDACTED]")).toThrow(/still holds/);
+  });
+});
+
+/**
  * §V5 review, Important 3: the leaf mask (excluding the leaf's own field from
  * the undeclared-duplicate scan, so a modification that never touched the
  * leaf does not pre-empt `projectAppliedOutput`'s own landing check with this

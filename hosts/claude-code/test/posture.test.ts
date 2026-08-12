@@ -1174,4 +1174,58 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       unlinkSync(hookmapPath);
     }
   });
+
+  // §V5 review, Important 1 (fix round 2). `outputs.mirrors` used to be
+  // validated only inside `buildEnvelope`'s own per-invocation `buildPayload`
+  // -- reached from `governStep`, whose `buildEnvelope` throw is answered by
+  // the deployment's NEGOTIATED delivery posture (which can be `proceed`),
+  // not by this shim's hard stop. Measured with this exact hookmap before the
+  // fix moved the check to `loadHookmap`: exit 0, `posture: proceed`,
+  // `outcome: proceeded` -- a hookmap that provably cannot express a
+  // withholding, governing the step anyway. `assertMirrorsWellFormed` (called
+  // from `loadHookmap`, before `governStep` and therefore before any posture
+  // is ever consulted) closes that: this must exit 2, like every other
+  // load-time hookmap fault above, not proceed.
+  it("exits 2 (blocking) on a PostToolUse hookmap whose outputs.mirrors is malformed, rather than proceeding (§V5 review, Important 1)", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "malformed-mirrors.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PostToolUse:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response, mirrors: 42 }\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          decision:                             { value: block }\n" +
+        "          reason:                               { from: reasoning, type: string }\n" +
+        "          hookSpecificOutput.updatedToolOutput: { from: applied_output }\n",
+    );
+    try {
+      const out = await runShim(resultPayload("total 0\n"), {
+        // Unreachable on purpose: a proceeding shim would never even try to
+        // dial this, and a blocking one must not either -- the refusal has
+        // to happen before governStep is reached at all.
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      expect(out.stderr).toContain("outputs.mirrors");
+      // Nothing governed, nothing audited: loadHookmap runs before the
+      // session store is ever built, the same shape every load-time refusal
+      // above has.
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+      expect(existsSync(join(dir, "audit.jsonl"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
 });

@@ -336,6 +336,66 @@ describe("buildEnvelope", () => {
   // through. `unwrapArguments` is module-private and takes a request payload
   // only, so answering an empty bag for an envelope with no arguments is
   // unrepresentable rather than merely discouraged.
+  describe("loadHookmap — outputs.mirrors is validated at load time too (§V5 review, Important 1)", () => {
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-mirrors-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+    const POST_TOOL_USE =
+      "host: claude-code\nhooks:\n  PostToolUse:\n    acs_method: steps/toolCallResult\n" +
+      "    tool_name: $.tool_name\n    exit_status: { literal: success }\n" +
+      "    decisions:\n" +
+      "      allow: { output: { x: { value: y } } }\n" +
+      "      deny: { output: { x: { value: y } } }\n";
+    it("throws, at load time, when `outputs.mirrors` is not a list of strings", () => {
+      const broken =
+        `${POST_TOOL_USE}    outputs: { from: $.tool_response.stdout, within: $.tool_response, mirrors: 42 }\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(/"hooks\.PostToolUse\.outputs\.mirrors" is 42/);
+      });
+    });
+    it("throws, at load time, when a declared mirror is not a field inside `outputs.within`", () => {
+      const broken =
+        `${POST_TOOL_USE}    outputs: { from: $.tool_response.stdout, within: $.tool_response, ` +
+        `mirrors: [$.tool_input.command] }\n`;
+      withHookmapFile(broken, (path) => {
+        expect(() => loadHookmap(path)).toThrow(
+          /"hooks\.PostToolUse\.outputs\.mirrors" entry .* is not a field inside "outputs\.within"/,
+        );
+      });
+    });
+    it("accepts a well-formed `outputs.mirrors` list", () => {
+      const ok =
+        `${POST_TOOL_USE}    outputs: { from: $.tool_response.stdout, within: $.tool_response, ` +
+        `mirrors: [$.tool_response.stderr] }\n`;
+      withHookmapFile(ok, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+      });
+    });
+    it("buildEnvelope itself no longer refuses a malformed `outputs.mirrors` -- only loadHookmap does", () => {
+      const broken: HookmapHookEntry = {
+        acs_method: "steps/toolCallResult",
+        tool_name: "$.tool_name",
+        outputs: { from: "$.tool_response.stdout", within: "$.tool_response", mirrors: 42 as unknown as string[] },
+        exit_status: { literal: "success" },
+      };
+      const withBroken: Hookmap = { ...hookmap, hooks: { ...hookmap.hooks, PostToolUse: broken } };
+      const postToolUsePayload = {
+        session_id: "6c616a11-495a-4f05-878a-c1bfaa29f0e5",
+        hook_event_name: "PostToolUse",
+        tool_name: "Bash",
+        tool_response: { stdout: "TOKEN=ghp_ABCDEF123456", stderr: "" },
+      };
+      expect(() => buildEnvelope("PostToolUse", postToolUsePayload, withBroken)).not.toThrow();
+    });
+  });
   //
   // The hookmap path language's reserved-segment guard lives in one
   // collaborator (hookmap-path.ts), so it is a property of the notation
@@ -603,58 +663,14 @@ describe("buildEnvelope", () => {
         );
       });
 
-      // §V5 review, Minor 4: `mirrors` gets the same load-time treatment as
-      // `from` and `within`, immediately above -- an entry accepted here and
-      // rejected the first time a hook actually fires (as a bare `TypeError`
-      // deep inside `replacingOutput`'s mirror validation) is a load-time gap
-      // this function closes everywhere else.
-      it("throws, naming the hook, when `outputs.mirrors` is not a list of strings", () => {
-        const broken = withBrokenEntry({
-          acs_method: "steps/toolCallResult",
-          tool_name: "$.tool_name",
-          outputs: { from: "$.tool_response.stdout", within: "$.tool_response", mirrors: 42 },
-          exit_status: { literal: "success" },
-        });
-
-        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/hook "Broken" declares "outputs\.mirrors" as 42/);
-      });
-
-      it("throws, naming the hook, when a declared mirror is not a field inside `outputs.within`", () => {
-        const broken = withBrokenEntry({
-          acs_method: "steps/toolCallResult",
-          tool_name: "$.tool_name",
-          outputs: {
-            from: "$.tool_response.stdout",
-            within: "$.tool_response",
-            mirrors: ["$.tool_input.command"],
-          },
-          exit_status: { literal: "success" },
-        });
-
-        expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
-          /hook "Broken" declares "outputs\.mirrors" entry .* which is not a field inside "outputs\.within"/,
-        );
-      });
-
-      it("accepts a well-formed `outputs.mirrors` list and builds the envelope normally -- `mirrors` is unread here", () => {
-        const withMirror = withBrokenEntry({
-          acs_method: "steps/toolCallResult",
-          tool_name: "$.tool_name",
-          outputs: {
-            from: "$.tool_response.stdout",
-            within: "$.tool_response",
-            mirrors: ["$.tool_response.stderr"],
-          },
-          exit_status: { literal: "success" },
-        });
-
-        const envelope = buildEnvelope("Broken", payload, withMirror);
-        expect(envelope.params.payload).toEqual({
-          tool: { name: "Bash" },
-          exit_status: "success",
-          outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }],
-        });
-      });
+      // `outputs.mirrors` is deliberately NOT covered here (§V5 review,
+      // Important 1, fix round 2). `buildEnvelope` no longer validates it at
+      // all -- a malformed `mirrors` reaching this function is a hookmap that
+      // should never have loaded, and asserting that here would test a
+      // behaviour this function no longer has. See the
+      // "loadHookmap -- outputs.mirrors is validated at load time too"
+      // describe block below for the check's new (and only) home, and that
+      // block's own comment for why living only here was the fault.
 
       it("throws, naming the hook, when `exit_status` names no literal", () => {
         const broken = withBrokenEntry({

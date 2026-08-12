@@ -598,4 +598,29 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     // that changes nothing renders perfectly well.
     expect(out.stdout).not.toContain("ghp_");
   });
+
+  // §V5 review: Critical 1's verification gap, closed. Direct coverage of
+  // this exact defect stopped one layer above the shim, at
+  // packages/host-adapter/test/result-output.test.ts's call into
+  // `replacingOutput` -- not the layer the defect was actually measured at
+  // (the real shim, as a subprocess) and would actually recur at.
+  // `postToolUsePayload("")` is precisely the silent-command shape: `stdout`
+  // is empty and `toolResponse` above hardcodes `stderr: ""` too, so BOTH
+  // fields independently hold "". Before this round's fix, the post-condition
+  // in `replacingOutput` walked the whole replacement (leaf excluded) asking
+  // whether the withheld value survived anywhere in it -- found `stderr`
+  // holding the same empty string `stdout` did, and refused. Measured then:
+  // exit 2, empty stdout, no audit entry, for `touch`, `mkdir`, `git add`,
+  // `export`, and a successful `grep -q` alike -- every command that
+  // legitimately prints nothing. A stub Guardian answering a plain `allow`
+  // isolates the claim to the preflight itself: this must not block
+  // regardless of what decision would eventually arrive.
+  it("does not block a silent command -- empty stdout, empty stderr -- at the result gate", async () => {
+    const out = await answering({ decision: "allow" }, (url) => runHook(postToolUsePayload(""), url));
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    // No `reasoning` on this decision, so no `additionalContext` field --
+    // same shape the first test's own note explains.
+    expect(JSON.parse(out.stdout)).toEqual({ hookSpecificOutput: { hookEventName: "PostToolUse" } });
+  });
 });

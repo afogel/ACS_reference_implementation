@@ -280,12 +280,47 @@ function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
   }
 }
 
+function assertMirrorsWellFormed(hookmap: Hookmap, path: string): void {
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
+    const outputs = isPlainObject(entry) ? (entry as { outputs?: unknown }).outputs : undefined;
+    if (!isPlainObject(outputs)) {
+      continue;
+    }
+    const rawMirrors = outputs.mirrors ?? undefined;
+    if (rawMirrors === undefined) {
+      continue;
+    }
+    if (!Array.isArray(rawMirrors) || rawMirrors.some((mirror) => typeof mirror !== "string" || mirror.length === 0)) {
+      throw new Error(
+        `loadHookmap: ${path}'s "hooks.${hookEventName}.outputs.mirrors" is ${JSON.stringify(rawMirrors)} -- ` +
+          `when present, "mirrors" must be a list of non-empty JSONPath-lite strings, each a further path ` +
+          `inside "outputs.within"`,
+      );
+    }
+    const within = typeof outputs.within === "string" ? outputs.within : "";
+    if (within.length === 0) {
+      continue;
+    }
+    for (const mirror of rawMirrors as string[]) {
+      if (!mirror.startsWith(`${within}.`) || mirror.length <= within.length + 1) {
+        throw new Error(
+          `loadHookmap: ${path}'s "hooks.${hookEventName}.outputs.mirrors" entry ${JSON.stringify(mirror)} is ` +
+            `not a field inside "outputs.within" ${JSON.stringify(within)} -- a mirror is a further path into ` +
+            `the same object the leaf lives in, the same relation "outputs.from" has to it`,
+        );
+      }
+    }
+  }
+}
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
- * assertRenderableDecisions. */
+ * assertRenderableDecisions. Also throws if any entry's `outputs.mirrors` is
+ * malformed or names a field outside `outputs.within` -- see
+ * assertMirrorsWellFormed. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);
+  assertMirrorsWellFormed(hookmap, path);
   return hookmap;
 }
 
@@ -472,42 +507,19 @@ function buildPayload(
       );
     }
 
-    // `mirrors` gets the same load-time treatment as `from` and `within`
-    // (§V5, Minor 4 review finding): optional, but when an entry declares it
-    // at all, a malformed value should be a load-time refusal here, not a
-    // per-invocation `TypeError` the first time a hook actually fires.
-    // `?? undefined` for the same YAML reason `argumentsPath`/`outputs`
-    // above use it -- a key written with nothing after it parses to `null`,
-    // a key present and unusable, not a key absent, and this module treats
-    // that the same as "no mirrors declared" rather than as a malformed one.
-    const rawMirrors = (isPlainObject(outputs) ? outputs.mirrors : undefined) ?? undefined;
-    if (rawMirrors !== undefined) {
-      if (!Array.isArray(rawMirrors) || rawMirrors.some((mirror) => typeof mirror !== "string" || mirror.length === 0)) {
-        throw new Error(
-          `buildEnvelope: hookmap entry for hook "${event}" declares "outputs.mirrors" as ` +
-            `${JSON.stringify(rawMirrors)} -- when present, "mirrors" must be a list of non-empty JSONPath-lite ` +
-            `strings, each a further path inside "outputs.within"`,
-        );
-      }
-      // The same containment rule as `from`'s, checked the same way, for the
-      // same reason: an entry accepted here and rejected the first time a
-      // replacement is actually patched is a load-time gap this module closes
-      // everywhere else in this function. The runtime (result-output.ts)
-      // still re-checks this on every invocation rather than trusting this
-      // pass -- see that module's own note on why "the loader accepted it" is
-      // not "the caller established it".
-      for (const mirror of rawMirrors as string[]) {
-        if (!mirror.startsWith(`${within}.`) || mirror.length <= within.length + 1) {
-          throw new Error(
-            `buildEnvelope: hookmap entry for hook "${event}" declares "outputs.mirrors" entry ` +
-              `${JSON.stringify(mirror)}, which is not a field inside "outputs.within" ${JSON.stringify(within)} ` +
-              `-- a mirror is a further path into the same object the leaf lives in, the same relation ` +
-              `"outputs.from" has to it`,
-          );
-        }
-      }
-    }
-
+    // `outputs.mirrors`, if this entry declares any, is deliberately NOT
+    // validated here (§V5 review, Important 1, fix round 2 -- this function
+    // used to check it, and that was the fault). A throw from THIS function
+    // is caught by `governStep` and answered with the deployment's
+    // NEGOTIATED delivery posture, which can be `proceed` -- so a hookmap
+    // fault refused only here can still govern the step it describes, which
+    // is precisely the class of hookmap fault this whole file exists to stop
+    // BEFORE that becomes possible. `assertMirrorsWellFormed`, run from
+    // `loadHookmap` before this function is ever reached in the real
+    // deployment path, is where that refusal now lives -- see its own doc
+    // comment for the measured before/after. `from` and `within`, immediately
+    // above, have the identical misplacement and are pre-existing; not moved
+    // by this task.
     const exitStatus = isPlainObject(entry.exit_status) ? entry.exit_status.literal : undefined;
     if (typeof exitStatus !== "string" || exitStatus.length === 0) {
       throw new Error(

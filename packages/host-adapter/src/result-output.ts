@@ -344,7 +344,7 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
   // doc comment for why each of these mirrors one of the leaf's own guards,
   // and why the overlap check has to run before any write happens rather
   // than after.
-  const mirrors: { mirror: string; relative: string[]; original: unknown }[] = [];
+  const mirrors: { mirror: string; relative: string[] }[] = [];
   for (const mirror of outputs.mirrors ?? []) {
     const mirrorSegments = pathSegments(mirror);
     if (!withinSegments.every((segment, index) => mirrorSegments[index] === segment)) {
@@ -361,7 +361,7 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
           `relation to "within" that "outputs.from" does`,
       );
     }
-    mirrors.push({ mirror, relative, original: undefined });
+    mirrors.push({ mirror, relative });
   }
 
   for (const { mirror, relative } of mirrors) {
@@ -387,24 +387,28 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     }
   }
 
-  for (const entry of mirrors) {
-    const mirrorOriginal = resolveSegments(container, entry.relative);
+  // Existence and type, checked and discarded -- neither value is threaded
+  // any further. What each mirror actually holds after patching is asked
+  // again, directly, by POST-CONDITION 1 below (the "did it land" check);
+  // the ONLY thing this loop's own result needs to leave behind is that
+  // every mirror passed, which the loop itself already enforces by throwing.
+  for (const { mirror, relative } of mirrors) {
+    const mirrorOriginal = resolveSegments(container, relative);
     if (mirrorOriginal === undefined) {
       throw new Error(
-        `result-output: hookmap mirror ${JSON.stringify(entry.mirror)} resolves to no value in this payload, so ` +
+        `result-output: hookmap mirror ${JSON.stringify(mirror)} resolves to no value in this payload, so ` +
           `patching it would ADD a field this tool never produced -- a shape the host may decline, and a ` +
           `declined replacement delivers the original output`,
       );
     }
     if (typeof mirrorOriginal !== typeof replacement) {
       throw new Error(
-        `result-output: the replacement for hookmap mirror ${JSON.stringify(entry.mirror)} is a ` +
+        `result-output: the replacement for hookmap mirror ${JSON.stringify(mirror)} is a ` +
           `${typeof replacement} where this tool produced a ${typeof mirrorOriginal} -- the host validates a ` +
           `replacement against the tool's own output shape and delivers the ORIGINAL when it does not match, ` +
           `so a replacement of the wrong type withholds nothing and redacts nothing`,
       );
     }
-    entry.original = mirrorOriginal;
   }
 
   // The writes: the leaf first, then every declared mirror into the SAME
