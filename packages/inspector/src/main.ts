@@ -16,11 +16,18 @@ const DEFAULT_ENVELOPE_LOG = ".acs/envelopes.jsonl";
 
 const argv = process.argv.slice(2);
 const fromStart = argv.includes("--from-start");
-const pathFlag = argv.indexOf("--path");
-const flagValue = pathFlag === -1 ? undefined : argv[pathFlag + 1];
+// `--envelope-log`, not `--path` (PR #11 review, second pass): this stream is
+// the envelope log, and a later slice tails a second one beside it. A generic
+// `--path` would have been the flag for whichever stream happened to come
+// first, leaving the sibling to carry the qualifier -- the same asymmetry the
+// `EnvelopeLogEntry` / `AuditEntry` rename closed one layer down. Named for its
+// artifact now, so the pair reads as a pair when the second lands, and so each
+// flag rhymes with the env var that overrides the same thing.
+const envelopeLogFlag = argv.indexOf("--envelope-log");
+const flagValue = envelopeLogFlag === -1 ? undefined : argv[envelopeLogFlag + 1];
 
-if (pathFlag !== -1 && (flagValue === undefined || flagValue.startsWith("--"))) {
-  console.error("usage: bun run inspector -- [--from-start] [--path <envelope log>]");
+if (envelopeLogFlag !== -1 && (flagValue === undefined || flagValue.startsWith("--"))) {
+  console.error("usage: bun run inspector -- [--from-start] [--envelope-log <envelope log>]");
   process.exit(2);
 }
 

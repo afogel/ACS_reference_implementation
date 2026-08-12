@@ -6,10 +6,14 @@ export {
   type TailEnvelopeLogOptions,
 } from "./tail-envelope-log.ts";
 export {
-  decisionMessageOf,
+  outcomeMessageOf,
   renderDecisionBadge,
   renderEnvelopeLogEntry,
+  renderOutcome,
+  renderRpcError,
   type DecisionMessage,
+  type OutcomeMessage,
   type PolicyReference,
   type RenderOptions,
+  type RpcErrorMessage,
 } from "./render.ts";

@@ -4,7 +4,7 @@ One wire contract between agent hosts and policy runtimes, so governance integra
 
 Today every policy vendor writes a module per agent, and every agent waits for a module per vendor. Microsoft's [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) ships four host packages with four different architectures — a Copilot CLI extension, subprocess hooks for Claude Code and Antigravity, an in-process plugin for OpenCode — and documents the capability divergence between them in its own READMEs.
 
-This repository shows the other shape. A host implements [ACS](https://github.com/Agent-Control-Standard/ACS) once and is governable by any conformant runtime. A runtime implements ACS once and governs any conformant host. V1 wires one host — Claude Code — to AGT's policy engine running unforked, its stock Rego bundle deciding, entirely over the ACS wire. V2 makes that wire visible: every envelope crossing it is tapped to a log and rendered live by `bun run inspector`.
+This repository shows the other shape. A host implements [ACS](https://github.com/Agent-Control-Standard/ACS) once and is governable by any conformant runtime. A runtime implements ACS once and governs any conformant host. V1 wires one host — Claude Code — to AGT's policy engine running unforked, its stock Rego bundle deciding, entirely over the ACS wire. V2 makes that wire visible: every envelope crossing it is recorded to a log and rendered live by `bun run inspector`.
 
 ## What this proves
 
@@ -19,7 +19,7 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 
 | Claim | How it is demonstrated |
 |---|---|
-| R5.1 — every hook firing is inspectable as an ACS envelope, in both directions, including envelopes that fail validation | The Guardian taps every envelope crossing its wire to `.acs/envelopes.jsonl` before validation, and `bun run inspector` renders it live ([`test/envelope-tap-roundtrip.test.ts`](test/envelope-tap-roundtrip.test.ts), [`packages/guardian/test/envelope-tap-wiring.test.ts`](packages/guardian/test/envelope-tap-wiring.test.ts)) |
+| R5.1 — every hook firing is inspectable as an ACS envelope, in both directions, including envelopes that fail validation | The Guardian records every envelope crossing its wire to `.acs/envelopes.jsonl` before validation, and `bun run inspector` renders it live ([`test/envelope-log-sink-roundtrip.test.ts`](test/envelope-log-sink-roundtrip.test.ts), [`packages/guardian/test/envelope-log-sink-wiring.test.ts`](packages/guardian/test/envelope-log-sink-wiring.test.ts)) |
 | R5.2 — an ACS-first reader can trace one action end to end without reading AGT source | The Inspector imports nothing from the Guardian or the AGT bridge and names neither AGT nor any host — enforced by two gates in [`test/invariants.test.ts`](test/invariants.test.ts) |
 
 **Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
@@ -137,7 +137,7 @@ bun run typecheck # whole-workspace strict TypeScript check, zero errors
 
 V1 ("one host, one hook") is implemented: a Claude Code `PreToolUse` hook, a Guardian process serving ACS over HTTP, and AGT's unforked stock policy bundle deciding behind it — see the quickstart above and [`slices/v1/README.md`](slices/v1/README.md).
 
-V2 ("Envelope Inspector") is implemented: the Guardian taps every ACS envelope crossing its wire to `.acs/envelopes.jsonl`, and `bun run inspector` tails and renders it live — see [`slices/v2/README.md`](slices/v2/README.md) and [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md). One boundary worth stating up front: a schema-invalid envelope surfaces as a JSON-RPC **error**, not a `deny` decision. `N27 denyOnInvalidEnvelope()`, which turns Guardian-side failures into honoured ACS decisions, is V3.
+V2 ("Envelope Inspector") is implemented: the Guardian records every ACS envelope crossing its wire to `.acs/envelopes.jsonl`, and `bun run inspector` tails and renders it live — see [`slices/v2/README.md`](slices/v2/README.md) and [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md). One boundary worth stating up front: a schema-invalid envelope surfaces as a JSON-RPC **error**, not a `deny` decision. `N27 denyOnInvalidEnvelope()`, which turns Guardian-side failures into honoured ACS decisions, is V3.
 
 Four of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host *output* vocabulary in it either, and no host vocabulary in the AGT bridge), and R5.1 and R5.2 (the Inspector imports nothing from the Guardian or the AGT bridge, and names neither AGT nor any host).
 

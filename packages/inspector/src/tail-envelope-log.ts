@@ -8,7 +8,7 @@
  * process that produced it, which is the point of R5.1 -- envelopes are
  * inspectable *on the wire*, not through our own type graph. EnvelopeLogEntry
  * is therefore re-declared here rather than imported. The round-trip test at
- * test/envelope-tap-roundtrip.test.ts is what keeps the two declarations in
+ * test/envelope-log-sink-roundtrip.test.ts is what keeps the two declarations in
  * agreement; if they drift, it fails.
  *
  * The names are the artifact's, not the writer's (PR #11 review). This

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGuardian } from "../packages/guardian/src/index.ts";
 import { tailEnvelopeLog, type EnvelopeLogEntry } from "../packages/inspector/src/tail-envelope-log.ts";
-import { decisionMessageOf, renderDecisionBadge, type DecisionMessage } from "../packages/inspector/src/render.ts";
+import { outcomeMessageOf, renderOutcome, type OutcomeMessage } from "../packages/inspector/src/render.ts";
 
 /**
  * The contract test for S6. The Guardian writes the log; the Inspector
@@ -84,13 +84,14 @@ describe("S6 round trip: Guardian envelope log sink (N26) -> Inspector tail (N50
       expect(response?.rpc_id).toBe(77);
 
       // ...and the badge reads a real AGT-backed decision off it. Two steps
-      // now, not one: decisionMessageOf turns the S6 line into U21's message
-      // and the badge renders that message (PR #11 review). Both halves are
-      // exercised here deliberately -- the round trip's claim is that a real
-      // Guardian's real output survives all the way to a rendered badge.
-      const message = decisionMessageOf(response as EnvelopeLogEntry);
-      expect(message).not.toBeNull();
-      expect(renderDecisionBadge(message as DecisionMessage)).toContain("DENY");
+      // now, not one: outcomeMessageOf turns the S6 line into what the step
+      // reported and the renderer renders that message (PR #11 review). Both
+      // halves are exercised here deliberately -- the round trip's claim is
+      // that a real Guardian's real output survives all the way to a rendered
+      // badge, including that it arrives as a decision rather than an error.
+      const message = outcomeMessageOf(response as EnvelopeLogEntry);
+      expect(message?.kind).toBe("decision");
+      expect(renderOutcome(message as OutcomeMessage)).toContain("DENY");
     } finally {
       controller.abort();
       await guardian.close();

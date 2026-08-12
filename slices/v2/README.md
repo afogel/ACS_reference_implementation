@@ -9,7 +9,7 @@
 ## What this slice delivers
 
 The Guardian records every ACS envelope crossing its wire into a JSONL log
-(`packages/guardian/src/envelope-tap.ts` → `.acs/envelopes.jsonl`, S6/N26), and
+(`packages/guardian/src/envelope-log-sink.ts` → `.acs/envelopes.jsonl`, S6/N26), and
 `bun run inspector` (`packages/inspector`) tails that log and renders each entry live:
 a header line, a decision badge for responses, then the envelope as pretty JSON
 (U20/U21, N50). The demo is a third terminal beside `bun run guardian` and the agent
@@ -23,7 +23,7 @@ Three properties make this worth more than a log viewer:
   the `write` method on the `EnvelopeLogSink` it returns — sits on the decision path. A
   write failure disables the sink for the process lifetime, reports once, and never
   propagates — an observability feature must not be able to turn a governed tool call
-  into an ungoverned one. `packages/guardian/test/envelope-tap-wiring.test.ts` asserts
+  into an ungoverned one. `packages/guardian/test/envelope-log-sink-wiring.test.ts` asserts
   exactly that end to end: *"still denies `rm -rf /` when every envelope-log write
   fails"*.
 - **The request is recorded before validation.** An envelope that fails the schema is

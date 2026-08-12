@@ -12,11 +12,14 @@ This runbook is written from a real run against this tree. Every block below mar
 1. A third terminal, beside the Guardian and the agent host, prints every ACS envelope
    as it crosses the wire — request and response, both directions, one entry each.
 2. The rendered JSON is the envelope the Guardian parsed, printed unmodified and
-   re-indented. The tap strips no field, redacts nothing, and reorders nothing it
+   re-indented. The sink strips no field, redacts nothing, and reorders nothing it
    controls. It is not a byte-for-byte replay — see *S6 carries raw tool arguments*
-   below for what the JSON parse normalises before the tap ever sees it.
-3. The decision badge makes the outcome legible without reading the JSON: `● DENY`,
-   `○ ALLOW`, or `✖ ERROR`, with `reason_codes` and `policy_references` beside it.
+   below for what the JSON parse normalises before the sink ever sees it.
+3. The decision badge makes the outcome legible without reading the JSON: `● DENY` or
+   `○ ALLOW`, with `reason_codes` and `policy_references` beside it. A response that
+   carried no decision renders as `✖ ERROR` on the same line — deliberately not a
+   decision badge, because in this slice a schema failure is an error and not a `deny`
+   (see *the honest boundary* below).
 4. Nothing in the Inspector knows what produced the decision. It imports nothing from
    the Guardian and names neither AGT nor any host — enforced by two gates in
    [`test/invariants.test.ts`](../../test/invariants.test.ts), not left to inspection.
@@ -50,9 +53,9 @@ Guardian listening at http://localhost:8787/acs
 Envelope log (S6): .acs/envelopes.jsonl
 ```
 
-**Why this one starts first: it creates `.acs/`.** The tap calls
+**Why this one starts first: it creates `.acs/`.** The sink calls
 `mkdirSync(dirname(path), { recursive: true })` when the Guardian constructs it at boot
-(`packages/guardian/src/envelope-tap.ts`), so the directory exists from the moment the
+(`packages/guardian/src/envelope-log-sink.ts`), so the directory exists from the moment the
 Guardian is up. The log file itself does not appear until the first envelope is written
 — after the Guardian booted, `.acs/` existed and was empty.
 
@@ -61,8 +64,8 @@ path), so starting them out of order does not break anything. Guardian-first is 
 the order to teach, because it is the order in which the two artifacts come into
 existence.
 
-The tap is opt-in at the library level and on by default in the CLI: `startGuardian`
-taps only when `envelopeLogPath` is passed, and `packages/guardian/src/main.ts` passes
+The sink is opt-in at the library level and on by default in the CLI: `startGuardian`
+records only when `envelopeLogPath` is passed, and `packages/guardian/src/main.ts` passes
 it. Override the location with `ACS_ENVELOPE_LOG`.
 
 ### Terminal 2 — the Inspector
@@ -79,7 +82,7 @@ Ctrl-C to stop.
 ```
 
 It follows the log the way `tail -f` does: it starts at the current end and prints what
-arrives from now on. `ACS_ENVELOPE_LOG` and `--path <file>` both point it elsewhere; the
+arrives from now on. `ACS_ENVELOPE_LOG` and `--envelope-log <file>` both point it elsewhere; the
 default matches the Guardian's default, so neither hardcodes the other's value.
 
 Output is coloured when stdout is a TTY and `NO_COLOR` is unset. Every capture in this
@@ -237,7 +240,7 @@ happened — a policy fired, and the action was allowed.
 
 ## The honest boundary: a schema-invalid envelope is an error, not a deny
 
-The request is tapped **before** validation, so an envelope that fails the schema is
+The request is recorded **before** validation, so an envelope that fails the schema is
 visible rather than swallowed. What comes back, though, is a JSON-RPC **error** — not an
 ACS `deny` decision.
 
@@ -315,7 +318,7 @@ render time only. An inspector that showed something other than what was sent wo
 worse than no inspector at all.
 
 **One honest qualifier, added by the whole-branch review.** "Unmodified" is a claim about
-what *we* do, not a claim of byte identity. The tap is handed `await req.json()`, so a
+what *we* do, not a claim of byte identity. The sink is handed `await req.json()`, so a
 JSON parse has already happened: duplicate keys are collapsed to the last one, number
 literals are canonicalised (`1.0` renders as `1`, `1e2` as `100`), and integer-like
 object keys are hoisted ahead of the rest and sorted. Tool argument names come from the
@@ -472,13 +475,13 @@ Inspector shows nothing at all during a live demo, check this before you check t
   `wc -c .acs/envelopes.jsonl`.
 - **The Inspector started after the entries were written.** It starts at the current end
   by default. Use `--from-start`.
-- **The Guardian was constructed without a tap.** Only `packages/guardian/src/main.ts`
-  passes `envelopeLogPath`; a Guardian started in-process by a test does not tap unless
+- **The Guardian was constructed without a sink.** Only `packages/guardian/src/main.ts`
+  passes `envelopeLogPath`; a Guardian started in-process by a test does not record unless
   it asks to.
-- **The tap disabled itself.** A write failure disables the tap for the process lifetime
-  and reports once on stderr — `envelope tap disabled after failure (<path>): <reason>`.
-  It never propagates and never alters a decision: the tap is total by construction, and
-  the end-to-end test asserts `rm -rf /` is still denied when every tap write fails.
+- **The sink disabled itself.** A write failure disables the sink for the process lifetime
+  and reports once on stderr — `envelope log sink disabled after failure (<path>): <reason>`.
+  It never propagates and never alters a decision: the sink is total by construction, and
+  the end-to-end test asserts `rm -rf /` is still denied when every sink write fails.
 
 ## Cleaning up
 

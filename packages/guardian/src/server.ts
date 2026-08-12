@@ -58,7 +58,7 @@ import {
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
-import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-tap.ts";
+import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
@@ -124,7 +124,7 @@ const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g,
  * (evaluating 'message.replace')` on exactly such an Error -- reachable
  * only from the outer catch, since the inner catch's own throw is itself
  * caught by the outer one, but reachable there with nothing above
- * `handleAcsRequest` to catch it: the untapped HTML-500 fail-open this
+ * `handleAcsRequest` to catch it: the unrecorded HTML-500 fail-open this
  * module's header exists to prevent. `String()` on the whole caught value
  * keeps this helper total for any `unknown`, matching what a catch clause
  * can actually hand it.
@@ -261,7 +261,7 @@ export async function startGuardian({
  * below closes it -- every route out of `dispatch` now produces a response
  * object, and every response object reaches the envelope log.
  *
- * The sink itself is total (see envelope-tap.ts): these two calls cannot
+ * The sink itself is total (see envelope-log-sink.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
  */
 async function handleAcsRequest(

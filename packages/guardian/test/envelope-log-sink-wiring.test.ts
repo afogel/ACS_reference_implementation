@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmdirSync, unlinkSync, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGuardian } from "../src/index.ts";
-import type { EnvelopeLogEntry } from "../src/envelope-tap.ts";
+import type { EnvelopeLogEntry } from "../src/envelope-log-sink.ts";
 
 function makeEnvelope(
   method: string,
@@ -43,12 +43,12 @@ function readEntries(path: string): EnvelopeLogEntry[] {
     .map((line) => JSON.parse(line) as EnvelopeLogEntry);
 }
 
-/** Non-recursive cleanup, as in envelope-tap.test.ts. */
+/** Non-recursive cleanup, as in envelope-log-sink.test.ts. */
 async function withGuardian(
   logPathFor: (dir: string) => string,
   run: (url: string, logPath: string) => Promise<void>,
 ): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), "acs-tap-wiring-"));
+  const dir = mkdtempSync(join(tmpdir(), "acs-envelope-log-wiring-"));
   const logPath = logPathFor(dir);
   const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml", envelopeLogPath: logPath });
   try {
@@ -140,13 +140,13 @@ describe("Guardian envelope log wiring (N26 x N20)", () => {
   //
   // No `onError` is passed here, so this exercises the sink's *default*
   // reporter -- a single `console.error` line -- rather than the
-  // onError-captured path envelope-tap.test.ts's "reports once, then goes
+  // onError-captured path envelope-log-sink.test.ts's "reports once, then goes
   // quiet" test covers. Spied and silenced so a deliberately-broken sink
   // does not print real stderr into a clean `bun test` run, and asserted
   // on so "reports once" is checked at the call site instead of merely
   // claimed.
   it("still denies rm -rf / when every envelope-log write fails", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "acs-tap-broken-"));
+    const dir = mkdtempSync(join(tmpdir(), "acs-envelope-log-broken-"));
     const blocker = join(dir, "blocker");
     writeFileSync(blocker, "");
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
@@ -176,7 +176,7 @@ describe("Guardian envelope log wiring (N26 x N20)", () => {
 
   // Decision P3.
   it("writes nothing when envelopeLogPath is omitted", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "acs-tap-off-"));
+    const dir = mkdtempSync(join(tmpdir(), "acs-envelope-log-off-"));
     const logPath = join(dir, "envelopes.jsonl");
     const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
     try {

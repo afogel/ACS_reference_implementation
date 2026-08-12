@@ -7,13 +7,13 @@ import {
   extractRpcId,
   NULL_ENVELOPE_LOG_SINK,
   type EnvelopeLogEntry,
-} from "../src/envelope-tap.ts";
+} from "../src/envelope-log-sink.ts";
 
 /** A temp directory per test. Cleanup is deliberately non-recursive --
  * unlink the one file we created, then rmdir -- so a stray file makes the
  * test fail loudly instead of being silently blown away. */
 function withTempDir(run: (dir: string) => void): void {
-  const dir = mkdtempSync(join(tmpdir(), "acs-tap-"));
+  const dir = mkdtempSync(join(tmpdir(), "acs-envelope-log-"));
   try {
     run(dir);
   } finally {

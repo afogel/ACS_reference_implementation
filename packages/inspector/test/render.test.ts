@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
-  decisionMessageOf,
+  outcomeMessageOf,
   renderDecisionBadge,
   renderEnvelopeLogEntry,
-  type DecisionMessage,
+  renderOutcome,
+  renderRpcError,
+  type OutcomeMessage,
   type RenderOptions,
 } from "../src/render.ts";
 import type { EnvelopeLogEntry } from "../src/tail-envelope-log.ts";
@@ -28,8 +30,8 @@ function response(result: Record<string, unknown>): EnvelopeLogEntry {
  * badge tests that assert the rendered string end to end. Throws rather than
  * asserting non-null inline, so a line that stopped carrying an outcome fails
  * as itself instead of as a confusing `toBe` diff. */
-function messageOf(line: EnvelopeLogEntry): DecisionMessage {
-  const message = decisionMessageOf(line);
+function messageOf(line: EnvelopeLogEntry): OutcomeMessage {
+  const message = outcomeMessageOf(line);
   if (message === null) {
     throw new Error("expected this entry to carry a decision or an error");
   }
@@ -37,23 +39,23 @@ function messageOf(line: EnvelopeLogEntry): DecisionMessage {
 }
 
 function badgeFor(result: Record<string, unknown>, options?: RenderOptions): string {
-  return renderDecisionBadge(messageOf(response(result)), options);
+  return renderOutcome(messageOf(response(result)), options);
 }
 
-describe("decisionMessageOf -- what U21 is told about", () => {
+describe("outcomeMessageOf -- what the renderers are told about", () => {
   it("has nothing to say about a request", () => {
-    expect(decisionMessageOf(entry({ direction: "request", envelope: { jsonrpc: "2.0", id: 1 } }))).toBeNull();
+    expect(outcomeMessageOf(entry({ direction: "request", envelope: { jsonrpc: "2.0", id: 1 } }))).toBeNull();
   });
 
   it("has nothing to say about a response with no decision -- a ServerHello", () => {
-    expect(decisionMessageOf(response({ negotiated_version: "0.1.0", on_decision_failure: "proceed" }))).toBeNull();
+    expect(outcomeMessageOf(response({ negotiated_version: "0.1.0", on_decision_failure: "proceed" }))).toBeNull();
   });
 
   // The reshape's point (PR #11 review): the badge is handed ACS fields, not
   // a log row to dig through, so everything it renders is decided here.
   it("narrows the ACS fields the badge renders, and drops the rest of the envelope", () => {
     expect(
-      decisionMessageOf(
+      outcomeMessageOf(
         response({
           decision: "deny",
           reason_codes: ["blocked", 7],
@@ -62,6 +64,7 @@ describe("decisionMessageOf -- what U21 is told about", () => {
         }),
       ),
     ).toEqual({
+      kind: "decision",
       decision: "deny",
       reason_codes: ["blocked"],
       policy_references: [{ policy_id: "agt_stock", rule_id: "blocked" }],
@@ -69,9 +72,21 @@ describe("decisionMessageOf -- what U21 is told about", () => {
   });
 
   it("reports a JSON-RPC error as an error message, with a null code when it is not a number", () => {
-    expect(decisionMessageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: "nope" } } }))).toEqual({
-      error: { code: null, message: "" },
+    expect(outcomeMessageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: "nope" } } }))).toEqual({
+      kind: "error",
+      code: null,
+      message: "",
     });
+  });
+
+  // PR #11 review, second pass. The discriminant is the point: a caller can
+  // tell an outcome that IS a decision from one that stood in for the absence
+  // of one without inspecting which fields happen to be present.
+  it("discriminates a decision from an error, so nothing has to infer which arm it holds", () => {
+    expect(outcomeMessageOf(response({ decision: "allow" }))?.kind).toBe("decision");
+    expect(outcomeMessageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: -32010 } } }))?.kind).toBe(
+      "error",
+    );
   });
 });
 
@@ -139,18 +154,22 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badgeFor({ decision: "defer" })).toBe("◆ DEFER");
   });
 
-  it("badges a JSON-RPC error", () => {
-    const badge = renderDecisionBadge(
+  // Renders through `renderOutcome`, which is what the stream renderer calls:
+  // an error reaches `renderRpcError`, never U21's decision badge (PR #11
+  // review, second pass). `renderDecisionBadge` cannot be handed one at all
+  // now -- `DecisionMessage` has no error arm to pass it.
+  it("renders a JSON-RPC error as an error, not as a decision badge", () => {
+    const line = renderOutcome(
       messageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: -32010, message: "ACS envelope failed" } } })),
     );
 
-    expect(badge).toBe("✖ ERROR -32010  ACS envelope failed");
+    expect(line).toBe("✖ ERROR -32010  ACS envelope failed");
   });
 
   // Pins the fallback the old renderer had inline: a code that is not a
   // number reaches the message as null and still renders as `?`.
-  it("badges an error whose code is not a number", () => {
-    expect(renderDecisionBadge({ error: { code: null, message: "unreadable" } })).toBe("✖ ERROR ?  unreadable");
+  it("renders an error whose code is not a number", () => {
+    expect(renderRpcError({ code: null, message: "unreadable" })).toBe("✖ ERROR ?  unreadable");
   });
 
   it("emits ANSI only when colour is asked for", () => {
