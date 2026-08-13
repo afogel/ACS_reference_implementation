@@ -252,8 +252,10 @@ V5 ("second host, zero AGT changes") is implemented: OpenCode 1.18.15 is governe
 `hosts/opencode/opencode.hookmap.yaml`) against zero changed lines in the Guardian, the AGT
 bridge, `policy/lib`, `agt.lock`, `mapping.yaml`, or host #1's own wire contract, which
 `bun run verify:zero-diff` checks mechanically rather than by inspection. The adapter package
-itself is *not* unchanged (four of its files, +1026/−63, to add four load-time hookmap gates and a
-second `exit_status` form) — the claim is that none of it forked per host: every change landed in
+itself is *not* unchanged (four of its files, to add four load-time hookmap gates and a
+second `exit_status` form — no insertion/deletion count is quoted here; it isn't pinned by
+anything and went stale three times during one review round, see `slices/v5/README.md` for
+why) — the claim is that none of it forked per host: every change landed in
 the package both hosts share, and host #1's own source gained zero lines, only two additive test
 files. See
 [`slices/v5/README.md`](slices/v5/README.md) and [`docs/demos/v5-runbook.md`](docs/demos/v5-runbook.md)

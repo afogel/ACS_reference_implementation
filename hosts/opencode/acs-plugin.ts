@@ -18,7 +18,7 @@
  * semantics this slice owns.
  *
  * THE ADAPTER IS NOT "UNCHANGED" (§V5 final review, F3) -- MEASURED:
- * packages/host-adapter/src changed in FOUR of its files, +1026/-63
+ * packages/host-adapter/src changed in FOUR of its files
  * (build-envelope.ts, decision-modify.ts, modifications.ts,
  * result-output.ts); `loadHookmap` went from ONE load-time gate
  * (`assertRenderableDecisions`) to FIVE (plus `assertMirrorsWellFormed`,
@@ -28,6 +28,18 @@
  * `render-decision.ts` and `govern-step.ts` are genuinely untouched. So
  * `buildEnvelope`, the hookmap format, and every load-time check are NOT
  * the unmodified set an earlier claim here named.
+ *
+ * NO INSERTION/DELETION COUNT QUOTED HERE (§V5 review round 3, fix round
+ * 2) -- an earlier version of this paragraph named one, and it went stale
+ * three times in three consecutive commits on this exact line (+962/-62,
+ * then +1026/-63, then wrong again the moment the SECOND correction
+ * landed): nothing pins it, and Tasks 2 and 3 of this same review round
+ * both still edit packages/host-adapter/src, so any number quoted here is
+ * guaranteed wrong again before this plan lands. The count this paragraph
+ * actually needs -- FOUR files, no per-host fork, host #1's own source at
+ * +0/-0 (mechanically pinned by scripts/verify-zero-diff.sh, below) --
+ * carries the claim without it. For a CURRENT count:
+ * `git diff --shortstat slice/v4 HEAD -- packages/host-adapter/src/`.
  *
  * THE CLAIM THAT IS ACTUALLY TRUE, AND STRONGER THAN "UNCHANGED": this
  * second host cost no PER-HOST FORK. Every one of those changes landed in
