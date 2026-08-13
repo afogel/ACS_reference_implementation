@@ -30,8 +30,10 @@
  * arguments per hook, not one blob, so THAT assembly is a shim job, the
  * same way reading stdin is host #1's), calls `resolveSessionConfig` then
  * `governStep`, and applies what comes back through `applyHostOutput`
- * below. `"tool.execute.after"` (the result gate) is Task 6's: the same
- * shape, one seam later, for `{result}` in place of `{args}`.
+ * below. TASK 6 WIRES `"tool.execute.after"` (the result gate): the same
+ * shape, one seam later, for `{result}` (the live `{title, output, metadata,
+ * attachments}` object) beside `{args}`, plus `outputs.mirrors` (Task 2) so a
+ * redaction lands the leaf and its `metadata.output` mirror together.
  *
  * THE ADAPTER-SIDE HALF OF THIS FILE'S OWN PROTOTYPE-CHAIN GUARD (below,
  * `assertNoReservedSegments`) lives at its source, corrected in
@@ -799,12 +801,12 @@ export const AcsPlugin: Plugin = async () => {
   const store = createSessionConfigStore();
 
   return {
-    // Task 6 fills in this hook's sibling, "tool.execute.after" (the result
-    // gate). See this file's own header, "FOUR THINGS EVERY GATE TASK MUST
-    // DO", for what `assertUsableSessionId`/`assertUsableTool`, the `tools`
-    // bullet, and the two `sessionId` forms below have to do and why -- and
-    // for why a throw at the result gate specifically does not mean what it
-    // means here.
+    // See this file's own header, "FOUR THINGS EVERY GATE TASK MUST DO", for
+    // what `assertUsableSessionId`/`assertUsableTool`, the `tools` bullet,
+    // and the two `sessionId` forms below have to do and why -- shared by
+    // both hooks below, unchanged. And for why a throw at the result gate
+    // specifically does not mean what it means here, see
+    // "tool.execute.after"'s own doc comment, below.
     "tool.execute.before": async (input, output) => {
       // `tool` first, ahead of the `tools` check below (§V5 review, Task 5,
       // fix round 2, Important 2): `isGovernedTool` cannot tell a malformed
@@ -856,6 +858,92 @@ export const AcsPlugin: Plugin = async () => {
       });
 
       applyHostOutput(governed.output, { args: output.args });
+    },
+
+    /**
+     * Task 6: the result gate. The same six moves as "tool.execute.before"
+     * above -- validate `tool`, honour `tools`, validate `sessionID`,
+     * assemble one payload object, negotiate the session, govern the step,
+     * apply what comes back -- one seam later, for `{result}` in place of
+     * `{args}`.
+     *
+     * `tools: [bash]` on this hookmap entry too (opencode.hookmap.yaml's own
+     * comment, on this entry): `metadata` is PER-TOOL on this host, measured
+     * across four tools -- only `bash`'s carries `exit`/`output`, which is
+     * what this entry's `outputs`/`exit_status` are shaped for; `read`'s
+     * carries `preview`, `grep`'s carries `matches`. An unlisted tool is the
+     * same documented no-op `isGovernedTool` already gives the request gate,
+     * not a fault this hook resolves any other way.
+     *
+     * `args: input.args`, RAW, same as the request gate's own `session_id` --
+     * unlike the request gate (where `args` sits on the mutable `output`
+     * object because that is the only place OpenCode puts it at that gate),
+     * OpenCode hands THIS hook `input.args` directly, so no second read is
+     * needed to put it on the payload. Nothing in opencode.hookmap.yaml's
+     * result-gate entry resolves a `$.args` path today, but the payload
+     * carries it anyway, the same way `buildEnvelope` is handed every field a
+     * hookmap COULD name rather than only the ones this shipped one does.
+     *
+     * `result: output`, THE WHOLE LIVE OBJECT, not one of its fields --
+     * OpenCode hands this hook `{title, output, metadata, attachments}`
+     * (`attachments` at runtime, measured; the published 1.18.15 type omits
+     * it, so this shim never examines it by name and passes it through
+     * opaque). `governed.output.result`, when a `deny`/`modify` renders one,
+     * is `applied_output` -- the WHOLE patched clone of that same object,
+     * mirror included (`outputs.mirrors`, opencode.hookmap.yaml's own result
+     * gate) -- so `applyHostOutput`'s merge below lands `output` and
+     * `metadata.output` together, and leaves `title`/`attachments`/
+     * `metadata.exit`/`metadata.truncated` -- everything a render does not
+     * name -- exactly as OpenCode handed them in (`mergeInPlace`, above).
+     *
+     * A THROW HERE DOES NOT MEAN WHAT IT MEANS AT THE REQUEST GATE (this
+     * file's own header, "FOUR THINGS EVERY GATE TASK MUST DO", first
+     * bullet's own last paragraph, and opencode.hookmap.yaml's own comment on
+     * this entry's `deny`): OpenCode discards this plugin's mutations on a
+     * throw out of `tool.execute.after` and rebuilds `metadata` from its own
+     * pre-hook copy, so a secret scrubbed by a throw does not stay scrubbed
+     * on disk. That is why this entry's `deny`/`modify` decisions render
+     * `result` (a REPLACING merge, applied below) instead of `refuse` (a
+     * throw) -- the `refuse` key never appears in either decision here.
+     * `assertUsableTool`/`assertUsableSessionId` still refuse a broken
+     * `tool`/`sessionID` by throwing, same as the request gate: an ungoverned
+     * step is worse than a stop that does not scrub the disk, and neither of
+     * those two faults is a governed decision this gate could instead
+     * withhold by replacing.
+     */
+    "tool.execute.after": async (input, output) => {
+      assertUsableTool(input.tool, "tool.execute.after");
+
+      if (!isGovernedTool(hookmap, "tool.execute.after", input.tool)) {
+        return;
+      }
+
+      assertUsableSessionId(input.sessionID, "tool.execute.after");
+
+      const payload = {
+        tool: input.tool,
+        session_id: input.sessionID,
+        callID: input.callID,
+        args: input.args,
+        result: output,
+      };
+
+      const session = await resolveSessionConfig(
+        { guardian, agentId: hookmap.host, sessionId: toSessionUuid(input.sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+        store,
+      );
+
+      const governed = await governStep({
+        hookEventName: "tool.execute.after",
+        payload,
+        hookmap,
+        guardian,
+        session,
+        sessionId: input.sessionID,
+        audit,
+      });
+
+      applyHostOutput(governed.output, { result: output as unknown as Record<string, unknown> });
     },
   };
 };
