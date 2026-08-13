@@ -1,6 +1,6 @@
 # V5: Second host, zero AGT changes
 
-**Demo:** Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT.
+**Demo:** Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`, and an unregistered name fails AGT's evaluation closed before any rule runs.
 
 **Master doc:** [`docs/shaping/acs-reference-impl-slices.md`](../../docs/shaping/acs-reference-impl-slices.md) §V5 — authoritative for this slice's scope.
 
