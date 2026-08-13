@@ -17,15 +17,27 @@
  * through the unmodified adapter, on a second host.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Test-only import: stands up a real Guardian, same precedent as
 // request-gate.test.ts and hosts/claude-code/test/post-tool-use.test.ts.
 import { startGuardian, type StartedGuardian } from "guardian";
-import { buildEnvelope, createGuardianClient, loadHookmap, type Hookmap } from "host-adapter";
+import {
+  buildEnvelope,
+  createGuardianClient,
+  createSessionConfigStore,
+  DEFAULT_TIMEOUT_MS,
+  governStep,
+  loadHookmap,
+  NULL_AUDIT_SINK,
+  resolveSessionConfig,
+  toSessionUuid,
+  type Hookmap,
+} from "host-adapter";
 import { AcsPlugin } from "../acs-plugin.ts";
+import { applyOpenCodeOutput } from "../apply-host-output.ts";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
@@ -387,5 +399,253 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+});
+
+/**
+ * THE FAULT `assertHostHonoursEveryDecision` (acs-plugin.ts) EXISTS TO REFUSE,
+ * MEASURED RATHER THAN ASSUMED (§V5 review round 3, Task 5, Critical).
+ *
+ * These three tests are deliberately NOT written through `AcsPlugin`, and that
+ * is the point rather than a convenience: the whole finding is that this class
+ * of hookmap used to REGISTER CLEANLY, and the fix is a load-time refusal.
+ * Driving these through `AcsPlugin` would prove only that the refusal now fires,
+ * which `acs-plugin.test.ts` already pins -- it would say nothing about what the
+ * refused hookmap actually DOES if it ever reaches a live decision, which is the
+ * claim the gate rests on. So these call the same collaborators
+ * `"tool.execute.after"` above calls (`loadHookmap`, `resolveSessionConfig` ->
+ * `governStep`, `applyOpenCodeOutput`), against the same live Guardian and the
+ * same real decisions, with the plugin factory -- and therefore the gate -- out
+ * of the path. They keep measuring the hazard after the gate lands.
+ *
+ * Every fixture below is a few lines different from the shipped
+ * `opencode.hookmap.yaml`'s result gate, and every one of them LOADS CLEAN
+ * through `loadHookmap`: `assertRenderableDecisions` (build-envelope.ts)
+ * requires only a non-empty `output` block whose every field names a `value` or
+ * a `from`, and `reason.text: { from: reasoning }` satisfies that exactly.
+ */
+describe("a result-gate decision the hookmap gives no way to withhold with -- the measured fail-open", () => {
+  /** Writes one fixture hookmap into this file's scratch dir and returns its path. */
+  function fixture(name: string, yaml: string): string {
+    const path = join(SCRATCH_DIR, name);
+    writeFileSync(path, yaml);
+    return path;
+  }
+
+  /**
+   * Runs the real chain for one hookmap and reports what the applier did to the
+   * live object, with the plugin factory out of the path -- see this describe
+   * block's own comment for why that is deliberate.
+   *
+   * `expectedDecision` is asserted here rather than returned, because it is this
+   * helper's own precondition: every caller below is claiming something about a
+   * decision that GENUINELY ARRIVED, and a test whose Guardian answered
+   * something else would be measuring nothing.
+   *
+   * WHAT THIS HELPER CANNOT ASSERT, AND HOW THE CALLERS COVER IT INSTEAD. The
+   * decision message's own `applied_output` -- `withResultOutput`'s guarantee,
+   * the one the retired doc comment mistook for protection -- is NOT reachable
+   * from here: `governStep` attaches it inside its own render step and returns
+   * the pre-attachment decision on `GovernedStep.decision` (govern-step.ts,
+   * `renderDecision(hookEventName, withResultOutput(decision, ...), hookmap)`).
+   * So each caller pins the guarantee the way it is actually observable -- by
+   * running the IDENTICAL payload through the SHIPPED hookmap and showing the
+   * withholding lands there. Same Guardian, same decision, same live shape; the
+   * hookmap is the only thing that differs, which is exactly the claim.
+   */
+  async function governAndApply(options: {
+    hookmapPath: string;
+    sessionID: string;
+    toolOutput: string;
+    expectedDecision: string;
+  }): Promise<{ output: Record<string, unknown>; result: ReturnType<typeof liveResult>; threw: unknown }> {
+    // Loads clean for every fixture below -- the finding's first half. Nothing
+    // in the adapter's own load-time checks has an opinion about WHICH key a
+    // result-gate `deny`/`modify` renders into.
+    const hookmap: Hookmap = loadHookmap(options.hookmapPath);
+
+    const result = liveResult(options.toolOutput);
+    const client = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      {
+        guardian: client,
+        agentId: hookmap.host,
+        sessionId: toSessionUuid(options.sessionID),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      createSessionConfigStore(),
+    );
+    const governed = await governStep({
+      hookEventName: "tool.execute.after",
+      payload: { tool: TOOL, session_id: options.sessionID, callID: "c1", args: {}, result },
+      hookmap,
+      guardian: client,
+      session,
+      sessionId: options.sessionID,
+      // A posture is only ever consulted -- and only ever audited -- when a
+      // decision failed to arrive, and every caller below asserts a real one
+      // did. Nothing here writes an audit line, so nothing here needs a path.
+      audit: NULL_AUDIT_SINK,
+    });
+
+    // A REAL policy decision, not a posture-resolved one: `stage: "honoured"`
+    // is reachable only through the route that rendered a decision that
+    // actually arrived (govern-step.ts's own `GovernedStep` doc comment).
+    expect(governed.stage).toBe("honoured");
+    expect(governed.decision?.decision).toBe(options.expectedDecision);
+
+    let threw: unknown;
+    try {
+      applyOpenCodeOutput(governed.output, { gate: "result", result: result as unknown as Record<string, unknown> });
+    } catch (error) {
+      threw = error;
+    }
+    return { output: governed.output as Record<string, unknown>, result, threw };
+  }
+
+  // The result gate exactly as shipped, EXCEPT that `deny` and `modify`
+  // declare only `reason.text` -- the `result: { from: applied_output }` sink
+  // removed from both. Every other line, `outputs.mirrors` included, is the
+  // shipped file's.
+  const NO_SINK_AT_ALL =
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.after:\n" +
+    "    acs_method: steps/toolCallResult\n" +
+    "    tool_name: $.tool\n" +
+    "    tools: [bash]\n" +
+    "    outputs:\n" +
+    "      from: $.result.output\n" +
+    "      within: $.result\n" +
+    "      mirrors:\n" +
+    "        - $.result.metadata.output\n" +
+    "    exit_status: { from: $.result.metadata.exit }\n" +
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      modify:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n";
+
+  it("deny: applies nothing and throws nothing, where the shipped hookmap withholds from the identical decision", async () => {
+    // "rm -rf /" -- the same destructive-command payload the shipped-hookmap
+    // deny test above uses, so the Guardian's answer here is the identical
+    // `destructive_shell_command_blocked` deny, differing only in the hookmap
+    // it is rendered through.
+    const TOOL_OUTPUT = "rm -rf /";
+
+    // THE CONTROL, first: the shipped hookmap, whose result-gate `deny`
+    // declares `result: { from: applied_output }`. The withholding lands on
+    // the leaf AND the mirror -- so `withResultOutput` did put one on the
+    // decision message for this exact payload.
+    const shipped = await governAndApply({
+      hookmapPath: HOOKMAP_PATH,
+      sessionID: "ses-result-gate-sink-control",
+      toolOutput: TOOL_OUTPUT,
+      expectedDecision: "deny",
+    });
+    expect(shipped.threw).toBeUndefined();
+    expect(shipped.result.output).toBe("[OUTPUT WITHHELD BY POLICY]");
+    expect(shipped.result.metadata.output).toBe("[OUTPUT WITHHELD BY POLICY]");
+
+    // THE FAULT: the same decision, the same payload, one hookmap block
+    // different.
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-deny-without-a-sink.yaml", NO_SINK_AT_ALL),
+      sessionID: "ses-result-gate-no-sink-deny",
+      toolOutput: TOOL_OUTPUT,
+      expectedDecision: "deny",
+    });
+
+    // The render carries the declared-inert `reason` and nothing else --
+    // `applyOpenCodeOutput`'s pass 1 skips `reason`, pass 2a finds no
+    // `refuse`, pass 2b writes at most an `ACS_DEBUG` stderr line, and pass 3
+    // has no `result` to merge.
+    expect(Object.keys(output)).toEqual(["reason"]);
+    expect(threw).toBeUndefined();
+
+    // Nothing applied. The tool's own output survives in BOTH places --
+    // indistinguishable, on this live object, from a clean allow (compare
+    // "passes a clean result through untouched", above).
+    expect(result.output).toBe(TOOL_OUTPUT);
+    expect(result.metadata.output).toBe(TOOL_OUTPUT);
+    expect(result).toEqual(liveResult(TOOL_OUTPUT));
+  });
+
+  it("modify: the same, for a redaction -- and the render is literally {}", async () => {
+    // The `modify` half of the same rule, measured rather than extrapolated
+    // from the `deny` half: this deployment's own policy answers a secret in a
+    // tool result with a redacting `modify`, which the shipped hookmap lands
+    // through the same `result: { from: applied_output }` sink `deny` uses.
+    const TOOL_OUTPUT = "TOKEN=ghp_SECRET123456";
+
+    const shipped = await governAndApply({
+      hookmapPath: HOOKMAP_PATH,
+      sessionID: "ses-result-gate-sink-control-modify",
+      toolOutput: TOOL_OUTPUT,
+      expectedDecision: "modify",
+    });
+    expect(shipped.threw).toBeUndefined();
+    expect(shipped.result.output).toBe("TOKEN=[REDACTED]");
+    expect(shipped.result.metadata.output).toBe("TOKEN=[REDACTED]");
+
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-modify-without-a-sink.yaml", NO_SINK_AT_ALL),
+      sessionID: "ses-result-gate-no-sink-modify",
+      toolOutput: TOOL_OUTPUT,
+      expectedDecision: "modify",
+    });
+
+    // EMPTY, not even `reason`: this `modify` carries no `reasoning` field, and
+    // `reason.text: { from: reasoning }` renders nothing without one. So the
+    // render is `{}` -- byte-identical to what a clean `allow` renders on this
+    // host, which is the shape §V5 fix round 1's Critical 1 closed at the
+    // REQUEST gate and this task closes here.
+    expect(output).toEqual({});
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe(TOOL_OUTPUT);
+    expect(result.metadata.output).toBe(TOOL_OUTPUT);
+  });
+
+  // The SECOND shape this gate refuses, and the reason its rule is the exact
+  // key `result` rather than "any path whose leading segment is `result`".
+  // Naming the LEAF renders `{result: {output: <the whole patched container>}}`,
+  // which `applyOpenCodeOutput` merges without complaint: `live.result.output`
+  // becomes an OBJECT where OpenCode expects the tool's own output string, and
+  // `live.result.metadata.output` -- the mirror, the entire reason this slice
+  // touched the shared adapter a second time -- is never written at all.
+  // opencode.hookmap.yaml's own `deny` comment already names this shape as
+  // wrong ("burying the mirror's own patched copy one level too deep for
+  // OpenCode to ever apply") and hookmap.test.ts already asserts the shipped
+  // file does not use it; nothing REFUSED it until this task.
+  const DENY_NAMING_THE_LEAF = NO_SINK_AT_ALL.replace(
+    "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+    "      deny:\n" +
+      "        output:\n" +
+      "          result.output: { from: applied_output }\n" +
+      "          reason.text: { from: reasoning, type: string }\n",
+  );
+
+  it("deny naming the leaf (result.output) instead of the container leaves the mirror unwritten", async () => {
+    const { result, threw } = await governAndApply({
+      hookmapPath: fixture("result-deny-naming-the-leaf.yaml", DENY_NAMING_THE_LEAF),
+      sessionID: "ses-result-gate-leaf-sink",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    expect(threw).toBeUndefined();
+    // The mirror keeps what the tool produced -- a clean-looking leak, exactly
+    // the one `outputs.mirrors` exists to prevent.
+    expect(result.metadata.output).toBe("rm -rf /");
+    // And the leaf did not receive the withheld STRING either: it received the
+    // whole patched container object, one level too deep for OpenCode to read
+    // an output from.
+    expect(typeof result.output).toBe("object");
+    expect((result.output as unknown as Record<string, unknown>).output).toBe("[OUTPUT WITHHELD BY POLICY]");
   });
 });

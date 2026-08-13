@@ -61,7 +61,9 @@
  * hookmap, the Guardian client, the audit sink, the negotiated session
  * config store -- `applyOpenCodeOutput`, the one function novel to this host,
  * and one load-time correctness gate this host's own applier needs
- * (`assertRefusalRendersUnconditionally`, below -- see its own doc comment).
+ * (`assertHostHonoursEveryDecision`, below -- see its own doc comment; it
+ * shipped as `assertRefusalRendersUnconditionally`, covering the request gate
+ * alone, and §V5 review round 3, Task 5 generalised it to both gates).
  * TASK 5 WIRED THE REQUEST GATE, `"tool.execute.before"`: it assembles the
  * payload shape `opencode.hookmap.yaml`'s `$.` paths resolve against
  * (`{tool, session_id, callID, args}` -- OpenCode hands the plugin two
@@ -155,20 +157,32 @@
  *     for the audit entry (S14). Mixing the two is the exact bug class this
  *     note exists to prevent -- see acs-hook.ts's own step 4 and step 5 for
  *     both call sites side by side.
- *   - TRUST, RATHER THAN RE-CHECK, THAT deny/ask/defer AT THE REQUEST GATE
- *     CANNOT RENDER EMPTY. `assertRefusalRendersUnconditionally` (below),
- *     called from `AcsPlugin` beside `loadHookmap`, refuses this hookmap at
- *     LOAD TIME unless every one of those three decisions declares an
- *     unconditional (`value:`) output field -- `refuse.denied` in the
- *     shipped hookmap. Neither gate task needs to special-case an arriving
- *     `deny`/`ask`/`defer` that carries no (or a wrongly typed) `reasoning`:
- *     by the time either hook fires, this file has already refused to
- *     register a hookmap that could render one as `{}`, indistinguishable
- *     from a clean allow (§V5 review, fix round 1, Critical 1). The result
- *     gate's own `deny`/`modify` need no equivalent check here: they are
- *     already guaranteed a non-empty `applied_output` by construction
- *     (`withResultOutput`, result-output.ts, host-agnostic) before this file
- *     is ever reached.
+ *   - TRUST, RATHER THAN RE-CHECK, THAT A DECISION THAT MUST REFUSE OR
+ *     WITHHOLD HAS SOMEWHERE TO DO IT. `assertHostHonoursEveryDecision`
+ *     (below), called from `AcsPlugin` beside `loadHookmap`, refuses this
+ *     hookmap at LOAD TIME unless every request-gate `deny`/`ask`/`defer`
+ *     declares an unconditional (`value:`) output field under `refuse`
+ *     (`refuse.denied` in the shipped hookmap) AND every result-gate
+ *     `deny`/`modify` declares a `result` output field (`result: { from:
+ *     applied_output }` in the shipped hookmap). Neither gate task needs to
+ *     special-case an arriving decision that carries no (or a wrongly typed)
+ *     `reasoning`: by the time either hook fires, this file has already
+ *     refused to register a hookmap that could render one as `{}`,
+ *     indistinguishable from a clean allow (§V5 review, fix round 1,
+ *     Critical 1).
+ *
+ *     THE RESULT-GATE HALF IS NEW, AND THIS BULLET USED TO ARGUE AGAINST IT
+ *     (§V5 review round 3, Task 5, Critical). It said the result gate's own
+ *     `deny`/`modify` "need no equivalent check here: they are already
+ *     guaranteed a non-empty `applied_output` by construction
+ *     (`withResultOutput`, result-output.ts, host-agnostic)". That guarantee
+ *     is real and it is about the DECISION MESSAGE; it says nothing about the
+ *     HOOKMAP declaring an output path to land it in. Measured: a result gate
+ *     one block different from the shipped one -- `deny` declaring only
+ *     `reason.text` -- loaded clean, and a real Guardian deny then applied
+ *     nothing and threw nothing, delivering the tool's output in the leaf and
+ *     its `metadata.output` mirror both. See
+ *     `assertHostHonoursEveryDecision`'s own doc comment.
  *   - HONOUR `tools`, BEFORE ANY OF THE ABOVE except validating `tool`
  *     itself. A gate whose hookmap entry declares a `tools` list must
  *     return, without building a payload, without validating `sessionID`,
@@ -271,127 +285,372 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Decisions whose ENTIRE signal to this host is a refusal: `deny`, `ask`
- * (this hookmap's own least-wrong mapping for a hook with no native "ask"),
- * and `defer` (the same, for "defer"). None of these three declares any
- * OTHER output field at the request gate -- `refuse.reason` is the whole
- * entry -- and a `from:` field renders NOTHING when its source is absent or
- * the wrong type (render-decision.ts). So an entry built only from `from:`
- * fields can, on a Guardian's minimal or malformed decision message, render
- * `{}`: this applier sees no keys at all, applies nothing, throws nothing,
- * and the tool proceeds -- indistinguishable from a clean allow.
+ * Decisions whose ENTIRE signal to this host AT THE REQUEST GATE is a
+ * refusal: `deny`, `ask` (this hookmap's own least-wrong mapping for a hook
+ * with no native "ask"), and `defer` (the same, for "defer"). None of these
+ * three declares any OTHER output field at that gate -- `refuse.reason` is
+ * the whole entry -- and a `from:` field renders NOTHING when its source is
+ * absent or the wrong type (render-decision.ts). So an entry built only from
+ * `from:` fields can, on a Guardian's minimal or malformed decision message,
+ * render `{}`: this applier sees no keys at all, applies nothing, throws
+ * nothing, and the tool proceeds -- indistinguishable from a clean allow.
  *
- * `allow` and `modify` are deliberately NOT in this set:
+ * `allow` and `modify` are deliberately NOT in this set, AND THE REASON FOR
+ * `modify` IS NOT THE ONE THIS COMMENT USED TO GIVE (§V5 review round 3,
+ * Task 5 -- the same overclaim that task's Critical is about, one decision
+ * over, so it is retired here rather than left standing beside the fix):
+ *
  *   - `allow` rendering `{}` IS its own meaning ("nothing to change"); there
  *     is no ambiguity a marker would resolve.
- *   - `modify` is guaranteed, by construction and host-agnostically
- *     (`resolveModify`, decision-modify.ts), to reach this render EITHER
- *     carrying a non-empty `applied_input` OR already converted into a
- *     `deny` whose `reasoning` is a guaranteed non-empty string (`deny()`,
- *     decision-message.ts) -- so it can never actually reach this host's
- *     applier as an empty render either.
+ *   - `modify` is NOT A REFUSAL, and that is the whole reason it is absent
+ *     from a set about refusal markers: an unconditional `refuse` field on a
+ *     `modify` would make this host throw on a decision that asked for the
+ *     step to RUN, rewritten. Whether a `modify`'s own rewrite lands is a
+ *     different question, and this set does not ask it. This comment used to
+ *     answer that different question, wrongly: it said `modify` "can never
+ *     actually reach this host's applier as an empty render", on the grounds
+ *     that `resolveModify` (decision-modify.ts) guarantees a non-empty
+ *     `applied_input` or a converted `deny`. That guarantee is real and it is
+ *     about the DECISION MESSAGE. It says nothing about the hookmap declaring
+ *     an output path to land it in, and `renderDecision` renders only the
+ *     paths a decision's own entry declares -- so a request-gate `modify`
+ *     declaring only `reason.text` would render no `args` at all, however good
+ *     the `applied_input` it arrived with. NOT MEASURED AT THIS GATE, and not
+ *     claimed as if it were: what IS measured is the identical mechanism ONE
+ *     GATE OVER (result-gate.test.ts, and `MUST_WITHHOLD_BY_REPLACING`'s own
+ *     doc comment below) -- a result-gate `modify` declaring only
+ *     `reason.text` renders literally `{}` against a real redacting decision,
+ *     and the redaction does not land. Not refused here either way: the
+ *     shipped hookmap declares `args: { from: applied_input }`, and the rule
+ *     this gate states for the request gate is the refusal rule (below),
+ *     unextended. Named rather than implied, because a reader who takes the
+ *     retired sentence at face value would conclude something this code does
+ *     not check.
  *
  * §V5 review, fix round 1, Critical 1. Measured against the shipped hookmap
- * before this set and `assertRefusalRendersUnconditionally` existed:
- * `{"decision":"deny"}` and `{"decision":"deny","reasoning":{"code":"R7"}}`
- * (a `reasoning` of the wrong type) both rendered `{}` -- applied nothing,
- * threw nothing, and the tool ran. Same for `{"decision":"ask"}`.
+ * before this set and the gate below existed: `{"decision":"deny"}` and
+ * `{"decision":"deny","reasoning":{"code":"R7"}}` (a `reasoning` of the wrong
+ * type) both rendered `{}` -- applied nothing, threw nothing, and the tool
+ * ran. Same for `{"decision":"ask"}`.
  */
 const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
 
 /**
- * Refuses to register a hookmap in which a request-gate `deny`/`ask`/`defer`
- * entry declares no unconditional (`value:`) output field -- called from
- * `AcsPlugin`, beside `loadHookmap`, so this is a LOAD-TIME stop rather than
- * a fault this shim could only discover from a live decision.
+ * The result gate's counterpart, and the set that did not exist (§V5 review
+ * round 3, Task 5, Critical): the two decisions that WITHHOLD something at
+ * `tool.execute.after`.
  *
- * §V5 review, fix round 1, Critical 1. This is decidable from the hookmap
- * file ALONE, with no invocation payload needed -- the same class of fault
- * this slice has now moved to a load-time check three times already
- * (`assertMirrorsWellFormed`, `assertToolsWellFormed`,
- * `assertExitStatusNotBothForms`/`assertRequestGateDeclaresNoOutputs`, all in
- * build-envelope.ts) rather than leaving it to surface downstream, where a
- * throw is caught by `governStep` and answered by the deployment's
- * NEGOTIATED delivery posture instead of refused outright -- and `proceed`
- * there is an ungoverned step.
+ * `deny` withholds the tool's output outright (`WITHHELD_OUTPUT`); `modify`
+ * withholds part of it (a redaction). Both arrive carrying the whole patched
+ * container on `applied_output` (`withResultOutput`, result-output.ts), and
+ * on this host both land the same way: merged onto the live
+ * `{title, output, metadata, attachments}` object through the rendered
+ * `result` key. A hookmap that declares no such key for one of them renders a
+ * decision that withholds nothing.
  *
- * This check cannot live in `loadHookmap` itself, host-agnostically: it is
- * host #2's own rule about what THIS host's applier needs -- which decisions
- * exist and which of them can render nothing -- not a claim
- * packages/host-adapter/src may make about any host's field names (R3.2).
- * The identical reasoning is why `assertHostAcceptsEveryDecision` lives in
- * hosts/claude-code/acs-hook.ts and not in the adapter; this is host #2's
- * general form of that same rule.
+ * `allow` is absent for the reason it is absent from the request-gate set
+ * above: rendering nothing IS its own meaning at a result gate ("deliver the
+ * output as the tool produced it"), which is exactly why `acs-hook.ts`'s own
+ * `emptyOutputIsHonest` is `true` at host #1's PostToolUse and `false` at its
+ * PreToolUse. `ask`/`defer` are absent because this hookmap declares neither
+ * at this gate and `assertRenderableDecisions` requires neither; a decision
+ * the hookmap does not declare is not this check's business, at either gate.
  *
- * Scoped to the REQUEST gate only (an entry declaring `arguments`), mirroring
- * `acs-hook.ts`'s own asymmetry between its two gates: the result gate's own
- * `deny`/`modify` are protected a different way, by construction
- * (`withResultOutput`, result-output.ts, host-agnostic), not by a hookmap
- * shape check -- see MUST_RENDER_UNCONDITIONALLY's own doc comment.
+ * MEASURED, through the real chain, against a live Guardian, BEFORE the gate
+ * below existed (hosts/opencode/test/result-gate.test.ts, "a result-gate
+ * decision the hookmap gives no way to withhold with" -- three tests that
+ * keep measuring it, deliberately routed around `AcsPlugin` so the gate does
+ * not hide the hazard it refuses):
  *
- * Checks by STRUCTURE, not by trusting the shipped field name -- but the
- * structure that matters is WHICH KEY the unconditional field sits under, not
- * merely that some field somewhere in the block carries `{value: ...}`.
- * `applyOpenCodeOutput` (apply-host-output.ts) refuses on exactly one output
- * key: `refuse` -- read in pass 2a and thrown. `reason` is declared-inert (pass
- * 2b never throws), and `args`/`result` are MERGES that leave a governed
- * decision looking like a successful, unremarkable rewrite: an unconditional
- * `{value: ...}` planted at `reason.text` or `args.something` renders a
- * non-empty output block, which is what an earlier version of this check
- * accepted, but a non-empty render at the wrong key is not a refusal --
- * `applyOpenCodeOutput` never reads `refuse` from it, so the applier proceeds all
- * the same. This is the exact hole a hookmap author (or a compromised
- * config) could use to satisfy this gate's letter while reintroducing
- * Critical 1's rendered-`{}` failure mode by another route: an entry naming
- * ONLY `from:` fields under `refuse`, plus one unconditional field under any
- * OTHER key, passed the old check and still applied nothing, threw nothing.
- * So: an entry passes only when at least one output path whose LEADING
- * segment is `refuse` carries `{value: ...}` -- `refuse.denied` (this
- * hookmap's own marker) is one instance of that shape, not a stand-in for
- * "any field, anywhere". An entry naming an unconditional field ONLY outside
- * `refuse` -- or naming only `from:` fields under `refuse` -- is what gets
- * refused. A decision this hookmap does not declare at all (`ask`/`defer`
- * are optional; `loadHookmap`'s own `assertRenderableDecisions` requires
- * only `allow` and `deny`) has nothing here to check.
+ *   - A result gate identical to the shipped one except that `deny` and
+ *     `modify` declare only `reason.text` LOADS CLEAN through `loadHookmap`.
+ *   - A real `deny` (`rm -rf /`, `destructive_shell_command_blocked`) then
+ *     renders `{reason}`: `applyOpenCodeOutput` applies nothing and throws
+ *     nothing, and `rm -rf /` is delivered in the leaf AND its
+ *     `metadata.output` mirror. The identical payload through the SHIPPED
+ *     hookmap withholds both -- the decision is the same, the hookmap is the
+ *     only difference.
+ *   - A real `modify` (a secret in the tool's output) renders LITERALLY `{}`,
+ *     because that decision carries no `reasoning` for `reason.text` to read:
+ *     byte-identical to a clean `allow`, and the secret is delivered in both
+ *     places.
  */
-function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): void {
+const MUST_WITHHOLD_BY_REPLACING = new Set(["deny", "modify"]);
+
+/** One decision's declared `output` block, as this gate reads it off a loaded
+ * hookmap, or `undefined` when there is nothing here to check.
+ *
+ * `undefined` covers two cases this gate deliberately does not report on: a
+ * decision the hookmap never declares (`ask`/`defer` are optional --
+ * `loadHookmap`'s own `assertRenderableDecisions` requires only `allow` and
+ * `deny`), and a present-but-malformed entry, which that same function has
+ * already refused with a better message than anything here could give. */
+function declaredOutputFor(decisions: unknown, decisionName: string): Record<string, unknown> | undefined {
+  const rule = isPlainObject(decisions) ? decisions[decisionName] : undefined;
+  const output = isPlainObject(rule) ? (rule as { output?: unknown }).output : undefined;
+  return isPlainObject(output) ? output : undefined;
+}
+
+/**
+ * What this shim expects of ONE hook -- the same role `HOOK_EXPECTATIONS`
+ * plays in hosts/claude-code/acs-hook.ts, for host #2's own two gates.
+ *
+ * A table rather than one rule, for the same reason host #1 needs one: this
+ * host's two gates are not symmetric, and neither gate's rule is the other's.
+ * A request-gate decision that cannot refuse lets a step RUN; a result-gate
+ * decision that cannot withhold DELIVERS what a step produced. Different key,
+ * different failure, same class.
+ */
+type HookExpectation = {
+  /**
+   * Throws unless every decision this hook declares renders something
+   * `applyOpenCodeOutput` (apply-host-output.ts) actually honours at this
+   * event.
+   */
+  assertDecisions: (decisions: unknown, path: string, hookEventName: string) => void;
+};
+
+/**
+ * KEYED BY HOOK EVENT NAME, NOT BY THE ENTRY'S OWN SHAPE, and that is the
+ * correct basis rather than a convenience (§V5 review round 3, Task 5).
+ *
+ * The old check sniffed the entry -- `typeof entry.arguments === "string"` --
+ * and skipped everything else, which is exactly how the result gate went
+ * unchecked. Hook name is the better key because it is what actually decides
+ * which live half the applier gets: `AcsPlugin`'s returned object has exactly
+ * two hooks, and each passes a hardcoded tag -- `"tool.execute.before"` calls
+ * `applyOpenCodeOutput(..., { gate: "request", args })` and
+ * `"tool.execute.after"` calls `applyOpenCodeOutput(..., { gate: "result",
+ * result })` (both call sites are at the bottom of this file). So "which key
+ * withholds here" is a fact about the CALL SITE, which is per hook name,
+ * regardless of what payload shape the hookmap entry declares. A hookmap
+ * declaring `tool.execute.before` with `outputs:` instead of `arguments:`
+ * would still be handed `{gate: "request", args}` at runtime, and still needs
+ * the refusal rule -- the shape sniff would have applied the wrong rule to it,
+ * or none.
+ */
+const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
+  /**
+   * §V5 review, fix round 1, Critical 1, unchanged in substance by this task's
+   * generalisation -- only moved into the table.
+   *
+   * Checks by STRUCTURE, not by trusting the shipped field name -- but the
+   * structure that matters is WHICH KEY the unconditional field sits under,
+   * not merely that some field somewhere in the block carries `{value: ...}`.
+   * `applyOpenCodeOutput` (apply-host-output.ts) refuses on exactly one output
+   * key: `refuse` -- read in pass 2a and thrown. `reason` is declared-inert
+   * (pass 2b never throws), and `args`/`result` are MERGES that leave a
+   * governed decision looking like a successful, unremarkable rewrite: an
+   * unconditional `{value: ...}` planted at `reason.text` or `args.something`
+   * renders a non-empty output block, which is what an earlier version of this
+   * check accepted, but a non-empty render at the wrong key is not a refusal
+   * -- `applyOpenCodeOutput` never reads `refuse` from it, so the applier
+   * proceeds all the same. This is the exact hole a hookmap author (or a
+   * compromised config) could use to satisfy this gate's letter while
+   * reintroducing Critical 1's rendered-`{}` failure mode by another route: an
+   * entry naming ONLY `from:` fields under `refuse`, plus one unconditional
+   * field under any OTHER key, passed the old check and still applied nothing,
+   * threw nothing.
+   *
+   * So: an entry passes only when at least one output path whose LEADING
+   * segment is `refuse` carries `{value: ...}` -- `refuse.denied` (this
+   * hookmap's own marker) is one instance of that shape, not a stand-in for
+   * "any field, anywhere". LEADING SEGMENT, not the exact key, because the
+   * marker legitimately sits BESIDE `refuse.reason` under a shared `refuse`
+   * container: it is the container the applier reads and throws on, so
+   * anything unconditional inside it is enough to guarantee the container
+   * exists. (The result gate's rule below is the exact key for the opposite
+   * reason -- there the sink IS the key.)
+   */
+  "tool.execute.before": {
+    assertDecisions(decisions, path, hookEventName) {
+      for (const decisionName of MUST_RENDER_UNCONDITIONALLY) {
+        const output = declaredOutputFor(decisions, decisionName);
+        if (output === undefined) {
+          continue;
+        }
+        const hasUnconditionalRefuseField = Object.entries(output).some(([outputPath, field]) => {
+          const leadingSegment = outputPath.split(".")[0];
+          return (
+            leadingSegment === "refuse" && isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value")
+          );
+        });
+        if (!hasUnconditionalRefuseField) {
+          throw new Error(
+            `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
+              `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-host-output.ts) refuses only on ` +
+              `the "refuse" key; an unconditional field declared under any other key (e.g. "reason.text" or ` +
+              `"args...") renders a non-empty output block without making this a refusal, and "refuse.reason" ` +
+              `alone is a "from:" field that renders NOTHING when the arriving decision does not carry that ` +
+              `source field, or carries it as the wrong type (render-decision.ts). This host's applier would then ` +
+              `apply nothing and throw nothing, and the tool would proceed -- a ${decisionName} indistinguishable ` +
+              `from a clean allow. Add a literal sibling under "refuse", e.g. "refuse.denied: { value: true }", ` +
+              `so this decision always renders a refusal.`,
+          );
+        }
+      }
+    },
+  },
+  /**
+   * THE HALF THAT DID NOT EXIST (§V5 review round 3, Task 5, Critical) -- the
+   * gate that holds the secret.
+   *
+   * `result` is the ONLY key that withholds anything at this event, and the
+   * requirement is that exact key rather than any path leading with it.
+   * `applyOpenCodeOutput` merges the rendered `result` onto the live object
+   * OpenCode handed the hook, so a `deny` declaring `result: { from:
+   * applied_output }` lands the whole patched container -- the leaf and its
+   * `metadata.output` mirror together. Naming a path UNDER it does not: a
+   * `result.output: { from: applied_output }` renders
+   * `{result: {output: <the whole container>}}`, which the applier merges
+   * without complaint into `live.result.output` -- a field that is a STRING on
+   * this host -- and the mirror is never written at all. Measured, on the
+   * real chain: the mirror keeps what the tool produced. `opencode.hookmap.yaml`'s
+   * own `deny` comment already called that shape wrong and `hookmap.test.ts`
+   * already asserted the shipped file avoids it; nothing REFUSED it until now.
+   *
+   * NOT "declare `refuse` instead". A throw out of `tool.execute.after` makes
+   * OpenCode discard this plugin's mutations and rebuild `metadata` from its
+   * own pre-hook copy, so the tool's output survives in OpenCode's own session
+   * record however early the throw fires (measured -- opencode.hookmap.yaml's
+   * own header). Replacing is the only thing that withholds here, which is why
+   * this rule names a merge key and the request gate's names a throw key.
+   */
+  "tool.execute.after": {
+    assertDecisions(decisions, path, hookEventName) {
+      for (const decisionName of MUST_WITHHOLD_BY_REPLACING) {
+        const output = declaredOutputFor(decisions, decisionName);
+        if (output === undefined) {
+          continue;
+        }
+        if (!Object.prototype.hasOwnProperty.call(output, "result")) {
+          throw new Error(
+            `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no "result" output ` +
+              `field -- at this host's result gate "result" is the ONLY key that withholds anything, because ` +
+              `applyOpenCodeOutput (apply-host-output.ts) merges it onto the live object OpenCode handed the hook ` +
+              `and nothing else it renders reaches that object at all ("reason" is declared-inert, "args" has no ` +
+              `live half at this gate). withResultOutput (result-output.ts) guarantees the arriving decision ` +
+              `CARRIES a withholding on "applied_output"; it cannot make this hookmap declare anywhere to land ` +
+              `it. Without this field the applier would apply nothing and throw nothing, and the tool's own ` +
+              `output -- the leaf AND its metadata.output mirror -- would be delivered: a ${decisionName} ` +
+              `indistinguishable from a clean allow. Add "result: { from: applied_output }" -- the whole ` +
+              `container at "outputs.within", NOT a leaf under it: "result.output" renders that container into a ` +
+              `field that is a string on this host, and leaves the mirror unwritten. Throwing is not the ` +
+              `alternative here either: OpenCode discards this plugin's mutations on a throw out of ` +
+              `"${hookEventName}" and rebuilds metadata from its own pre-hook copy.`,
+          );
+        }
+      }
+    },
+  },
+};
+
+/**
+ * This shim's expectation of `hookEventName`, or a throw -- the same rule
+ * `expectationFor` states in hosts/claude-code/acs-hook.ts, for two reasons
+ * here rather than one.
+ *
+ * A hook this table has no entry for is a hook whose declared decisions
+ * nothing checks: an unchecked hook is an unchecked fail-open, which is the
+ * whole reason this gate exists. And on THIS host there is a second, sharper
+ * reason -- `AcsPlugin` returns exactly two hooks, `"tool.execute.before"` and
+ * `"tool.execute.after"`, so a hookmap entry for any other event is never
+ * registered with OpenCode at all. It would sit in the hookmap looking like
+ * governance and govern nothing, silently, for the life of the deployment.
+ * Refused rather than skipped, on both counts.
+ */
+function expectationFor(hookEventName: string, path: string): HookExpectation {
+  // `hasOwnProperty`, not a bare index: a hookmap naming a hook `toString` or
+  // `constructor` would otherwise read an inherited function off
+  // Object.prototype, pass the `undefined` check, and then fail on a missing
+  // `assertDecisions` -- an unrelated TypeError in place of the message that
+  // says which hook is unknown. Same reasoning as acs-hook.ts's own
+  // `expectationFor`, and as `isReservedSegment` (reserved-segments.ts).
+  const expectation = Object.prototype.hasOwnProperty.call(HOOK_EXPECTATIONS, hookEventName)
+    ? HOOK_EXPECTATIONS[hookEventName]
+    : undefined;
+  if (expectation === undefined) {
+    throw new Error(
+      `acs-plugin: ${path} maps hook "${hookEventName}", which this shim has no expectation for -- nothing here ` +
+        `can say which of this host's output keys withholds at that event, or which live object OpenCode hands a ` +
+        `hook there. It is also a hook this plugin never registers: AcsPlugin returns "tool.execute.before" and ` +
+        `"tool.execute.after" and nothing else, so this entry would sit in the hookmap looking like governance ` +
+        `and govern nothing. A hook nothing checks is a hook nothing governs, so it is refused rather than ` +
+        `passed through. Teach this shim the event (HOOK_EXPECTATIONS, this file) before mapping it here.`,
+    );
+  }
+  return expectation;
+}
+
+/**
+ * Refuses to register a hookmap in which any decision that must REFUSE (at the
+ * request gate) or must WITHHOLD (at the result gate) declares no output field
+ * this host's applier would honour that way -- called from `AcsPlugin`, beside
+ * `loadHookmap`, so this is a LOAD-TIME stop rather than a fault this shim
+ * could only discover from a live decision.
+ *
+ * REPLACES `assertRefusalRendersUnconditionally`, WHICH WAS ONLY HALF OF THIS
+ * (§V5 review round 3, Task 5, Critical). That function skipped every entry
+ * that did not declare `arguments`, so `tool.execute.after` was never asked
+ * whether its `deny` could actually withhold -- and its own doc comment
+ * DEFENDED the skip, on the grounds that "the result gate's own `deny`/`modify`
+ * are protected a different way, by construction (`withResultOutput`,
+ * result-output.ts, host-agnostic)". That defence was wrong, and it is the
+ * exact confusion this task exists to retire: `withResultOutput` guarantees the
+ * DECISION MESSAGE carries a non-empty `applied_output`. It says nothing about
+ * the HOOKMAP declaring an output path that lands it. Upstream,
+ * `assertRenderableDecisions` (build-envelope.ts) requires only a non-empty
+ * `output` block, so a result-gate `deny` declaring only `reason.text` loaded
+ * clean -- and then applied nothing and threw nothing on a real Guardian deny,
+ * delivering the tool's output in both the leaf and its mirror. Measured; see
+ * `MUST_WITHHOLD_BY_REPLACING`'s own doc comment for the three cases and
+ * hosts/opencode/test/result-gate.test.ts for the tests that keep measuring
+ * them.
+ *
+ * LOAD TIME, NOT POSTURE TIME, and that is the whole point. This fault is
+ * decidable from the hookmap file ALONE, with no invocation payload -- the
+ * same class this slice has repeatedly moved to a load-time check
+ * (`assertMirrorsWellFormed`, `assertToolsWellFormed`,
+ * `assertExitStatusNotBothForms`, `assertRequestGateDeclaresNoOutputs`, all in
+ * build-envelope.ts; no count quoted, per this file's own header) rather than
+ * leaving it to surface downstream, where a
+ * throw is caught by `governStep` and answered by the deployment's NEGOTIATED
+ * delivery posture instead of refused outright. A negotiated `proceed` there
+ * is an ungoverned step -- and at the result gate an ungoverned step is the
+ * tool's output, secret included, delivered.
+ *
+ * THIS CANNOT LIVE IN `loadHookmap`, host-agnostically: it is host #2's own
+ * rule about what THIS host's applier needs -- which decisions exist, which
+ * output key refuses, which one withholds -- not a claim
+ * packages/host-adapter/src may make about any host's field names (R3.2). For
+ * `refuse` that is enforced mechanically: test/invariants.test.ts's
+ * host-vocabulary gate fails on the word appearing anywhere in the adapter's
+ * own source. NOT for `result`, and the reason is the one that gate's own
+ * comment gives for excluding `sessionID` and `metadata`: `result-output.ts`
+ * uses "result" for ACS's own replacing-output concept, so listing it would
+ * fail on day one for a word the adapter is supposed to speak. What keeps
+ * `result`-as-an-OpenCode-output-key out of the adapter is this function
+ * living here, not a gate. The identical reasoning is why
+ * `assertHostAcceptsEveryDecision` lives in hosts/claude-code/acs-hook.ts and
+ * not in the adapter; this is host #2's general form of that same rule, now
+ * with the same coverage: every hook, both gates, and a hook the table has no
+ * entry for is a throw rather than a skip.
+ *
+ * WHAT THIS STILL DOES NOT DO, stated so a reader does not read more into it.
+ * It is a check on the HOOKMAP, not on a rendered output: a hookmap that
+ * declares the right key and a decision that reaches the render carrying
+ * nothing to put in it are different faults, and only the first is decidable
+ * here -- the same split acs-hook.ts draws between
+ * `assertHostAcceptsEveryDecision` and `asClaudeCodeOutput`'s own runtime
+ * check. It also asks nothing of `allow` at either gate, nothing of `modify`
+ * at the request gate (see `MUST_RENDER_UNCONDITIONALLY`'s own doc comment for
+ * what that leaves open and why it is not this rule), and nothing about a
+ * decision the hookmap never declares.
+ */
+function assertHostHonoursEveryDecision(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
-    const isRequestGate = isPlainObject(entry) && typeof (entry as { arguments?: unknown }).arguments === "string";
-    if (!isRequestGate) {
-      continue;
-    }
-    const decisions = (isPlainObject(entry) ? (entry as { decisions?: unknown }).decisions : undefined) ?? {};
-    for (const decisionName of MUST_RENDER_UNCONDITIONALLY) {
-      const rule = isPlainObject(decisions) ? (decisions as Record<string, unknown>)[decisionName] : undefined;
-      const output = isPlainObject(rule) ? (rule as { output?: unknown }).output : undefined;
-      if (!isPlainObject(output)) {
-        // loadHookmap's own assertRenderableDecisions has already refused a
-        // present-but-malformed entry (null, {}, a non-object field) or
-        // required allow/deny to exist at all -- not this check's job to
-        // re-report that, or to require a decision this hookmap never
-        // declares.
-        continue;
-      }
-      const hasUnconditionalRefuseField = Object.entries(output).some(([outputPath, field]) => {
-        const leadingSegment = outputPath.split(".")[0];
-        return (
-          leadingSegment === "refuse" && isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value")
-        );
-      });
-      if (!hasUnconditionalRefuseField) {
-        throw new Error(
-          `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
-            `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-host-output.ts) refuses only on the ` +
-            `"refuse" key; an unconditional field declared under any other key (e.g. "reason.text" or "args...") ` +
-            `renders a non-empty output block without making this a refusal, and "refuse.reason" alone is a ` +
-            `"from:" field that renders NOTHING when the arriving decision does not carry that source field, or ` +
-            `carries it as the wrong type (render-decision.ts). This host's applier would then apply nothing and ` +
-            `throw nothing, and the tool would proceed -- a ${decisionName} indistinguishable from a clean allow. ` +
-            `Add a literal sibling under "refuse", e.g. "refuse.denied: { value: true }", so this decision always ` +
-            `renders a refusal.`,
-        );
-      }
-    }
+    const decisions = isPlainObject(entry) ? (entry as { decisions?: unknown }).decisions : undefined;
+    expectationFor(hookEventName, path).assertDecisions(decisions, path, hookEventName);
   }
 }
 
@@ -492,7 +751,8 @@ function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is
  *
  * A throw here -- an unreadable or invalid hookmap (`loadHookmap` shape-checks
  * everything statically decidable from the hookmap file alone, and
- * `assertRefusalRendersUnconditionally` adds this host's own such check) --
+ * `assertHostHonoursEveryDecision` adds this host's own such check, for both
+ * of its gates) --
  * names the same "broken deployment, not a policy question" fault
  * `BlockingConfigurationError`/exit 2 stops host #1's session for. THIS HOST
  * DOES NOT STOP, though, which is NOT what an earlier version of this
@@ -520,7 +780,7 @@ export const AcsPlugin: Plugin = async () => {
   // import time and ignore anything a test set afterwards.
   const hookmapPath = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./opencode.hookmap.yaml", import.meta.url));
   const hookmap = loadHookmap(hookmapPath);
-  assertRefusalRendersUnconditionally(hookmap, hookmapPath);
+  assertHostHonoursEveryDecision(hookmap, hookmapPath);
 
   const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
   const audit = createAuditSink({ path: process.env.ACS_AUDIT_LOG ?? ".acs/audit.jsonl" });

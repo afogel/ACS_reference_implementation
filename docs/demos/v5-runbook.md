@@ -567,8 +567,11 @@ project's: it catches whatever a plugin module's factory throws during registrat
 continues the session **without that plugin** — never refusing to start, the way Claude Code's shim
 refuses at exit 2 for the equivalent "broken deployment, not a policy question" case. Reproduced
 directly: a scratch copy of `opencode.hookmap.yaml` with every `refuse.denied: { value: true }` line
-removed (the exact fault `assertRefusalRendersUnconditionally` exists to catch — the tracked file is
+removed (one of the faults `assertHostHonoursEveryDecision` exists to catch; the tracked file is
 never touched), pointed at with `ACS_HOOKMAP_PATH`, run against the same destructive-command probe.
+That gate was named `assertRefusalRendersUnconditionally` and covered the request gate alone when
+this capture was taken — §V5 review round 3, Task 5 generalised it to both gates, which widens what
+degrades to a log line here rather than changing that it does.
 The whole diff, four lines removed, nothing else:
 
 ```diff

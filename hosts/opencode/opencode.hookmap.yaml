@@ -48,9 +48,15 @@ hooks:
     arguments: $.args
     tools: [bash]
     decisions:
-      # `refuse.reason` is this host's deny channel and there is no other:
-      # measured, `output.status = "deny"` and `output.decision = "deny"` are
-      # both ACCEPTED and IGNORED, and the tool runs. Throwing is what stops it.
+      # `refuse.reason` is this host's deny channel AT THIS GATE and there is
+      # no other here: measured, `output.status = "deny"` and
+      # `output.decision = "deny"` are both ACCEPTED and IGNORED, and the tool
+      # runs. Throwing is what stops it. (At the RESULT gate below the deny
+      # channel is `result` instead, and throwing is the wrong move there --
+      # see that entry's own `deny` comment. Said explicitly here because an
+      # unqualified "there is no other" read as a whole-host claim, and the
+      # gate that enforces this file's shape now covers both gates rather than
+      # this one alone -- §V5 review round 3, Task 5.)
       #
       # `refuse.denied: { value: true }` (§V5 review, fix round 1, Critical 1):
       # UNCONDITIONAL, beside `refuse.reason`'s own `from:`. A `from:` field
@@ -62,10 +68,13 @@ hooks:
       # `{"decision":"deny","reasoning":{"code":"R7"}}` both rendered `{}` --
       # this host's applier saw no keys, applied nothing, threw nothing, and
       # the tool ran, indistinguishable from a clean allow. `acs-plugin.ts`'s
-      # own load-time gate (`assertRefusalRendersUnconditionally`) now refuses
-      # to register a hookmap missing this marker on any of the three; it is
+      # own load-time gate (`assertHostHonoursEveryDecision`) now refuses to
+      # register a hookmap missing this marker on any of the three; it is
       # declared on all three here so this file passes that gate rather than
-      # relying on it to catch an omission.
+      # relying on it to catch an omission. That gate covers the RESULT gate
+      # below too, which it did not when it shipped as
+      # `assertRefusalRendersUnconditionally` -- see this file's own
+      # `tool.execute.after` deny comment (§V5 review round 3, Task 5).
       allow:
         output:
           reason.text: { from: reasoning, type: string }
@@ -144,6 +153,20 @@ hooks:
       # (`result.output`) would assign the WHOLE container to a field that is
       # a string on this host, burying the mirror's own patched copy one level
       # too deep for OpenCode to ever apply.
+      #
+      # DROPPING THE SINK, AND NAMING THE LEAF INSTEAD OF THE CONTAINER, ARE
+      # NOW BOTH REFUSED AT LOAD RATHER THAN ONLY DOCUMENTED HERE (§V5 review
+      # round 3, Task 5, Critical). `acs-plugin.ts`'s
+      # `assertHostHonoursEveryDecision` requires the exact key `result` on
+      # this gate's `deny` AND its `modify`, so a hookmap doing either is
+      # refused before this plugin registers. Measured before that gate existed, through a live Guardian
+      # and this exact result gate with the `result:` line removed: a real
+      # `deny` rendered `{reason}`, a real `modify` rendered `{}`, and both
+      # applied nothing and threw nothing -- the tool's output delivered in
+      # the leaf and the mirror both, indistinguishable from a clean allow.
+      # `withResultOutput` guaranteed the DECISION carried `applied_output`
+      # the whole time; nothing guaranteed this file declared anywhere to put
+      # it.
       deny:
         output:
           result: { from: applied_output }
