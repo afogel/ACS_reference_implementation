@@ -76,10 +76,16 @@
  * `metadata.output` mirror together.
  *
  * THE ADAPTER-SIDE HALF OF `apply-host-output.ts`'s OWN PROTOTYPE-CHAIN
- * GUARD (`assertNoReservedSegments`, in that file) lives at its source,
- * corrected in `packages/host-adapter/src/modifications.ts`'s own
- * `RESERVED_SEGMENTS` doc comment -- not duplicated here. (An earlier version
- * of this header claimed this file "may not edit packages/host-adapter/src"; that was
+ * GUARD (`assertNoReservedSegments`, in that file, wrapping the imported
+ * `findReservedKey`) lives at its source: `reserved-segments.ts`
+ * (`packages/host-adapter/src/`), the one shared definition of the three
+ * reserved names and the value-tree walker that checks a rendered value
+ * against them (§V5 review round 3, Task 3 -- it used to be a doc comment on
+ * `modifications.ts`'s own now-retired, module-private copy, naming this
+ * OpenCode file as where the guard it pointed at actually lived; a shared
+ * package pointing at one host's source for a security invariant was the
+ * wrong abstraction). Not duplicated here. (An earlier version of this header
+ * claimed this file "may not edit packages/host-adapter/src"; that was
  * never true -- Global Constraint 1 freezes `packages/guardian/src`,
  * `packages/agt-bridge/src`, `policy/lib/`, `agt.lock`, `mapping.yaml`, and
  * `hosts/claude-code/`, and the adapter is not on that list. NOT

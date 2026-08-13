@@ -33,6 +33,8 @@
  * nothing here returns a decision or names one.
  */
 
+import { RESERVED_SEGMENTS } from "./reserved-segments.ts";
+
 /** Thrown by `applyModifications` when `modifications` cannot be honoured
  * exactly as the Guardian specified it -- a violation of §6.3's composition
  * rules, an entry of the wrong shape, or a target that is not in the
@@ -131,6 +133,31 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * and `parameter_overrides`' own KEYS, both of which this module inspects
  * directly.
  *
+ * `RESERVED_SEGMENTS` (imported, `reserved-segments.ts`) used to be one of
+ * several module-private copies of the same three names -- `hookmap-path.ts`
+ * and `render-decision.ts` each kept their own too, and
+ * `hosts/opencode/apply-host-output.ts` kept a further one, a HOST'S own
+ * source carrying a shared package's security invariant because the package
+ * had no shared definition to export (§V5 review round 3, Task 3,
+ * "duplication vs wrong abstraction"). It is now the one definition every
+ * one of those files imports instead.
+ *
+ * THIS MODULE'S OWN CHECK STAYS LOCAL, THOUGH -- unlike the name list, the
+ * check below is not shared with `apply-host-output.ts`'s, because the two
+ * check different things. `assertNoReservedSegments` here takes NAMES
+ * already in hand -- a redaction path already split into segments, or one
+ * override object's own top-level keys -- and asks "is this name reserved",
+ * the same structural job `hookmap-path.ts`'s `pathSegments` and
+ * `render-decision.ts`'s `place` do against their own path notations. It is
+ * not a walk into an arbitrarily nested VALUE, so it is not
+ * `reserved-segments.ts`'s exported `findReservedKey` (that walker is for a
+ * caller examining a value it is about to trust as a whole, at any depth --
+ * see its own doc comment) with a shorter argument list; it is the other
+ * job, staying separate for the identical reason PR #13's review response
+ * gave for keeping `render-decision.ts`'s path check out of a shared
+ * resolver: folding a name check into a value walker "would have merged two
+ * path languages rather than de-duplicating one".
+ *
  * WHAT IS STILL TRUE, IN ISOLATION: `setAtPath` (below) assigns into a
  * fresh clone of the caller's arguments at every level it descends through,
  * never into a shared prototype -- a `modify` applied through THIS module
@@ -161,19 +188,22 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * that follows writes through it, global to that host's whole long-lived
  * plugin process, for a value this module let through untouched.
  *
- * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `hosts/opencode/apply-host-output.ts`'s
- * own `assertNoReservedSegments` (a file-local copy of these same three
- * names and the same reasoning -- this module's version below is not
- * exported, and R3.2 keeps host vocabulary out of this package regardless),
- * called from that file's `applyHostOutput`, pass 1, over the rendered
- * `args`/`result` value as a whole tree, before that file's own recursive
- * merge ever runs on it. This module may not host that guard itself: it is
- * a fact about what a SPECIFIC HOST's applier does with a value after this
- * module has already returned it, not about anything `applyModifications`
- * or `setAtPath` do.
+ * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `reserved-segments.ts`'s
+ * exported `findReservedKey`, called from every host applier that recurses
+ * into a rendered value the way `apply-host-output.ts`'s `mergeInPlace`
+ * does (`apply-host-output.ts`'s own `applyHostOutput`, pass 1, over the
+ * rendered `args`/`result` value as a whole tree, before its recursive merge
+ * ever runs on it -- see that file's own doc comment). Not
+ * `hosts/opencode/`'s own source, any longer: a shared package pointing at
+ * one host's file for a security invariant was the wrong abstraction, and
+ * the walker now lives beside the name list, in this package, for whichever
+ * host applier needs it to import. This module still may not host
+ * that guard itself: closing this gap means recursing into a VALUE this
+ * module never builds -- the rendered `args`/`result` a host applier merges
+ * onto its own live objects -- which is a fact about what a host's applier
+ * does with a value after this module has already returned it, not about
+ * anything `applyModifications` or `setAtPath` do.
  */
-const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
-
 function assertNoReservedSegments(segments: string[], label: string): void {
   for (const segment of segments) {
     if (RESERVED_SEGMENTS.has(segment)) {

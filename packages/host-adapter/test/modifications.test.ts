@@ -170,6 +170,30 @@ describe("applyModifications — §6.3", () => {
   });
 });
 
+// Reserved-segment coverage AT THIS LEVEL, directly against `applyModifications`
+// -- the deny-with-reasoning shape for the identical checks is already pinned
+// through `validateDecision` (validate-decision.test.ts), but nothing here
+// exercised `applyModifications` itself against a reserved redaction path or
+// override key until now (§V5 review round 3, Task 3). `RESERVED_SEGMENTS`
+// is imported (`reserved-segments.ts`), the one shared definition every
+// former module-private copy of it now draws from -- see that module's own
+// header.
+describe("reserved segments -- redaction paths and parameter_overrides keys", () => {
+  for (const segment of ["__proto__", "constructor", "prototype"]) {
+    it(`throws on a redaction path naming "${segment}"`, () => {
+      expect(() => applyModifications(ARGS, { redactions: [{ path: `/${segment}` }] })).toThrow(
+        ModificationsInvalidError,
+      );
+    });
+
+    it(`throws on a parameter_overrides key naming "${segment}"`, () => {
+      expect(() => applyModifications(ARGS, { parameter_overrides: { [segment]: "y" } })).toThrow(
+        ModificationsInvalidError,
+      );
+    });
+  }
+});
+
 describe("every modification has to land at its own target", () => {
   it("denies a parameter_override that rewrites a value to itself", () => {
     expect(() =>

@@ -11,7 +11,14 @@
  */
 import { describe, expect, it, spyOn } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { type AcsDecision, loadHookmap, renderDecision, validateDecision } from "host-adapter";
+import {
+  type AcsDecision,
+  findReservedKey,
+  loadHookmap,
+  renderDecision,
+  RESERVED_SEGMENTS,
+  validateDecision,
+} from "host-adapter";
 import { applyHostOutput } from "../apply-host-output.ts";
 
 const HOOKMAP = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
@@ -191,6 +198,86 @@ describe("applyHostOutput", () => {
     expect(() => applyHostOutput({ result: malicious } as never, live)).toThrow(/__proto__/);
     expect(live.result).toEqual({ output: "SECRET", metadata: { output: "SECRET" } });
     expect((({}) as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  // The two tests above only ever drove "__proto__" through this applier.
+  // `RESERVED_SEGMENTS` names two more, and until §V5 review round 3, Task 3
+  // this file's own copy of the guard could in principle have gone stale on
+  // either without either test noticing -- the shared list closes that, but
+  // only if something here still exercises the other two names.
+  for (const segment of ["constructor", "prototype"]) {
+    it(`refuses a rendered "result" carrying "${segment}" at any depth, exactly like "__proto__"`, () => {
+      const rendered = { result: { metadata: { [segment]: { polluted: true } } } };
+      const live = { result: { output: "SECRET", metadata: { output: "SECRET" } } };
+      expect(() => applyHostOutput(rendered, live)).toThrow(new RegExp(segment));
+      expect(live.result).toEqual({ output: "SECRET", metadata: { output: "SECRET" } });
+    });
+  }
+
+  it("refuses through host-adapter's exported findReservedKey, not a file-local copy (§V5 review round 3, Task 3)", () => {
+    // Not a mock or a spy on an internal -- `findReservedKey` is the only
+    // thing this file imports from "host-adapter" that could locate a
+    // reserved key, and its own reported `path`/`key` shape (walked from
+    // `label`, dotted through each level descended) is distinctive enough
+    // that a bespoke local re-implementation producing this exact message
+    // would be a coincidence, not the shared guard. `hit.path` for a key at
+    // "result.metadata.__proto__" is exactly what this applier's own thrown
+    // message names.
+    // Literal `{__proto__: ...}` object syntax sets the real [[Prototype]]
+    // link rather than an own property -- JSON.parse, exactly like the
+    // Guardian's wire, is what produces the own-property shape this
+    // function (and the applier below) actually needs to find.
+    const hit = findReservedKey(JSON.parse('{"metadata":{"__proto__":{"x":1}}}'), "result");
+    expect(hit).toEqual({ path: "result.metadata.__proto__", key: "__proto__" });
+
+    const rendered = { result: JSON.parse('{"metadata":{"__proto__":{"x":1}}}') };
+    const live = { result: { output: "SECRET", metadata: { output: "SECRET" } } };
+    expect(() => applyHostOutput(rendered as never, live)).toThrow(/"result\.metadata\.__proto__"/);
+  });
+
+  it("draws its refusal from host-adapter's ONE shared reserved-segment list -- removing a name from it stops BOTH this applier and modifications.ts from refusing that name (§V5 review round 3, Task 3, mutation test)", () => {
+    // `RESERVED_SEGMENTS` is a module-level singleton: ES modules are
+    // cached by resolved path, so this import and the one
+    // `packages/host-adapter/src/modifications.ts` makes (via
+    // `reserved-segments.ts`, one file on disk either way) are the SAME
+    // `Set` object, not two copies that happen to agree today. Deleting an
+    // entry from it here and observing both sides stop refusing that name is
+    // the proof; each half restores the entry in `finally` regardless of
+    // which assertion failed, so no other test in this process ever sees
+    // the mutation.
+    const mutableSegments = RESERVED_SEGMENTS as Set<string>;
+    expect(mutableSegments.has("constructor")).toBe(true);
+    mutableSegments.delete("constructor");
+    try {
+      // This applier's own side: a rendered "args" owning "constructor" at
+      // any depth is no longer refused.
+      const live = { args: { command: "cat .env" } };
+      expect(() =>
+        applyHostOutput({ args: { env: { constructor: { polluted: true } } } }, live),
+      ).not.toThrow();
+
+      // modifications.ts's own side, through the real validateDecision ->
+      // assertValidModifications path: an override key naming "constructor"
+      // is no longer denied for being reserved, and (the target genuinely
+      // existing and genuinely changing) the modify actually applies.
+      const decision = {
+        decision: "modify",
+        reasoning: "r",
+        modifications: { parameter_overrides: { constructor: "x" } },
+      } as AcsDecision;
+      const out = validateDecision(decision, { elapsedMs: 0, modificationDocument: { constructor: "y" } });
+      expect(out.reasoning ?? "").not.toContain('reserved segment "constructor"');
+      expect(out.decision).toBe("modify");
+    } finally {
+      mutableSegments.add("constructor");
+    }
+
+    // Restored: both sides refuse "constructor" again, exactly as before
+    // the mutation.
+    const live = { args: { command: "cat .env" } };
+    expect(() => applyHostOutput({ args: { env: { constructor: { polluted: true } } } }, live)).toThrow(
+      /constructor/,
+    );
   });
 
   it("reason.text is declared-inert on this host: not applied, and not surfaced on stderr on the common path (§V5 review, fix round 1, Minor 4)", () => {

@@ -51,6 +51,7 @@
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
+import { RESERVED_SEGMENTS } from "./reserved-segments.ts";
 
 /**
  * A rendered host output: an ordinary JSON object whose keys this module never
@@ -82,15 +83,6 @@ type HostOutputField = {
 /** One decision's hookmap-declared rendering rule (its `decisions.<decision>` entry). */
 type DecisionRenderRule = { output: Record<string, HostOutputField> };
 
-/**
- * Path segments no output field may name. `__proto__` is the one that matters
- * -- assigning to it through a plain object mutates the prototype instead of
- * adding a key, so a hookmap naming it would produce an output missing the
- * field it declared while changing something else entirely. The other two are
- * rejected beside it rather than reasoned about individually.
- */
-const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -104,6 +96,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * another, describes an output nobody can render as written -- and a renderer
  * that silently picked one of the two would hand the host something that
  * merely looks like a decision.
+ *
+ * `RESERVED_SEGMENTS` (imported, `reserved-segments.ts`) is the one shared
+ * definition of the three names below -- `__proto__` is the one that matters
+ * (assigning to it through a plain object mutates the prototype instead of
+ * adding a key, so a hookmap naming it would produce an output missing the
+ * field it declared while changing something else entirely); the other two
+ * are rejected beside it rather than reasoned about individually. The CHECK
+ * below stays local and unshared, though (§V5 review round 3, Task 3): this
+ * is a WRITER walking a dotted output path and creating levels as it goes,
+ * the same job `hookmap-path.ts`'s reader does for the hookmap's own
+ * notation, and PR #13's review response deliberately kept it separate from
+ * a shared resolver on the grounds that folding it in "would have merged two
+ * path languages rather than de-duplicating one" -- that ruling stands.
  */
 function place(output: HostOutput, path: string, value: unknown): void {
   const segments = path.split(".");

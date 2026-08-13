@@ -32,15 +32,18 @@
  * pieces, only `host-adapter`'s public surface -- and `test/invariants.test.ts`'s "every host
  * shim imports the adapter only" gate checks this file by name too, alongside `acs-plugin.ts`.
  *
- * `isPlainObject` is duplicated here rather than imported from `acs-plugin.ts` -- the same
- * convention `acs-plugin.ts`'s own header already uses for constants it cannot import from
- * `render-decision.ts`/`hookmap-path.ts` because they are module-private there. `acs-plugin.ts`
- * needs its own copy regardless (`assertRefusalRendersUnconditionally` uses it, and that function
- * stays where it is -- it is called from `AcsPlugin`'s own factory body, at plugin registration
- * time, not from `applyHostOutput`), so keeping two small, identical three-line functions is
- * simpler and more honest than an import whose only purpose is to avoid six lines of duplication.
+ * `isPlainObject` is duplicated here rather than imported from `acs-plugin.ts`, and that is a
+ * SEPARATE decision from where the reserved-segment guard below now comes from (§V5 review round
+ * 3, Task 3) -- `RESERVED_SEGMENTS`/`findReservedKey` moved to `host-adapter`'s public surface
+ * because a security invariant that any host applier might need belongs in the package both hosts
+ * run, not in host #2's own source; `isPlainObject` here is a three-line structural-typing helper with
+ * no such invariant to drift, and `acs-plugin.ts` needs its own copy of IT regardless
+ * (`assertRefusalRendersUnconditionally` uses it, and that function stays where it is -- it is
+ * called from `AcsPlugin`'s own factory body, at plugin registration time, not from
+ * `applyHostOutput`), so keeping two small, identical three-line functions is simpler and more
+ * honest than an import whose only purpose is to avoid six lines of duplication.
  */
-import type { HostOutput } from "host-adapter";
+import { findReservedKey, type HostOutput } from "host-adapter";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,21 +63,26 @@ function isDebugEnabled(): boolean {
 }
 
 /**
- * Keys that address a JavaScript object's prototype machinery rather than a
- * field a decision actually rendered -- the same three names, and the same
- * reasoning, as `render-decision.ts`'s and `hookmap-path.ts`'s own
- * `RESERVED_SEGMENTS`, and `modifications.ts`'s `assertNoReservedSegments`
- * (§V5 review, fix round 2, Critical). This file cannot import any of
- * theirs -- they are module-private -- so the convention is repeated here
- * rather than shared, the same way `isPlainObject` above already is.
- */
-const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
-
-/**
- * Refuses `value` if it, or anything nested inside it, owns a key from
- * `RESERVED_SEGMENTS` -- called from pass 1, below, on `output.args` and
- * `output.result`, BEFORE `mergeInPlace` ever runs (§V5 review, fix round 2,
- * Critical).
+ * Refuses `value` if it, or anything nested inside it, owns a reserved
+ * prototype-machinery key (`__proto__`/`constructor`/`prototype`) -- called
+ * from pass 1, below, on `output.args` and `output.result`, BEFORE
+ * `mergeInPlace` ever runs (§V5 review, fix round 2, Critical).
+ *
+ * THE WALK ITSELF IS `host-adapter`'s `findReservedKey` (imported above),
+ * not a copy kept here (§V5 review round 3, Task 3, "duplication vs wrong
+ * abstraction"). This file used to carry its own `RESERVED_SEGMENTS` Set,
+ * duplicating the same three names `hookmap-path.ts`, `render-decision.ts`,
+ * and `modifications.ts` each also kept privately, AND its own recursive
+ * walker -- the one copy among that group that actually recursed into a
+ * nested value rather than checking a name already in hand, because the
+ * adapter had nowhere shared to export either from. `findReservedKey` does
+ * not throw (detection is shared; the wording and the error class below are
+ * this file's own, because they describe THIS applier's specific hazard,
+ * not a generic one -- see `reserved-segments.ts`'s own header for why that
+ * split is deliberate, and for why `modifications.ts`'s own reserved-segment
+ * checks stay a local name check rather than also calling this walker); this
+ * function is the thin, host-specific wrapper that turns a hit into the
+ * refusal below.
  *
  * WHY `mergeInPlace` NEEDED THIS AND `Object.assign` DID NOT. A value that
  * reaches this applier came off the Guardian's wire through `JSON.parse`,
@@ -110,10 +118,6 @@ const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
  * observable as `({}).args` in the SAME process afterward, on a wholly
  * unrelated allowed tool call that rendered `{}`.
  *
- * `packages/host-adapter/src/modifications.ts`'s own `RESERVED_SEGMENTS`
- * carries the identical three names for the identical reason, one seam
- * earlier -- see its doc comment for the adapter-side half of this guard.
- *
  * Recurses through arrays too (an override value could as easily nest the
  * key inside a list element as inside an object), and refuses on the FIRST
  * reserved key found anywhere in the tree, at any depth -- consistent with
@@ -121,24 +125,15 @@ const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
  * way rather than trying to salvage the rest of a render.
  */
 function assertNoReservedSegments(value: unknown, label: string): void {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => assertNoReservedSegments(item, `${label}[${index}]`));
-    return;
-  }
-  if (!isPlainObject(value)) {
-    return;
-  }
-  for (const key of Object.keys(value)) {
-    if (RESERVED_SEGMENTS.has(key)) {
-      throw new Error(
-        `acs-plugin: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(key)} at ` +
-          `"${label}.${key}", which addresses prototype machinery rather than a field this applier can merge. ` +
-          `A recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
-          `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
-          `refused rather than merged (§V5 review, fix round 2, Critical).`,
-      );
-    }
-    assertNoReservedSegments(value[key], `${label}.${key}`);
+  const hit = findReservedKey(value, label);
+  if (hit !== undefined) {
+    throw new Error(
+      `acs-plugin: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(hit.key)} at ` +
+        `"${hit.path}", which addresses prototype machinery rather than a field this applier can merge. A ` +
+        `recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
+        `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
+        `refused rather than merged (§V5 review, fix round 2, Critical).`,
+    );
   }
 }
 

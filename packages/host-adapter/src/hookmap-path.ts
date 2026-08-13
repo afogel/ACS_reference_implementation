@@ -30,14 +30,7 @@
  * This module knows a path notation. Nothing about ACS, hosts, or policy.
  */
 
-/**
- * Segments that address a JavaScript object's prototype machinery rather than a
- * field a host or tool actually produced.
- *
- * `__proto__` is the one that matters; the other two are refused beside it
- * rather than reasoned about individually.
- */
-const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+import { RESERVED_SEGMENTS } from "./reserved-segments.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
