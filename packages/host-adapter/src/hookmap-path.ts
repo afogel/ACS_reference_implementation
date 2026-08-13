@@ -30,7 +30,7 @@
  * This module knows a path notation. Nothing about ACS, hosts, or policy.
  */
 
-import { RESERVED_SEGMENTS } from "./reserved-segments.ts";
+import { isReservedSegment } from "./reserved-segments.ts";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,7 +54,7 @@ export function pathSegments(path: string): string[] {
     .split(".")
     .filter(Boolean);
   for (const segment of segments) {
-    if (RESERVED_SEGMENTS.has(segment)) {
+    if (isReservedSegment(segment)) {
       throw new Error(
         `hookmap path ${JSON.stringify(path)} names the reserved segment ${JSON.stringify(segment)}, which ` +
           `addresses no field a host or tool produced -- a value read there would come from the prototype ` +

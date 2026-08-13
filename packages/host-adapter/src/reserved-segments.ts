@@ -14,7 +14,7 @@
  * `modifications.ts`'s own doc comment used to name that OpenCode file as
  * where "the value-side half of the guard" lives -- a shared package
  * pointing at one host's source for an invariant that must not drift between
- * hosts. `RESERVED_SEGMENTS` below is the one definition every one of those
+ * hosts. `isReservedSegment` below is the one definition every one of those
  * files now imports.
  *
  * TWO DIFFERENT JOBS WEAR THESE THREE NAMES, AND ONLY THE NAME LIST IS
@@ -51,18 +51,49 @@
  *     documented contract); `apply-host-output.ts` throws a bare `Error`
  *     worded around ITS OWN measured hazard (a recursive in-place merge that
  *     reads a rendered value back through the prototype chain -- see that
- *     file's own doc comment for the attack this closes). R3.2 also forbids
- *     this module from knowing either vocabulary. So `findReservedKey`
- *     answers the one question every caller actually shares -- "does this
- *     value own a reserved key, and where" -- and returns, leaving the
- *     throw, the class, and the words to whoever asked.
+ *     file's own doc comment for the attack this closes). Neither vocabulary
+ *     is this module's to speak: `ModificationsInvalidError` is a sibling
+ *     module's export (`modifications.ts`, in this same directory), not
+ *     something R3.2's mechanical gate would ban here -- R3.2 bans host
+ *     output-field names and AGT vocabulary from this package's source, and
+ *     an ACS §6.3 error class this package is supposed to speak is neither.
+ *     The reason this module doesn't import and throw it anyway is layering,
+ *     not that gate: a caller's error class and wording are a fact about
+ *     THAT CALLER's contract with ITS OWN callers (`applyModifications`'s
+ *     documented promise to throw `ModificationsInvalidError` on every
+ *     violation; `applyHostOutput`'s own mergeInPlace-specific message), and
+ *     this module has no way to know which contract a given caller needs to
+ *     honour. So `findReservedKey` answers the one question every caller
+ *     actually shares -- "does this value own a reserved key, and where" --
+ *     and returns, leaving the throw, the class, and the words to whoever
+ *     asked.
  *
  * Sharing the three names across both jobs is fine and desirable, which is
  * why this file holds them once. Sharing the checks is not, because they
  * check different things -- a path a caller is about to resolve or write
  * into, against a value a caller is about to trust as a whole.
+ *
+ * THE NAME LIST ITSELF IS MODULE-PRIVATE, NOT EXPORTED (§V5 review round 3,
+ * Task 3, fix round 1, Minor 1). It used to be an exported `Set` --
+ * `ReadonlySet<string>` at the type level, but that is a compile-time-only
+ * restriction, and the underlying object is a real, mutable `Set` at
+ * runtime; nothing stopped an importer, including a host shim, from casting
+ * it back to `Set<string>` and calling `.delete()`, silently disabling one
+ * reserved name for the rest of the process. None of the former
+ * module-private copies this file replaced had that reachability -- a
+ * caller could at most hold its OWN copy wrong, never reach into every
+ * OTHER caller's. Making the shared definition an importable object
+ * introduced a new one. `isReservedSegment` below is the read-only surface:
+ * a predicate a caller can query, never a reference it can mutate.
  */
-export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** True when `name` is one of the three names above. The only way to read
+ * this file's list from outside it -- see the header just above for why the
+ * `Set` itself stays module-private rather than being exported. */
+export function isReservedSegment(name: string): boolean {
+  return RESERVED_SEGMENTS.has(name);
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -70,10 +101,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Walks `value` through every plain object and array it contains, at any
- * depth, and returns the first OWN key found that names a `RESERVED_SEGMENTS`
- * entry -- `{path, key}`, `path` being `label` extended by every segment
- * descended through to reach it (`args.env.__proto__`, `result[2].prototype`)
- * -- or `undefined` if none is found.
+ * depth, and returns the first OWN key found that satisfies
+ * `isReservedSegment` -- `{path, key}`, `path` being `label` extended by
+ * every segment descended through to reach it (`args.env.__proto__`,
+ * `result[2].prototype`) -- or `undefined` if none is found.
  *
  * OWN keys only (`Object.keys`), never inherited ones: a value read off the
  * wire through `JSON.parse` can carry `__proto__` as an ordinary own,
@@ -106,7 +137,7 @@ export function findReservedKey(value: unknown, label: string): { path: string; 
     return undefined;
   }
   for (const key of Object.keys(value)) {
-    if (RESERVED_SEGMENTS.has(key)) {
+    if (isReservedSegment(key)) {
       return { path: `${label}.${key}`, key };
     }
     const hit = findReservedKey(value[key], `${label}.${key}`);

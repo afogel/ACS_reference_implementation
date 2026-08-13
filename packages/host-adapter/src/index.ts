@@ -113,10 +113,13 @@ export {
   type HostOutputLocation,
 } from "./result-output.ts";
 export { validateDecision, type ValidateDecisionContext } from "./validate-decision.ts";
-// The one shared definition of JavaScript's prototype-machinery names, and
+// The one shared surface for JavaScript's prototype-machinery names, and
 // the value-tree walker that checks a rendered value against them at any
 // depth -- exported so a host applier (hosts/opencode/apply-host-output.ts
-// today; any later host tomorrow) imports this rather than keeping its own
-// module-private copy. See reserved-segments.ts's own header for the
-// duplication this retires and the two-job distinction it does not.
-export { RESERVED_SEGMENTS, findReservedKey } from "./reserved-segments.ts";
+// today; any later host tomorrow) imports these rather than keeping its own
+// module-private copy. `isReservedSegment` is a predicate, not the
+// underlying Set -- see reserved-segments.ts's own header for why the Set
+// itself stays module-private (§V5 review round 3, Task 3, fix round 1,
+// Minor 1) and for the duplication this retires and the two-job distinction
+// it does not.
+export { isReservedSegment, findReservedKey } from "./reserved-segments.ts";

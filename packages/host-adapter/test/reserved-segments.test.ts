@@ -1,5 +1,5 @@
 /**
- * reserved-segments.ts's own tests: `RESERVED_SEGMENTS` and `findReservedKey`
+ * reserved-segments.ts's own tests: `isReservedSegment` and `findReservedKey`
  * in isolation, before either is exercised through a caller
  * (`modifications.ts`'s redaction/override checks, or a host applier's
  * rendered-value walk). See that module's own header for the duplication
@@ -7,11 +7,25 @@
  * (§V5 review round 3, Task 3).
  */
 import { describe, expect, it } from "bun:test";
-import { findReservedKey, RESERVED_SEGMENTS } from "../src/reserved-segments.ts";
+import { findReservedKey, isReservedSegment } from "../src/reserved-segments.ts";
 
-describe("RESERVED_SEGMENTS", () => {
-  it("names exactly the three JavaScript prototype-machinery segments", () => {
-    expect([...RESERVED_SEGMENTS].sort()).toEqual(["__proto__", "constructor", "prototype"]);
+describe("isReservedSegment", () => {
+  it("is true for exactly the three JavaScript prototype-machinery names", () => {
+    expect(isReservedSegment("__proto__")).toBe(true);
+    expect(isReservedSegment("constructor")).toBe(true);
+    expect(isReservedSegment("prototype")).toBe(true);
+  });
+
+  it("is false for an ordinary field name, including ones a bare property read would resolve on any object", () => {
+    // "toString"/"hasOwnProperty" resolve through the prototype chain on
+    // ANY plain object, exactly like the three reserved names do -- but
+    // unlike them, assigning to one doesn't repoint anything; it just
+    // shadows an inherited method with an ordinary own property. Not
+    // reserved, and this module doesn't claim it is.
+    expect(isReservedSegment("env")).toBe(false);
+    expect(isReservedSegment("command")).toBe(false);
+    expect(isReservedSegment("toString")).toBe(false);
+    expect(isReservedSegment("hasOwnProperty")).toBe(false);
   });
 });
 
@@ -48,8 +62,8 @@ describe("findReservedKey", () => {
   it("does not throw -- callers word and type their own refusal", () => {
     // Detection only, never a throw: modifications.ts needs
     // ModificationsInvalidError, apply-host-output.ts needs its own
-    // mergeInPlace-specific wording, and this module owns neither
-    // vocabulary (R3.2). See this file's own header.
+    // mergeInPlace-specific wording, and neither is this module's contract
+    // to keep -- see this file's own header (findReservedKey's doc comment).
     const value = JSON.parse('{"__proto__":{}}') as Record<string, unknown>;
     expect(() => findReservedKey(value, "args")).not.toThrow();
   });

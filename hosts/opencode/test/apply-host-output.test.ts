@@ -14,9 +14,9 @@ import { fileURLToPath } from "node:url";
 import {
   type AcsDecision,
   findReservedKey,
+  isReservedSegment,
   loadHookmap,
   renderDecision,
-  RESERVED_SEGMENTS,
   validateDecision,
 } from "host-adapter";
 import { applyHostOutput } from "../apply-host-output.ts";
@@ -235,49 +235,51 @@ describe("applyHostOutput", () => {
     expect(() => applyHostOutput(rendered as never, live)).toThrow(/"result\.metadata\.__proto__"/);
   });
 
-  it("draws its refusal from host-adapter's ONE shared reserved-segment list -- removing a name from it stops BOTH this applier and modifications.ts from refusing that name (§V5 review round 3, Task 3, mutation test)", () => {
-    // `RESERVED_SEGMENTS` is a module-level singleton: ES modules are
-    // cached by resolved path, so this import and the one
-    // `packages/host-adapter/src/modifications.ts` makes (via
-    // `reserved-segments.ts`, one file on disk either way) are the SAME
-    // `Set` object, not two copies that happen to agree today. Deleting an
-    // entry from it here and observing both sides stop refusing that name is
-    // the proof; each half restores the entry in `finally` regardless of
-    // which assertion failed, so no other test in this process ever sees
-    // the mutation.
-    const mutableSegments = RESERVED_SEGMENTS as Set<string>;
-    expect(mutableSegments.has("constructor")).toBe(true);
-    mutableSegments.delete("constructor");
-    try {
-      // This applier's own side: a rendered "args" owning "constructor" at
-      // any depth is no longer refused.
+  it("refuses, for both this applier and modifications.ts, exactly the names host-adapter's isReservedSegment answers true for -- not two copies that happen to agree today (§V5 review round 3, Task 3, fix round 1, Minor 1)", () => {
+    // §V5 review round 3, Task 3, fix round 1, Minor 1: this used to be a
+    // runtime mutation test (`RESERVED_SEGMENTS as Set<string>`, `.delete()`)
+    // -- proof by reaching into the shared `Set` and observing both sides
+    // stop refusing a deleted name. That relied on exactly the reachability
+    // Minor 1 closed: the name list is module-private now
+    // (`reserved-segments.ts`'s own header), so nothing outside it can
+    // delete an entry any more, including this test. The DIFFERENT
+    // mechanism: correlate BOTH sides' actual refusal behaviour, for a set
+    // of candidate names, against the one exported predicate both of them
+    // are built on -- if `isReservedSegment(name)` is true, both refuse it;
+    // if false, both accept it. Two non-reserved names sit in the candidate
+    // list beside the three reserved ones so this cannot pass merely by
+    // refusing everything.
+    //
+    // This does not by itself pin WHICH three names are reserved (see the
+    // per-name tests above and in modifications.test.ts for that -- they
+    // hardcode "__proto__"/"constructor"/"prototype" rather than reading the
+    // list, so a name accidentally dropped from it fails THOSE tests). What
+    // this test pins is that this applier and modifications.ts are driven by
+    // the SAME predicate rather than by independent decisions that currently
+    // happen to match.
+    for (const name of ["__proto__", "constructor", "prototype", "env", "command"]) {
+      const reserved = isReservedSegment(name);
+
+      // This applier's own side.
       const live = { args: { command: "cat .env" } };
-      expect(() =>
-        applyHostOutput({ args: { env: { constructor: { polluted: true } } } }, live),
-      ).not.toThrow();
+      const rendered = { args: { [name]: { polluted: true } } };
+      if (reserved) {
+        expect(() => applyHostOutput(rendered, live)).toThrow();
+      } else {
+        expect(() => applyHostOutput(rendered, live)).not.toThrow();
+      }
 
       // modifications.ts's own side, through the real validateDecision ->
-      // assertValidModifications path: an override key naming "constructor"
-      // is no longer denied for being reserved, and (the target genuinely
-      // existing and genuinely changing) the modify actually applies.
+      // assertValidModifications path.
       const decision = {
         decision: "modify",
         reasoning: "r",
-        modifications: { parameter_overrides: { constructor: "x" } },
+        modifications: { parameter_overrides: { [name]: "x" } },
       } as AcsDecision;
-      const out = validateDecision(decision, { elapsedMs: 0, modificationDocument: { constructor: "y" } });
-      expect(out.reasoning ?? "").not.toContain('reserved segment "constructor"');
-      expect(out.decision).toBe("modify");
-    } finally {
-      mutableSegments.add("constructor");
+      const out = validateDecision(decision, { elapsedMs: 0, modificationDocument: { [name]: "y" } });
+      const deniedAsReserved = String(out.reasoning ?? "").includes(`reserved segment "${name}"`);
+      expect(deniedAsReserved).toBe(reserved);
     }
-
-    // Restored: both sides refuse "constructor" again, exactly as before
-    // the mutation.
-    const live = { args: { command: "cat .env" } };
-    expect(() => applyHostOutput({ args: { env: { constructor: { polluted: true } } } }, live)).toThrow(
-      /constructor/,
-    );
   });
 
   it("reason.text is declared-inert on this host: not applied, and not surfaced on stderr on the common path (§V5 review, fix round 1, Minor 4)", () => {

@@ -33,7 +33,7 @@
  * nothing here returns a decision or names one.
  */
 
-import { RESERVED_SEGMENTS } from "./reserved-segments.ts";
+import { isReservedSegment } from "./reserved-segments.ts";
 
 /** Thrown by `applyModifications` when `modifications` cannot be honoured
  * exactly as the Guardian specified it -- a violation of §6.3's composition
@@ -133,14 +133,16 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * and `parameter_overrides`' own KEYS, both of which this module inspects
  * directly.
  *
- * `RESERVED_SEGMENTS` (imported, `reserved-segments.ts`) used to be one of
- * several module-private copies of the same three names -- `hookmap-path.ts`
- * and `render-decision.ts` each kept their own too, and
+ * `isReservedSegment` (imported, `reserved-segments.ts`) replaces what used
+ * to be one of several module-private copies of the same three names --
+ * `hookmap-path.ts` and `render-decision.ts` each kept their own too, and
  * `hosts/opencode/apply-host-output.ts` kept a further one, a HOST'S own
  * source carrying a shared package's security invariant because the package
  * had no shared definition to export (§V5 review round 3, Task 3,
- * "duplication vs wrong abstraction"). It is now the one definition every
- * one of those files imports instead.
+ * "duplication vs wrong abstraction"). It is now the one predicate every
+ * one of those files imports instead -- see its own doc comment for why the
+ * underlying name list stays a module-private `Set` rather than being
+ * exported itself (fix round 1, Minor 1).
  *
  * THIS MODULE'S OWN CHECK STAYS LOCAL, THOUGH -- unlike the name list, the
  * check below is not shared with `apply-host-output.ts`'s, because the two
@@ -206,7 +208,7 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  */
 function assertNoReservedSegments(segments: string[], label: string): void {
   for (const segment of segments) {
-    if (RESERVED_SEGMENTS.has(segment)) {
+    if (isReservedSegment(segment)) {
       throw new ModificationsInvalidError(
         `${label} names the reserved segment "${segment}", which addresses no tool-call argument`,
       );

@@ -174,21 +174,36 @@ describe("applyModifications — §6.3", () => {
 // -- the deny-with-reasoning shape for the identical checks is already pinned
 // through `validateDecision` (validate-decision.test.ts), but nothing here
 // exercised `applyModifications` itself against a reserved redaction path or
-// override key until now (§V5 review round 3, Task 3). `RESERVED_SEGMENTS`
-// is imported (`reserved-segments.ts`), the one shared definition every
-// former module-private copy of it now draws from -- see that module's own
-// header.
+// override key until now (§V5 review round 3, Task 3). `isReservedSegment`
+// is imported (`reserved-segments.ts`), the one shared predicate every
+// former module-private copy of the name list now draws from -- see that
+// module's own header.
+//
+// ASSERTS THE MESSAGE, NOT ONLY THE CLASS (§V5 review round 3, Task 3, fix
+// round 1, Important 1). `ARGS` (line 4) owns none of `__proto__`,
+// `constructor`, or `prototype`, so a version of these six tests that only
+// checked `.toThrow(ModificationsInvalidError)` passed for the WRONG reason:
+// `assertTargetExists` (below the reserved check, in source order) throws
+// that identical error class for an absent target regardless of whether the
+// reserved-segment check ever ran -- measured, with `RESERVED_SEGMENTS`
+// emptied entirely, this file's suite still passed 26/26. The message text
+// is what discriminates the two: a reserved-segment refusal contains `names
+// the reserved segment "<name>"`; an absent-target refusal contains `is not
+// present in the ACS document` instead, naming neither of the three names.
+// Regex-matched against the FULL segment name, not merely a substring, so a
+// looser check that fired on any of the three could not silently cover for
+// the others.
 describe("reserved segments -- redaction paths and parameter_overrides keys", () => {
   for (const segment of ["__proto__", "constructor", "prototype"]) {
-    it(`throws on a redaction path naming "${segment}"`, () => {
+    it(`throws for a redaction path naming "${segment}" BECAUSE it is reserved, not because the target is absent`, () => {
       expect(() => applyModifications(ARGS, { redactions: [{ path: `/${segment}` }] })).toThrow(
-        ModificationsInvalidError,
+        new RegExp(`names the reserved segment "${segment}"`),
       );
     });
 
-    it(`throws on a parameter_overrides key naming "${segment}"`, () => {
+    it(`throws for a parameter_overrides key naming "${segment}" BECAUSE it is reserved, not because the target is absent`, () => {
       expect(() => applyModifications(ARGS, { parameter_overrides: { [segment]: "y" } })).toThrow(
-        ModificationsInvalidError,
+        new RegExp(`names the reserved segment "${segment}"`),
       );
     });
   }
