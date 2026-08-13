@@ -32,8 +32,10 @@ import {
   governStep,
   loadHookmap,
   NULL_AUDIT_SINK,
+  renderDecision,
   resolveSessionConfig,
   toSessionUuid,
+  type AcsDecision,
   type Hookmap,
 } from "host-adapter";
 import { AcsPlugin } from "../acs-plugin.ts";
@@ -648,4 +650,108 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(typeof result.output).toBe("object");
     expect((result.output as unknown as Record<string, unknown>).output).toBe("[OUTPUT WITHHELD BY POLICY]");
   });
+
+  // THE THIRD MEMBER OF THE CLASS, and the one that survived the first version
+  // of this task's own gate (§V5 review round 3, Task 5, fix round 1,
+  // Critical 1). That gate asked only whether the key `result` was PRESENT --
+  // never what it SOURCED. `result: { from: applied_input }` declares the
+  // right key against the wrong field: a result-gate decision carries
+  // `applied_output`, never `applied_input`, and a `from:` field renders
+  // NOTHING when its source is absent (render-decision.ts). Which is exactly
+  // the reasoning the REQUEST gate's rule was already written around
+  // ("`refuse.reason` alone is a `from:` field that renders NOTHING...") and
+  // the result-gate rule sitting beside it inherited none of.
+  //
+  // Not a contrived shape: `args: { from: applied_input }` is what the request
+  // gate's own `modify` declares, one copy-paste away in the same file.
+  const DENY_SOURCING_THE_WRONG_FIELD = NO_SINK_AT_ALL.replace(
+    "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+    "      deny:\n" +
+      "        output:\n" +
+      "          result: { from: applied_input }\n" +
+      "          reason.text: { from: reasoning, type: string }\n",
+  );
+
+  it("deny declaring result sourced from applied_input renders nothing at all -- the right key, the wrong field", async () => {
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-deny-wrong-source.yaml", DENY_SOURCING_THE_WRONG_FIELD),
+      sessionID: "ses-result-gate-wrong-source",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    // NO `result` KEY AT ALL: `applied_input` is absent on a result-gate
+    // decision, so the field the hookmap declared resolved to nothing and
+    // `renderDecision` emitted no key for it. What is left is the
+    // declared-inert `reason` -- exactly the render the no-sink-at-all deny
+    // above produces, from a hookmap that looks like it declares a sink.
+    expect(Object.keys(output)).toEqual(["reason"]);
+    expect(Object.hasOwn(output, "result")).toBe(false);
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe("rm -rf /");
+    expect(result.metadata.output).toBe("rm -rf /");
+    expect(result).toEqual(liveResult("rm -rf /"));
+  });
+
+  // §V5 review round 3, Task 5, fix round 1, Important 1: `ask`/`defer`
+  // DECLARED at this gate were unchecked, on the reasoning that the shipped
+  // hookmap declares neither -- reasoning from the shipped file to the class,
+  // which is the same move the result-gate skip itself used to make.
+  //
+  // DIRECTION IS WHAT MAKES IT A FAULT RATHER THAN A GAP. NOT declaring `ask`
+  // is the safe state: `renderDecision` throws on a decision the hookmap has
+  // no entry for, `governStep` catches it, and the deployment's posture
+  // answers it -- audited either way. DECLARING it without a sink is the
+  // silent one, and that is what this measures.
+  //
+  // THE DECISION IS CONSTRUCTED, NOT GUARDIAN-PRODUCED, and deliberately so:
+  // what is at issue is what THIS HOOKMAP renders for an arriving `ask`, not
+  // which Guardian produces one. `renderDecision` is the exact seam the fault
+  // lives at, and it is the same function `governStep` calls -- so this drives
+  // the real adapter and the real applier, with only the decision's origin
+  // differing from the tests above.
+  const ASK_AND_DEFER_WITHOUT_A_SINK =
+    NO_SINK_AT_ALL.replace(
+      "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+      "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    ).replace(
+      "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+      "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      ask:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      defer:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+
+  it.each(["ask", "defer"] as const)(
+    "%s declared at the result gate with no sink renders a reason and withholds nothing",
+    (decisionName) => {
+      const hookmap = loadHookmap(
+        fixture("result-ask-defer-without-a-sink.yaml", ASK_AND_DEFER_WITHOUT_A_SINK),
+      );
+      const result = liveResult("TOKEN=ghp_SECRET123456");
+
+      const rendered = renderDecision("tool.execute.after", {
+        decision: decisionName,
+        reasoning: "held for review",
+      } as unknown as AcsDecision, hookmap);
+
+      // Only the declared-inert `reason` -- nothing this applier can land.
+      expect(Object.keys(rendered)).toEqual(["reason"]);
+      expect(() =>
+        applyOpenCodeOutput(rendered, { gate: "result", result: result as unknown as Record<string, unknown> }),
+      ).not.toThrow();
+      // The secret is delivered, in both places, on a decision that asked for
+      // the output to be held.
+      expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
+    },
+  );
 });

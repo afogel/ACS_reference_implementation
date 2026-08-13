@@ -93,6 +93,19 @@ hooks:
         output:
           refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
+      # `args: { from: applied_input }` is REQUIRED, not conventional (§V5
+      # review round 3, Task 5, fix round 1, Important 2):
+      # `assertHostHonoursEveryDecision` refuses a request-gate `modify` that
+      # declares anything else -- the exact key (a path under it merges one
+      # level too deep, landing the whole rewrite bag in a single argument) and
+      # the exact source (a `from:` naming a field the decision does not carry
+      # renders nothing). Measured with this line removed, against a live
+      # Guardian: a real `modify` carrying
+      # `applied_input: {command: "echo [REDACTED]"}` rendered `{}`, the
+      # applier applied nothing and threw nothing, and the command ran
+      # unredacted -- while `governStep` reported `stage: "honoured"`, so the
+      # audit trail recorded the rewrite as honoured rather than as never
+      # landed.
       modify:
         output:
           args: { from: applied_input }
@@ -154,19 +167,27 @@ hooks:
       # a string on this host, burying the mirror's own patched copy one level
       # too deep for OpenCode to ever apply.
       #
-      # DROPPING THE SINK, AND NAMING THE LEAF INSTEAD OF THE CONTAINER, ARE
-      # NOW BOTH REFUSED AT LOAD RATHER THAN ONLY DOCUMENTED HERE (§V5 review
-      # round 3, Task 5, Critical). `acs-plugin.ts`'s
-      # `assertHostHonoursEveryDecision` requires the exact key `result` on
-      # this gate's `deny` AND its `modify`, so a hookmap doing either is
-      # refused before this plugin registers. Measured before that gate existed, through a live Guardian
-      # and this exact result gate with the `result:` line removed: a real
-      # `deny` rendered `{reason}`, a real `modify` rendered `{}`, and both
-      # applied nothing and threw nothing -- the tool's output delivered in
-      # the leaf and the mirror both, indistinguishable from a clean allow.
-      # `withResultOutput` guaranteed the DECISION carried `applied_output`
-      # the whole time; nothing guaranteed this file declared anywhere to put
-      # it.
+      # THE WHOLE LINE IS NOW REFUSED AT LOAD IF IT IS WRONG, RATHER THAN ONLY
+      # DOCUMENTED HERE (§V5 review round 3, Task 5, Critical, and its own fix
+      # round 1). `acs-plugin.ts`'s `assertHostHonoursEveryDecision` requires
+      # `result: { from: applied_output }` EXACTLY -- that key, that source --
+      # on every decision this gate declares that withholds anything: `deny`,
+      # `modify`, and `ask`/`defer` if a hookmap ever declares them here.
+      # Three shapes are refused, and all three were measured through a live
+      # Guardian first:
+      #   - the sink dropped entirely -- a real `deny` rendered `{reason}`, a
+      #     real `modify` rendered `{}`, both applied nothing and threw
+      #     nothing, and the tool's output was delivered in the leaf and the
+      #     mirror both, indistinguishable from a clean allow;
+      #   - the LEAF named instead of the container (`result.output`) -- the
+      #     container lands in a string field and the mirror is never written;
+      #   - the right key sourced from the WRONG FIELD
+      #     (`result: { from: applied_input }`, one copy-paste from the request
+      #     gate above) -- renders no `result` key at all, same delivery. That
+      #     one passed the first version of the gate, which asked only whether
+      #     the key was present.
+      # `withResultOutput` guaranteed the DECISION carried `applied_output` the
+      # whole time; nothing guaranteed this file declared anywhere to put it.
       deny:
         output:
           result: { from: applied_output }

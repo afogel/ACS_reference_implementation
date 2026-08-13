@@ -202,11 +202,14 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "          result: { from: applied_output }\n",
     );
     // Names the file, the hook, the decision, and what to add -- the same
-    // four the request-gate half's message names.
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field/);
+    // four the request-gate half's message names -- plus, since §V5 review
+    // round 3, Task 5, fix round 1, the paths this decision DOES declare, so
+    // a near-miss is legible rather than merely refused.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/\["reason\.text"\]/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-deny-without-a-sink\.yaml/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/result: \{ from: applied_output \}/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'result: \{ from: applied_output \}'/);
   });
 
   it("refuses the same for a result-gate modify, not only deny", async () => {
@@ -221,7 +224,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "        output:\n" +
         "          reason.text: { from: reasoning, type: string }\n",
     );
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.modify/);
   });
 
@@ -243,8 +246,105 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "        output:\n" +
         "          result: { from: applied_output }\n",
     );
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
+    // The near-miss made legible: the message prints the path that LOOKS like
+    // the sink.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/"result\.output"/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/NOT a leaf under it/);
+  });
+
+  // §V5 review round 3, Task 5, FIX ROUND 1, CRITICAL 1 -- this task's own
+  // Critical, surviving through the gate built to close it. The first version
+  // of the rule asked only whether the key `result` was PRESENT, never what it
+  // SOURCED, so this hookmap loaded clean. Measured on the real chain
+  // (result-gate.test.ts): a real deny renders no `result` key at all, applies
+  // nothing, throws nothing, and `rm -rf /` is delivered in the leaf AND the
+  // mirror.
+  it("refuses a result-gate deny declaring result sourced from applied_input -- the right key, the wrong field", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-deny-wrong-source.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_input }\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    // The wrong-source message is NOT the absent-key one: it prints the
+    // declared field object verbatim, so the near-miss is visible.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/does not source it from "applied_output"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/\{"from":"applied_input"\}/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-deny-wrong-source\.yaml/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'result: \{ from: applied_output \}'/);
+  });
+
+  it("refuses a result-gate deny declaring result as a literal value: -- a fixed answer the Guardian never chose", async () => {
+    // The other way to declare the key without honouring the decision. Refused
+    // deliberately, not by accident -- see `declaresSinkFrom`'s own doc comment
+    // for why a literal here is a hardcoded answer wearing governance's
+    // clothes.
+    const hookmapPath = join(SCRATCH_DIR, "result-deny-literal-sink.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        '          result: { value: { output: "withheld" } }\n' +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/does not source it from "applied_output"/);
+  });
+
+  // §V5 review round 3, Task 5, FIX ROUND 1, IMPORTANT 1 -- `ask`/`defer`
+  // DECLARED at this gate were unchecked. Not declaring them is the safe state
+  // (renderDecision throws, posture-answered, audited); declaring one without a
+  // sink is silent delivery. Measured in result-gate.test.ts.
+  it.each(["ask", "defer"] as const)(
+    "refuses a result-gate %s that declares no sink -- declared-but-unlandable, not merely undeclared",
+    async (decisionName) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-without-a-sink.yaml`);
+      writeFileSync(
+        hookmapPath,
+        RESULT_GATE_HEAD +
+          "      deny:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          "      modify:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          `      ${decisionName}:\n` +
+          "        output:\n" +
+          "          reason.text: { from: reasoning, type: string }\n",
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(new RegExp(`decisions\\.${decisionName}`));
+    },
+  );
+
+  it("still asks nothing of an ask/defer the hookmap does not declare at all", async () => {
+    // The half of the old reasoning that was correct and stays correct: a
+    // decision the hookmap never declares has nothing here to check.
+    // `renderDecision` throws on an arriving one, `governStep` catches it, and
+    // the deployment's posture answers it -- audited either way. This is the
+    // shipped file's own shape, and it must keep loading.
+    const hookmapPath = join(SCRATCH_DIR, "result-gate-no-ask-no-defer.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
   it("accepts a result gate that declares the sink on both deny and modify", async () => {
@@ -265,6 +365,91 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "          reason.text: { from: reasoning, type: string }\n",
     );
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * THE REQUEST GATE'S `modify` RULE (§V5 review round 3, Task 5, fix round 1,
+ * Important 2) -- its own rule, not the refusal rule its `deny`/`ask`/`defer`
+ * siblings get: a `modify` asked for the step to RUN, rewritten, so what it
+ * needs is a sink for the rewrite, exactly as a result-gate `deny` needs one
+ * for the withholding.
+ *
+ * The fail-open is measured in request-gate.test.ts, against a live Guardian,
+ * with `AcsPlugin` out of the path -- including the part that makes it worse
+ * than silent: `governStep` returns `stage: "honoured"`, so the audit trail
+ * records the rewrite as honoured while nothing was applied.
+ */
+describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
+  const REQUEST_GATE_HEAD =
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.before:\n" +
+    "    acs_method: steps/toolCallRequest\n" +
+    "    tool_name: $.tool\n" +
+    "    arguments: $.args\n" +
+    "    tools: [bash]\n" +
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          refuse.denied: { value: true }\n" +
+    "          refuse.reason: { from: reasoning, type: string }\n";
+
+  it("refuses a modify that declares only reason.text", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-without-a-sink.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD + "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "args" output field at all/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/request-modify-without-a-sink\.yaml/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.before\.decisions\.modify/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'args: \{ from: applied_input \}'/);
+    // The audit consequence is in the message, because it is the reason this
+    // is a fault rather than a gap.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/stage "honoured"/);
+  });
+
+  it("refuses a modify sourcing args from applied_output -- the result gate's field at the request gate", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-wrong-source.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD + "      modify:\n" + "        output:\n" + "          args: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/does not source it from "applied_input"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/\{"from":"applied_output"\}/);
+  });
+
+  it("refuses a modify naming an argument under args (args.command) rather than the bag itself", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-naming-a-leaf.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD + "      modify:\n" + "        output:\n" + "          args.command: { from: applied_input }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "args" output field at all/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/"args\.command"/);
+  });
+
+  it("accepts the shipped shape, and asks nothing of a request gate declaring no modify at all", async () => {
+    const withModify = join(SCRATCH_DIR, "request-modify-with-sink.yaml");
+    writeFileSync(
+      withModify,
+      REQUEST_GATE_HEAD +
+        "      modify:\n" +
+        "        output:\n" +
+        "          args: { from: applied_input }\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(withModify)).resolves.toBeUndefined();
+
+    // `modify` is optional -- assertRenderableDecisions requires only allow and
+    // deny -- so a hookmap that never declares one has nothing here to check.
+    const withoutModify = join(SCRATCH_DIR, "request-no-modify.yaml");
+    writeFileSync(withoutModify, REQUEST_GATE_HEAD);
+    await expect(runPlugin(withoutModify)).resolves.toBeUndefined();
   });
 });
 

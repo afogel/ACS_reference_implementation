@@ -18,8 +18,21 @@ import { fileURLToPath } from "node:url";
 // apply-host-output.test.ts's own `renderDecision`-through-the-real-adapter
 // test.
 import { startGuardian, type StartedGuardian } from "guardian";
-import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type Hookmap } from "host-adapter";
+import {
+  buildEnvelope,
+  createGuardianClient,
+  createSessionConfigStore,
+  DEFAULT_TIMEOUT_MS,
+  governStep,
+  loadHookmap,
+  NULL_AUDIT_SINK,
+  renderDecision,
+  resolveSessionConfig,
+  toSessionUuid,
+  type Hookmap,
+} from "host-adapter";
 import { AcsPlugin } from "../acs-plugin.ts";
+import { applyOpenCodeOutput } from "../apply-host-output.ts";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
@@ -270,5 +283,99 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+});
+
+/**
+ * THE REQUEST GATE'S OWN MEMBER OF THE CLASS §V5 review round 3, Task 5 closed
+ * at the result gate (fix round 1, Important 2) -- a `modify` the hookmap gives
+ * nowhere to land.
+ *
+ * Task 5's first round named this in a doc comment and explicitly did NOT claim
+ * to have measured it ("NOT MEASURED AT THIS GATE, and not claimed as if it
+ * were"). This is that measurement, and it is worse than the comment guessed:
+ * the step is not merely ungoverned, it is recorded as governed. `governStep`
+ * returns `stage: "honoured"` -- a decision arrived and was honoured -- while
+ * the rewrite it carried landed nowhere.
+ *
+ * Routed around `AcsPlugin` for the same reason the result gate's own fail-open
+ * block is (result-gate.test.ts): the fix is a load-time refusal, so a test
+ * driven through the factory would stop measuring the hazard the moment the
+ * gate lands. This calls `loadHookmap` -> `resolveSessionConfig` -> `governStep`
+ * -> `applyOpenCodeOutput`, exactly what the hook calls, with the factory out of
+ * the path.
+ */
+describe("a request-gate modify the hookmap gives no way to land -- the measured fail-open", () => {
+  // The shipped request gate, EXCEPT that `modify` declares only `reason.text`
+  // -- the `args: { from: applied_input }` sink removed. Every other line is
+  // the shipped file's.
+  const MODIFY_WITHOUT_A_SINK =
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.before:\n" +
+    "    acs_method: steps/toolCallRequest\n" +
+    "    tool_name: $.tool\n" +
+    "    arguments: $.args\n" +
+    "    tools: [bash]\n" +
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          refuse.denied: { value: true }\n" +
+    "          refuse.reason: { from: reasoning, type: string }\n" +
+    "      modify:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n";
+
+  it("renders nothing, applies nothing, and is audited as HONOURED while the secret survives in live.args", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-without-a-sink.yaml");
+    writeFileSync(hookmapPath, MODIFY_WITHOUT_A_SINK);
+    // Loads clean: `assertRenderableDecisions` requires only a non-empty
+    // `output` block whose every field names a `value` or a `from`.
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+
+    const sessionID = "ses-request-gate-modify-no-sink";
+    // The same command the shipped-hookmap `modify` test above rewrites to
+    // "echo [REDACTED]" -- so the Guardian's answer here is that identical
+    // decision, carrying that identical `applied_input`.
+    const SECRET_COMMAND = "echo ghp_ABCDEF123456";
+    const args = { command: SECRET_COMMAND };
+
+    const client = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+      createSessionConfigStore(),
+    );
+    const governed = await governStep({
+      hookEventName: "tool.execute.before",
+      payload: { tool: TOOL, session_id: sessionID, callID: "c1", args },
+      hookmap,
+      guardian: client,
+      session,
+      sessionId: sessionID,
+      audit: NULL_AUDIT_SINK,
+    });
+
+    // A REAL modify, and the rewrite it carries is right there on the decision.
+    expect(governed.decision?.decision).toBe("modify");
+    expect((governed.decision as { applied_input?: Record<string, unknown> }).applied_input).toEqual({
+      command: "echo [REDACTED]",
+    });
+
+    // THE PART THAT MAKES THIS WORSE THAN SILENT. `stage: "honoured"` is what
+    // an audit entry for this step would record -- a decision that arrived and
+    // was honoured -- and nothing was applied. The audit trail is not merely
+    // missing the fault; it asserts the opposite of it.
+    expect(governed.stage).toBe("honoured");
+
+    // LITERALLY `{}`: this modify carries no `reasoning`, so `reason.text`
+    // renders nothing either, and no other field is declared.
+    expect(governed.output).toEqual({});
+
+    expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
+    // The command runs unredacted.
+    expect(args.command).toBe(SECRET_COMMAND);
   });
 });

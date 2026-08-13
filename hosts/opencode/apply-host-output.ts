@@ -419,17 +419,25 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     this is where that sink gets named.
  *   - `args` -- merged onto `live.args`, only when `live.gate === "request"`
  *     (and `live` owns an `args` field -- see `LiveHookObjects`'s own doc
- *     comment for why both are checked).
+ *     comment for why both are checked). This is where a request-gate
+ *     `modify`'s rewrite lands, and the only place it can: the same load-time
+ *     gate requires `args: { from: applied_input }` on any `modify` the
+ *     request gate declares, because a `modify` with nowhere to land renders
+ *     nothing, runs the tool unrewritten, and is still reported
+ *     `stage: "honoured"` (§V5 review round 3, Task 5, fix round 1,
+ *     Important 2 -- measured).
  *   - `result` -- merged onto `live.result`, only when `live.gate ===
  *     "result"` (same, for `result`). See above for why this is the whole
  *     container, not a leaf. This is the RESULT gate's deny channel, the
  *     counterpart to `refuse` at the request gate, and the same load-time gate
- *     (`assertHostHonoursEveryDecision`) is what guarantees a result-gate
- *     `deny`/`modify` declares it at all -- without that, a decision carrying
- *     a perfectly good `applied_output` renders nothing this function can
- *     land, and this applier applies nothing and throws nothing while the
- *     tool's output is delivered (§V5 review round 3, Task 5, Critical --
- *     measured on the real chain before the gate existed).
+ *     (`assertHostHonoursEveryDecision`) is what guarantees every result-gate
+ *     decision that withholds declares `result: { from: applied_output }` --
+ *     that key and that source. Without it, a decision carrying a perfectly
+ *     good `applied_output` renders nothing this function can land, and this
+ *     applier applies nothing and throws nothing while the tool's output is
+ *     delivered (§V5 review round 3, Task 5, Critical, and its own fix round
+ *     1 -- every shape measured on the real chain before the rule that
+ *     refuses it existed).
  *
  * A key this render declares that is none of the four above -- or one of
  * `args`/`result` at a gate that was not handed the live half it targets, or
