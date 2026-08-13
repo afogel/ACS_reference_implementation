@@ -586,6 +586,11 @@ The whole diff, four lines removed, nothing else:
 timestamp=2026-08-13T04:43:20.332Z level=ERROR run=cb6f0a9f message="failed to load plugin" path=file:///Users/arielfogel/Pillar/ACS_reference_implementation/hosts/opencode/acs-plugin.ts error="acs-plugin: /…/broken-hookmap.yaml's \"hooks.tool.execute.before.decisions.deny\" declares no unconditional \"value:\" output field under \"refuse\" -- applyHostOutput (apply-host-output.ts) refuses only on the \"refuse\" key; an unconditional field declared under any other key (e.g. \"reason.text\" or \"args...\") renders a non-empty output block without making this a refusal, and \"refuse.reason\" alone is a \"from:\" field that renders NOTHING when the arriving decision does not carry that source field, or carries it as the wrong type (render-decision.ts). This host's applier would then apply nothing and throw nothing, and the tool would proceed -- a deny indistinguishable from a clean allow. Add a literal sibling under \"refuse\", e.g. \"refuse.denied: { value: true }\", so this decision always renders a refusal."
 ```
 
+(This capture predates §V5 review round 3, Task 4's rename — reproduced verbatim from the run that
+produced it, unedited, per this file's own rule for dated captures. The live message this same
+hookmap fault produces today names `applyOpenCodeOutput`, not `applyHostOutput`; a reader reproducing
+this exact run against the current tree will see the new name, not a mismatch to debug.)
+
 Same `level=ERROR`, same `message`, same `path` — and this time the `error=` payload names a real,
 load-time-decidable hookmap fault rather than a stray export. What happened next, from the same run's
 own `--format json` stream:

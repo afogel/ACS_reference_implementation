@@ -179,31 +179,46 @@ function assertNoReservedSegments(value: unknown, label: string): void {
  * rather than refusing -- amplifying the pollution rather than merely
  * misreading it once.
  *
- * `gate` closes the common case a different way than an `Object.hasOwn(live,
- * "args")` rewrite of the same question would: it removes the question
- * rather than answering it more carefully. `args`/`result` are `HostOutput`'s
- * own field names -- the exact vocabulary a rendered decision, and therefore
- * a polluted `Object.prototype`, could plausibly collide with. `gate` is
- * neither: it never appears in any `HostOutput`, any hookmap output path, or
- * any value this applier reads off the wire, and both live objects that ever
- * reach this function are built by `acs-plugin.ts` itself, as object
- * literals, at its two call sites -- never parsed from JSON, never merged
- * from an untrusted source. Reading `live.gate` is exactly as safe as reading
- * any other field on a value this codebase constructed from a literal.
+ * SAY PLAINLY WHICH OF THE TWO CHECKS BELOW IS ACTUALLY LOAD-BEARING (§V5
+ * review round 3, Task 4, fix round 1, Minor 2 -- an earlier version of this
+ * comment called `gate` "the fix" and `Object.hasOwn(live, ...)` the belt
+ * beside it; that had it backwards). `live.gate === "request"` is ALSO a
+ * plain property READ, and a plain property read resolves through the
+ * prototype chain exactly like `live.args !== undefined` did -- comparing it
+ * does not eliminate a chain-read question, it moves the question onto a
+ * DIFFERENT key. What that move buys is real but narrower than "immune":
+ * `args`/`result` are `HostOutput`'s own field names, the exact vocabulary a
+ * rendered decision -- and therefore the one pollution vector this codebase
+ * actually produces (`assertNoReservedSegments`'s own doc comment, above)
+ * -- could plausibly collide with; `gate` is neither, so nothing this
+ * codebase's own attack surface writes to `Object.prototype` today lands on
+ * it. But a `live.gate` read is only as trustworthy as `live` actually
+ * OWNING a `gate` property, and both live objects that ever reach this
+ * function are honest, literal-constructed object literals ONLY because
+ * `acs-plugin.ts`'s two call sites are fully typed with no cast on `live` --
+ * a fact about today's two callers, not a property of the `gate` compare
+ * itself.
  *
- * PASS 1 AND PASS 3 BELOW STILL ALSO CHECK `Object.hasOwn(live, "args")` /
- * `Object.hasOwn(live, "result")`, beside the `gate` compare, and that is
- * deliberate belt-and-suspenders, not a leftover. `gate` is honest about
- * which variant `live` IS, but it is trusted, not verified -- a future call
- * site that narrows the type with an unsafe cast (`as never`, the same escape
- * hatch several of this file's own tests already use on `output`) could hand
- * this function a `live` whose `gate` says `"request"` while its `args` field
- * is actually absent. Nothing today builds such a value, but if one ever did,
- * `Object.hasOwn(live, ...)` is what stops `mergeInPlace` (pass 3, below)
- * from reading THAT read through the prototype chain instead -- matching
- * pass 1's `Object.keys` basis and pass 3's `Object.hasOwn(output, ...)`
- * basis exactly, on the one remaining presence question this reshape did not
- * remove outright.
+ * `Object.hasOwn(live, "args")` / `Object.hasOwn(live, "result")`, run
+ * BESIDE the `gate` compare in both pass 1 and pass 3 below, are what is
+ * actually immune, on any key, regardless of what `Object.prototype` carries
+ * -- own-key checks do not resolve through the chain at all, which is the
+ * whole reason `output`'s own pass-3 fix (below) uses one. A future call
+ * site that narrows the type with an unsafe cast (`as never`, the same
+ * escape hatch several of this file's own tests already use on `output`)
+ * could hand this function a `live` whose `gate` says `"request"` while its
+ * `args` field is actually absent -- and if `Object.prototype.gate` were
+ * EVER polluted to match, the `gate` compare alone would be fooled the same
+ * way the pre-fix `live.args !== undefined` was. `Object.hasOwn(live, ...)`
+ * is what still refuses that `live` correctly regardless: pinned directly,
+ * with `Object.prototype.args` polluted AND a cast `live` that owns no
+ * `args` field despite claiming `gate: "request"`, in "refuses a cast `live`
+ * whose gate lies about owning args, even with Object.prototype.args
+ * polluted" (apply-host-output.test.ts). So: `gate` narrows the type and
+ * documents intent; `Object.hasOwn(live, ...)` is the one of the two that is
+ * actually load-bearing against a malformed `live`, matching pass 1's
+ * `Object.getOwnPropertyNames` basis and pass 3's `Object.hasOwn(output, ...)`
+ * basis exactly.
  */
 type LiveHookObjects =
   | { gate: "request"; args: Record<string, unknown> }
@@ -294,39 +309,59 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * PASS 3 READS ITS OWN-KEY BASIS THE SAME WAY PASS 1 DOES, AND THAT IS NOT
  * COSMETIC (§V5 review, fix round 2, Critical -- the amplification half of
  * the same finding `assertNoReservedSegments` closes the other half of).
- * Pass 1 walks `Object.keys(output)`, which lists OWN enumerable keys only.
  * Pass 3 used to gate each assignment on `output.args !== undefined` /
  * `output.result !== undefined` -- a plain property READ, which resolves
  * through the JavaScript prototype chain on a plain object with no own key
- * of that name, unlike `Object.keys`. If `Object.prototype.args` were ever
- * set -- by anything, anywhere in this long-lived process, not necessarily
- * by a value this file's own `assertNoReservedSegments` failed to catch --
- * a wholly unrelated, cleanly rendered `{}` (an ordinary `allow`, "nothing
- * to change") would read `output.args` as that polluted value through the
+ * of that name. If `Object.prototype.args` were ever set -- by anything,
+ * anywhere in this long-lived process, not necessarily by a value this
+ * file's own `assertNoReservedSegments` failed to catch -- a wholly
+ * unrelated, cleanly rendered `{}` (an ordinary `allow`, "nothing to
+ * change") would read `output.args` as that polluted value through the
  * chain and merge it onto `live.args`, silently rewriting an argument no
  * decision for THIS call ever named. Not reachable today: the one known
  * route to a polluted `Object.prototype` is refused in pass 1, before pass 3
  * ever runs (see the second half of this file's own `applyOpenCodeOutput`
  * suite for that non-reachability pinned end to end). But it is a second,
  * independent gap in the same defence -- pass 1 checking own keys while pass
- * 3 reads through the prototype chain is an inconsistency this applier
- * should not carry regardless of whether anything reaches it today -- so
- * pass 3 below uses `Object.hasOwn(output, ...)`, matching pass 1's basis
- * exactly rather than resting on pass 1 being the only door.
+ * 3 (at the time) read through the prototype chain -- so pass 3 was switched
+ * to `Object.hasOwn(output, ...)`.
  *
- * THE SAME GAP EXISTED ON THE `live` SIDE, AND IS CLOSED MOSTLY A DIFFERENT
- * WAY (§V5 review round 3, Task 4, thread 3773262488). Both passes below used
- * to ask `live.args !== undefined` / `live.result !== undefined` too -- the
- * identical prototype-chain read, on the OTHER object this function touches.
- * `LiveHookObjects` (above) is why neither pass rests on an `Object.hasOwn`
- * rewrite of that question ALONE any more: `live.gate` is a required, host-
- * constructed tag, never a field name a rendered `HostOutput` (and therefore
- * a polluted `Object.prototype`) could collide with, so comparing it is safe
- * on its own -- see that type's own doc comment for why removing the question
- * is a more complete fix than answering it more carefully would have been,
- * and for why `Object.hasOwn(live, ...)` still runs BESIDE the `gate` compare
- * in both passes below, as a second, independent check on the one part of
- * this that `gate` alone trusts rather than verifies.
+ * "MATCHING PASS 1'S BASIS" WAS NOT QUITE TRUE YET WHEN THAT FIX LANDED, AND
+ * THIS ROUND CLOSES THE REST (§V5 review round 3, Task 4, fix round 1,
+ * Important 4 -- the same class of finding this task exists to fix, one axis
+ * over). Pass 1 walked `Object.keys(output)`, own ENUMERABLE keys only;
+ * `Object.hasOwn(output, ...)` answers true for an own key regardless of
+ * enumerability. Different axis from the prototype-chain gap above --
+ * enumerability, not inheritance -- but the identical SHAPE of
+ * inconsistency: one pass checks a narrower set of `output`'s own keys than
+ * the other does. PROBED: an `output` carrying `args` as a non-enumerable
+ * own property (built with `Object.defineProperty`, not something
+ * `JSON.parse` -- or `renderDecision`, which never sets a property this way
+ * -- ever produces, so nothing in the real pipeline reaches this) skipped
+ * pass 1's validation loop entirely -- no shape check, no
+ * `assertNoReservedSegments` -- while pass 3's `Object.hasOwn` still found
+ * and merged it, spreading a non-object value's characters onto index keys
+ * with no throw: the exact "reported but not applied" (here, "validated but
+ * not really") defect Important 1's shape check, above, exists to catch,
+ * reached by a different door. Closed by walking
+ * `Object.getOwnPropertyNames(output)` in pass 1 (below) instead of
+ * `Object.keys(output)` -- own, any enumerability, the identical basis
+ * `Object.hasOwn` already answers for pass 3 -- so both passes now agree
+ * exactly, on both axes.
+ *
+ * THE SAME GAP EXISTED ON THE `live` SIDE (§V5 review round 3, Task 4,
+ * thread 3773262488). Both passes below used to ask `live.args !== undefined`
+ * / `live.result !== undefined` too -- the identical prototype-chain read, on
+ * the OTHER object this function touches. `LiveHookObjects` (above) reshapes
+ * `live` so a gate is TOLD which half it has, via `live.gate`, rather than
+ * asking a bag -- and `live.gate === "request"` moves the read onto a key
+ * nothing this codebase's own attack surface ever writes to
+ * `Object.prototype`, which is real protection for today's two, fully-typed
+ * call sites. But `gate` is ALSO a plain property read, not something
+ * immune to the chain the way an own-key check is -- see that type's own
+ * doc comment for which of the two checks below is the one actually
+ * load-bearing (`Object.hasOwn(live, ...)`, not `gate`) against a `live`
+ * that does not honestly own what it claims to.
  *
  * THE FOUR KEYS, and why `result` is the whole container rather than a leaf
  * (§V5 review, fix round 1, Critical 1 -- opencode.hookmap.yaml's own header
@@ -395,15 +430,22 @@ export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): 
   // ordering is the whole "all-or-nothing" guarantee: a key or a shape that
   // cannot be honoured is discovered before any live object has been
   // touched, regardless of where in `output` it sits.
-  for (const key of Object.keys(output)) {
+  //
+  // `Object.getOwnPropertyNames(output)`, not `Object.keys(output)` (§V5
+  // review round 3, Task 4, fix round 1, Important 4) -- own, REGARDLESS OF
+  // ENUMERABILITY, matching pass 3's `Object.hasOwn(output, ...)` basis
+  // exactly. See this function's own doc comment, "PASS 3 READS ITS OWN-KEY
+  // BASIS THE SAME WAY PASS 1 DOES", for the gap this closes and why
+  // `Object.keys` alone left it open.
+  for (const key of Object.getOwnPropertyNames(output)) {
     if (key === "refuse" || key === "reason") {
       continue;
     }
     // `Object.hasOwn(live, ...)` beside the `gate` compare, in this pass and
-    // in pass 3 below -- see `LiveHookObjects`'s own doc comment for why
-    // `gate` alone is trusted rather than verified, and why both passes check
-    // the SAME compound condition so a key pass 1 accepts is never one pass 3
-    // then silently declines to apply.
+    // in pass 3 below -- see `LiveHookObjects`'s own doc comment for which of
+    // the two is actually load-bearing (`Object.hasOwn`, not `gate`) and why,
+    // and for why both passes check the SAME compound condition so a key
+    // pass 1 accepts is never one pass 3 then silently declines to apply.
     if (key === "args" && live.gate === "request" && Object.hasOwn(live, "args")) {
       if (!isPlainObject(output.args)) {
         throw new Error(
@@ -459,23 +501,31 @@ export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): 
 
   // Pass 3: the assignment. Nothing above threw, so every key `output`
   // carries is one this applier is about to land, and `args`/`result` are
-  // both already known to be plain objects -- args and result together,
-  // leaf and mirror together, never one without the other, and merged
-  // in place rather than replacing a nested reference (mergeInPlace, above).
+  // both already known to be plain objects.
   //
-  // TWO DIFFERENT SAFE BASES, ONE ON EACH SIDE (see this function's own doc
-  // comment, both "PASS 3 READS ITS OWN-KEY BASIS..." paragraphs, for why
-  // each is safe and why they differ). `Object.hasOwn(output, ...)`, not
-  // `output.args !== undefined`: an own-key check on a value that arrived
-  // over the wire cannot be fooled by a polluted `Object.prototype`, exactly
-  // like pass 1's `Object.keys` above it. `live.gate === ...`, not
-  // `live.args !== undefined`: `gate` is a tag this file itself constructs,
-  // naming neither an OpenCode output field nor anything a rendered
-  // `HostOutput` could collide with, so comparing it needs no presence check
-  // to be safe on its own -- and `Object.hasOwn(live, ...)` still runs beside
-  // it anyway, matching pass 1's identical compound condition, for the one
-  // residual case `gate` alone trusts rather than verifies (`LiveHookObjects`'s
-  // own doc comment, above).
+  // NEVER BOTH AT ONCE (§V5 review round 3, Task 4, fix round 1, Important
+  // 2). A render naming both `args` and `result` always fails pass 1, above,
+  // now that `live` is the discriminated union rather than a bag with two
+  // optional fields: whichever of the two keys does not match THIS call's
+  // `live.gate` has no live half to land in, and falls to that loop's final,
+  // unconditional throw. So at most one of the two `if`s just below ever
+  // actually merges anything for a single call -- what lands together,
+  // always, is `result`'s OWN leaf and its mirror, merged in place rather
+  // than replacing a nested reference (mergeInPlace, above), never a
+  // rewritten `args` beside a landed `result`.
+  //
+  // `Object.hasOwn(output, ...)`, not `output.args !== undefined` (see this
+  // function's own doc comment, both "PASS 3 READS ITS OWN-KEY BASIS..."
+  // paragraphs): an own-key check on a value that arrived over the wire
+  // cannot be fooled by a polluted `Object.prototype`, exactly like pass 1's
+  // `Object.getOwnPropertyNames` above it. `live.gate === ...` narrows the type and
+  // documents which variant this call has; `Object.hasOwn(live, ...)`
+  // beside it is the check that is actually immune to a polluted
+  // `Object.prototype` on the `live` side, on any key -- see
+  // `LiveHookObjects`'s own doc comment, above, for why that is the correct
+  // way to say which of the two is load-bearing, not the reverse. Both run
+  // in the SAME compound condition pass 1 already used to decide this key
+  // was applicable, so nothing pass 1 accepted is silently declined here.
   if (Object.hasOwn(output, "args") && live.gate === "request" && Object.hasOwn(live, "args")) {
     mergeInPlace(live.args, output.args as Record<string, unknown>);
   }
