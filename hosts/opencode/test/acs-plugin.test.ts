@@ -739,30 +739,66 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     await expect(runPlugin(hookmapPath)).rejects.toThrow();
   });
 
+  const resultHook = (from: string, within: string) =>
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.after:\n" +
+    "    acs_method: steps/toolCallResult\n" +
+    "    tool_name: $.tool\n" +
+    "    outputs:\n" +
+    `      from: ${from}\n` +
+    `      within: ${within}\n` +
+    "    exit_status: { from: $.result.metadata.exit }\n" +
+    RESULT_DECISIONS;
+
   // CRITICAL 7D -- `outputs.within` must name the object this shim hands the
-  // applier. Measured for both wrong containers.
+  // applier. Each case below leaves `outputs.from` CORRECT, so the failure is
+  // attributable to `within` alone.
   it.each(["$", "$.result.metadata"] as const)(
     "refuses a result hook whose outputs.within is %s rather than $.result",
     async (within) => {
       const hookmapPath = join(SCRATCH_DIR, `result-within-${within === "$" ? "root" : "metadata"}.yaml`);
-      const from = within === "$" ? "$.result.output" : "$.result.metadata.output";
-      writeFileSync(
-        hookmapPath,
-        "host: opencode\n" +
-          "hooks:\n" +
-          "  tool.execute.after:\n" +
-          "    acs_method: steps/toolCallResult\n" +
-          "    tool_name: $.tool\n" +
-          "    outputs:\n" +
-          `      from: ${from}\n` +
-          `      within: ${within}\n` +
-          "    exit_status: { from: $.result.metadata.exit }\n" +
-          RESULT_DECISIONS,
-      );
+      writeFileSync(hookmapPath, resultHook("$.result.output", within));
       await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.within" is/);
       await expect(runPlugin(hookmapPath)).rejects.toThrow(/patched clone OF the container/);
     },
   );
+
+  // The `$.result.output` / `$.result.metadata` pair is ALSO the incoherent one
+  // `replacingOutput` throws on at runtime -- `within`'s segments have to be
+  // the leading segments of `from`. Refusing it here moves that from a
+  // posture-answered runtime throw to a load-time stop, which is the difference
+  // this whole gate is about.
+  it("refuses the incoherent from/within pair at LOAD, where replacingOutput would only throw at render", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-incoherent-pair.yaml");
+    writeFileSync(hookmapPath, resultHook("$.result.output", "$.result.metadata"));
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.within" is "\$\.result\.metadata"/);
+  });
+
+  // CRITICAL, FIX ROUND 5 -- VARIANT 8. `outputs.from` is the leaf that goes ON
+  // THE WIRE as this step's `outputs[0].value`, so pointing it elsewhere does
+  // not withhold the wrong field: it asks the policy runtime about a different
+  // value, which it then answers correctly. Measured (result-gate.test.ts):
+  // envelope carries the tool's own title, decision `allow`, `stage:
+  // "honoured"`, and `rm -rf /` delivered in leaf and mirror.
+  it.each(["$.result.title", "$.result.metadata.output"] as const)(
+    "refuses a result hook whose outputs.from is %s rather than $.result.output",
+    async (from) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-from-${from.split(".").pop()}.yaml`);
+      // `within` correct in both, so the failure is attributable to `from`.
+      writeFileSync(hookmapPath, resultHook(from, "$.result"));
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.from" is/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/the value the policy runtime is asked ABOUT/);
+    },
+  );
+
+  it("accepts the shipped result hook's own from/within pair", async () => {
+    // The accept case, so the two refusals above cannot pass by refusing
+    // everything.
+    const hookmapPath = join(SCRATCH_DIR, "result-shipped-paths.yaml");
+    writeFileSync(hookmapPath, resultHook("$.result.output", "$.result"));
+    await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
+  });
 
   // 7E -- NOT on the review's list. The shim and governStep ask `governsTool`
   // with different arguments, and acs-plugin.ts's header has recorded since

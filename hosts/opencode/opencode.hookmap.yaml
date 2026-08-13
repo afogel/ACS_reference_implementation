@@ -39,6 +39,26 @@
 #     clone OF that container, so naming another one lands the clone at a
 #     depth the applier merges wrongly -- measured with `within: $`, the leaf
 #     AND its metadata.output mirror both kept the plaintext.
+#   - `outputs.from` must be `$.result.output`, and this is the sharpest of
+#     the three: that leaf is what goes ON THE WIRE as this step's
+#     `outputs[0].value`, i.e. the value the policy runtime is asked ABOUT.
+#     Point it elsewhere and the Guardian is not asked a wrong question about
+#     the output -- it is asked about a different value, answers it correctly,
+#     and the step is audited as a clean allow. Measured with
+#     `from: $.result.title`: envelope carried the title, decision `allow`,
+#     and `rm -rf /` was delivered in leaf and mirror.
+#
+# `outputs.mirrors` is deliberately NOT fixed, and the asymmetry is the point:
+# `metadata` is PER-TOOL on this host (the measurement table on the result
+# gate below), so a deployment scoping this gate to another tool names a
+# different mirror, or none, and nothing in the shim could say which is right.
+# KNOWN AND PARKED, stated rather than implied: a hookmap that simply OMITS
+# `mirrors` is therefore not refused, and it leaks -- measured with this file's
+# own `mirrors` line deleted, a real `deny` landed the withheld marker on the
+# leaf and left the plaintext in `metadata.output`. Weaker than the faults
+# above (the model does see the redaction, so it is a session-record leak
+# rather than a delivered secret) and not closable without taking from a
+# hookmap the one thing only it can know.
 #
 # And every decision name below must be one this shim has an expectation for:
 # a `decisions.` entry it does not know is refused rather than skipped, for

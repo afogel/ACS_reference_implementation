@@ -831,6 +831,18 @@ function assertDecisionsCanAct(
  *     result object as junk keys. `within: $.result.metadata`, with a `from`
  *     nesting correctly under it so nothing upstream complains, leaves the
  *     mirror plaintext -- the exact leak `outputs.mirrors` exists to close.
+ *   - 8: `outputs.from: $.result.title`, with `within: $.result` so the two
+ *     nest correctly and nothing upstream complains. This one is NOT "the
+ *     withholding replaces the wrong field", which is how it was first
+ *     characterised here and declined on those grounds. `outputs.from` is the
+ *     leaf that goes ON THE WIRE as the ACS result payload's
+ *     `outputs[0].value` -- the value the policy runtime is asked ABOUT. So
+ *     the Guardian is handed a different value entirely, answers it correctly,
+ *     and the step is audited as a CLEAN ALLOW. Measured: envelope payload
+ *     `outputs: [{value: "cat .env"}]` (the tool's own title) where the shipped
+ *     hookmap puts `rm -rf /`; decision `allow`, `stage: "honoured"`, render
+ *     `{}`, applier applies nothing, and `rm -rf /` survives in leaf and
+ *     mirror. Variant 1's observable reached by never asking the question.
  *   - 7E, found while measuring the others and NOT on the review's own list:
  *     `tool_name: $.args.command` beside `tools: [bash]`. This shim's own
  *     `governsTool(hookmap, hook, input.tool)` answers TRUE and proceeds;
@@ -840,6 +852,27 @@ function assertDecisionsCanAct(
  *     This file's own header has recorded since Task 2 that the two call sites
  *     "would diverge, and nothing detects that". This is what the divergence
  *     costs, and this is the check that detects it.
+ *
+ * `outputs.mirrors` IS DELIBERATELY NOT FIXED HERE, and the asymmetry with
+ * `outputs.from`/`within` is the point rather than an oversight. Which
+ * CONTAINER the live object is, and which leaf inside it is the tool's output,
+ * are both facts about the shape this shim assembles -- fixed, so checked.
+ * WHERE THAT LEAF IS MIRRORED is not: `metadata` is per-tool on this host
+ * (opencode.hookmap.yaml's own measurement table -- `bash`'s carries
+ * `exit`/`output`, `read`'s carries `preview`, `grep`'s carries `matches`), so
+ * a second deployment scoping this gate to a different tool would name a
+ * different mirror, or none. Nothing here could say which is right.
+ *
+ * WHAT THAT LEAVES OPEN, STATED RATHER THAN IMPLIED: a hookmap that simply
+ * OMITS `mirrors` is not refused, and it leaks. Measured (§V5 review round 3,
+ * Task 5, fix round 5) with the shipped file's `mirrors` line deleted and a
+ * live Guardian: a real `deny` landed `[OUTPUT WITHHELD BY POLICY]` on the
+ * leaf and left `rm -rf /` in `metadata.output`. Not closed here because the
+ * same freedom that makes it possible is what lets a second host deployment
+ * declare the right mirror at all -- and it is a WEAKER failure than the rest
+ * of this list: the model does see the redaction, so it is a session-record
+ * leak rather than a delivered secret. Carried as a known parked item rather
+ * than silently accepted.
  *
  * THE ADAPTER CANNOT MAKE ANY OF THESE CHECKS, and that is deliberate on its
  * side rather than an omission: every one rests on knowing which hook name IS
@@ -884,6 +917,7 @@ const RESULT_GATE_ENTRY: GateEntryShape = {
     "buildEnvelope ask the Guardian a tool-call-REQUEST question about a step that already ran",
   fixedPaths: [
     ["tool_name", "$.tool"],
+    ["outputs.from", "$.result.output"],
     ["outputs.within", "$.result"],
   ],
 };
@@ -945,7 +979,11 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
           `clone OF the container "outputs.within" names, so naming another container lands that clone at the ` +
           `wrong depth: measured with "within: $", the leaf AND its metadata.output mirror both kept the ` +
           `plaintext while the payload's own top-level fields were merged onto OpenCode's live result object. ` +
-          `Point this at ${JSON.stringify(required)} (§V5 review round 3, Task 5, fix round 4 -- measured).`,
+          `And "outputs.from" is the leaf that goes ON THE WIRE as this step's outputs[0].value -- the value ` +
+          `the policy runtime is asked ABOUT -- so pointing it elsewhere does not withhold the wrong field, it ` +
+          `asks the wrong question: measured with "from: $.result.title", the Guardian was handed the tool's ` +
+          `own title, answered "allow", and "rm -rf /" was audited as a clean allow and delivered. ` +
+          `Point this at ${JSON.stringify(required)} (§V5 review round 3, Task 5, fix rounds 4 and 5 -- measured).`,
       );
     }
   }

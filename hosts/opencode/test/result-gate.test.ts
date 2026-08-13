@@ -1066,6 +1066,53 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(asRecord.truncated).toBe(false);
   });
 
+  // §V5 review round 3, Task 5, FIX ROUND 5, CRITICAL -- VARIANT 8, and it is
+  // worse than "withholds the wrong field", which is how fix round 4's report
+  // characterised it while declining to close it.
+  //
+  // `outputs.from` is not only the leaf a withholding replaces. It is the leaf
+  // that goes ON THE WIRE as the ACS result payload's `outputs[0].value` --
+  // the value the policy runtime is asked ABOUT. Point it at a different field
+  // and the Guardian is not asked the wrong question about the output; it is
+  // asked about a different value entirely, answers it correctly, and the step
+  // is audited as a clean allow.
+  it("outputs.from naming another leaf puts the WRONG VALUE on the wire, and the deny never happens", async () => {
+    const yaml = RESULT_WITHIN("$.result.title", "$.result");
+    const hookmapPath = fixture("result-from-title.yaml", yaml);
+
+    // FIRST, the wire: this is what the policy runtime is actually asked about.
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+    const envelope = buildEnvelope("tool.execute.after", {
+      tool: TOOL,
+      session_id: "ses-envelope-probe",
+      callID: "c1",
+      args: {},
+      result: liveResult("rm -rf /"),
+    }, hookmap);
+    // "bash" -- the tool's TITLE -- where the shipped hookmap puts the output.
+    expect(envelope.params.payload).toEqual({
+      tool: { name: "bash" },
+      exit_status: "success",
+      outputs: [{ value: "cat .env" }],
+    });
+
+    // THEN the consequence, end to end against the live Guardian.
+    const { output, result, threw } = await governAndApply({
+      hookmapPath,
+      sessionID: "ses-result-from-title",
+      toolOutput: "rm -rf /",
+      // ALLOW -- not a deny that failed to land, a deny that never happened.
+      // The policy never saw `rm -rf /` at all.
+      expectedDecision: "allow",
+    });
+
+    expect(output).toEqual({});
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe("rm -rf /");
+    expect(result.metadata.output).toBe("rm -rf /");
+    expect(result).toEqual(liveResult("rm -rf /"));
+  });
+
   it("a result hook declaring no outputs block renders no result key for a real deny -- the sink is unfillable by construction", async () => {
     const { output, result, threw } = await governAndApply({
       hookmapPath: fixture("result-hook-without-outputs.yaml", RESULT_HOOK_WITH_NO_OUTPUTS),

@@ -1,9 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import {
+  modificationDocumentOf,
   withResultOutput,
   type AcsDecision,
   type HostOutputLocation,
 } from "host-adapter";
+// DEEP IMPORT, deliberately: `resolveModify` is not on the adapter's public
+// barrel and should not be -- that barrel is documented as "the whole contract
+// a shim relies on", and no shim relies on this. But the gate below is about
+// what `resolveModify` actually DOES, so re-implementing its branch inline
+// (which an earlier version of this gate did) made the assertion a tautology
+// for the one decision it most needed to cover. Same test-only precedent
+// test/redaction.test.ts and test/envelope-log-sink-roundtrip.test.ts already
+// set for reaching past a package's barrel.
+import { resolveModify } from "../packages/host-adapter/src/decision-modify.ts";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -897,7 +907,8 @@ describe("the source-file filter itself", () => {
  * carries nothing this host could land, so refusing is its only honest shape").
  *
  * THOSE TABLES ARE A FAIL-OPEN GENERATOR IF THEY ARE WRONG, and they have been
- * wrong twice, in the same review round:
+ * wrong twice, in the same review round -- and the first version of THIS gate
+ * could only have caught one of them (§V5 review round 3, Task 5, fix round 5):
  *
  *   - the result gate's table claimed `ask`/`defer` carry `applied_output`.
  *     `withResultOutput` returns both untouched, so the sink the gate demanded
@@ -912,9 +923,24 @@ describe("the source-file filter itself", () => {
  * hand-derived from another package's behaviour can go stale the moment that
  * package changes, and the failure direction is silent (over-refusal is loud;
  * under-refusal is a delivered secret). This gate is what makes it loud in both
- * directions -- it runs the adapter's own `withResultOutput`/`resolveModify`
- * for every decision name at both gates and asserts the answer matches the
- * table the shim is enforcing.
+ * directions: for every decision name at both gates it asks the ADAPTER what
+ * that decision ends up carrying, and asserts the answer matches the table the
+ * shim is enforcing.
+ *
+ * WHICH ADAPTER FUNCTION ANSWERS THAT DEPENDS ON THE DECISION, and saying so
+ * precisely matters, because an earlier version of this sentence claimed the
+ * gate "runs the adapter's own `withResultOutput`/`resolveModify` projection
+ * for every decision name at both gates" and that was false on both halves
+ * (§V5 review round 3, Task 5, fix round 5). `withResultOutput` is what
+ * decides `allow`/`deny`/`ask`/`defer`. `modify` is `resolveModify`'s -- it is
+ * the only decision whose table entry DIFFERS between the two gates, and the
+ * exact decision fix round 4's Critical 7B was about. The first version of
+ * this gate hand-seeded the field it then asserted for `modify`,
+ * re-implementing `resolveModify`'s `outputLocation === undefined` branch
+ * inline; at the request gate that made it a tautology, because
+ * `withResultOutput(x, undefined)` returns `x` by identity. Measured:
+ * reintroducing 7B from the ADAPTER side left this gate entirely green. It now
+ * calls `resolveModify` itself.
  *
  * LIVES HERE, NOT IN hosts/opencode/test/, for the reason this file states for
  * its own sibling gates: the claim needs TWO artifacts at once -- the shim's
@@ -953,6 +979,36 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
   };
 
   /**
+   * A real envelope and a real `modifications` block PER GATE, so
+   * `resolveModify` below takes its success path rather than its
+   * `modifications_invalid` deny -- and so each gate exercises the branch it
+   * actually takes.
+   *
+   * The two differ because `modificationDocumentOf` (build-envelope.ts) makes
+   * them differ, and its own doc comment says why: a REQUEST payload's pointers
+   * address the arguments bag, so the document is that bag unwrapped; a RESULT
+   * payload's pointers address the payload itself (`/outputs/0/value`), so the
+   * document is the payload. Handing the result gate a request-shaped document
+   * is the exact bug that comment records -- every result-gate `modify` failing
+   * closed as `deny(modifications_invalid)` -- so getting this right here is
+   * part of what makes the assertion real rather than a shape that happens to
+   * survive.
+   */
+  const envelopeOf = (payload: Record<string, unknown>) =>
+    ({ params: { payload } }) as unknown as Parameters<typeof modificationDocumentOf>[0];
+
+  const MODIFY_INPUT = {
+    "tool.execute.before": {
+      envelope: envelopeOf({ tool: { name: "bash" }, arguments: { command: { value: "echo ghp_ABCDEF123456" } } }),
+      modifications: { parameter_overrides: { command: "echo [REDACTED]" } },
+    },
+    "tool.execute.after": {
+      envelope: envelopeOf({ tool: { name: "bash" }, exit_status: "success", outputs: [{ value: "SECRET" }] }),
+      modifications: { redactions: [{ path: "/outputs/0/value", replacement: "[REDACTED]" }] },
+    },
+  } as const;
+
+  /**
    * What the ADAPTER actually leaves on a decision of this name at this gate,
    * composed the way `governStep`'s own `render()` composes it: the result gate
    * passes an output location, the request gate passes `undefined`.
@@ -965,12 +1021,24 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
   function carriedByAdapter(hookEventName: keyof typeof EXPECTED_CARRIED, decisionName: string): string | null | undefined {
     const location = hookEventName === "tool.execute.after" ? OUTPUT_LOCATION : undefined;
     const seed: Record<string, unknown> = { decision: decisionName, reasoning: "why" };
+    let arriving = seed as unknown as AcsDecision;
     if (decisionName === "modify") {
-      // The field N7's apply step leaves for THIS gate -- the same split
-      // `resolveModify` makes off the presence of an output location.
-      seed[location === undefined ? "applied_input" : "applied_output"] = { command: "echo [REDACTED]" };
+      // `resolveModify` ITSELF, not a hand-seeded stand-in for it (§V5 review
+      // round 3, Task 5, fix round 5). This is the branch that decides which
+      // field a `modify` carries, and it decides it off exactly the same
+      // `outputLocation` presence the two tables differ on -- so calling it is
+      // the only way this row is not asserting a constant against itself.
+      const input = MODIFY_INPUT[hookEventName];
+      arriving = resolveModify(
+        { decision: "modify", reasoning: "why", modifications: input.modifications } as unknown as AcsDecision,
+        modificationDocumentOf(input.envelope),
+        location,
+      ) as unknown as AcsDecision;
+      // Sanity: the rewrite really was applicable, so a `deny` substitution
+      // (resolveModify's own failure path) is not what this row measured.
+      expect((arriving as unknown as { decision: string }).decision).toBe("modify");
     }
-    const projected = withResultOutput(seed as unknown as AcsDecision, location) as Record<string, unknown>;
+    const projected = withResultOutput(arriving, location) as Record<string, unknown>;
     const carries = ["applied_input", "applied_output"].filter((field) => projected[field] !== undefined);
     if (carries.length === 0) {
       return null;
