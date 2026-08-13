@@ -929,10 +929,23 @@ function assertDecisionsCanAct(
  * DECLARED mirror is absent from it: there `assertOutputIsReplaceable` cannot
  * build the withholding, and the deployment stops loudly with nothing asked
  * and nothing audited, where the same payload against a `mirrors`-less entry
- * is governed normally. So `mirrors` has been refusing a fault it was never
- * written for, and deleting it deletes that refusal too -- but not on the
- * route above. The two lines are independent; each deletion is load-clean on
- * its own, and so is both together.
+ * is governed normally.
+ *
+ * THAT GUARD IS DESIGNED -- WHAT IS ACCIDENTAL IS THAT THIS FILE ARMS IT.
+ * `replacingOutput`'s own doc comment (result-output.ts) specifies exactly
+ * that check: a declared mirror "resolving to no value in the payload -- adds
+ * a field the tool never produced, the same defect an absent `from` would
+ * be". So the adapter is not overlooking anything, and this is not a gap
+ * anyone needs to close. What nobody designed is the CONNECTION: the check
+ * runs over the mirrors a hookmap DECLARED, and the only reason one is
+ * declared here is the session-record leak that `outputs.mirrors` was added
+ * for. A deployment that declares none is a deployment where that guard never
+ * fires -- correctly, by its own design, since it has been told there is no
+ * mirror -- so the protection travels with a declaration nothing requires.
+ * Deleting `mirrors` from this hookmap therefore disarms a working guard as a
+ * side effect of dropping a mirror, and it does not touch the route above,
+ * which never reaches the guard at all. The two lines are independent; each
+ * deletion is load-clean on its own, and so is both together.
  *
  * NEITHER IS CLOSED HERE, AND CLOSING THEM BELONGS TO V6: requiring `tools`
  * wherever `exit_status`/`outputs` name per-tool fields, or moving the
@@ -1812,8 +1825,10 @@ export const AcsPlugin: Plugin = async () => {
      * this route on its first invocation, leaving the file's contents standing
      * in the leaf under a `proceed` posture. `GateEntryShape`'s own doc
      * comment (above) carries that measurement, what `mirrors` does and does
-     * not backstop about it, and where closing it belongs. And this does not weaken
-     * that scope's own justification: opencode.hookmap.yaml's measurement
+     * not backstop about it, and where closing it belongs. NEITHER
+     * QUALIFICATION -- unreachable through the config rather than outright,
+     * and one load-clean edit from reachable -- weakens the
+     * `tools: [bash]` scope's own justification: opencode.hookmap.yaml's measurement
      * table's fourth row ("an invalid call's [metadata] is `{truncated}`
      * alone") names a tool called `invalid`, which this gate never governs
      * to begin with -- not a `bash` call slipping through ungoverned.

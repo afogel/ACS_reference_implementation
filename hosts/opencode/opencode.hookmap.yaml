@@ -81,10 +81,17 @@
 # with `mirrors` present AND absent: identical, because that throw lands before
 # the adapter ever asks whether a withholding could be built. Where `mirrors`
 # DOES stop something is the other route -- a payload whose envelope builds but
-# whose declared mirror is missing from it is refused there as a loud stop,
-# which is a refusal `mirrors` was never written for. So the two lines are
-# independent, deleting either is load-clean, and closing either is V6's:
-# acs-plugin.ts's `GateEntryShape` doc comment carries the measurements.
+# whose declared mirror is missing from it is refused there as a loud stop.
+# That guard is DESIGNED for exactly that (`replacingOutput`'s own doc comment,
+# result-output.ts: a declared mirror resolving to no value "adds a field the
+# tool never produced, the same defect an absent `from` would be"); what nobody
+# designed is that the line arming it is THIS one, declared for the
+# session-record leak above. The check runs over the mirrors a hookmap declared,
+# so a deployment declaring none never fires it -- correctly, by that guard's
+# own design -- and the protection travels with a declaration nothing requires.
+# So the two lines are independent, deleting either is load-clean, and closing
+# either is V6's: acs-plugin.ts's `GateEntryShape` doc comment carries the
+# measurements.
 #
 # And every decision name below must be one this shim has an expectation for:
 # a `decisions.` entry it does not know is refused rather than skipped, for
