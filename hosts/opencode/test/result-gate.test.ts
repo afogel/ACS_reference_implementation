@@ -35,6 +35,7 @@ import {
   renderDecision,
   resolveSessionConfig,
   toSessionUuid,
+  withResultOutput,
   type AcsDecision,
   type Hookmap,
 } from "host-adapter";
@@ -890,4 +891,113 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
     },
   );
+
+  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6a -- the sixth member of
+  // the class, and the one the gate itself MANDATED.
+  //
+  // Fix round 1 widened the result gate's rule to `deny`/`modify`/`ask`/`defer`
+  // without checking whether the sink it demands can ever be FILLED for the two
+  // it added. `withResultOutput` (result-output.ts) attaches `applied_output`
+  // for `deny` alone; it throws for a `modify` arriving without one, and it
+  // returns everything else -- `allow`, `ask`, `defer` -- UNTOUCHED. So a
+  // result-gate `ask` or `defer` declaring `result: { from: applied_output }`,
+  // the exact declaration the gate required, renders no `result` key at all.
+  //
+  // Variant 1's exact observable, reached THROUGH the mandated declaration.
+  //
+  // Composed the way `governStep` composes it -- `renderDecision(hook,
+  // withResultOutput(decision, outputLocation), hookmap)`, its own `render()`
+  // (govern-step.ts) -- against the real adapter and the real applier. The
+  // decision is constructed rather than Guardian-produced for the same reason
+  // stated on the `ask`/`defer` no-sink case above.
+  it.each(["ask", "defer"] as const)(
+    "a result-gate %s declaring the MANDATED result sink renders no result key -- withResultOutput never fills it",
+    (decisionName) => {
+      const yaml = NO_SINK_AT_ALL.replace(
+        "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+        "      modify:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          `      ${decisionName}:\n` +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          "          reason.text: { from: reasoning, type: string }\n",
+      ).replace(
+        "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+        "      deny:\n" + "        output:\n" + "          result: { from: applied_output }\n",
+      );
+      const hookmap: Hookmap = loadHookmap(fixture(`result-${decisionName}-mandated-sink.yaml`, yaml));
+      const result = liveResult("TOKEN=ghp_SECRET123456");
+
+      // The location `governStep` would build for this entry -- an `outputs`
+      // block is declared, so this is the well-formed case; nothing here is
+      // degenerate.
+      const outputs = hookmap.hooks["tool.execute.after"]!.outputs!;
+      const projected = withResultOutput(
+        { decision: decisionName, reasoning: "held for human review" } as unknown as AcsDecision,
+        { payload: { result }, outputs },
+      );
+
+      // UNTOUCHED: no `applied_output` was attached, so the field the hookmap
+      // points at does not exist on the decision.
+      expect(Object.hasOwn(projected, "applied_output")).toBe(false);
+
+      const rendered = renderDecision("tool.execute.after", projected, hookmap);
+      expect(Object.hasOwn(rendered, "result")).toBe(false);
+
+      expect(() =>
+        applyOpenCodeOutput(rendered, { gate: "result", result: result as unknown as Record<string, unknown> }),
+      ).not.toThrow();
+      // The secret delivered, in both places, from a hookmap that satisfied the
+      // gate's own requirement to the letter.
+      expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
+    },
+  );
+
+  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6b -- the same
+  // unsatisfiable-by-construction fault reached from the ENTRY rather than the
+  // decision, and this one hits `deny`.
+  //
+  // `withResultOutput` no-ops for EVERY decision when its `location` is
+  // undefined, and `governStep` builds that location from the entry's own
+  // `outputs` block (`outputs === undefined ? undefined : {...}`). An entry at
+  // `tool.execute.after` declaring `arguments:` instead of `outputs:` is a
+  // legal `HookmapRequestHookEntry` as far as the adapter is concerned -- the
+  // adapter keys off the entry's SHAPE and never off the event name, on purpose
+  // -- so it loads clean, and this host's gate (which DOES key by hook name)
+  // demanded `result: { from: applied_output }` and got it.
+  //
+  // Guardian-produced end to end: this face hits `deny`, which this deployment
+  // really does answer for `rm -rf /`.
+  const RESULT_HOOK_WITH_NO_OUTPUTS =
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.after:\n" +
+    "    acs_method: steps/toolCallRequest\n" +
+    "    tool_name: $.tool\n" +
+    "    arguments: $.args\n" +
+    "    tools: [bash]\n" +
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          result: { from: applied_output }\n" +
+    "          reason.text: { from: reasoning, type: string }\n";
+
+  it("a result hook declaring no outputs block renders no result key for a real deny -- the sink is unfillable by construction", async () => {
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-hook-without-outputs.yaml", RESULT_HOOK_WITH_NO_OUTPUTS),
+      sessionID: "ses-result-gate-no-outputs-block",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    expect(Object.hasOwn(output, "result")).toBe(false);
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe("rm -rf /");
+    expect(result.metadata.output).toBe("rm -rf /");
+    expect(result).toEqual(liveResult("rm -rf /"));
+  });
 });

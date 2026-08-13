@@ -175,7 +175,15 @@ hooks:
       # round 1). `acs-plugin.ts`'s `assertHostHonoursEveryDecision` requires
       # `result: { from: applied_output }` EXACTLY -- that key, that source --
       # on every decision this gate declares that withholds anything: `deny`,
-      # `modify`, and `ask`/`defer` if a hookmap ever declares them here.
+      # and `modify`. (`ask`/`defer` are held to a REFUSAL here instead if a
+      # hookmap ever declares them at this gate: `withResultOutput` attaches
+      # `applied_output` for `deny` alone and returns those two untouched, so
+      # a sink on either renders nothing however correctly it is written --
+      # §V5 review round 3, Task 5, fix round 3. This file declares neither,
+      # so nothing here exercises that branch.) The hook must also declare the
+      # `outputs:` block above: without it governStep builds no output
+      # location, withResultOutput no-ops for EVERY decision, and the sink
+      # below is unfillable by construction.
       # Three shapes are refused, and all three were measured through a live
       # Guardian first:
       #   - the sink dropped entirely -- a real `deny` rendered `{reason}`, a

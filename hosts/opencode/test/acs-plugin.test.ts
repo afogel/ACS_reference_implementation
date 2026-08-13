@@ -308,6 +308,14 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
   // DECLARED at this gate were unchecked. Not declaring them is the safe state
   // (renderDecision throws, posture-answered, audited); declaring one without a
   // sink is silent delivery. Measured in result-gate.test.ts.
+  //
+  // WHAT THIS DECISION IS HELD TO CHANGED IN FIX ROUND 3 (Critical 6a), and the
+  // message changed with it: fix round 1 demanded a `result` sink here, which
+  // `withResultOutput` can never fill for `ask`/`defer` -- so the requirement is
+  // now an unconditional refusal, the same one the request gate's own three get.
+  // The HAZARD this test pins is unchanged: a declared `ask` with only
+  // `reason.text` is refused, and it is refused for having no honest shape at
+  // all rather than for missing one particular key.
   it.each(["ask", "defer"] as const)(
     "refuses a result-gate %s that declares no sink -- declared-but-unlandable, not merely undeclared",
     async (decisionName) => {
@@ -325,10 +333,98 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
           "        output:\n" +
           "          reason.text: { from: reasoning, type: string }\n",
       );
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(
+        /declares no unconditional "value:" output field under "refuse", and at this gate that is the ONLY shape/,
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(new RegExp(`decisions\\.${decisionName}`));
+      // The message says WHY there is no other shape, naming the mechanism.
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/attaches "applied_output" for "deny" alone/);
+    },
+  );
+
+  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6a -- the variant this
+  // gate itself MANDATED. Fix round 1 required a `result` sink on `ask`/`defer`
+  // without checking that `withResultOutput` can ever fill one for them. It
+  // cannot: it attaches `applied_output` for `deny` alone and returns `ask`/
+  // `defer` untouched. Measured (result-gate.test.ts): the mandated declaration
+  // renders no `result` key and delivers the secret in leaf and mirror.
+  it.each(["ask", "defer"] as const)(
+    "refuses a result-gate %s declaring the sink fix round 1 mandated -- withResultOutput never fills it",
+    async (decisionName) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-mandated-sink.yaml`);
+      writeFileSync(
+        hookmapPath,
+        RESULT_GATE_HEAD +
+          "      deny:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          "      modify:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          `      ${decisionName}:\n` +
+          "        output:\n" +
+          "          result: { from: applied_output }\n",
+      );
+      // Refused for the RIGHT reason: not "you named the wrong key" -- the key
+      // is right -- but "nothing ever arrives for you to put in it".
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/that is the ONLY shape open to it/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/attaches "applied_output" for "deny" alone/);
       await expect(runPlugin(hookmapPath)).rejects.toThrow(new RegExp(`decisions\\.${decisionName}`));
     },
   );
+
+  it.each(["ask", "defer"] as const)(
+    "accepts a result-gate %s that refuses instead -- the one shape it can honestly take",
+    async (decisionName) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-refusal-only.yaml`);
+      writeFileSync(
+        hookmapPath,
+        RESULT_GATE_HEAD +
+          "      deny:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          "      modify:\n" +
+          "        output:\n" +
+          "          result: { from: applied_output }\n" +
+          `      ${decisionName}:\n` +
+          "        output:\n" +
+          "          refuse.denied: { value: true }\n" +
+          "          refuse.reason: { from: reasoning, type: string }\n",
+      );
+      await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
+    },
+  );
+
+  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6b -- the same
+  // unsatisfiable-by-construction fault reached from the ENTRY, and this one
+  // hits `deny`.
+  it("refuses a result hook that declares no outputs block -- every sink there is unfillable by construction", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-hook-without-outputs.yaml");
+    // A perfectly-declared sink on a `deny`. The entry is what is wrong: it
+    // declares `arguments:` at the result hook, so governStep builds no output
+    // location and withResultOutput no-ops for every decision.
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.after:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "outputs" block/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/unfillable by construction/);
+    // Blames the ENTRY, not the correctly-declared decision.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/"hooks\.tool\.execute\.after" declares no "outputs"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-hook-without-outputs\.yaml/);
+  });
 
   it("still asks nothing of an ask/defer the hookmap does not declare at all", async () => {
     // The half of the old reasoning that was correct and stays correct: a

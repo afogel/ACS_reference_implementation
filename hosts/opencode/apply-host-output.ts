@@ -430,11 +430,15 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     "result"` (same, for `result`). See above for why this is the whole
  *     container, not a leaf. This is the RESULT gate's deny channel, the
  *     counterpart to `refuse` at the request gate, and the same load-time gate
- *     (`assertHostHonoursEveryDecision`) is what guarantees every result-gate
- *     decision that withholds either declares `result: { from: applied_output }`
- *     -- that key, that source, and a declaration that can actually render --
- *     or declares an unconditional refusal instead, which throws through
- *     `refuse` above. Without it, a decision carrying a perfectly
+ *     (`assertHostHonoursEveryDecision`) is what guarantees a result-gate
+ *     `deny`/`modify` either declares `result: { from: applied_output }` --
+ *     that key, that source, a declaration that can actually render, and a
+ *     hook that declares an `outputs` block for it to be filled from -- or
+ *     declares an unconditional refusal instead, which throws through `refuse`
+ *     above. `ask`/`defer` at that gate get only the second option: nothing
+ *     ever attaches an `applied_output` to either of them (`withResultOutput`,
+ *     result-output.ts), so a sink on one renders nothing however correctly it
+ *     is written (§V5 review round 3, Task 5, fix round 3). Without it, a decision carrying a perfectly
  *     good `applied_output` renders nothing this function can land, and this
  *     applier applies nothing and throws nothing while the tool's output is
  *     delivered (§V5 review round 3, Task 5, Critical, and its own fix round
