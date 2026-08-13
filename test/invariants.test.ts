@@ -419,8 +419,29 @@ describe("architectural invariants", () => {
    * hookmap: `tools` at PostToolUse would be legitimate, would work, and
    * refusing it would be this gate inventing a rule the shim does not have.
    *
-   * Lives here rather than under hosts/claude-code/ so that host #1's own
-   * directory stays +0/-0 for slice V5 (scripts/verify-zero-diff.sh).
+   * LIVES HERE BECAUSE IT IS ABOUT TWO ARTIFACTS AT ONCE, which is what this
+   * file is for. The claim it makes needs host #1's hookmap AND the adapter's
+   * skip to state at all -- neither host's own suite owns both halves -- and
+   * that is exactly the shape of the gate directly above it, which is about
+   * hosts/opencode/acs-plugin.ts's export count and also lives here rather
+   * than under hosts/opencode/test/.
+   *
+   * THE REASON THIS COMMENT GAVE FIRST WAS FALSE (§V5 review round 3, Task 2,
+   * fix round 2): "so that host #1's own directory stays +0/-0 for slice V5
+   * (scripts/verify-zero-diff.sh)". Neither half held. Host #1's DIRECTORY is
+   * not +0/-0 -- this slice added hosts/claude-code/test/post-tool-use.test.ts
+   * and posture.test.ts, +79/-0 measured; what is +0/-0 is host #1's SHIPPED
+   * SOURCE, acs-hook.ts and claude-code.hookmap.yaml. And that script's frozen
+   * pattern is `hosts/claude-code/[^/]+\.(ts|yaml)$`, whose own comment says it
+   * "deliberately excludes hosts/claude-code/test/" for precisely that reason,
+   * so a gate placed under hosts/claude-code/test/ would not have tripped it.
+   * The placement was right and the reason invented; the mechanism it named
+   * would not have fired.
+   *
+   * What IS a freeze consequence is one file down, at
+   * `hooksWhereEmptyOutputIsDishonest`: acs-hook.ts itself IS inside that
+   * pattern, so adding an export there to let this gate import the table is
+   * not available, which is why the flag is read out of source text.
    */
   it("host #1's hookmap declares no `tools` at a gate where an empty render is not an answer", () => {
     const SHIM = "hosts/claude-code/acs-hook.ts";

@@ -751,21 +751,46 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
 
       const governed = await governRaw(guardian, sink, undefined, { hookmap: scoped(["Bash"]), payload });
 
-      rows.push({ label, stage: governed.stage, asked: asked(), audited: events.length });
+      // WHAT each audit entry says, not merely THAT there is one (§V5 review
+      // round 3, Task 2, fix round 2). The single-case version of this test
+      // asserted `{outcome: "proceeded", failure: {kind:
+      // "host_configuration"}}`, and widening it to a table dropped both --
+      // leaving "an entry was written" pinned and its contents free, which is
+      // the half that says the incident was filed correctly. A posture that
+      // audited the wrong outcome, or blamed a Guardian never contacted, would
+      // have passed the weakened form.
+      rows.push({
+        label,
+        stage: governed.stage,
+        asked: asked(),
+        audited: events.map((event) => ({ outcome: event.outcome, failureKind: event.failure?.kind ?? null })),
+      });
     }
 
     // Not one of them is `stage: "ungoverned"` with nothing asked and nothing
     // audited, which is the single shape this test exists to refuse.
     expect(rows).toEqual([
-      // The posture answers a request that could not be built, and records it.
-      { label: "absent", stage: "request", asked: 0, audited: 1 },
-      { label: "a non-string", stage: "request", asked: 0, audited: 1 },
+      // The posture answers a request that could not be built, and records it
+      // as a host-side configuration fault -- never as a delivery failure,
+      // because no Guardian was contacted for it to be one.
+      {
+        label: "absent",
+        stage: "request",
+        asked: 0,
+        audited: [{ outcome: "proceeded", failureKind: "host_configuration" }],
+      },
+      {
+        label: "a non-string",
+        stage: "request",
+        asked: 0,
+        audited: [{ outcome: "proceeded", failureKind: "host_configuration" }],
+      },
       // Governed, not skipped and not faulted: `buildEnvelope` accepts an
       // empty string, so this step is really asked about. (Against a live
       // Guardian and this repo's own shipped configuration that answer is a
       // deny -- `runtime_error:tool_unknown` -- which is why leaving it
       // governed is better than refusing it here. See `toolNameFor`.)
-      { label: "the empty string", stage: "honoured", asked: 1, audited: 0 },
+      { label: "the empty string", stage: "honoured", asked: 1, audited: [] },
     ]);
   });
 
