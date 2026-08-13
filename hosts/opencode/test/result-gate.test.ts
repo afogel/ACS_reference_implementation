@@ -1089,7 +1089,11 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       args: {},
       result: liveResult("rm -rf /"),
     }, hookmap);
-    // "bash" -- the tool's TITLE -- where the shipped hookmap puts the output.
+    // "cat .env" -- `liveResult`'s own `title` -- where the shipped hookmap
+    // puts the tool's OUTPUT. (`bash` is `tool.name`, a different field, and
+    // an earlier version of this comment named it here by mistake: the
+    // round-5 correction landed in the assertion below and not in the line
+    // above it.)
     expect(envelope.params.payload).toEqual({
       tool: { name: "bash" },
       exit_status: "success",

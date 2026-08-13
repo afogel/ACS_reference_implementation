@@ -16,10 +16,16 @@
 # rewrite's or a redaction's reasoning has nowhere to land on this host yet.
 # Task 4 either names a real sink for it or keeps it declared-inert
 # deliberately -- this is stated here so it does not silently look wired.
-# THREE THINGS IN THIS FILE ARE NOT FREE CHOICES, and acs-plugin.ts's
+# SOME THINGS IN THIS FILE ARE NOT FREE CHOICES, and acs-plugin.ts's
 # `assertEntryMatchesGate` refuses this file at load if any of them changes
-# (§V5 review round 3, Task 5, fix round 4 -- each measured as a live
-# fail-open first):
+# (§V5 review round 3, Task 5, fix rounds 4 and 5 -- each measured as a live
+# fail-open first).
+#
+# NO COUNT HERE, DELIBERATELY. This heading said "THREE THINGS" while the list
+# below it grew to four, which is the third time a quoted count in this slice
+# went stale on the line that quoted it -- and the second time in this file's
+# own neighbourhood (§V5 review round 3, Task 5, fix rounds 3, 4 and 5). The
+# list is the list; count it by reading it:
 #
 #   - each hook's PAYLOAD SHAPE must match the gate the shim runs it as: the
 #     request hook declares `arguments`, the result hook declares `outputs`,
@@ -40,7 +46,7 @@
 #     depth the applier merges wrongly -- measured with `within: $`, the leaf
 #     AND its metadata.output mirror both kept the plaintext.
 #   - `outputs.from` must be `$.result.output`, and this is the sharpest of
-#     the three: that leaf is what goes ON THE WIRE as this step's
+#     them: that leaf is what goes ON THE WIRE as this step's
 #     `outputs[0].value`, i.e. the value the policy runtime is asked ABOUT.
 #     Point it elsewhere and the Guardian is not asked a wrong question about
 #     the output -- it is asked about a different value, answers it correctly,

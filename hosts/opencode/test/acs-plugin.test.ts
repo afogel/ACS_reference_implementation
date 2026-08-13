@@ -764,15 +764,25 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     },
   );
 
-  // The `$.result.output` / `$.result.metadata` pair is ALSO the incoherent one
-  // `replacingOutput` throws on at runtime -- `within`'s segments have to be
-  // the leading segments of `from`. Refusing it here moves that from a
-  // posture-answered runtime throw to a load-time stop, which is the difference
-  // this whole gate is about.
-  it("refuses the incoherent from/within pair at LOAD, where replacingOutput would only throw at render", async () => {
-    const hookmapPath = join(SCRATCH_DIR, "result-incoherent-pair.yaml");
-    writeFileSync(hookmapPath, resultHook("$.result.output", "$.result.metadata"));
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.within" is "\$\.result\.metadata"/);
+  // A `from` OUTSIDE a correct `within` -- the pair round 5's `outputs.from`
+  // rule is the only thing that refuses. Deliberately not
+  // `from: $.result.output` / `within: $.result.metadata`, which an earlier
+  // version of this test used: round 4's `within` rule already refuses that
+  // one, so it demonstrated nothing about round 5 (it still passes with the
+  // `outputs.from` entry removed).
+  //
+  // WHAT THIS MOVES, stated as measured rather than as the stronger claim an
+  // earlier comment made. Without the `outputs.from` rule this hookmap loads,
+  // and `buildEnvelope` then fails at stage "request" -- which is a failure
+  // whose OUTCOME DEPENDS ON THE NEGOTIATED POSTURE. Under this deployment's
+  // fail-closed posture `replacingOutput` throws out of `governStep`; under a
+  // `proceed` posture it is an audited ungoverned delivery. With the rule, it
+  // is refused at load and neither happens.
+  it("refuses a from OUTSIDE a correct within at LOAD -- the pair only round 5's outputs.from rule catches", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-from-outside-within.yaml");
+    writeFileSync(hookmapPath, resultHook("$.tool", "$.result"));
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.from" is "\$\.tool"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/the value the policy runtime is asked ABOUT/);
   });
 
   // CRITICAL, FIX ROUND 5 -- VARIANT 8. `outputs.from` is the leaf that goes ON
