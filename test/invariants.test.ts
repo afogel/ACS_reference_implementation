@@ -416,25 +416,52 @@ function importsSpecifier(code: string, spec: string): boolean {
 }
 
 /**
- * Every name a top-level `export` declaration binds in `code`, in source
- * order -- `export (default )?(async )?(function|const|class|type|interface|
- * let|var) NAME`. Deliberately narrow, the same pragmatism `assertNoVocabulary`
- * and `importsSpecifier` above already apply: a regex precise enough for the
- * shape this codebase actually writes exports in, not a full TS parser and
- * not every legal export form. `export { a, b }` re-export lists are not
- * matched -- nothing in this codebase's host shims uses one, and a shim that
- * grew one would be a new shape worth a human reading this gate again, not
- * one to guess about silently. Callers pass comment-stripped code (this
- * suite's own `readSourceFiles` already does that), so a doc comment that
- * happens to contain the word "export" -- this file has several -- is never
- * mistaken for a declaration.
+ * Every name a top-level `export` binds in `code`, in source order. Two
+ * shapes, matched in one pass so source order is preserved across both:
+ *
+ *   1. A declaration -- `export (default )?(async )?(function|const|class|
+ *      type|interface|let|var) NAME`.
+ *   2. A named-export list -- `export { a, b as c }`, with or without a
+ *      trailing `from "…"` (a re-export). Each entry contributes its LOCAL
+ *      name (the part before `as`, if any): that is the binding a reader of
+ *      this file sees, and it is what OpenCode's loader would find and try
+ *      to call regardless of which module the value originally came from.
+ *
+ * §V5 review, Task 8, fix round 2: the list form used to go unmatched, on the
+ * stated reasoning that nothing in this codebase's host shims used one --
+ * true, and beside the point, because the gate this function backs exists
+ * to catch a SECOND export appearing where none is expected, and a re-export
+ * list is exactly as valid a way to introduce one as a second declaration.
+ * Mutation-tested against the reviewer's own reproduction: `const spurious =
+ * 1; export { spurious };` beside a working factory now counts as two.
+ *
+ * Deliberately narrower than the two shapes above in other ways -- the same
+ * pragmatism `assertNoVocabulary` and `importsSpecifier` above already
+ * apply, a regex precise enough for the shapes this codebase actually
+ * writes, not a full TS parser and not every legal export form (a bare
+ * `export default someExpression;` with no declaration keyword is still
+ * unmatched). Callers pass comment-stripped code (this suite's own
+ * `readSourceFiles` already does that), so a doc comment that happens to
+ * contain the word "export" -- this file has several -- is never mistaken
+ * for a declaration.
  */
 function exportedNames(code: string): string[] {
-  const pattern = /^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|class|type|interface|let|var)\s+([A-Za-z_$][\w$]*)/gm;
+  const pattern =
+    /^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|class|type|interface|let|var)\s+([A-Za-z_$][\w$]*)|^export\s*\{([^}]*)\}/gm;
   const names: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(code)) !== null) {
-    names.push(match[1]!);
+    if (match[1] !== undefined) {
+      names.push(match[1]);
+      continue;
+    }
+    const entries = match[2]!
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    for (const entry of entries) {
+      names.push(entry.split(/\s+as\s+/)[0]!.trim());
+    }
   }
   return names;
 }
@@ -581,6 +608,42 @@ describe("the export-count gate itself", () => {
     expect(
       exportedNames('import { applyHostOutput } from "./apply-host-output.ts";\n\nexport const AcsPlugin = 1;\n'),
     ).toEqual(["AcsPlugin"]);
+  });
+
+  /**
+   * §V5 review, Task 8, fix round 2, "a gate that can be bypassed": the
+   * named-export LIST form (`export { a, b }`) went unmatched until this
+   * round, on the reasoning that nothing in this codebase's shims used one --
+   * true and beside the point, since the gate exists to catch a SECOND export
+   * appearing however it is written, and a list is exactly as valid a way to
+   * introduce one as a second declaration. Reproduced here with the
+   * reviewer's own exact mutation before asserting the real gate catches it
+   * below: `const spurious = 1; export { spurious };` used to leave
+   * `exportedNames` returning a single-element array beside a real factory
+   * export, 21/21 passing with the hazard live.
+   */
+  it("counts a named-export LIST as an export -- the reviewer's own reproduction that used to go unmatched", () => {
+    expect(
+      exportedNames('const spurious = 1;\nexport { spurious };\n\nexport const AcsPlugin = async () => ({});\n'),
+    ).toEqual(["spurious", "AcsPlugin"]);
+  });
+
+  it("takes the LOCAL name from an aliased export-list entry, not the exported-as name", () => {
+    expect(exportedNames('const spurious = 1;\nexport { spurious as notSpurious };\n')).toEqual(["spurious"]);
+  });
+
+  it("counts every entry in a multi-name export list", () => {
+    expect(exportedNames('export { a, b, c };\n')).toEqual(["a", "b", "c"]);
+  });
+
+  it("counts a pure re-export list (`export { x } from \"…\"`) the same way", () => {
+    expect(exportedNames('export { helper } from "./helper.ts";\n')).toEqual(["helper"]);
+  });
+
+  it("preserves source order across a mix of declarations and export lists", () => {
+    expect(
+      exportedNames('export { early };\nconst early = 1;\nexport const AcsPlugin = 1;\nexport { late };\nconst late = 1;\n'),
+    ).toEqual(["early", "AcsPlugin", "late"]);
   });
 });
 

@@ -15,8 +15,10 @@
  * measured (§V5 review, Task 8, fix round 1): a single **non-function** export placed beside a
  * working factory produces `error="Plugin export is not a function"`, and the factory is **never
  * called at all** -- one exported constant silently disables governance for the whole session.
- * And a genuinely broken hookmap (missing hookmap `AcsPlugin` itself refuses to register)
- * produces the byte-identical `level=ERROR message="failed to load plugin" path=...` line, with
+ * And a genuinely broken hookmap (one missing `refuse.denied`, say -- the exact fault
+ * `assertRefusalRendersUnconditionally` exists to catch) makes `AcsPlugin` itself throw and refuse
+ * to register, and OpenCode's loader catches that throw and logs it, producing the byte-identical
+ * `level=ERROR message="failed to load plugin" path=...` line, with
  * only the `error=` payload differing -- so an operator watching logs cannot tell "a second,
  * harmless export got mis-invoked" from "the plugin never registered and every tool call this
  * session makes is now completely ungoverned" without reading the payload character by character.

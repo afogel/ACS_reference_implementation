@@ -425,10 +425,11 @@ absent from its own published type) but is not part of *this* capture — this `
 none, so nothing here demonstrates what happens to one; see "What was not verified" below.
 
 **The persisted session record, not only the live stream.** OpenCode writes every tool-call part
-to its own SQLite database (`XDG_DATA_HOME/opencode/opencode.db`, isolated to this run by the
-redirect above); querying it directly, after the session ended, is what Task 8's own capture
-instructions call "the persisted session record" — same run, same `sessionID`, queried after the
-process that produced it had already exited:
+to its own SQLite database (`XDG_DATA_HOME/opencode/opencode.db`, isolated to **this run alone** by
+the `XDG_DATA_HOME` redirect above — no other OpenCode session shares this database, which is what
+makes matching on the command text below sufficient rather than a coincidence); querying it
+directly, after the session ended, is what Task 8's own capture instructions call "the persisted
+session record", queried after the process that produced it had already exited:
 
 ```bash
 sqlite3 "$XDG_DATA_HOME/opencode/opencode.db" \
@@ -439,8 +440,16 @@ sqlite3 "$XDG_DATA_HOME/opencode/opencode.db" \
 {"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"cat secret.txt","description":"demo"},"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","metadata":{"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","exit":0,"truncated":false},"title":"cat secret.txt","time":{"start":1786596163324,"end":1786596163397}}}
 ```
 
-Byte-identical to the `part` field of the `tool_use` event captured above, `time` included — the
-same call, read back from disk rather than off the live stream.
+**Not byte-identical to the `tool_use` event's `part` field above — say precisely what matches and
+what does not.** OpenCode's own persisted schema for a `part` row is narrower than the live-stream
+shape: this row carries `{type, tool, callID, state}` and omits `id`, `sessionID`, and `messageID`,
+all three of which the stream event's `part` carries alongside the same four fields — confirmed
+against an independently reproduced database, so this is a property of what OpenCode persists, not
+an artifact of this run. What the row *does* prove, exactly: `state.time` — `{start:
+1786596163324, end: 1786596163397}` — is byte-equal to the live event's own `state.time`, and so is
+every other field inside `state`, including both redacted strings. That identity, not a `sessionID`
+match the row has no field to make, is what ties this row to the exact call captured above rather
+than to some other run that happened to `cat` a file also named `secret.txt`.
 
 The redaction is on disk, in both fields, not merely in-flight. A second query against the same
 database, across both the `part` and `message` tables, for the raw secret text (`ghp_ABCDEF123456`
@@ -497,10 +506,11 @@ about governance, only about what this process tells whoever is running it. Off 
 ## One export was a hazard, not a convenience — found, fixed, and one thing still open
 
 An earlier draft of this runbook ran `opencode run --print-logs` against the tree as it stood after
-Task 7 and got one `ERROR`-level line on every single run, before either capture above:
+Task 7 and got one `ERROR`-level line on every single run, before either capture above. Full line, no
+fields elided, exactly as captured:
 
 ```
-level=ERROR message="failed to load plugin" path=file:///.../hosts/opencode/acs-plugin.ts error="acs-plugin: cannot apply rendered key \"client\" at this gate -- opencode.hookmap.yaml declares an output field this applier has no live object to land it in"
+timestamp=2026-08-13T03:48:36.457Z level=ERROR run=30258ebf message="failed to load plugin" path=file:///Users/arielfogel/Pillar/ACS_reference_implementation/hosts/opencode/acs-plugin.ts error="acs-plugin: cannot apply rendered key \"client\" at this gate -- opencode.hookmap.yaml declares an output field this applier has no live object to land it in"
 ```
 
 That draft called this "harmless" and explained it as a caught, non-fatal artifact of OpenCode's own
@@ -604,19 +614,22 @@ $ bun test
 ```
 bun test v1.3.14 (0d9b296a)
 
- 611 pass
+ 616 pass
  1 skip
  0 fail
- 1736 expect() calls
-Ran 612 tests across 39 files. [9.27s]
+ 1741 expect() calls
+Ran 617 tests across 39 files. [9.40s]
 ```
 
-Six more than the baseline this task started from (605 pass, 1 skip) — all six are
-`test/invariants.test.ts`'s new eighth gate and its own self-tests, added by this task's fix round
-(see "One export was a hazard, not a convenience" above). The gate itself was mutation-tested against
-the real file: temporarily re-adding a second export to `hosts/opencode/acs-plugin.ts` and re-running
-`bun test test/invariants.test.ts` failed exactly that one new test, naming the spurious export
-(`SPURIOUS_EXPORT`); reverting passed all 21 again.
+Eleven more than the baseline this task started from (605 pass, 1 skip) — all eleven are
+`test/invariants.test.ts`'s new eighth gate and its own self-tests, added across this task's fix
+rounds (see "One export was a hazard, not a convenience" above): the gate itself, five self-tests
+proving `exportedNames` distinguishes one export from two, and five more added in a second fix round
+after review found the named-export **list** form (`export { a, b }`) went unmatched — the reviewer's
+own reproduction, `const spurious = 1; export { spurious };`, passed 21/21 with the hazard live. Both
+shapes are now mutation-tested against the real file: temporarily reintroducing a second export as a
+plain declaration, and separately as an export list, each fails exactly the one new test that names
+the spurious export; reverting either passes the whole suite again.
 
 ```bash
 $ bun run typecheck
@@ -714,9 +727,19 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   sentence, stated in `govern-step.ts` for a different pair already: a fault decidable from the
   hookmap alone belongs at load time; only a fault needing the invocation's payload belongs where a
   posture can answer it. Neither shipped hookmap reaches any of the six (both are pinned by tests
-  that load them), and the repair is one sweep of `buildPayload`, not six edits — so it is recorded
-  rather than fixed here, the same reasoning V4 gave for parking its own landing check rather than
-  doing it twice by gate.
+  that load them), and the repair is a single sweep of one module — `exitStatusOf` and `buildPayload`
+  are two different functions, but both live in `build-envelope.ts` — not six edits across six files,
+  so it is recorded rather than fixed here, the same reasoning V4 gave for parking its own landing
+  check rather than doing it twice by gate.
+- **The Inspector's tail tests gate on wall-clock sleeps, and one transient failure surfaced during
+  this slice — pre-existing, and V2's rail to repair, not this slice's.** 58 assertions across 22
+  bare `await Bun.sleep(…)` waits of 30–80 ms, in a suite that concurrently spawns real subprocesses
+  and port-0 Guardians; observed once in four runs, not captured before it self-resolved, and clean
+  across sixteen consecutive runs afterward. Nothing in this slice's own diff can cause
+  intermittency — the tasks that saw it added a synchronous file scan, a bash script that never runs
+  under `bun test`, and one `package.json` line — so the likeliest source is structural rather than
+  anything V5 touched. The repair is event-driven waits (await the next emission rather than a
+  duration) against `packages/inspector/test/tail-audit-log.test.ts` and `tail-envelope-log.test.ts`.
 
 ## What was not verified
 
