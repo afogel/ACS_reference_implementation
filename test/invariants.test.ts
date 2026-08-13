@@ -55,6 +55,23 @@ function readSourceFiles(dir: string): { file: string; code: string }[] {
 }
 
 /**
+ * Escapes regex metacharacters in `term`, so `assertNoVocabulary`'s "whole
+ * word" claim holds LITERALLY, not just for terms with no special
+ * characters. `tool.execute` was the first term this list gained with one
+ * (§V5 review, fix round 1, Minor 1): unescaped, `\btool.execute\b`'s `.`
+ * matches ANY character, so it would also match `tool_execute`,
+ * `tool execute`, `toolXexecute` -- over-matching that happened to be safe
+ * (nothing in this codebase writes any of those), but a future term with
+ * `[`, `(`, or `$` would either throw building the `RegExp` or silently mean
+ * something other than what its author wrote. The doc above says "whole
+ * word", not "regex fragment", so the code is made to agree with the doc
+ * rather than the other way around.
+ */
+function escapeRegExp(term: string): string {
+  return term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Asserts none of `terms` appears as a whole word (case-insensitive) in
  * any non-test `.ts` file's code under `dir`. Whole-word matching, not
  * bare substring: "opa" as a substring would false-positive on ordinary
@@ -67,7 +84,7 @@ function readSourceFiles(dir: string): { file: string; code: string }[] {
 function assertNoVocabulary(dir: string, terms: string[]): void {
   for (const { file, code } of readSourceFiles(dir)) {
     for (const term of terms) {
-      const found = new RegExp(`\\b${term}\\b`, "i").test(code);
+      const found = new RegExp(`\\b${escapeRegExp(term)}\\b`, "i").test(code);
       expect({ file, term, found }).toEqual({ file, term, found: false });
     }
   }
@@ -152,9 +169,6 @@ describe("architectural invariants", () => {
    * What makes a second host cost zero AGT code: the bridge that knows AGT
    * must never learn a specific host's wire shape, or adding a host would
    * mean touching this package too.
-  it("the adapter names no OpenCode field", () => {
-    assertNoVocabulary("packages/host-adapter/src", ["tool.execute", "callID", "attachments"]);
-  });
    */
   it("AGT bridge's source contains zero host-specific code", () => {
     assertNoVocabulary("packages/agt-bridge/src", [
@@ -280,6 +294,47 @@ describe("architectural invariants", () => {
       }
     }
   });
+
+  /**
+   * R3.2, continued -- the seventh gate, and V5's own: the first gate above
+   * catches host #1's (Claude Code's) wire vocabulary leaking into the shared
+   * adapter; this one catches host #2's (OpenCode's). Placed last rather than
+   * beside the gate it parallels, so the sixth gate stays V3's and this stays
+   * countable as "the seventh" without renumbering anything above it --
+   * README.md:195/203 name both positions, and inserting a new gate in the
+   * middle is exactly how a stale ordinal gets written (see V4's own fifth
+   * name, gate 2's comment above).
+   *
+   * `attachments` is the term this slice could most plausibly get wrong: it
+   * is the field OpenCode's result payload carries at runtime and does not
+   * declare in its own published type (hosts/opencode/acs-plugin.ts,
+   * "measured" against 1.18.15's type -- the same gap `outputs.mirrors` exists
+   * to let a hookmap declare instead of the adapter hard-coding), so a
+   * shortcut in result-output.ts naming it explicitly -- rather than treating
+   * it as an opaque sibling the clone-and-patch approach never has to read by
+   * name -- is the mistake this gate exists to catch. `tool.execute` (the hook
+   * name OpenCode's own runtime dispatches on) and `callID` (its per-call
+   * identifier) sit beside it for the same reason.
+   *
+   * Two more OpenCode-shaped terms are deliberately NOT in this list, and the
+   * reason is the gate's own validity, same as the exclusions on the gate
+   * above:
+   *
+   *   - `sessionID` case-insensitively matches `sessionId`, which several
+   *     adapter files use for ACS's own `metadata.session_id` -- gating it
+   *     would fail on day one, for a term that names ACS's vocabulary, not
+   *     OpenCode's.
+   *   - `metadata` appears in build-envelope.ts and handshake.ts as the ACS
+   *     envelope's OWN `metadata` block -- the exact same collision.
+   *
+   * Listing either would produce a gate that fails for the wrong reason, and
+   * "loosen the gate until it passes" is how a gate stops meaning anything.
+   * What protects R3.2 for those two is that they are ACS vocabulary the
+   * adapter is *supposed* to speak, not a gate.
+   */
+  it("the adapter names no OpenCode field", () => {
+    assertNoVocabulary("packages/host-adapter/src", ["tool.execute", "callID", "attachments"]);
+  });
 });
 
 /**
@@ -377,6 +432,31 @@ describe("the host-vocabulary gate itself", () => {
   it("stays quiet on ordinary code naming none of the forbidden terms", () => {
     withScratchSourceFile("export function allow(): boolean {\n  return true;\n}\n", (dir) => {
       expect(() => assertNoVocabulary(dir, ["refuse"])).not.toThrow();
+    });
+  });
+
+  /**
+   * §V5 review, fix round 1, Minor 1 and Minor 2 in one case, as the review
+   * itself suggested. `tool.execute` is the first forbidden term carrying a
+   * regex metacharacter, so it closes two different gaps at once:
+   *
+   *   - Minor 2: pins that the term the gate above lists is one the gate can
+   *     actually catch (the same argument as "catches 'refuse'..." above,
+   *     applied to the OpenCode gate's own term rather than assumed to carry
+   *     over).
+   *   - Minor 1: proves `escapeRegExp` is doing real work, not merely
+   *     present. Before terms were escaped, the literal `.` compiled to a
+   *     regex `.` -- ANY character -- so `"tool_execute"` (underscore, a
+   *     DIFFERENT term nobody asked to forbid) would have tripped the same
+   *     gate as `"tool.execute"` (dot, the real term). Escaped, only the
+   *     literal dot matches.
+   */
+  it("catches 'tool.execute' literally, without over-matching its dot as regex 'any character'", () => {
+    withScratchSourceFile('export const hookName = "tool.execute";\n', (dir) => {
+      expect(() => assertNoVocabulary(dir, ["tool.execute"])).toThrow();
+    });
+    withScratchSourceFile('export const hookName = "tool_execute";\n', (dir) => {
+      expect(() => assertNoVocabulary(dir, ["tool.execute"])).not.toThrow();
     });
   });
 });
