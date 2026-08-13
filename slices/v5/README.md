@@ -33,7 +33,9 @@ That difference in mechanism is *not* proof that nothing else moved, and it woul
 so: `packages/host-adapter/src` changed in four of its files (+962/−62) to make this host work —
 `build-envelope.ts` (`loadHookmap` gained four new load-time gates beside its original one, and
 `exit_status` gained a second, `from:` form), `decision-modify.ts`, `modifications.ts`, and
-`result-output.ts`. Only `render-decision.ts` and `govern-step.ts` are genuinely untouched. What
+`result-output.ts`. Of the five things the retracted claim named, only `render-decision.ts` and
+`govern-step.ts` are genuinely untouched — thirteen of the package's seventeen files are, but the
+four that changed are the four that carry the seams a second host lands on. What
 *is* true, and is the stronger claim R3.4 actually rests on: none of that landed as a per-host
 fork. Every change is in `packages/host-adapter/src`, the package **both** hosts run, not in a
 copy specific to OpenCode — and host #1's own source (`hosts/claude-code/acs-hook.ts`,
