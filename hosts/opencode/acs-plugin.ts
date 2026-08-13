@@ -1,6 +1,8 @@
 /**
  * acs-plugin.ts (N10) -- OpenCode's ACS plugin shim, slice V5's second host
- * against the *unchanged* adapter (packages/host-adapter).
+ * against packages/host-adapter -- SHARED with host #1, not forked for this
+ * one (see below for the precise claim that is, not the looser "unchanged"
+ * an earlier version of this header made).
  *
  * WHY THIS FILE IS NOT hosts/claude-code/acs-hook.ts WITH A DIFFERENT NAME.
  * Claude Code's shim is a fresh subprocess per hook: it reads one JSON object
@@ -13,11 +15,31 @@
  * OpenCode is MUTATING what it handed us, or throwing. So the same rendered
  * `HostOutput`, from the same `governStep` -> `renderDecision`, is APPLIED
  * here instead of printed -- and applying it is the one piece of host
- * semantics this slice owns. `buildEnvelope`, `renderDecision`, `governStep`,
- * the hookmap format, and every check load-hookmap.ts already makes are
- * exactly the modules host #1 uses, unmodified: that is the whole claim
- * slice V5 exists to prove, and it is a claim about packages/host-adapter/src,
- * not about this file.
+ * semantics this slice owns.
+ *
+ * THE ADAPTER IS NOT "UNCHANGED" (§V5 final review, F3) -- MEASURED:
+ * packages/host-adapter/src changed in FOUR of its files, +962/-62
+ * (build-envelope.ts, decision-modify.ts, modifications.ts,
+ * result-output.ts); `loadHookmap` went from ONE load-time gate
+ * (`assertRenderableDecisions`) to FIVE (plus `assertMirrorsWellFormed`,
+ * `assertToolsWellFormed`, `assertExitStatusNotBothForms`,
+ * `assertRequestGateUnscopable`); and `exit_status` gained a second, `from:`
+ * form beside its original `literal:`. Only `render-decision.ts` and
+ * `govern-step.ts` are genuinely untouched. So `buildEnvelope`, the hookmap
+ * format, and every load-time check are NOT the unmodified set an earlier
+ * claim here named.
+ *
+ * THE CLAIM THAT IS ACTUALLY TRUE, AND STRONGER THAN "UNCHANGED": this
+ * second host cost no PER-HOST FORK. Every one of those changes landed in
+ * packages/host-adapter/src -- the package BOTH hosts run -- not in a
+ * host #2-specific copy of anything, and host #1's own source
+ * (hosts/claude-code/acs-hook.ts, hosts/claude-code/claude-code.hookmap.yaml)
+ * is +0/-0: host #1 gained only two additive test files, and nothing in its
+ * own shipped source changed to make host #2 work. That is what R3.4
+ * actually argues (docs/shaping/acs-reference-impl-shaping.md's own R3.4
+ * row) -- not that the adapter never moved, but that whatever moved, moved
+ * once, in code both hosts share, rather than being forked per host. That is
+ * the claim this file rests on.
  *
  * TASK 4 SHIPPED THE SKELETON: the plugin factory's setup -- loading the
  * hookmap, the Guardian client, the audit sink, the negotiated session
@@ -254,14 +276,30 @@ const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
  * (`withResultOutput`, result-output.ts, host-agnostic), not by a hookmap
  * shape check -- see MUST_RENDER_UNCONDITIONALLY's own doc comment.
  *
- * Checks by STRUCTURE, not by trusting the shipped field name: any
- * `deny`/`ask`/`defer` entry with at least one `{value: ...}` field passes,
- * whether that field is `refuse.denied` (this hookmap's own marker) or
- * something else entirely -- an entry naming ONLY `from:` fields, whatever
- * their paths, is what gets refused. A decision this hookmap does not
- * declare at all (`ask`/`defer` are optional; `loadHookmap`'s own
- * `assertRenderableDecisions` requires only `allow` and `deny`) has nothing
- * here to check.
+ * Checks by STRUCTURE, not by trusting the shipped field name -- but the
+ * structure that matters is WHICH KEY the unconditional field sits under, not
+ * merely that some field somewhere in the block carries `{value: ...}`.
+ * `applyHostOutput` (apply-host-output.ts) refuses on exactly one output key:
+ * `refuse` -- read in pass 2a and thrown. `reason` is declared-inert (pass
+ * 2b never throws), and `args`/`result` are MERGES that leave a governed
+ * decision looking like a successful, unremarkable rewrite: an unconditional
+ * `{value: ...}` planted at `reason.text` or `args.something` renders a
+ * non-empty output block, which is what an earlier version of this check
+ * accepted, but a non-empty render at the wrong key is not a refusal --
+ * `applyHostOutput` never reads `refuse` from it, so the applier proceeds all
+ * the same. This is the exact hole a hookmap author (or a compromised
+ * config) could use to satisfy this gate's letter while reintroducing
+ * Critical 1's rendered-`{}` failure mode by another route: an entry naming
+ * ONLY `from:` fields under `refuse`, plus one unconditional field under any
+ * OTHER key, passed the old check and still applied nothing, threw nothing.
+ * So: an entry passes only when at least one output path whose LEADING
+ * segment is `refuse` carries `{value: ...}` -- `refuse.denied` (this
+ * hookmap's own marker) is one instance of that shape, not a stand-in for
+ * "any field, anywhere". An entry naming an unconditional field ONLY outside
+ * `refuse` -- or naming only `from:` fields under `refuse` -- is what gets
+ * refused. A decision this hookmap does not declare at all (`ask`/`defer`
+ * are optional; `loadHookmap`'s own `assertRenderableDecisions` requires
+ * only `allow` and `deny`) has nothing here to check.
  */
 function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
@@ -281,17 +319,23 @@ function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): vo
         // declares.
         continue;
       }
-      const hasUnconditionalField = Object.values(output).some(
-        (field) => isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value"),
-      );
-      if (!hasUnconditionalField) {
+      const hasUnconditionalRefuseField = Object.entries(output).some(([outputPath, field]) => {
+        const leadingSegment = outputPath.split(".")[0];
+        return (
+          leadingSegment === "refuse" && isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value")
+        );
+      });
+      if (!hasUnconditionalRefuseField) {
         throw new Error(
           `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
-            `"value:" output field -- every field it names is "from:", which renders NOTHING when the arriving ` +
-            `decision does not carry that source field, or carries it as the wrong type (render-decision.ts). ` +
-            `This host's applier would then see an empty render, apply nothing, and the tool would proceed -- a ` +
-            `${decisionName} indistinguishable from a clean allow. Add a literal sibling, e.g. ` +
-            `"refuse.denied: { value: true }", so this decision always renders something.`,
+            `"value:" output field under "refuse" -- applyHostOutput (apply-host-output.ts) refuses only on the ` +
+            `"refuse" key; an unconditional field declared under any other key (e.g. "reason.text" or "args...") ` +
+            `renders a non-empty output block without making this a refusal, and "refuse.reason" alone is a ` +
+            `"from:" field that renders NOTHING when the arriving decision does not carry that source field, or ` +
+            `carries it as the wrong type (render-decision.ts). This host's applier would then apply nothing and ` +
+            `throw nothing, and the tool would proceed -- a ${decisionName} indistinguishable from a clean allow. ` +
+            `Add a literal sibling under "refuse", e.g. "refuse.denied: { value: true }", so this decision always ` +
+            `renders a refusal.`,
         );
       }
     }
@@ -431,10 +475,21 @@ function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is
  * A throw here -- an unreadable or invalid hookmap (`loadHookmap` shape-checks
  * everything statically decidable from the hookmap file alone, and
  * `assertRefusalRendersUnconditionally` adds this host's own such check) --
- * fails plugin registration itself, before any hook can fire: the same
- * "broken deployment, not a policy question" stop `BlockingConfigurationError`
- * /exit 2 is for on host #1, reached at the equivalent point in this host's
- * own lifecycle -- load time, never per-invocation.
+ * names the same "broken deployment, not a policy question" fault
+ * `BlockingConfigurationError`/exit 2 stops host #1's session for. THIS HOST
+ * DOES NOT STOP, though, which is NOT what an earlier version of this
+ * comment claimed. Measured (§V5 review, Task 8; docs/demos/v5-runbook.md's
+ * own capture): OpenCode's plugin loader catches whatever a plugin module's
+ * factory throws during registration, logs a `level=ERROR message="failed
+ * to load plugin"` line, and CONTINUES THE SESSION WITHOUT THIS PLUGIN --
+ * every subsequent hook call for the rest of that session is simply never
+ * registered, so every tool call runs completely ungoverned, silently, with
+ * no further indication anything is wrong. So a throw here is a log line
+ * host #1 has no counterpart for, not a stop host #1's exit 2 is equivalent
+ * to -- it names the fault correctly without being able to halt the session
+ * the way exit 2 does. That gap is OpenCode's to close, not this file's; see
+ * the runbook capture and the slice's own docs of record for what would be
+ * needed and why it is out of this slice's scope.
  */
 export const AcsPlugin: Plugin = async () => {
   // Override with ACS_HOOKMAP_PATH to point this shim at a different hookmap

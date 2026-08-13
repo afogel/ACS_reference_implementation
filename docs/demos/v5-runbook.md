@@ -260,8 +260,11 @@ run.
 The envelope pair behind it, from `.acs/v5-runbook.jsonl`, pretty-printed from the raw log line —
 the same run: `sessionID` above (`ses_006928896ffe0HvJQLi58Ohydd`) is `host-adapter`'s own
 `toSessionUuid` input for `metadata.session_id` below (`17f8297d-…`), verified by calling
-`toSessionUuid` directly rather than by inspection, and every timestamp below sits within
-milliseconds of the `tool_use` event's own `1786596133697`:
+`toSessionUuid` directly rather than by inspection. The one timestamp below
+(`2026-08-13T04:42:13.002Z`) sits **695 ms before** the `tool_use` event's own `1786596133697` —
+coherently, not by coincidence: it is 54 ms *after* that same event's `state.time.start`
+(`1786596132948`), i.e. taken at the head of the call, before the tool ran and well before the
+event carrying its outcome was ever recorded:
 
 ```json
 {

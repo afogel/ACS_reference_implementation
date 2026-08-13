@@ -9,9 +9,10 @@
 ## What this slice delivers
 
 OpenCode 1.18.15 is governed by exactly the same Guardian, the same pinned AGT bundle, and the
-same policy configuration as Claude Code, through `packages/host-adapter`, **unchanged**. Two new
-artifacts — `hosts/opencode/acs-plugin.ts` (a plugin shim, N10) and `hosts/opencode/opencode.hookmap.yaml`
-(S2, this host's own hookmap) — against zero changed lines anywhere else that matters:
+same policy configuration as Claude Code, through `packages/host-adapter` — **shared with host #1,
+not forked for this one**. Two new artifacts — `hosts/opencode/acs-plugin.ts` (a plugin shim, N10)
+and `hosts/opencode/opencode.hookmap.yaml` (S2, this host's own hookmap) — against zero changed
+lines anywhere else that matters:
 `bun run verify:zero-diff` checks the Guardian, the bridge, `policy/lib`, `agt.lock`,
 `mapping.yaml`, and host #1's own wire contract mechanically, not by inspection. The one
 deployment-side edit is additive: `policy/manifest.yaml` and `policy/manifest.drift.yaml` each
@@ -24,11 +25,22 @@ crossed the wire and the persisted session record.
 OpenCode's plugin API is a different *shape* of host than Claude Code's subprocess-per-hook shim:
 one long-lived plugin object, loaded once, whose hooks return `void` and are handed **live,
 mutable objects** rather than reading stdin and writing stdout. So the same `governStep` →
-`renderDecision` pipeline is **applied** here (`applyHostOutput`, this file's own novel piece)
-instead of printed — mutating `{args}` at the request gate or `{title, output, metadata,
-attachments}` at the result gate, or throwing. That difference in mechanism is exactly what
-proves the claim: nothing about `buildEnvelope`, `renderDecision`, `governStep`, the hookmap
-format, or any load-time check changed to make it work.
+`renderDecision` pipeline is **applied** here (`applyHostOutput`, in `apply-host-output.ts`, this
+host's own novel piece) instead of printed — mutating `{args}` at the request gate or `{title,
+output, metadata, attachments}` at the result gate, or throwing.
+
+That difference in mechanism is *not* proof that nothing else moved, and it would be false to say
+so: `packages/host-adapter/src` changed in four of its files (+962/−62) to make this host work —
+`build-envelope.ts` (`loadHookmap` gained four new load-time gates beside its original one, and
+`exit_status` gained a second, `from:` form), `decision-modify.ts`, `modifications.ts`, and
+`result-output.ts`. Only `render-decision.ts` and `govern-step.ts` are genuinely untouched. What
+*is* true, and is the stronger claim R3.4 actually rests on: none of that landed as a per-host
+fork. Every change is in `packages/host-adapter/src`, the package **both** hosts run, not in a
+copy specific to OpenCode — and host #1's own source (`hosts/claude-code/acs-hook.ts`,
+`hosts/claude-code/claude-code.hookmap.yaml`) is **+0/−0**: host #1 gained only two additive test
+files, and nothing in its own shipped source changed to make the second host work. That is what
+this slice proves — a second host costs no per-host fork of the adapter, not that the adapter
+never moved.
 
 Four things had to be measured, not assumed, before this claim could be made honestly — each one
 because OpenCode's real behaviour, run rather than read from its documentation, disagreed with

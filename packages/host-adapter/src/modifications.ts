@@ -154,14 +154,14 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * That was always true of this module. It stopped being the whole story the
  * moment a SECOND host existed whose own applier reads a rendered value back
  * through the JavaScript prototype chain rather than only ever assigning it
- * shallowly: `hosts/opencode/acs-plugin.ts`'s `mergeInPlace` recurses into
- * any field present on both sides as a plain object, and reading
+ * shallowly: `hosts/opencode/apply-host-output.ts`'s `mergeInPlace` recurses
+ * into any field present on both sides as a plain object, and reading
  * `target["__proto__"]` on a plain object with no OWN `__proto__` resolves
  * through the chain to `Object.prototype` itself -- so the recursive call
  * that follows writes through it, global to that host's whole long-lived
  * plugin process, for a value this module let through untouched.
  *
- * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `hosts/opencode/acs-plugin.ts`'s
+ * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `hosts/opencode/apply-host-output.ts`'s
  * own `assertNoReservedSegments` (a file-local copy of these same three
  * names and the same reasoning -- this module's version below is not
  * exported, and R3.2 keeps host vocabulary out of this package regardless),

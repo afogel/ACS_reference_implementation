@@ -81,4 +81,72 @@ describe("AcsPlugin's load-time gate", () => {
     );
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.deny/);
   });
+
+  // §V5 final whole-branch review, F1 -- BLOCKS: "the fifteenth fail-open,
+  // inside the gate built to close the fourteenth". Before this fix, the gate
+  // accepted any deny/ask/defer entry with at least one `{value: ...}` field
+  // ANYWHERE in its output block, not only under `refuse` -- the one key
+  // `applyHostOutput` (apply-host-output.ts) actually throws on. Both
+  // reproductions below were measured LIVE, before this fix, against the
+  // real `AcsPlugin`, `applyHostOutput`, `loadHookmap`, and a stub Guardian
+  // returning a genuine `{"decision":"deny"}`: the hookmap loaded cleanly,
+  // `tool.execute.before` returned normally with no throw, `live.args` was
+  // untouched, and no audit entry was written -- Task 4's Critical, byte for
+  // byte, through the gate meant to close it.
+  it("refuses to register a hookmap whose deny declares an unconditional value: field OUTSIDE refuse (reason.text)", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "value-outside-refuse-reason.yaml");
+    // The author "answers" this gate at the wrong key: reason.text is
+    // unconditional, but applyHostOutput never reads reason to throw -- it
+    // is declared-inert (pass 2b). refuse.reason alone is a from: field and
+    // can still render nothing.
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        '          reason.text: { value: "denied by policy" }\n' +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(
+      /declares no unconditional "value:" output field under "refuse"/,
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.deny/);
+  });
+
+  it("refuses to register a hookmap whose deny declares an unconditional value: field OUTSIDE refuse (args, with a rewrite attached)", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "value-outside-refuse-args.yaml");
+    // Same hole, with a rewrite riding along: args merges onto live.args
+    // regardless of whether refuse ever renders, so this variant both fails
+    // to refuse AND applies an unrelated argument rewrite.
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        '          args: { value: { command: "echo replaced" } }\n' +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(
+      /declares no unconditional "value:" output field under "refuse"/,
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.deny/);
+  });
 });
