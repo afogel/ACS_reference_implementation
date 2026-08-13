@@ -8,7 +8,10 @@
  * (apply-host-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
  * the first one that calls the hook OpenCode itself would call.
  */
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Test-only import: stands up a real Guardian, same precedent as
 // hosts/claude-code/test/hook.test.ts:11 and hosts/opencode/test/
@@ -20,16 +23,27 @@ import { AcsPlugin } from "../acs-plugin.ts";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
-// "Bash" (capital B), not OpenCode's own lowercase "bash": policy/manifest.yaml
-// (Global Constraint 1 -- untouched by this task) registers "Bash" and
-// "run_shell" only. An unregistered tool name fails AGT's own evaluation
-// closed on runtime_error:tool_unknown before the destructive-command or
-// redaction rules this suite means to exercise ever run (measured against
-// the real Guardian; see policy/manifest.yaml's own comment on the "Bash"
-// entry for the identical reason Task 8's suite registered it). What value
-// this field carries is data the plugin passes through unexamined (S1); this
-// suite picks the one the shipped policy actually evaluates.
-const TOOL = "Bash";
+// "bash" (lowercase) -- OpenCode's own real tool name, measured on 1.18.15
+// and what opencode.hookmap.yaml's request gate now scopes `tools:` to
+// (§V5 review, Task 5, fix round 1, priority item). This suite used to test
+// against "Bash" (Claude Code's name, capitalised): that hid a slice-level
+// defect -- policy/manifest.yaml's fixed policy_target denies every tool it
+// has not registered, unconditionally, before any authored rule runs, and
+// "bash" was not registered -- because "Bash" happened to already be
+// registered for host #1's own suite. policy/manifest.yaml now registers
+// "bash" too (additive), so this suite exercises the name the host actually
+// sends.
+const TOOL = "bash";
+
+// V3's own precedent, matching hosts/claude-code/test/hook.test.ts's own
+// ACS_AUDIT_LOG redirect: every test below expects a real decision to
+// arrive, so nothing here should ever write an entry -- but a handshake
+// failure mid-run would append raw tool arguments (a destructive command,
+// among them) to the developer's own real `.acs/audit.jsonl`, the exact file
+// `.gitignore` exists for because it carries them. Redirected regardless of
+// whether today's tests reach that path.
+const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-request-gate-test-"));
+const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
 let guardian: StartedGuardian;
 
@@ -40,14 +54,34 @@ beforeAll(async () => {
   // so this has to be set before AcsPlugin runs, not merely before the hook
   // fires. Same precedent as hosts/claude-code/test/hook.test.ts:84.
   process.env.ACS_GUARDIAN_URL = guardian.url;
+  process.env.ACS_AUDIT_LOG = AUDIT_LOG;
 });
 
 afterAll(async () => {
   await guardian.close();
   delete process.env.ACS_GUARDIAN_URL;
+  delete process.env.ACS_AUDIT_LOG;
+  rmSync(SCRATCH_DIR, { recursive: true, force: true });
 });
 
 describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a live Guardian', () => {
+  it("allows a clean command: no throw, and args untouched", async () => {
+    const hooks = await AcsPlugin({} as never);
+    const output = { args: { command: "ls -la" } };
+
+    await expect(
+      hooks["tool.execute.before"]!({ tool: TOOL, sessionID: "ses-request-gate-allow", callID: "c1" }, output),
+    ).resolves.toBeUndefined();
+
+    // A clean allow renders no `args` field at all (only the declared-inert
+    // `reason.text`), so applyHostOutput's pass 3 merges nothing -- the live
+    // object is the SAME reference, untouched.
+    expect(output.args).toEqual({ command: "ls -la" });
+    // No audit entry either: a decision arrived, so no fail-open posture was
+    // ever consulted.
+    expect(existsSync(AUDIT_LOG)).toBe(false);
+  });
+
   it("denies a destructive command by throwing, with the Guardian's own reason, and applies nothing first", async () => {
     const sessionID = "ses-request-gate-deny";
     const command = "rm -rf /";
@@ -120,5 +154,33 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     // Nothing half-applied here either: a broken deployment refuses before
     // any live object could have been touched.
     expect(output.args.command).toBe("ls -la");
+  });
+
+  it("skips a tool outside this gate's own tools list: no throw, args untouched, and no Guardian request goes out (§V5 review, Task 5, fix round 1, priority item)", async () => {
+    // "read" -- one of the real tool names measured alongside "bash" that
+    // opencode.hookmap.yaml's request gate does NOT list. Args shaped the
+    // way OpenCode's own "read" tool call actually is (the coordinator's own
+    // measurement): {filePath}, not {command} -- this gate is never asked to
+    // resolve `$.args` for it at all, so the shape does not matter to the
+    // assertion, only that nothing here touches it.
+    const hooks = await AcsPlugin({} as never);
+    const output = { args: { filePath: "/etc/passwd" } };
+
+    // If the skip did not run before any envelope was built, a request would
+    // go out over `fetch` (createGuardianClient's own wire primitive) --
+    // spied here, not mocked, so a call that DOES happen still reaches the
+    // real Guardian rather than hanging; the assertion below is on whether
+    // it was called at all, not on what it returned.
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      await expect(
+        hooks["tool.execute.before"]!({ tool: "read", sessionID: "ses-request-gate-unlisted", callID: "c1" }, output),
+      ).resolves.toBeUndefined();
+
+      expect(output.args).toEqual({ filePath: "/etc/passwd" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

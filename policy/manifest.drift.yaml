@@ -66,3 +66,12 @@ tools:
     type: Tool
     id: Bash
     security_labels: [shell]
+  # V5 Task 5, fix round 1 -- the identical addition policy/manifest.yaml
+  # gains for the identical reason: OpenCode's own real (lowercase) tool
+  # name, unregistered here, fails every tool call closed on
+  # runtime_error:tool_unknown before pre_tool_call's warn/drift rule ever
+  # runs, the same wall the V3 demo hits without this entry. Additive.
+  bash:
+    type: Tool
+    id: bash
+    security_labels: [shell]

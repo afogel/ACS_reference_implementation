@@ -30,9 +30,10 @@ async function runPlugin(hookmapPath: string): Promise<void> {
   const previous = process.env.ACS_HOOKMAP_PATH;
   process.env.ACS_HOOKMAP_PATH = hookmapPath;
   try {
-    // AcsPlugin's own implementation reads neither parameter (Tasks 5/6
-    // leave the two gates unwired), so a placeholder satisfies the `Plugin`
-    // type without needing a real PluginInput.
+    // AcsPlugin's own FACTORY reads neither of its own two parameters
+    // (PluginInput, PluginOptions) -- true regardless of which of its
+    // returned gate hooks are wired -- so a placeholder satisfies the
+    // `Plugin` type without needing a real PluginInput.
     await AcsPlugin({} as never);
   } finally {
     if (previous === undefined) {

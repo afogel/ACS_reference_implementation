@@ -857,14 +857,24 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * §V5 review, fix round 2, Important 2: the request gate is the one gate
-   * that MUST govern every tool -- `tools?: never` and `outputs?: never` on
-   * `HookmapRequestHookEntry` say so at the type level, but a hookmap arrives
-   * as `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks
-   * against parsed YAML. Measured: an entry declaring `arguments` alongside
-   * `tools` (or `outputs`) loaded clean before this fix.
+   * §V5 review, fix round 2, Important 2, NARROWED in §V5 review, Task 5, fix
+   * round 1 (priority item): the request gate still cannot be given an
+   * `outputs` declaration -- it builds no result payload for one to
+   * describe -- but it CAN now declare `tools`, reversing what this describe
+   * block used to pin. See `HookmapHookEntryCommon.tools`'s own doc comment
+   * (build-envelope.ts) for the measurement that reversed it: a request
+   * gate's own paths resolving for every tool is not the same fact as a
+   * deployment's policy configuration being able to evaluate one, and the
+   * shipped configuration denies every unregistered tool unconditionally,
+   * before any authored rule runs.
+   *
+   * `outputs?: never`/`exit_status?: never` on `HookmapRequestHookEntry` say
+   * the `outputs` half at the type level, but a hookmap arrives as
+   * `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks against
+   * parsed YAML. Measured: an entry declaring `arguments` alongside
+   * `outputs` loaded clean before this fix existed.
    */
-  describe("loadHookmap — the request gate cannot be scoped (§V5 review, fix round 2, Important 2)", () => {
+  describe("loadHookmap — the request gate's own scoping rule (§V5 review, fix round 2 / Task 5 fix round 1)", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-request-scope-"));
       const path = join(dir, "hookmap.yaml");
@@ -884,12 +894,11 @@ describe("buildEnvelope", () => {
       "      allow: { output: { x: { value: y } } }\n" +
       "      deny: { output: { x: { value: y } } }\n";
 
-    it("throws, at load time, when a request-gate entry also declares `tools`", () => {
-      const broken = `${PRE_TOOL_USE}    tools: [bash]\n`;
-      withHookmapFile(broken, (path) => {
-        expect(() => loadHookmap(path)).toThrow(
-          /"hooks\.PreToolUse" declares "arguments" \(a request-gate shape\) and also declares "tools"/,
-        );
+    it("accepts a request-gate entry declaring `tools` -- no longer refused", () => {
+      const withTools = `${PRE_TOOL_USE}    tools: [bash]\n`;
+      withHookmapFile(withTools, (path) => {
+        expect(() => loadHookmap(path)).not.toThrow();
+        expect(loadHookmap(path).hooks.PreToolUse?.tools).toEqual(["bash"]);
       });
     });
 
@@ -910,10 +919,10 @@ describe("buildEnvelope", () => {
       });
     });
 
-    it("still loads the real opencode.hookmap.yaml's request gate, which declares neither", () => {
+    it("loads the real opencode.hookmap.yaml's request gate, now scoped to `bash`", () => {
       const parsed = loadHookmap("hosts/opencode/opencode.hookmap.yaml");
       expect(parsed.hooks["tool.execute.before"]?.outputs).toBeUndefined();
-      expect(parsed.hooks["tool.execute.before"]?.tools).toBeUndefined();
+      expect(parsed.hooks["tool.execute.before"]?.tools).toEqual(["bash"]);
     });
   });
 

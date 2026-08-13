@@ -22,13 +22,25 @@ hooks:
   # mutable `{args}`; the shim (Task 4) assembles those into one payload object so
   # these paths have something to resolve against.
   #
-  # No `tools:` here, and none belongs here -- see the result gate's own
-  # comment on why IT needs one. This gate's paths ($.tool, $.args) resolve for
-  # every tool OpenCode fires the hook for, so it governs everything.
+  # `tools: [bash]` (§V5 review, Task 5, fix round 1, priority item) --
+  # REVERSING a claim this comment used to make ("No tools: here, and none
+  # belongs here ... it governs everything"). That claim checked only that
+  # THIS gate's own paths ($.tool, $.args) resolve for every tool OpenCode
+  # fires the hook for, which is true and was never the right question.
+  # policy/manifest.yaml's own pre_tool_call.policy_target is a single fixed
+  # target, checked before any authored rule runs, independent of the tool
+  # registry; a tool this deployment's manifest has not registered denies
+  # unconditionally on a configuration mismatch, not a policy decision.
+  # MEASURED against the shipped manifest before this line existed: every
+  # tool OpenCode can call except the one name it registers denied, unasked
+  # by any rule. `tools` here lets the shim (acs-plugin.ts) decline to ask
+  # at all for a tool this deployment cannot express a target for, rather
+  # than asking and reporting that mismatch as governance.
   tool.execute.before:
     acs_method: steps/toolCallRequest
     tool_name: $.tool
     arguments: $.args
+    tools: [bash]
     decisions:
       # `refuse.reason` is this host's deny channel and there is no other:
       # measured, `output.status = "deny"` and `output.decision = "deny"` are

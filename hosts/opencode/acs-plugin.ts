@@ -19,55 +19,57 @@
  * slice V5 exists to prove, and it is a claim about packages/host-adapter/src,
  * not about this file.
  *
- * SKELETON ONLY (this task). This file ships the plugin factory's setup --
- * loading the hookmap, the Guardian client, the audit sink, the negotiated
- * session config store -- `applyHostOutput`, the one function novel to this
- * host, and one load-time correctness gate this host's own applier needs
+ * TASK 4 SHIPPED THE SKELETON: the plugin factory's setup -- loading the
+ * hookmap, the Guardian client, the audit sink, the negotiated session
+ * config store -- `applyHostOutput`, the one function novel to this host,
+ * and one load-time correctness gate this host's own applier needs
  * (`assertRefusalRendersUnconditionally`, below -- see its own doc comment).
- * The two gates themselves, `"tool.execute.before"` (the request gate) and
- * `"tool.execute.after"` (the result gate), are Tasks 5 and 6: they assemble
- * the payload shape `opencode.hookmap.yaml`'s `$.` paths resolve against
- * (`{tool, session_id, callID, args, result}` -- OpenCode hands the plugin
- * two arguments per hook, not one blob, so THAT assembly is a shim job, the
- * same way reading stdin is host #1's), call `resolveSessionConfig` then
- * `governStep`, and apply what comes back through `applyHostOutput` below.
- * Neither gate is wired here; `AcsPlugin` returns an object those tasks fill
- * in.
+ * TASK 5 WIRED THE REQUEST GATE, `"tool.execute.before"`: it assembles the
+ * payload shape `opencode.hookmap.yaml`'s `$.` paths resolve against
+ * (`{tool, session_id, callID, args}` -- OpenCode hands the plugin two
+ * arguments per hook, not one blob, so THAT assembly is a shim job, the
+ * same way reading stdin is host #1's), calls `resolveSessionConfig` then
+ * `governStep`, and applies what comes back through `applyHostOutput`
+ * below. `"tool.execute.after"` (the result gate) is Task 6's: the same
+ * shape, one seam later, for `{result}` in place of `{args}`.
  *
- * THIS FILE CORRECTS A CLAIM `packages/host-adapter/src/modifications.ts`
- * MAKES ABOUT ITSELF (§V5 review, fix round 2, Critical). Its own
- * `RESERVED_SEGMENTS` doc comment (around that module's line 128) says "No
- * global pollution is reachable today -- `setAtPath` assigns into a fresh
- * clone of the caller's arguments, never into a shared prototype." That is
- * still true of `setAtPath` in isolation: a `parameter_overrides` value
- * (unlike its KEYS, which `modifications.ts` checks) arrives verbatim,
- * `__proto__` included as an ordinary own key when it came off the
- * Guardian's wire through `JSON.parse`. It stopped being true of the
- * SYSTEM the moment this host's `mergeInPlace` (Minor 1, fix round 1)
- * started reading a rendered `args`/`result` back through the prototype
- * chain: on a plain object with no own `__proto__`, `target["__proto__"]`
- * resolves to `Object.prototype` itself, and a recursive merge that
- * follows writes through it, global to this whole long-lived plugin
- * process -- not a claim about `setAtPath`, but about what this file does
- * downstream of it. `assertNoReservedSegments` below is this file's own
- * guard against exactly that, run from pass 1 before `mergeInPlace` ever
- * sees the value. This file may not edit `packages/host-adapter/src`
- * (Global Constraint 1), so the correction is recorded here instead, naming
- * the comment it qualifies, for whoever amends it there.
+ * THE ADAPTER-SIDE HALF OF THIS FILE'S OWN PROTOTYPE-CHAIN GUARD (below,
+ * `assertNoReservedSegments`) lives at its source, corrected in
+ * `packages/host-adapter/src/modifications.ts`'s own `RESERVED_SEGMENTS`
+ * doc comment -- not duplicated here. (An earlier version of this header
+ * claimed this file "may not edit packages/host-adapter/src"; that was
+ * never true -- Global Constraint 1 freezes `packages/guardian/src`,
+ * `packages/agt-bridge/src`, `policy/`, `agt.lock`, `mapping.yaml`, and
+ * `hosts/claude-code/`, and the adapter is not on that list.)
  *
- * THREE THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
- * because none of them is knowable until a hook actually fires:
+ * FOUR THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
+ * because none of them is knowable until a hook actually fires (a fourth
+ * joined the original three in §V5 review, Task 5, fix round 1 -- see its
+ * own bullet, last, for why it is now load-bearing rather than a nicety):
  *
  *   - Validate `sessionID` -- present, a non-empty string -- and refuse
- *     BEFORE calling `governStep`, exactly as hosts/claude-code/acs-hook.ts's
- *     `main()` step 1 does for `payload.session_id`. `buildEnvelope` already
- *     throws on a missing `session_id`, but that throw lands inside
- *     `governStep`'s stage-"request" `catch` and is answered by the
- *     deployment's NEGOTIATED posture (`resolveByPosture`) -- and a
- *     negotiated `proceed` there is an ungoverned step. A missing session id
- *     is a broken deployment, not a policy question, so it has to be refused
- *     before `governStep` is ever called, not left to arrive as a payload
- *     fault it then resolves.
+ *     BEFORE calling `governStep`, the TYPEOF half of what
+ *     hosts/claude-code/acs-hook.ts's `main()` step 1 does for
+ *     `payload.session_id`. `buildEnvelope` already throws on a missing
+ *     `session_id`, but that throw lands inside `governStep`'s
+ *     stage-"request" `catch` and is answered by the deployment's
+ *     NEGOTIATED posture (`resolveByPosture`) -- and a negotiated `proceed`
+ *     there is an ungoverned step. A missing session id is a broken
+ *     deployment, not a policy question, so it has to be refused before
+ *     `governStep` is ever called, not left to arrive as a payload fault it
+ *     then resolves.
+ *
+ *     ONLY THE TYPEOF HALF, DELIBERATELY (§V5 review, Task 5, fix round 1,
+ *     Minor 4). `acs-hook.ts`'s own step 1 checks the same `typeof`; its
+ *     step 2 adds a SECOND check, path-safety (`assertSafeSessionId`,
+ *     session-config.ts), because that host's session config store is
+ *     file-backed and the raw session id becomes part of a filesystem path.
+ *     This host has no counterpart to step 2: `createSessionConfigStore`
+ *     (S15, this file's own header) is in memory, keyed by nothing -- the
+ *     session id it is handed never becomes a filename, an argument to any
+ *     filesystem call, or any string this process writes anywhere. There is
+ *     no hazard for a path-safety check to close here, so this file adds
+ *     none.
  *
  *     NAME THE MECHANISM (§V5 review, fix round 1, Minor 3): this host has no
  *     exit code to set. The only "blocking stop" it has is a THROW out of the
@@ -113,6 +115,19 @@
  *     already guaranteed a non-empty `applied_output` by construction
  *     (`withResultOutput`, result-output.ts, host-agnostic) before this file
  *     is ever reached.
+ *   - HONOUR `tools`, BEFORE ANY OF THE ABOVE. A gate whose hookmap entry
+ *     declares a `tools` list must return, without building a payload,
+ *     without validating `sessionID`, and without calling
+ *     `resolveSessionConfig`/`governStep`, for any tool that list does not
+ *     name (`isGovernedTool`, below -- see its own doc comment for what
+ *     this costs and why it is right). This is data-turned-behaviour, not a
+ *     nicety: `policy/manifest.yaml`'s own policy target is fixed and
+ *     checked before any authored rule runs, independent of the tool
+ *     registry, so a gate with no `tools` check does not govern every tool
+ *     it is asked about -- it denies every tool its deployment cannot
+ *     express a target for, unconditionally, and calls that governance
+ *     (§V5 review, Task 5, fix round 1, priority item; measured against the
+ *     shipped manifest before this bullet existed).
  *
  * S15 -- THE STORE IS IN MEMORY, and this is the half V3 built for exactly
  * this host. The Claude Code shim is a fresh subprocess per hook, so its
@@ -220,11 +235,9 @@ const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
  * observable as `({}).args` in the SAME process afterward, on a wholly
  * unrelated allowed tool call that rendered `{}`.
  *
- * This is also the fact that falsifies a claim `packages/host-adapter/src/
- * modifications.ts` makes about itself -- see this file's own top header
- * ("THIS FILE CORRECTS A CLAIM...") for the correction, recorded there
- * rather than at the source because this file may not edit
- * `packages/host-adapter/src` (Global Constraint 1).
+ * `packages/host-adapter/src/modifications.ts`'s own `RESERVED_SEGMENTS`
+ * carries the identical three names for the identical reason, one seam
+ * earlier -- see its doc comment for the adapter-side half of this guard.
  *
  * Recurses through arrays too (an override value could as easily nest the
  * key inside a list element as inside an object), and refuses on the FIRST
@@ -642,6 +655,43 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
 }
 
 /**
+ * True when `tool` is one this gate governs, per `hookmap.hooks[hookEventName]
+ * .tools` -- undeclared (`undefined`) means "every tool", matching
+ * `HookmapHookEntryCommon.tools`'s own contract (build-envelope.ts).
+ *
+ * §V5 review, Task 5, fix round 1 (priority item). Called from a gate hook
+ * BEFORE `assertUsableSessionId`, before any payload is assembled, and
+ * before `resolveSessionConfig`/`governStep` are ever asked -- a tool this
+ * list does not name is a documented, deliberate NO-OP at this gate, not a
+ * silent skip and not a fault this file resolves any other way.
+ *
+ * WHAT THIS COSTS: a tool call this gate does not govern at all. Nothing
+ * here stands between the model and that tool call at this gate -- a real
+ * gap, not a formality.
+ *
+ * WHY IT IS RIGHT ANYWAY. This deployment's own policy configuration
+ * (policy/manifest.yaml, outside this package) binds its evaluation to a
+ * single fixed target, checked before any of that deployment's own authored
+ * rules run; a tool this deployment never registered, or whose arguments
+ * that fixed target cannot resolve against, is refused there by the shape
+ * mismatch alone -- unconditionally, for every such tool, never by a rule a
+ * policy author wrote (see `HookmapHookEntryCommon.tools`'s own doc comment,
+ * build-envelope.ts, for the measurement). Asking anyway would not govern
+ * that tool call; it would deny it and call the denial governance. A gate
+ * that never asks is the honest answer to "this deployment cannot express a
+ * policy question for this tool" -- and the CONSEQUENCE THIS FUNCTION MUST
+ * NOT CREATE is an unlisted tool reaching `governStep` regardless, to be
+ * answered by the deployment's negotiated posture: that is the identical
+ * fail-open shape this slice has hit four times, one call later. The skip
+ * this function's caller takes runs BEFORE any envelope is built, which is
+ * what keeps it a documented no-op rather than a posture-routed one.
+ */
+function isGovernedTool(hookmap: Hookmap, hookEventName: string, tool: string): boolean {
+  const tools = hookmap.hooks[hookEventName]?.tools;
+  return tools === undefined || tools.includes(tool);
+}
+
+/**
  * OpenCode's plugin entry point: loads the hookmap and this deployment's
  * long-lived collaborators once, and returns the hooks OpenCode calls for
  * the rest of the session's lifetime.
@@ -683,6 +733,15 @@ export const AcsPlugin: Plugin = async () => {
     // below have to do and why -- and for why a throw at the result gate
     // specifically does not mean what it means here.
     "tool.execute.before": async (input, output) => {
+      // A tool this gate's own `tools` list does not name is NOT governed
+      // here -- return before anything else, without building an envelope
+      // or asking the Guardian anything. See `isGovernedTool`'s own doc
+      // comment for what this costs and why it is right anyway (§V5 review,
+      // Task 5, fix round 1, priority item).
+      if (!isGovernedTool(hookmap, "tool.execute.before", input.tool)) {
+        return;
+      }
+
       assertUsableSessionId(input.sessionID, "tool.execute.before");
 
       // ONE payload object so opencode.hookmap.yaml's `$.` paths ($.tool,

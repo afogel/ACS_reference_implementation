@@ -83,6 +83,51 @@ type HookmapHookEntryCommon = {
    * separately, for the same reason it applies it at all.
    */
   decisions?: Record<string, unknown>;
+  /**
+   * The tool names THIS gate governs. Undeclared (`undefined`) means "every
+   * tool" -- matching host #1's own hookmap, which needs no scoping at all
+   * because its own settings.json matcher (`^Bash$`) already provides it,
+   * for both of its gates.
+   *
+   * COMMON TO BOTH ENTRY KINDS, unlike `arguments`/`outputs`/`exit_status`
+   * (moved here from `HookmapResultHookEntry` alone in §V5 review, Task 5,
+   * fix round 1, priority item): scoping which tools a gate governs is
+   * orthogonal to which payload shape that gate builds, and host #2 needs it
+   * at BOTH gates, for two different reasons.
+   *
+   *   - The RESULT gate (`tool.execute.after`) needs it because its own
+   *     `outputs`/`exit_status` paths are shaped per tool: host #2's hooks
+   *     fire for every tool with no matcher, and the raw payload field those
+   *     paths read is a DIFFERENT shape per tool (measured on OpenCode
+   *     1.18.15: only `bash` carries the fields `outputs`/`exit_status`
+   *     below are written for; other tools carry an unrelated shape those
+   *     paths were never meant to read). A path that does not resolve for
+   *     the arriving tool is a hookmap fault this gate must not try to
+   *     govern with.
+   *   - The REQUEST gate (`tool.execute.before`) needs it for a different
+   *     reason, found only after this field was scoped to the result gate
+   *     alone: this gate's own `$.` paths resolving for every tool was
+   *     mistaken for "so it governs every tool" -- but resolving THIS
+   *     module's paths and resolving a deployment's own policy configuration
+   *     are different questions. A deployment's policy configuration
+   *     (policy/manifest.yaml, outside this package) can bind its
+   *     evaluation to a single fixed target, checked before any of that
+   *     deployment's own authored rules run; a tool call this deployment
+   *     never registered, or whose arguments that fixed target does not
+   *     resolve against, is refused there by the shape mismatch alone, never
+   *     by an authored rule. Measured against this repo's own shipped
+   *     configuration: every tool but the one name it registers denies,
+   *     unconditionally, before a rule is ever consulted. Asking a
+   *     deployment configured that way is not wrong, but the answer it gives
+   *     is a configuration mismatch reported as if it were governance.
+   *     `tools` here lets a host shim decline to ask at all for a tool its
+   *     own deployment cannot express a target for.
+   *
+   * Whether a given invocation's tool is actually IN this list is the host
+   * shim's concern (each gate honouring it), never this module's --
+   * `assertToolsWellFormed` (below) checks only the SHAPE.
+   */
+  tools?: string[];
 };
 
 /** A hook asking before a step runs: builds a tool-call-request payload. */
@@ -91,11 +136,6 @@ export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
   arguments: string;
   outputs?: never;
   exit_status?: never;
-  // §V5 review, fix round 1, Important 1: a request gate's own paths (`$.tool`,
-  // `$.args`) resolve for every tool a host fires the hook for, so it needs no
-  // scoping -- and, symmetrically with every other exclusive-union member in
-  // this type, must not be given any. See HookmapResultHookEntry.tools.
-  tools?: never;
 };
 
 /** A hook asking after a step ran: builds a tool-call-result payload. */
@@ -108,19 +148,6 @@ export type HookmapResultHookEntry = HookmapHookEntryCommon & {
    * read for a host that reports one (see HookmapFieldRead).
    */
   exit_status: HookmapLiteral | HookmapFieldRead;
-  /**
-   * §V5 review, fix round 1, Important 1: the tool names this result gate's
-   * OWN `outputs`/`exit_status` paths are actually shaped for -- host #2's
-   * hooks fire for every tool with no matcher, and `metadata` is per-tool
-   * (measured on 1.18.15: only `bash` carries `metadata.exit`/`metadata.output`;
-   * `read` carries `preview`, `grep` carries `matches`, and it is a DIFFERENT
-   * mirror per tool, not merely a missing one). Host #1 gets this scoping for
-   * free from its settings.json matcher (`^Bash$`); host #2 has none, so it has
-   * to be declared data instead, honoured by the shim (Task 6). Undeclared
-   * (`undefined`) means "every tool", matching host #1's own hookmap, which
-   * needs no scoping at all because its matcher already provides it.
-   */
-  tools?: string[];
 };
 
 /**
@@ -355,12 +382,13 @@ function assertMirrorsWellFormed(hookmap: Hookmap, path: string): void {
  * own result gate must not get to govern a step anyway; it has to be a hard
  * stop here, before `governStep` is ever reached.
  *
- * §V5 review, fix round 1, Important 1. This task ships the SHAPE check only
+ * §V5 review, fix round 1, Important 1. This check is the SHAPE check only
  * -- `tools`, when present, is a non-empty list of non-empty strings.
- * Whether a given invocation's tool is actually IN that list is Task 6's
- * concern (the shim honouring it); nothing in this module reads `tools` at
- * all yet, the same division `outputs.mirrors` has between this file (shape)
- * and result-output.ts (use).
+ * Whether a given invocation's tool is actually IN that list is each gate's
+ * host shim's concern (the request gate's own, since §V5 review Task 5 fix
+ * round 1; the result gate's, Task 6): nothing in this module reads `tools`
+ * for either purpose, the same division `outputs.mirrors` has between this
+ * file (shape) and result-output.ts (use).
  */
 function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
@@ -431,43 +459,51 @@ function assertExitStatusNotBothForms(hookmap: Hookmap, path: string): void {
 /**
  * Rejects a hookmap entry that declares `arguments` (a request-gate shape)
  * and ALSO declares `outputs` (a result gate's own output/mirror
- * declaration) or `tools` (a result gate's own tool-scoping declaration), AT
- * LOAD TIME.
+ * declaration), AT LOAD TIME.
  *
- * §V5 review, fix round 2, Important 2. `HookmapRequestHookEntry` types
- * `outputs`, `exit_status` and `tools` all `?: never` -- but a hookmap
+ * §V5 review, fix round 2, Important 2, NARROWED in §V5 review, Task 5, fix
+ * round 1 (priority item). This used to refuse a request-gate entry that
+ * also declared `tools` -- on the theory that the request gate is the one
+ * gate that MUST govern every tool, so a `tools:` narrowing it could only be
+ * a fail-open in waiting. MEASURED WRONG: that theory checked only that
+ * THIS module's own `$.` paths (`$.tool`, `$.args`) resolve for every tool a
+ * host fires the hook for, never that a deployment's own policy
+ * configuration can evaluate one. A deployment's policy configuration
+ * (policy/manifest.yaml, outside this package) can bind its evaluation to a
+ * single fixed target, checked before any of that deployment's own authored
+ * rules run -- so a request gate with no `tools` list does not govern every
+ * tool, it asks a configuration that refuses every tool it was never told
+ * about, unconditionally, before an authored rule is ever consulted (see
+ * `HookmapHookEntryCommon.tools`'s own doc comment for the measurement). The
+ * request gate MAY now declare `tools`, for exactly the reason the result
+ * gate always could: to decline asking at all for a tool its own deployment
+ * cannot express a target for, rather than asking and reporting a
+ * configuration mismatch as if it were governance.
+ *
+ * `outputs` stays refused here, unchanged, and for its own, unrelated
+ * reason: `HookmapRequestHookEntry` types it `?: never` -- but a hookmap
  * arrives as `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks
- * against parsed YAML, so that promise binds nothing at runtime. Measured: an
- * entry declaring `arguments` alongside `tools` (or alongside `outputs`, with
- * `mirrors` nested inside it) loads clean today and round-trips the extra
- * field untouched.
- *
- * Nothing is wrong YET -- the shipped hookmap's request gate declares
- * neither, and hookmap.test.ts pins that -- but the request gate is the one
- * gate that MUST govern every tool (that is the entire reason it takes no
- * `tools` list), and the moment Task 6 honours `tools`, a `tools:` added
- * here by analogy with the result gate would silently narrow it, with no
- * refusal anywhere. An `outputs` declaration carries the identical risk one
- * level further in, since `outputs.mirrors` lives inside it. Refused here,
- * at the same load-time seam as `assertToolsWellFormed` and
- * `assertExitStatusNotBothForms`, so a hookmap of this shape is a hard stop
- * rather than something `buildPayload`'s own pre-existing (and unremoved)
- * "declares both" check would otherwise only catch through the same
- * posture-answered seam every other check above closes.
+ * against parsed YAML, so that promise binds nothing at runtime. Measured:
+ * an entry declaring `arguments` alongside `outputs` (with `mirrors` nested
+ * inside it) loaded clean before this check existed, and round-tripped the
+ * extra field untouched. A request gate builds no result payload, so it has
+ * nothing an output/mirror declaration could describe; refused here, at the
+ * same load-time seam as `assertToolsWellFormed` and
+ * `assertExitStatusNotBothForms`, rather than left to `buildPayload`'s own
+ * pre-existing (and unremoved) "declares both" check, which only catches it
+ * through the posture-answered seam every check above this one closes.
  *
  * `exit_status` is deliberately NOT covered here: an entry declaring
- * `arguments` alongside `exit_status` alone (no `outputs`) is inert today,
- * not a live fail-open risk the way `tools` will become the moment Task 6
- * reads it -- `buildPayload`'s `arguments` branch never looks at
- * `exit_status`. Out of this review's two Important findings; not this
- * task's to close.
+ * `arguments` alongside `exit_status` alone (no `outputs`) is inert --
+ * `buildPayload`'s `arguments` branch never looks at `exit_status`. Out of
+ * this review's two Important findings; not that task's to close.
  */
 function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
     if (!isPlainObject(entry)) {
       continue;
     }
-    const raw = entry as { arguments?: unknown; outputs?: unknown; tools?: unknown };
+    const raw = entry as { arguments?: unknown; outputs?: unknown };
     const hasArguments = typeof raw.arguments === "string" && raw.arguments.length > 0;
     if (!hasArguments) {
       continue;
@@ -475,15 +511,8 @@ function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
     if (raw.outputs !== undefined && raw.outputs !== null) {
       throw new Error(
         `loadHookmap: ${path}'s "hooks.${hookEventName}" declares "arguments" (a request-gate shape) and ` +
-          `also declares "outputs" -- an entry names exactly one payload shape, and the request gate must ` +
-          `govern every tool, so it cannot also carry a result gate's own output/mirror declaration`,
-      );
-    }
-    if (raw.tools !== undefined && raw.tools !== null) {
-      throw new Error(
-        `loadHookmap: ${path}'s "hooks.${hookEventName}" declares "arguments" (a request-gate shape) and ` +
-          `also declares "tools" -- the request gate takes no tool scoping and must govern every tool, ` +
-          `which is the entire reason it has no "tools" list to narrow`,
+          `also declares "outputs" -- an entry names exactly one payload shape, and a request gate builds no ` +
+          `result payload for a result gate's own output/mirror declaration to describe`,
       );
     }
   }
@@ -498,7 +527,7 @@ function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
  * see assertToolsWellFormed. Also throws if any entry's `exit_status`
  * declares both `literal` and `from` -- see assertExitStatusNotBothForms.
  * Also throws if a request-gate entry (one declaring `arguments`) also
- * declares `outputs` or `tools` -- see assertRequestGateUnscopable. */
+ * declares `outputs` -- see assertRequestGateUnscopable. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);

@@ -65,19 +65,25 @@ describe("opencode.hookmap.yaml", () => {
     expect(resultDeny).not.toContain("refuse.reason");
   });
 
-  it("scopes the result gate to bash, and leaves the request gate scoped to every tool", () => {
-    // §V5 review, fix round 1, Important 1: OpenCode fires this hook for
-    // every tool with no matcher, and `metadata` is per-tool -- only `bash`
-    // carries `metadata.exit`/`metadata.output`, which this gate's `outputs`
-    // and `exit_status` paths are shaped for. Host #1 gets the equivalent
-    // scoping for free from settings.json's anchored `^Bash$` matcher; host
-    // #2 has none, so it is declared here instead.
+  it("scopes both gates to bash (§V5 review, Task 5, fix round 1 -- the request gate used to be left unscoped)", () => {
+    // §V5 review, fix round 1, Important 1: OpenCode fires the RESULT gate's
+    // hook for every tool with no matcher, and `metadata` is per-tool --
+    // only `bash` carries `metadata.exit`/`metadata.output`, which this
+    // gate's `outputs` and `exit_status` paths are shaped for. Host #1 gets
+    // the equivalent scoping for free from settings.json's anchored `^Bash$`
+    // matcher; host #2 has none, so it is declared here instead.
     const hooks = loadHookmap(HOOKMAP).hooks;
     expect(hooks["tool.execute.after"]?.tools).toEqual(["bash"]);
-    // The request gate's own paths ($.tool, $.args) resolve for every tool,
-    // so it must not be scoped at all -- undeclared `tools` means "every
-    // tool", the same as host #1's hookmap, which declares none.
-    expect(hooks["tool.execute.before"]?.tools).toBeUndefined();
+    // §V5 review, Task 5, fix round 1 (priority item), REVERSING what this
+    // assertion used to check (`toBeUndefined()`): the REQUEST gate's own
+    // paths ($.tool, $.args) resolving for every tool was mistaken for "so
+    // it governs every tool" -- measured wrong. policy/manifest.yaml's fixed
+    // policy_target is checked before any authored rule runs, independent
+    // of the tool registry, so an unscoped request gate asked the Guardian
+    // about every tool it can never register a target for and got an
+    // unconditional deny back, not a policy decision. Scoped to `bash` now,
+    // for the identical reason the result gate already was.
+    expect(hooks["tool.execute.before"]?.tools).toEqual(["bash"]);
   });
 
   it("builds a wire payload of exactly {tool, exit_status, outputs:[{value}]}, with no mirrors anywhere in it", () => {

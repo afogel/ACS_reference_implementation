@@ -104,3 +104,18 @@ tools:
     type: Tool
     id: Bash
     security_labels: [shell]
+  # V5 Task 5, fix round 1 (§V5 review, priority item): "bash" (lowercase) is
+  # OpenCode's own real tool name for shell execution -- measured on 1.18.15,
+  # distinct from Claude Code's "Bash" above -- and pre_tool_call's
+  # policy_target is evaluated by AGT before any rule runs, independent of
+  # which tool sent the request: an unregistered tool_call.name fails closed
+  # on runtime_error:tool_unknown, the identical mechanism the "Bash" entry
+  # above exists to avoid for host #1. Additive: registering it changes
+  # nothing for any existing caller (measured, suite byte-identical with and
+  # without this entry), and security_labels: [shell] is inert under this
+  # manifest's own policy/lib/data.json config today -- carried only so
+  # "bash" behaves like "Bash" the moment cfg.egress ever gets configured.
+  bash:
+    type: Tool
+    id: bash
+    security_labels: [shell]
