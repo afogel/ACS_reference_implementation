@@ -138,7 +138,11 @@ import {
   createAuditSink,
   createGuardianClient,
   createSessionConfigStore,
+  DEFAULT_TIMEOUT_MS,
+  governStep,
   loadHookmap,
+  resolveSessionConfig,
+  toSessionUuid,
   type HostOutput,
   type Hookmap,
 } from "host-adapter";
@@ -341,6 +345,29 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * `Object.prototype` itself, global to this whole long-lived plugin
  * process, not merely to the one live object this call was handed.
  *
+ * PASS 3 READS ITS OWN-KEY BASIS THE SAME WAY PASS 1 DOES, AND THAT IS NOT
+ * COSMETIC (§V5 review, fix round 2, Critical -- the amplification half of
+ * the same finding `assertNoReservedSegments` closes the other half of).
+ * Pass 1 walks `Object.keys(output)`, which lists OWN enumerable keys only.
+ * Pass 3 used to gate each assignment on `output.args !== undefined` /
+ * `output.result !== undefined` -- a plain property READ, which resolves
+ * through the JavaScript prototype chain on a plain object with no own key
+ * of that name, unlike `Object.keys`. If `Object.prototype.args` were ever
+ * set -- by anything, anywhere in this long-lived process, not necessarily
+ * by a value this file's own `assertNoReservedSegments` failed to catch --
+ * a wholly unrelated, cleanly rendered `{}` (an ordinary `allow`, "nothing
+ * to change") would read `output.args` as that polluted value through the
+ * chain and merge it onto `live.args`, silently rewriting an argument no
+ * decision for THIS call ever named. Not reachable today: the one known
+ * route to a polluted `Object.prototype` is refused in pass 1, before pass 3
+ * ever runs (see the second half of this file's own `applyHostOutput` suite
+ * for that non-reachability pinned end to end). But it is a second,
+ * independent gap in the same defence -- pass 1 checking own keys while pass
+ * 3 reads through the prototype chain is an inconsistency this applier
+ * should not carry regardless of whether anything reaches it today -- so
+ * pass 3 below uses `Object.hasOwn(output, ...)`, matching pass 1's basis
+ * exactly rather than resting on pass 1 being the only door.
+ *
  * THE FOUR KEYS, and why `result` is the whole container rather than a leaf
  * (§V5 review, fix round 1, Critical 1 -- opencode.hookmap.yaml's own header
  * states the same correction): `applied_output` is the WHOLE patched clone of
@@ -467,10 +494,15 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   // both already known to be plain objects -- args and result together,
   // leaf and mirror together, never one without the other, and merged
   // in place rather than replacing a nested reference (mergeInPlace, above).
-  if (output.args !== undefined && live.args !== undefined) {
+  //
+  // `Object.hasOwn`, not `!== undefined` (see this function's own doc
+  // comment, "PASS 3 READS ITS OWN-KEY BASIS..."): an own-key check cannot
+  // be fooled by a polluted `Object.prototype`, exactly like pass 1's
+  // `Object.keys` above it.
+  if (Object.hasOwn(output, "args") && live.args !== undefined) {
     mergeInPlace(live.args, output.args as Record<string, unknown>);
   }
-  if (output.result !== undefined && live.result !== undefined) {
+  if (Object.hasOwn(output, "result") && live.result !== undefined) {
     mergeInPlace(live.result, output.result as Record<string, unknown>);
   }
 }
@@ -579,6 +611,37 @@ function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): vo
 }
 
 /**
+ * Refuses BEFORE `resolveSessionConfig`/`governStep` are ever asked, when
+ * `sessionID` is missing or not a non-empty string -- see this file's own
+ * header, "THREE THINGS EVERY GATE TASK MUST DO", first bullet.
+ * `buildEnvelope` already throws on a missing `session_id`, but that throw
+ * lands inside `governStep`'s stage-"request" `catch` and is answered by the
+ * deployment's NEGOTIATED posture (`resolveByPosture`) -- and a negotiated
+ * `proceed` there is an ungoverned step. A missing session id is a broken
+ * deployment, not a policy question, so both gates refuse it here, before
+ * either call is made.
+ *
+ * THE MECHANISM IS A THROW, not an exit code (this file's header, same
+ * bullet): OpenCode's hooks return `void` and have no other channel to
+ * report a failure through -- the same mechanism `applyHostOutput`'s own
+ * `refuse` path (above) uses to stop a tool call.
+ *
+ * Shared by both gates (Task 6 calls this too) rather than written twice,
+ * the same way `isPlainObject` and `RESERVED_SEGMENTS` above are shared
+ * rather than re-derived per gate.
+ */
+function assertUsableSessionId(sessionID: unknown, hookEventName: string): asserts sessionID is string {
+  if (typeof sessionID !== "string" || sessionID.length === 0) {
+    throw new Error(
+      `acs-plugin: "${hookEventName}" fired with no usable sessionID (got ${JSON.stringify(sessionID)}) -- a ` +
+        `missing or empty session id is a broken deployment, not a policy question, so this refuses before ` +
+        `resolveSessionConfig/governStep are ever asked rather than letting buildEnvelope's throw be answered ` +
+        `by the negotiated posture, where a negotiated "proceed" would be an ungoverned step`,
+    );
+  }
+}
+
+/**
  * OpenCode's plugin entry point: loads the hookmap and this deployment's
  * long-lived collaborators once, and returns the hooks OpenCode calls for
  * the rest of the session's lifetime.
@@ -614,13 +677,44 @@ export const AcsPlugin: Plugin = async () => {
   const store = createSessionConfigStore();
 
   return {
-    // Tasks 5 and 6: "tool.execute.before" (the request gate) and
-    // "tool.execute.after" (the result gate). Each assembles this hook's own
-    // {tool, session_id, callID, args, result} payload, validates sessionID
-    // (this file's header states why that check belongs here and not inside
-    // governStep, and what it does and does not protect at the result gate),
-    // calls resolveSessionConfig -> governStep against `hookmap`, `guardian`,
-    // `session`/`store` and `audit` above, and applies the result through
-    // `applyHostOutput`.
+    // Task 6 fills in this hook's sibling, "tool.execute.after" (the result
+    // gate). See this file's own header, "THREE THINGS EVERY GATE TASK MUST
+    // DO", for what `assertUsableSessionId` and the two `sessionId` forms
+    // below have to do and why -- and for why a throw at the result gate
+    // specifically does not mean what it means here.
+    "tool.execute.before": async (input, output) => {
+      assertUsableSessionId(input.sessionID, "tool.execute.before");
+
+      // ONE payload object so opencode.hookmap.yaml's `$.` paths ($.tool,
+      // $.args) have a single thing to resolve against -- OpenCode hands
+      // this hook `{tool, sessionID, callID}` and a separate, mutable
+      // `{args}`; assembling the two into one object is the shim's own job
+      // (this file's header). `session_id`, RAW and not pre-converted:
+      // `buildEnvelope` reads `payload.session_id` as a hardcoded top-level
+      // field and derives the ACS uuid itself -- see this file's header,
+      // second bullet, for why the raw host id and the derived uuid must
+      // never be mixed.
+      const payload = { tool: input.tool, session_id: input.sessionID, callID: input.callID, args: output.args };
+
+      const session = await resolveSessionConfig(
+        { guardian, agentId: hookmap.host, sessionId: toSessionUuid(input.sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+        store,
+      );
+
+      const governed = await governStep({
+        hookEventName: "tool.execute.before",
+        payload,
+        hookmap,
+        guardian,
+        session,
+        // RAW, the other of the two `sessionId` forms this file's header
+        // warns against mixing -- this one is for the audit entry (S14),
+        // never the uuid `resolveSessionConfig` above was given.
+        sessionId: input.sessionID,
+        audit,
+      });
+
+      applyHostOutput(governed.output, { args: output.args });
+    },
   };
 };

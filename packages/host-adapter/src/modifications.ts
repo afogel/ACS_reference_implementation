@@ -125,11 +125,52 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
 
 /**
  * Path segments that address a JavaScript object's prototype machinery
- * rather than a tool-call argument. No global pollution is reachable today
- * -- `setAtPath` assigns into a fresh clone of the caller's arguments, never
- * into a shared prototype -- but none of these three names a field a tool
- * call actually has, so a modification aiming at one is another silent
- * no-op `modify`, and the guard is one line.
+ * rather than a tool-call argument. None of these three names a field a
+ * tool call actually has, so a modification aiming at one is another
+ * silent no-op `modify` -- guarded here in one line, for `redactions[].path`
+ * and `parameter_overrides`' own KEYS, both of which this module inspects
+ * directly.
+ *
+ * WHAT IS STILL TRUE, IN ISOLATION: `setAtPath` (below) assigns into a
+ * fresh clone of the caller's arguments at every level it descends through,
+ * never into a shared prototype -- a `modify` applied through THIS module
+ * alone cannot pollute anything global, on any host, today or previously.
+ *
+ * WHAT STOPPED BEING TRUE, AND WHY (§V5 review, fix round 2, Critical). This
+ * comment used to read "no global pollution is reachable today" as a
+ * system-wide claim, on the strength of the paragraph above -- true of
+ * `setAtPath` in isolation, but never a claim this module could make about
+ * every host built on it. This guard checks `redactions[].path` and
+ * `parameter_overrides`' KEYS; it never checks the VALUE an override entry
+ * carries, which arrives verbatim off the Guardian's own wire (see
+ * `applyModifications`'s own comment on `setAtPath`'s stable-serialisation
+ * claim, which draws the identical distinction for the identical reason).
+ * Parsed through `JSON.parse` rather than built with object-literal syntax,
+ * an object-valued override can carry an ordinary OWN key literally named
+ * `__proto__` -- `JSON.parse` never sets the real `[[Prototype]]` link, only
+ * a same-named data property -- and this module passes that value through to
+ * `applied_input`/`applied_output` unexamined (R3.2: it walks the ACS
+ * document's own structure, not an arriving decision's arbitrary nesting).
+ * That was always true of this module. It stopped being the whole story the
+ * moment a SECOND host existed whose own applier reads a rendered value back
+ * through the JavaScript prototype chain rather than only ever assigning it
+ * shallowly: `hosts/opencode/acs-plugin.ts`'s `mergeInPlace` recurses into
+ * any field present on both sides as a plain object, and reading
+ * `target["__proto__"]` on a plain object with no OWN `__proto__` resolves
+ * through the chain to `Object.prototype` itself -- so the recursive call
+ * that follows writes through it, global to that host's whole long-lived
+ * plugin process, for a value this module let through untouched.
+ *
+ * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `hosts/opencode/acs-plugin.ts`'s
+ * own `assertNoReservedSegments` (a file-local copy of these same three
+ * names and the same reasoning -- this module's version below is not
+ * exported, and R3.2 keeps host vocabulary out of this package regardless),
+ * called from that file's `applyHostOutput`, pass 1, over the rendered
+ * `args`/`result` value as a whole tree, before that file's own recursive
+ * merge ever runs on it. This module may not host that guard itself: it is
+ * a fact about what a SPECIFIC HOST's applier does with a value after this
+ * module has already returned it, not about anything `applyModifications`
+ * or `setAtPath` do.
  */
 const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
 
