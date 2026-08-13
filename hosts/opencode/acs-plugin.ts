@@ -861,7 +861,7 @@ export const AcsPlugin: Plugin = async () => {
     },
 
     /**
-     * Task 6: the result gate. The same six moves as "tool.execute.before"
+     * Task 6: the result gate. The same seven moves as "tool.execute.before"
      * above -- validate `tool`, honour `tools`, validate `sessionID`,
      * assemble one payload object, negotiate the session, govern the step,
      * apply what comes back -- one seam later, for `{result}` in place of
@@ -874,6 +874,32 @@ export const AcsPlugin: Plugin = async () => {
      * carries `preview`, `grep`'s carries `matches`. An unlisted tool is the
      * same documented no-op `isGovernedTool` already gives the request gate,
      * not a fault this hook resolves any other way.
+     *
+     * A RESULT MISSING `metadata.exit` POSTURE-PROCEEDS, AND THAT IS
+     * CORRECT -- NOT A GAP THIS GATE SHOULD CLOSE (§V5 review, Task 6 fix
+     * round 1, Important 1). `exitStatusOf` (build-envelope.ts) throws when
+     * `$.result.metadata.exit` resolves to no value; `governStep`'s
+     * stage-"request" catch answers that with this deployment's negotiated
+     * posture, which can proceed -- a real fail-open, delivering the tool's
+     * own output, secret included, in both the leaf and the mirror, audited
+     * with `failure.kind: "host_configuration"`. That is the payload-
+     * dependent kind of fault this slice's own rule routes to
+     * `resolveByPosture` rather than closes here, exactly like the other
+     * three times this slice has hit the same seam. NOT REACHABLE THROUGH
+     * `bash`, the only tool this gate governs -- measured against real
+     * OpenCode 1.18.15, not assumed: a FAILING `bash` command still carries
+     * `metadata.exit`/`metadata.output` (`cat missing-file.txt` ->
+     * `{output: "cat: missing-file.txt: No such file or directory\n", exit:
+     * 1, truncated: false}`), and an INVALID tool call reports itself as
+     * `tool: "invalid"`, not `bash`, so `isGovernedTool` (above) skips it
+     * before any payload naming `metadata.exit` is ever built. Unreachable
+     * through the shipped config -- this gate's own `tools: [bash]` scope --
+     * not unreachable outright, the same qualification `isGovernedTool`'s
+     * own doc comment makes elsewhere in this file. And this does not weaken
+     * that scope's own justification: opencode.hookmap.yaml's measurement
+     * table's fourth row ("an invalid call's [metadata] is `{truncated}`
+     * alone") names a tool called `invalid`, which this gate never governs
+     * to begin with -- not a `bash` call slipping through ungoverned.
      *
      * `args: input.args`, RAW, same as the request gate's own `session_id` --
      * unlike the request gate (where `args` sits on the mutable `output`
