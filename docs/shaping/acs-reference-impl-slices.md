@@ -18,7 +18,7 @@ Every slice ends in something demo-able.
 | V2 | Envelope Inspector | C4 | "Watch the ACS request and response JSON stream live while you work." |
 | V3 | All five dispositions, and both failure postures | C3, C4 | "One bundle produces allow, deny, ask, a rewritten tool call, and a policy-fired allow that is AGT's `warn`. Kill the Guardian under `proceed` and the step proceeds with an audit event; under `deny` it blocks. Posture negotiated at handshake." |
 | V4 | Output redaction on Claude Code | C3 | "AGT's own package documents that Claude Code cannot *reliably* redact tool output. Here it is, redacted, by AGT's stock `redact` policy — in the tool's own output shape, which is the condition that makes it reliable." |
-| V5 | Second host, zero AGT changes | C3 | "Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT." |
+| V5 | Second host, zero AGT changes | C3 | "Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`." ⚠️ *was "same manifest" — see §V5* |
 | V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried by ACS provenance." |
 | V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
 | V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
@@ -245,7 +245,7 @@ Plan: `docs/superpowers/plans/2026-08-11-v4-output-redaction.md`.
 
 ## V5: Second host, zero AGT changes
 
-**Demo:** Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT.
+**Demo:** Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`. ⚠️ *Corrected from "same manifest" during execution; see the correction below for what the claim was always about and why it survives intact.*
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
@@ -290,7 +290,18 @@ Plan: `docs/superpowers/plans/2026-08-11-v4-output-redaction.md`.
 
 OpenCode fires `tool.execute.after` for **every** tool and has no matcher, so an unscoped hookmap sends every non-`bash` result into an unresolvable `exit_status` path — `buildEnvelope` throws, `governStep` answers at stage "request" with the negotiated posture, and under `proceed` (the spec default, and what this deployment ships) **the output is delivered ungoverned**. Host #1 is scoped to one tool too, by the anchored `^Bash$` matcher in its `settings.json`, and §V4 says the exposure is "the matcher's to hold rather than the gate's" — so the equivalent here is declared data (`tools: [bash]` on the result-gate entry) that the shim honours. **The request gate takes no such list and governs every tool**: `$.tool` and `$.args` are present whatever ran.
 
-Two consequences worth carrying. **For V7:** on this host the request gate covers all tools and the result gate covers one, which is a *different* coverage shape from host #1's and is the matrix's to record. **For whoever widens it:** `read`'s `metadata.preview` carried the file's full contents in the measurement — so per-tool metadata means **per-tool mirrors**, and `outputs.mirrors` would need to become per-tool before a second tool could be governed at this gate safely.
+**⚠️ Corrected again during execution — the *request* gate needs the same list, and the reason is the manifest rather than the hookmap.** This section first ruled that the request gate takes no `tools:` because `$.tool` and `$.args` resolve whatever ran. That is true of the **hookmap** and irrelevant, because AGT resolves `policy/manifest.yaml`'s `pre_tool_call.policy_target` — `$.tool_call.args.command` — **before any rule runs**, and fails closed when it is absent. Measured through a live Guardian:
+
+```
+read / grep / write / edit / webfetch  ->  deny  runtime_error:path_missing
+bash                                   ->  deny  runtime_error:tool_unknown
+```
+
+So an unscoped request gate does not govern every tool — it **blocks every tool call OpenCode can make**, `bash` on an unregistered name and everything else on a policy target that does not exist in its arguments. Both gates therefore carry `tools: [bash]`, which makes the two hosts symmetric rather than asymmetric: host #1 is Bash at both gates too, by the anchored `^Bash$` its `settings.json` applies to both. **For V7:** the matrix records equal coverage shapes and one shared reason — a deployment governs the tools whose arguments its policy target can address, and widening either host means a second target, not a second gate.
+
+**For whoever widens it:** `read`'s `metadata.preview` carried the file's full contents in the measurement — so per-tool metadata means **per-tool mirrors**, and `outputs.mirrors` would need to become per-tool before a second tool could be governed at the result gate safely.
+
+**⚠️ Correction to this slice's own demo sentence — "same manifest" was an overclaim, and the honest version is stronger.** OpenCode names its shell tool `bash` where Claude Code names it `Bash`, and an unregistered `tool_call.name` fails AGT's evaluation closed before any rule runs. The manifest is the deployment's **tool registry**, so a deployment governing two hosts registers both hosts' names — additively, in `manifest.yaml` and `manifest.drift.yaml` alike. Normalising the name in the shim or the hookmap was considered and rejected: the tool genuinely *is* named `bash` here, and renaming it would make both the ACS envelope and S6's log misreport what ran. What the claim was ever about survives untouched — **zero Rego authored, `policy/lib` byte-identical under `verify:pin`, `data.agt.defaults.config` unchanged, and zero lines changed in the Guardian, the bridge or AGT.** The demo now says *"same Guardian, same bundle, same policy"* and names the one deployment-side edit instead of implying there was none.
 
 **⚠️ Note for V8 — `output.attachments` exists at runtime and is absent from 1.18.15's own `Hooks` type.** Harmless here, because the clone-and-patch discipline preserves a field nobody declared. Recorded because it is precisely the class of upstream divergence V8 watches for, in a package this slice now depends on.
 

@@ -6,7 +6,7 @@
 |---|---|
 | **Slice ID** | [#6](https://github.com/../../issues/6) — "V5: Second host, zero AGT changes" |
 | **Slices doc** | [`docs/shaping/acs-reference-impl-slices.md`](../../shaping/acs-reference-impl-slices.md) **§V5, line 235** — authoritative for this slice's scope |
-| **Demo** | *"Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT."* |
+| **Demo** | *"Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`."* ⚠️ *Was "same manifest"; corrected in §V5 during Task 5, on measurement.* |
 | **Components** | **U10** opencode prompt input · **U11** opencode tool decision surface · **U12** opencode redacted tool output · **N10** acs-plugin shim · **N11** `buildEnvelope()` (same module as N2) · **N12** `renderDecision()` (same module as N3) · **N13** `createGuardianClient().requestDecision()` (same module as N4) · **N14** `negotiateSessionConfig()` (same module as N5) · **N15** `applyFailurePosture()` (same module as N6) · **N16** `validateDecision()` (same module as N7) · **S2** `opencode.hookmap.yaml` · **S15** negotiated session config · **S16** audit sink |
 | **Parked items** | V5 defers nothing of its own. It **absorbs** V4's parked item (§V4 line 223 → §V5 line 259) |
 | **Watch-for notes** | §V5's one ⚠️ — *"Inherited from V4 — one per-modification landing check, and it is scope this slice absorbs"* (line 259), including its closing two paragraphs on where the added lines may land (line 261) |
@@ -250,8 +250,15 @@ Nothing else. The ratio is honest: of eight tasks, six trace directly to §V5's 
 ## Global Constraints
 
 1. **Zero lines change in the Guardian, the bridge, or AGT.** Task 7 proves it mechanically.
-   `packages/guardian/src`, `packages/agt-bridge/src`, `policy/`, `agt.lock` and `mapping.yaml`
-   are untouched by every task below.
+   `packages/guardian/src`, `packages/agt-bridge/src`, **`policy/lib/`**, `agt.lock` and
+   `mapping.yaml` are untouched by every task below.
+   ⚠️ **Narrowed from `policy/` during Task 5.** `policy/manifest.yaml` and
+   `policy/manifest.drift.yaml` gain one additive `tools:` entry each, because OpenCode names
+   its shell tool `bash` and an unregistered name fails AGT's evaluation closed before any rule
+   runs. The manifest is the deployment's **tool registry**, not its policy; what this
+   constraint was always about — zero Rego authored, the pinned bundle unforked and
+   byte-identical under `verify:pin`, `data.agt.defaults.config` unchanged, zero engine lines —
+   is exactly what `policy/lib/` covers, and all of it holds.
 2. **No new fail-open.** Twelve are recorded in `govern-step.ts`'s header. Every refusal added
    here fails **closed**, and the header's count is updated once, in Task 2, or not at all.
 3. **The adapter never names an OpenCode field.** `packages/host-adapter/src` may not contain
@@ -1047,7 +1054,17 @@ are ACS vocabulary the adapter is *supposed* to speak.
 # a check that needs git history, so it is a script rather than a bun test.
 set -euo pipefail
 base="${1:-slice/v4}"
-frozen='^(packages/guardian/src/|packages/agt-bridge/src/|policy/|agt\.lock$|mapping\.yaml$)'
+# `policy/lib/` -- the pinned bundle and its config -- NOT `policy/` wholesale.
+# ⚠️ Narrowed during Task 5, and the distinction is the claim itself. What R2.2/
+# R2.3 and `verify:pin` protect is the unforked bundle: zero Rego authored,
+# every `.rego` byte-identical, `data.agt.defaults.config` unchanged. The
+# MANIFEST is the deployment's tool registry, and a deployment governing two
+# hosts registers both hosts' tool names -- OpenCode calls its shell tool
+# `bash` where Claude Code calls it `Bash`, and an unregistered name fails AGT's
+# evaluation closed before any rule runs. Freezing `policy/` wholesale would
+# have made this script fail on a change the slice legitimately requires, and
+# the fix would have been to loosen the check until it passed.
+frozen='^(packages/guardian/src/|packages/agt-bridge/src/|policy/lib/|agt\.lock$|mapping\.yaml$)'
 changed="$(git diff --name-only "$base"...HEAD | grep -E "$frozen" || true)"
 if [ -n "$changed" ]; then
   echo "verify-zero-diff: R3.4 violated -- these are frozen for this slice:" >&2
