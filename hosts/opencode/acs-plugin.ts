@@ -144,13 +144,19 @@
  *     plugin's mutations on that path and rebuilds `metadata` from its own
  *     pre-hook copy, so whatever the tool actually produced survives in
  *     OpenCode's own session record regardless of how early the throw fires.
- *     That is exactly why the result gate's own `deny`/`modify` withhold by
- *     REPLACING `result` (`applyOpenCodeOutput`'s merge, in apply-host-output.ts)
- *     rather than by throwing. A sessionID check that refuses at the result gate is still
- *     the right call -- an ungoverned step is worse than a stop that does not
- *     scrub the disk -- but Task 6 must not read "it threw, so the secret is
- *     contained" into a result-gate throw the way that reading would be
- *     correct at the request gate.
+ *     That is exactly why the shipped hookmap's result-gate `deny`/`modify`
+ *     withhold by REPLACING `result` (`applyOpenCodeOutput`'s merge, in
+ *     apply-host-output.ts) rather than by throwing -- and why
+ *     `assertHostHonoursEveryDecision`'s message for that gate says which of
+ *     the two an author is choosing rather than treating them as equivalent.
+ *     A sessionID check that refuses at the result gate is still the right call
+ *     -- an ungoverned step is worse than a stop that does not scrub the disk
+ *     -- but NOBODY READING A RESULT-GATE THROW may read "it threw, so the
+ *     secret is contained" into it the way that reading would be correct at
+ *     the request gate. (This sentence addressed "Task 6" in the future tense
+ *     long after that task shipped; §V5 review round 3, Task 5, fix round 2,
+ *     Minor -- the same class as the two tenses fix round 1 corrected, outside
+ *     the lines that finding named.)
  *   - Assemble `session_id: input.sessionID` onto the payload RAW, not
  *     pre-converted -- `buildEnvelope` reads `payload.session_id` as a
  *     hardcoded top-level field and derives the ACS uuid itself. The uuid
@@ -167,14 +173,26 @@
  *
  *       * every request-gate `deny`/`ask`/`defer` declares an unconditional
  *         (`value:`) output field under `refuse` -- `refuse.denied` in the
- *         shipped hookmap;
- *       * every request-gate `modify` declares `args: { from: applied_input }`;
- *       * every result-gate `deny`/`modify`/`ask`/`defer` declares
- *         `result: { from: applied_output }`.
+ *         shipped hookmap. These three have nothing to LAND, so refusing is
+ *         the only honest outcome open to them;
+ *       * every request-gate `modify` EITHER declares
+ *         `args: { from: applied_input }` OR declares that same unconditional
+ *         refusal;
+ *       * every result-gate `deny`/`modify`/`ask`/`defer` EITHER declares
+ *         `result: { from: applied_output }` OR declares that same
+ *         unconditional refusal.
  *
- *     The last two are the EXACT KEY and the EXACT SOURCE, not merely a key
- *     that looks right -- see `declaresSinkFrom` (below) for why both halves
- *     are load-bearing and what each one was measured to leak without.
+ *     "EITHER ... OR" is the rule, not a convenience (§V5 review round 3,
+ *     Task 5, fix round 2): landing what a decision arrived carrying and
+ *     refusing outright are both honest; the SILENT NO-OP is the only
+ *     unacceptable outcome, and it is what every finding in this task has
+ *     actually been about. See `satisfiesGate` (below) for why over-refusal
+ *     is a costly direction to err in on THIS host specifically.
+ *
+ *     Where a sink is declared it must be the EXACT KEY, the EXACT SOURCE,
+ *     and a declaration that can actually RENDER -- see `declaresSinkFrom`
+ *     (below) for why all of those are load-bearing and what each one was
+ *     measured to leak without.
  *     Neither gate task needs to special-case an arriving decision that
  *     carries no (or a wrongly typed) `reasoning`: by the time either hook
  *     fires, this file has already refused to register a hookmap that could
@@ -354,7 +372,8 @@ const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
  * and on this host all of them land the same way: merged onto the live
  * `{title, output, metadata, attachments}` object through the rendered
  * `result` key, sourced from that field. A hookmap that declares no such sink
- * for one of them renders a decision that withholds nothing.
+ * for one of them -- and no unconditional refusal in its place -- renders a
+ * decision that withholds nothing.
  *
  * `ask` AND `defer` ARE IN THIS SET, AND THE FIRST VERSION OF IT LEFT THEM OUT
  * FOR THE CATEGORY ERROR THIS WHOLE TASK EXISTS TO RETIRE (§V5 review round 3,
@@ -422,6 +441,14 @@ const MUST_WITHHOLD_BY_REPLACING = new Set(["deny", "modify", "ask", "defer"]);
  * special case bolted onto the refusal loop, and so a second decision that
  * ever needs the same treatment joins it here instead of being written twice.
  *
+ * OR IT MAY REFUSE INSTEAD (§V5 review round 3, Task 5, fix round 2, Minor).
+ * An author who maps `modify` to `refuse.denied` has chosen to BLOCK the tool
+ * rather than rewrite its arguments -- strictly more conservative than the
+ * rewrite, since the command never runs at all, and this very hookmap's own
+ * idiom for `ask`/`defer` at this same gate. Measured (request-gate.test.ts):
+ * that mapping throws before the tool runs and applies nothing. Accepted by
+ * `satisfiesGate`, below.
+ *
  * MEASURED BEFORE IT EXISTED, and the measurement is why this is a fault
  * rather than a tidiness item (hosts/opencode/test/request-gate.test.ts, "a
  * request-gate modify the hookmap gives no way to land"): against a live
@@ -479,22 +506,119 @@ function declaredOutputFor(decisions: unknown, decisionName: string): Record<str
  *     applied_input }` in the same file. MEASURED, through the real chain
  *     against a live Guardian: a real `deny` renders no `result` key at all,
  *     the applier applies nothing and throws nothing, and `rm -rf /` is
- *     delivered in the leaf AND its mirror -- this task's Critical, byte for
- *     byte, through the gate built to refuse it.
+ *     delivered in the leaf AND its mirror.
+ *   - NO `type:`, OR `type: "object"`. `type` is a `typeof` filter, and
+ *     `renderDecision` DROPS a `from:` field whose carried value fails it --
+ *     the same `continue` an absent source takes. `applied_output` and
+ *     `applied_input` are both objects, so `type: string` never matches and the
+ *     field never renders. MEASURED: a result-gate `deny` declaring
+ *     `result: { from: applied_output, type: string }` renders no `result` key
+ *     and delivers `rm -rf /` in leaf and mirror; the `modify` counterpart
+ *     renders LITERALLY `{}`.
+ *   - NO `value:` KEY, even beside a correct `from:`. `renderDecision` checks
+ *     `hasOwnProperty(field, "value")` FIRST and `continue`s -- it never reads
+ *     `from` at all. MEASURED: `result: { value: {}, from: applied_output }`
+ *     renders `{"result":{}}`, which the applier merges, merging nothing; and
+ *     the request-gate twin, `args: { value: { command: "echo pwned" }, from:
+ *     applied_input }`, lands the AUTHOR'S command on every `modify` while the
+ *     Guardian's own rewrite never lands.
  *
- * A LITERAL `{value: ...}` AT THE SINK IS ALSO REFUSED, and that is not an
- * oversight. A hookmap could land SOMETHING that way, but not the decision's
- * own withholding or rewrite -- it would be a fixed value the Guardian never
- * chose, applied identically to every decision, which is a hardcoded answer
- * wearing governance's clothes. The only thing that honours an arriving
- * decision here is that decision's own field.
+ * THE LAST TWO WERE ADDED IN §V5 review round 3, Task 5, FIX ROUND 2 (Critical)
+ * -- the third time this class survived a fix built to close it. The first two
+ * bullets check what the sink NAMES; these two check whether the declaration
+ * can actually RENDER. An earlier version of this comment asserted that a
+ * literal at the sink "IS ALSO REFUSED, and that is not an oversight", which
+ * was true only when `from` was ABSENT: `{value: ..., from: applied_output}`
+ * passed. The claim is now true because the code makes it true, which is the
+ * order those two have to happen in.
+ *
+ * A LITERAL AT THE SINK IS REFUSED FOR A REASON WORTH KEEPING: a hookmap could
+ * land SOMETHING that way, but not the decision's own withholding or rewrite --
+ * it would be a fixed value the Guardian never chose, applied identically to
+ * every decision, which is a hardcoded answer wearing governance's clothes.
+ * The only thing that honours an arriving decision here is that decision's own
+ * field, rendered.
  */
 function declaresSinkFrom(output: Record<string, unknown>, sinkKey: string, sourceField: string): boolean {
   if (!Object.prototype.hasOwnProperty.call(output, sinkKey)) {
     return false;
   }
   const sink = output[sinkKey];
-  return isPlainObject(sink) && sink.from === sourceField;
+  if (!isPlainObject(sink)) {
+    return false;
+  }
+  if (Object.prototype.hasOwnProperty.call(sink, "value")) {
+    return false;
+  }
+  if (sink.type !== undefined && sink.type !== "object") {
+    return false;
+  }
+  return sink.from === sourceField;
+}
+
+/**
+ * Whether `output` declares an UNCONDITIONAL refusal -- at least one path whose
+ * leading segment is `refuse` carrying a literal `{value: ...}`.
+ *
+ * Extracted, unchanged in behaviour, from the request gate's `deny`/`ask`/
+ * `defer` rule, which is where this predicate has lived since §V5 review fix
+ * round 1's Critical 1 -- see that rule's own doc comment (below) for why the
+ * LEADING SEGMENT rather than the exact key, and why an unconditional field
+ * under any OTHER key does not count.
+ *
+ * It is shared now because §V5 review round 3, Task 5, fix round 2 makes it the
+ * SECOND way a decision can satisfy the two sink rules -- see
+ * `satisfiesGate` (below) for the principle, which is what every finding in
+ * this task has actually been about.
+ */
+function declaresUnconditionalRefusal(output: Record<string, unknown>): boolean {
+  return Object.entries(output).some(([outputPath, field]) => {
+    const leadingSegment = outputPath.split(".")[0];
+    return leadingSegment === "refuse" && isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value");
+  });
+}
+
+/**
+ * THE RULE THIS WHOLE GATE HAS ACTUALLY BEEN ABOUT, stated once instead of
+ * implied five times (§V5 review round 3, Task 5, fix round 2, Minor):
+ *
+ *   A decision passes if it can LAND what it arrived carrying, or if it can
+ *   UNCONDITIONALLY REFUSE. The silent no-op is the only unacceptable outcome.
+ *
+ * Both alternatives are honest. Landing is what the shipped hookmap does.
+ * Refusing is a deliberately more conservative choice an author may prefer, and
+ * it is this file's OWN idiom -- `opencode.hookmap.yaml` maps `ask` and `defer`
+ * to `refuse.denied` at the request gate precisely because this host has no
+ * native "ask". A gate that refused an author for applying that same idiom one
+ * gate over would be contradicting the file it ships beside.
+ *
+ * WHY THE ALTERNATIVE MATTERS MORE ON THIS HOST THAN IT WOULD ON HOST #1.
+ * Over-refusal is not a free direction to err in here. A throw out of
+ * `AcsPlugin`'s factory does not stop the session the way host #1's exit 2
+ * stops a tool call: OpenCode catches it, logs it, and CONTINUES WITH THE
+ * PLUGIN UNLOADED (measured -- docs/shaping/acs-reference-impl-slices.md, and
+ * `AcsPlugin`'s own doc comment below). So refusing a safe-but-unusual hookmap
+ * at load buys nothing and costs everything: every tool call for the rest of
+ * that session runs completely ungoverned. Between "an author's conservative
+ * mapping this gate did not anticipate" and "no governance at all", the first
+ * is strictly better, and the gate has to be written knowing that.
+ *
+ * WHAT A REFUSAL COSTS AT THE RESULT GATE, said plainly rather than glossed. It
+ * is a WEAKER withholding than replacing: `applyOpenCodeOutput` throws, the
+ * model never sees the tool's output (measured -- result-gate.test.ts pins the
+ * throw for all four decisions), but OpenCode discards this plugin's mutations
+ * on that path and rebuilds `metadata` from its own pre-hook copy, so the
+ * plaintext survives in OpenCode's own session record (opencode.hookmap.yaml's
+ * own header records that measurement). Weaker, and still honest, and still far
+ * better than the alternative this gate would otherwise force -- which, per the
+ * paragraph above, is a hookmap that never registers and a session that governs
+ * nothing.
+ *
+ * `allow` is asked neither question, at either gate: rendering nothing IS its
+ * own meaning there.
+ */
+function satisfiesGate(output: Record<string, unknown>, sinkKey: string, sourceField: string): boolean {
+  return declaresSinkFrom(output, sinkKey, sourceField) || declaresUnconditionalRefusal(output);
 }
 
 /**
@@ -513,13 +637,29 @@ function sinkFaultPhrase(output: Record<string, unknown>, sinkKey: string, sourc
   if (!Object.prototype.hasOwnProperty.call(output, sinkKey)) {
     return (
       `declares no ${JSON.stringify(sinkKey)} output field at all (its output block declares ` +
-      `${JSON.stringify(Object.keys(output))})`
+      `${JSON.stringify(Object.keys(output))}), and no unconditional "value:" field under "refuse" either`
     );
   }
-  return (
-    `declares ${JSON.stringify(sinkKey)} as ${JSON.stringify(output[sinkKey])}, which does not source it from ` +
-    `${JSON.stringify(sourceField)}`
-  );
+  const sink = output[sinkKey];
+  const declared = `declares ${JSON.stringify(sinkKey)} as ${JSON.stringify(sink)}, which `;
+  // Which of the three render faults it is -- because they need three
+  // different one-character fixes, and "does not source it from X" would
+  // misdescribe two of them (§V5 review round 3, Task 5, fix round 2).
+  if (isPlainObject(sink) && Object.prototype.hasOwnProperty.call(sink, "value")) {
+    return (
+      `${declared}renders that LITERAL and never reads "from" at all -- renderDecision checks for a "value" key ` +
+      `first and stops there (render-decision.ts), so the decision's own ${JSON.stringify(sourceField)} is never ` +
+      `read`
+    );
+  }
+  if (isPlainObject(sink) && sink.type !== undefined && sink.type !== "object") {
+    return (
+      `${declared}declares a "type" of ${JSON.stringify(sink.type)} -- "type" is a typeof filter and ` +
+      `${JSON.stringify(sourceField)} is an OBJECT, so renderDecision drops this field every time ` +
+      `(render-decision.ts). Only an absent "type", or "object", can match`
+    );
+  }
+  return `${declared}does not source it from ${JSON.stringify(sourceField)}`;
 }
 
 /**
@@ -600,13 +740,13 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
         if (output === undefined) {
           continue;
         }
-        const hasUnconditionalRefuseField = Object.entries(output).some(([outputPath, field]) => {
-          const leadingSegment = outputPath.split(".")[0];
-          return (
-            leadingSegment === "refuse" && isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value")
-          );
-        });
-        if (!hasUnconditionalRefuseField) {
+        // `declaresUnconditionalRefusal` (above) is this loop's own predicate,
+        // extracted verbatim so the two sink rules can offer it as their
+        // second alternative -- see `satisfiesGate`. This rule is unchanged:
+        // a request-gate deny/ask/defer has nothing to LAND (no `applied_input`
+        // arrives on any of the three), so refusing is the only honest outcome
+        // available to it and the only one accepted here.
+        if (!declaresUnconditionalRefusal(output)) {
           throw new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
               `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-host-output.ts) refuses only on ` +
@@ -629,7 +769,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
         if (output === undefined) {
           continue;
         }
-        if (!declaresSinkFrom(output, "args", "applied_input")) {
+        if (!satisfiesGate(output, "args", "applied_input")) {
           throw new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" ` +
               `${sinkFaultPhrase(output, "args", "applied_input")} -- at this ` +
@@ -642,8 +782,11 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
               `and a "from:" field naming anything else renders NOTHING (render-decision.ts). Without both, this ` +
               `host's applier would apply nothing and throw nothing while the tool ran with its ORIGINAL ` +
               `arguments -- and governStep would still return stage "honoured", so the audit trail would record ` +
-              `the rewrite as honoured rather than recording that it never landed. Declare ` +
-              `'args: { from: applied_input }'. Measured (§V5 review round 3, Task 5, fix round 1, Important 2).`,
+              `the rewrite as honoured rather than recording that it never landed. EITHER declare ` +
+              `'args: { from: applied_input }' so the rewrite lands, OR declare an unconditional refusal ` +
+              `('refuse.denied: { value: true }') so this decision blocks the tool instead -- both are honest ` +
+              `outcomes and this gate accepts either; only the silent no-op is refused. Measured (§V5 review ` +
+              `round 3, Task 5, fix rounds 1 and 2).`,
           );
         }
       }
@@ -665,12 +808,20 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    * file avoids it; nothing REFUSED either shape until §V5 review round 3,
    * Task 5 and its own fix round 1.
    *
-   * NOT "declare `refuse` instead". A throw out of `tool.execute.after` makes
-   * OpenCode discard this plugin's mutations and rebuild `metadata` from its
-   * own pre-hook copy, so the tool's output survives in OpenCode's own session
-   * record however early the throw fires (measured -- opencode.hookmap.yaml's
-   * own header). Replacing is the only thing that withholds here, which is why
-   * this rule names a merge key and the request gate's names a throw key.
+   * "OR DECLARE `refuse` INSTEAD" IS ALLOWED, AND AN EARLIER VERSION OF THIS
+   * COMMENT SAID IT WAS NOT (§V5 review round 3, Task 5, fix round 2, Minor).
+   * A throw out of `tool.execute.after` makes OpenCode discard this plugin's
+   * mutations and rebuild `metadata` from its own pre-hook copy, so the tool's
+   * output survives in OpenCode's own session record however early the throw
+   * fires (measured -- opencode.hookmap.yaml's own header). That makes
+   * replacing the STRONGER of the two, which is why the shipped hookmap
+   * replaces and why this rule's error message says which one an author is
+   * choosing. It does not make refusing a silent no-op: the model never sees
+   * the output (measured -- result-gate.test.ts pins the throw for all four
+   * decisions), so it is an honest outcome and `satisfiesGate` accepts it. The
+   * cost of the alternative -- refusing such a hookmap at LOAD, on a host where
+   * that leaves the plugin unloaded and the session ungoverned -- is stated in
+   * `satisfiesGate`'s own doc comment.
    */
   "tool.execute.after": {
     assertDecisions(decisions, path, hookEventName) {
@@ -679,7 +830,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
         if (output === undefined) {
           continue;
         }
-        if (!declaresSinkFrom(output, "result", "applied_output")) {
+        if (!satisfiesGate(output, "result", "applied_output")) {
           throw new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" ` +
               `${sinkFaultPhrase(output, "result", "applied_output")} -- at ` +
@@ -694,9 +845,13 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
               `decision never carries and which is one copy-paste from this hookmap's own request gate -- ` +
               `renders NOTHING (render-decision.ts). Without both, the applier would apply nothing and throw ` +
               `nothing, and the tool's own output -- the leaf AND its mirror -- would be delivered: a ` +
-              `${decisionName} indistinguishable from a clean allow. Declare 'result: { from: applied_output }'. ` +
-              `Throwing is not the alternative here either: OpenCode discards this plugin's mutations on a throw ` +
-              `out of "${hookEventName}" and rebuilds metadata from its own pre-hook copy.`,
+              `${decisionName} indistinguishable from a clean allow. EITHER declare ` +
+              `'result: { from: applied_output }' so the withholding lands, OR declare an unconditional refusal ` +
+              `('refuse.denied: { value: true }') so this decision throws instead -- this gate accepts either, ` +
+              `because only the silent no-op is unacceptable. Be aware which you are choosing, though: a throw ` +
+              `out of "${hookEventName}" stops the model seeing the output, but OpenCode discards this plugin's ` +
+              `mutations on that path and rebuilds metadata from its own pre-hook copy, so the plaintext survives ` +
+              `in OpenCode's own session record. Replacing is the stronger of the two.`,
           );
         }
       }
@@ -816,6 +971,23 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  *     landed nowhere, so the audit trail asserted the opposite of what
  *     happened.
  *
+ * FIX ROUND 2 FOUND THE SAME CLASS A THIRD TIME, PLUS ITS MIRROR IMAGE:
+ *
+ *   - CRITICAL: `declaresSinkFrom` checked what the sink NAMED and never
+ *     whether the declaration could RENDER. `result: { from: applied_output,
+ *     type: string }` and `result: { value: {}, from: applied_output }` both
+ *     passed -- the first because `type` is a `typeof` filter and
+ *     `applied_output` is an object, the second because `renderDecision` reads
+ *     `value` first and never looks at `from`. Both measured delivering the
+ *     secret in leaf and mirror; the request gate's twins measured too, one of
+ *     which lands the hookmap author's OWN command on every `modify`.
+ *   - MINOR, in the opposite direction: the rule refused a decision an author
+ *     had mapped to an unconditional refusal instead of a sink -- a SAFE
+ *     configuration, and this hookmap's own idiom for `ask`/`defer`. Over-
+ *     refusal is not free on this host (see `satisfiesGate`), so the rule is
+ *     now "land it OR refuse it", which is what this gate was always actually
+ *     about.
+ *
  * WHAT THIS STILL DOES NOT DO, stated so a reader does not read more into it.
  * It is a check on the HOOKMAP, not on a rendered output: a hookmap that
  * declares the right key and source and a decision that reaches the render
@@ -823,10 +995,10 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  * decidable here -- the same split acs-hook.ts draws between
  * `assertHostAcceptsEveryDecision` and `asClaudeCodeOutput`'s own runtime
  * check. It also asks nothing of `allow` at either gate (rendering nothing is
- * that decision's own meaning at both), nothing of a `refuse` declared at the
- * RESULT gate (`applyOpenCodeOutput` would throw there, which stops the model
- * seeing the output but does not scrub OpenCode's own session record), and
- * nothing about a decision the hookmap never declares.
+ * that decision's own meaning at both) and nothing about a decision the hookmap
+ * never declares. And it does not rank the two honest outcomes: a hookmap that
+ * refuses where it could have replaced passes, with the trade-off spelled out
+ * in the error message an author sees on the way to choosing.
  */
 function assertHostHonoursEveryDecision(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {

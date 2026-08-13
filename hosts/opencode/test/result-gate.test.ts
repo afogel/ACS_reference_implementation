@@ -693,6 +693,88 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(result).toEqual(liveResult("rm -rf /"));
   });
 
+  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- the third time this
+  // class survived a fix built to close it. `declaresSinkFrom` checked what the
+  // sink NAMED and never whether the field could RENDER, so both shapes below
+  // declared `result: { ... from: applied_output ... }` and still delivered.
+  //
+  // SHAPE 1: `type: string` beside the right `from`. `renderDecision` drops a
+  // `from:` field whose carried value fails `typeof carried === field.type`
+  // (render-decision.ts) -- and `applied_output` is an OBJECT, so `type: string`
+  // drops it every time. MORE plausible than the wrong-`from` shape above, not
+  // less: EVERY other `from:` field in the shipped hookmap carries
+  // `type: string` (`reason.text: { from: reasoning, type: string }`), so an
+  // author following the house style writes exactly this.
+  const DENY_WITH_A_TYPE_THAT_NEVER_MATCHES = NO_SINK_AT_ALL.replace(
+    "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+    "      deny:\n" +
+      "        output:\n" +
+      "          result: { from: applied_output, type: string }\n" +
+      "          reason.text: { from: reasoning, type: string }\n",
+  );
+
+  it("deny declaring result with type: string renders no result key -- applied_output is an object, so the type filter drops it", async () => {
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-deny-type-string.yaml", DENY_WITH_A_TYPE_THAT_NEVER_MATCHES),
+      sessionID: "ses-result-gate-type-string",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    expect(Object.hasOwn(output, "result")).toBe(false);
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe("rm -rf /");
+    expect(result.metadata.output).toBe("rm -rf /");
+    expect(result).toEqual(liveResult("rm -rf /"));
+  });
+
+  it("modify declaring result with type: string renders LITERALLY {} -- the secret delivered in leaf and mirror", async () => {
+    // The same shape on the decision that carries no `reasoning`, so nothing
+    // renders at all: byte-identical to a clean `allow`.
+    const yaml = NO_SINK_AT_ALL.replace(
+      "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+      "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output, type: string }\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-modify-type-string.yaml", yaml),
+      sessionID: "ses-result-gate-type-string-modify",
+      toolOutput: "TOKEN=ghp_SECRET123456",
+      expectedDecision: "modify",
+    });
+
+    expect(output).toEqual({});
+    expect(threw).toBeUndefined();
+    expect(result.output).toBe("TOKEN=ghp_SECRET123456");
+    expect(result.metadata.output).toBe("TOKEN=ghp_SECRET123456");
+  });
+
+  // SHAPE 2: a `value:` sitting beside the right `from:`. `renderDecision`
+  // checks `hasOwnProperty(field, "value")` FIRST and `continue`s -- it never
+  // reads `from` at all. So this renders the literal, and an empty literal
+  // renders `{"result":{}}`: a key the applier happily merges, merging nothing.
+  const DENY_WITH_A_LITERAL_BESIDE_THE_SOURCE = NO_SINK_AT_ALL.replace(
+    "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+    "      deny:\n" + "        output:\n" + "          result: { value: {}, from: applied_output }\n",
+  );
+
+  it("deny declaring result as a literal BESIDE the right from: renders {result:{}} and merges nothing", async () => {
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-deny-value-beside-from.yaml", DENY_WITH_A_LITERAL_BESIDE_THE_SOURCE),
+      sessionID: "ses-result-gate-value-beside-from",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    // The key IS rendered -- so a gate checking only for the key's presence
+    // sees a well-formed sink -- and it is empty, so the merge is a no-op.
+    expect(output).toEqual({ result: {} });
+    expect(threw).toBeUndefined();
+    expect(result).toEqual(liveResult("rm -rf /"));
+  });
+
   // §V5 review round 3, Task 5, fix round 1, Important 1: `ask`/`defer`
   // DECLARED at this gate were unchecked, on the reasoning that the shipped
   // hookmap declares neither -- reasoning from the shipped file to the class,
@@ -751,6 +833,60 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       ).not.toThrow();
       // The secret is delivered, in both places, on a decision that asked for
       // the output to be held.
+      expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
+    },
+  );
+
+  // THE OTHER DIRECTION, and the reason this gate's rule is "land it OR refuse
+  // it" rather than "land it" (§V5 review round 3, Task 5, fix round 2, Minor).
+  //
+  // A result-gate decision mapped to `refuse.denied: { value: true }` is NOT a
+  // silent no-op: the applier THROWS, measured below. That is a weaker
+  // withholding than replacing -- opencode.hookmap.yaml's own header records
+  // the measurement that OpenCode discards this plugin's mutations on a throw
+  // out of "tool.execute.after" and rebuilds `metadata` from its own pre-hook
+  // copy, so the plaintext survives in OpenCode's session record -- but it is
+  // an HONEST one: the model never sees the output, and the author chose it.
+  //
+  // Refusing such a hookmap at LOAD would be strictly worse on this host, and
+  // that is measured too, elsewhere: OpenCode catches a throwing plugin factory
+  // and continues with the plugin UNLOADED (docs/shaping/acs-reference-impl-slices.md),
+  // so every tool call for the rest of the session runs completely ungoverned
+  // -- the secret delivered to the model AND left on disk. Over-refusal is not
+  // a free direction to err in here.
+  it.each(["deny", "ask", "defer", "modify"] as const)(
+    "a result-gate %s mapped to an unconditional refusal THROWS -- an honest outcome, not a no-op",
+    (decisionName) => {
+      const yaml =
+        NO_SINK_AT_ALL.replace(
+          "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+          "      deny:\n" + "        output:\n" + "          refuse.denied: { value: true }\n",
+        ).replace(
+          "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
+          "      modify:\n" +
+            "        output:\n" +
+            "          refuse.denied: { value: true }\n" +
+            "      ask:\n" +
+            "        output:\n" +
+            "          refuse.denied: { value: true }\n" +
+            "      defer:\n" +
+            "        output:\n" +
+            "          refuse.denied: { value: true }\n",
+        );
+      const hookmap = loadHookmap(fixture("result-refusal-mapping.yaml", yaml));
+      const result = liveResult("TOKEN=ghp_SECRET123456");
+
+      const rendered = renderDecision("tool.execute.after", {
+        decision: decisionName,
+        reasoning: "held for review",
+      } as unknown as AcsDecision, hookmap);
+
+      expect(rendered).toEqual({ refuse: { denied: true } });
+      // THROWS -- the model never sees the tool's output. Nothing half-applied
+      // either: pass 2a fires before any assignment.
+      expect(() =>
+        applyOpenCodeOutput(rendered, { gate: "result", result: result as unknown as Record<string, unknown> }),
+      ).toThrow();
       expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
     },
   );

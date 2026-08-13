@@ -422,17 +422,19 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     comment for why both are checked). This is where a request-gate
  *     `modify`'s rewrite lands, and the only place it can: the same load-time
  *     gate requires `args: { from: applied_input }` on any `modify` the
- *     request gate declares, because a `modify` with nowhere to land renders
- *     nothing, runs the tool unrewritten, and is still reported
- *     `stage: "honoured"` (§V5 review round 3, Task 5, fix round 1,
- *     Important 2 -- measured).
+ *     request gate declares -- unless that `modify` refuses outright instead --
+ *     because a `modify` with nowhere to land renders nothing, runs the tool
+ *     unrewritten, and is still reported `stage: "honoured"` (§V5 review round
+ *     3, Task 5, fix round 1, Important 2 -- measured).
  *   - `result` -- merged onto `live.result`, only when `live.gate ===
  *     "result"` (same, for `result`). See above for why this is the whole
  *     container, not a leaf. This is the RESULT gate's deny channel, the
  *     counterpart to `refuse` at the request gate, and the same load-time gate
  *     (`assertHostHonoursEveryDecision`) is what guarantees every result-gate
- *     decision that withholds declares `result: { from: applied_output }` --
- *     that key and that source. Without it, a decision carrying a perfectly
+ *     decision that withholds either declares `result: { from: applied_output }`
+ *     -- that key, that source, and a declaration that can actually render --
+ *     or declares an unconditional refusal instead, which throws through
+ *     `refuse` above. Without it, a decision carrying a perfectly
  *     good `applied_output` renders nothing this function can land, and this
  *     applier applies nothing and throws nothing while the tool's output is
  *     delivered (§V5 review round 3, Task 5, Critical, and its own fix round

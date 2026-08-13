@@ -209,7 +209,10 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/\["reason\.text"\]/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-deny-without-a-sink\.yaml/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'result: \{ from: applied_output \}'/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/EITHER declare 'result: \{ from: applied_output \}'/);
+    // Both honest outcomes named, since §V5 review round 3, Task 5, fix
+    // round 2 -- the gate accepts either, so the message must offer both.
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/OR declare an unconditional refusal/);
   });
 
   it("refuses the same for a result-gate modify, not only deny", async () => {
@@ -279,7 +282,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/\{"from":"applied_input"\}/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-deny-wrong-source\.yaml/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'result: \{ from: applied_output \}'/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/EITHER declare 'result: \{ from: applied_output \}'/);
   });
 
   it("refuses a result-gate deny declaring result as a literal value: -- a fixed answer the Guardian never chose", async () => {
@@ -298,7 +301,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "        output:\n" +
         "          result: { from: applied_output }\n",
     );
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/does not source it from "applied_output"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/renders that LITERAL and never reads "from" at all/);
   });
 
   // §V5 review round 3, Task 5, FIX ROUND 1, IMPORTANT 1 -- `ask`/`defer`
@@ -346,6 +349,83 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     );
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
+
+  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- `declaresSinkFrom`
+  // checked what the sink NAMED, never whether the declaration could RENDER.
+  // Both shapes below name `result` and name `applied_output`, and both were
+  // measured (result-gate.test.ts) to deliver the secret in leaf and mirror.
+  it("refuses a result-gate deny whose sink declares type: string -- applied_output is an object, so it never renders", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-deny-type-string.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output, type: string }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares a "type" of "string"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/typeof filter/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
+  });
+
+  it("refuses a result-gate deny whose sink declares a literal BESIDE the right from:", async () => {
+    // renderDecision checks for `value` first and never reads `from`, so this
+    // renders `{"result":{}}` -- a key present, nothing landed. The shape that
+    // falsified this gate's own comment claiming a literal was already refused.
+    const hookmapPath = join(SCRATCH_DIR, "result-deny-value-beside-from.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { value: {}, from: applied_output }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/renders that LITERAL and never reads "from" at all/);
+  });
+
+  it("accepts a result-gate sink declaring type: object -- the one type that can match", async () => {
+    // Not over-refusal by accident: `type` is a typeof filter and
+    // `applied_output` IS an object, so this declaration renders exactly as the
+    // untyped one does.
+    const hookmapPath = join(SCRATCH_DIR, "result-deny-type-object.yaml");
+    writeFileSync(
+      hookmapPath,
+      RESULT_GATE_HEAD +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output, type: object }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n",
+    );
+    await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
+  });
+
+  // §V5 review round 3, Task 5, FIX ROUND 2, MINOR (over-refusal) -- the gate's
+  // rule is "land it OR unconditionally refuse it", because both are honest
+  // outcomes and only the silent no-op is not. On this host over-refusal is not
+  // free: a load-time throw leaves the plugin UNLOADED and the session
+  // completely ungoverned, which is strictly worse than a conservative mapping
+  // this gate did not anticipate. The throw itself is measured in
+  // result-gate.test.ts -- these hookmaps stop the tool, they do not no-op.
+  it.each(["deny", "modify", "ask", "defer"] as const)(
+    "accepts a result-gate %s mapped to an unconditional refusal instead of a replacement",
+    async (decisionName) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-as-refusal.yaml`);
+      const sink = (name: string) =>
+        name === decisionName
+          ? `      ${name}:\n        output:\n          refuse.denied: { value: true }\n`
+          : `      ${name}:\n        output:\n          result: { from: applied_output }\n`;
+      writeFileSync(hookmapPath, RESULT_GATE_HEAD + sink("deny") + sink("modify") + (decisionName === "ask" || decisionName === "defer" ? sink(decisionName) : ""));
+      await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
+    },
+  );
 
   it("accepts a result gate that declares the sink on both deny and modify", async () => {
     // The shape the shipped hookmap uses, in isolation from it -- so this
@@ -407,7 +487,8 @@ describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "args" output field at all/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/request-modify-without-a-sink\.yaml/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.before\.decisions\.modify/);
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/Declare 'args: \{ from: applied_input \}'/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/EITHER declare 'args: \{ from: applied_input \}'/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/OR declare an unconditional refusal/);
     // The audit consequence is in the message, because it is the reason this
     // is a fault rather than a gap.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/stage "honoured"/);
@@ -431,6 +512,44 @@ describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
     );
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "args" output field at all/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/"args\.command"/);
+  });
+
+  it("refuses a modify whose args sink declares type: string -- applied_input is an object, so it never renders", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-type-string.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD + "      modify:\n" + "        output:\n" + "          args: { from: applied_input, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares a "type" of "string"/);
+  });
+
+  it("refuses a modify whose args sink declares a literal BESIDE the right from: -- the author's own command on every rewrite", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-value-beside-from.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD +
+        "      modify:\n" +
+        "        output:\n" +
+        '          args: { value: { command: "echo pwned" }, from: applied_input }\n',
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/renders that LITERAL and never reads "from" at all/);
+  });
+
+  it("accepts a modify mapped to an unconditional refusal -- blocking the tool is more conservative than rewriting it", async () => {
+    // §V5 review round 3, Task 5, fix round 2, Minor. Measured in
+    // request-gate.test.ts: this mapping THROWS before the tool runs and
+    // applies nothing -- an honest outcome, and the shipped hookmap's own idiom
+    // for `ask`/`defer` at this very gate.
+    const hookmapPath = join(SCRATCH_DIR, "request-modify-as-refusal.yaml");
+    writeFileSync(
+      hookmapPath,
+      REQUEST_GATE_HEAD +
+        "      modify:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
   it("accepts the shipped shape, and asks nothing of a request gate declaring no modify at all", async () => {

@@ -306,10 +306,10 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
  * the path.
  */
 describe("a request-gate modify the hookmap gives no way to land -- the measured fail-open", () => {
-  // The shipped request gate, EXCEPT that `modify` declares only `reason.text`
-  // -- the `args: { from: applied_input }` sink removed. Every other line is
-  // the shipped file's.
-  const MODIFY_WITHOUT_A_SINK =
+  // The shipped request gate up to (but not including) its `modify` block --
+  // every line the shipped file's. Each test below appends one `modify` block,
+  // so the shapes are compared on exactly one variable.
+  const REQUEST_GATE_HEAD_FOR_FAILOPEN =
     "host: opencode\n" +
     "hooks:\n" +
     "  tool.execute.before:\n" +
@@ -324,7 +324,10 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     "      deny:\n" +
     "        output:\n" +
     "          refuse.denied: { value: true }\n" +
-    "          refuse.reason: { from: reasoning, type: string }\n" +
+    "          refuse.reason: { from: reasoning, type: string }\n";
+
+  const MODIFY_WITHOUT_A_SINK =
+    REQUEST_GATE_HEAD_FOR_FAILOPEN +
     "      modify:\n" +
     "        output:\n" +
     "          reason.text: { from: reasoning, type: string }\n";
@@ -377,5 +380,96 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
     // The command runs unredacted.
     expect(args.command).toBe(SECRET_COMMAND);
+  });
+
+  /**
+   * Runs the same chain for one `modify` output block, and reports what the
+   * applier did to the live args -- so the three shapes below are compared on
+   * exactly one variable.
+   */
+  async function modifyThrough(
+    modifyBlock: string,
+    fixtureName: string,
+    sessionID: string,
+  ): Promise<{ output: Record<string, unknown>; args: { command: string }; threw: unknown }> {
+    const hookmapPath = join(SCRATCH_DIR, fixtureName);
+    writeFileSync(hookmapPath, REQUEST_GATE_HEAD_FOR_FAILOPEN + modifyBlock);
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+    const args = { command: "echo ghp_ABCDEF123456" };
+    const client = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+      createSessionConfigStore(),
+    );
+    const governed = await governStep({
+      hookEventName: "tool.execute.before",
+      payload: { tool: TOOL, session_id: sessionID, callID: "c1", args },
+      hookmap,
+      guardian: client,
+      session,
+      sessionId: sessionID,
+      audit: NULL_AUDIT_SINK,
+    });
+    expect(governed.decision?.decision).toBe("modify");
+    let threw: unknown;
+    try {
+      applyOpenCodeOutput(governed.output, { gate: "request", args });
+    } catch (error) {
+      threw = error;
+    }
+    return { output: governed.output as Record<string, unknown>, args, threw };
+  }
+
+  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- the request gate's own
+  // copies of the two shapes `declaresSinkFrom` accepted while checking only
+  // what the sink NAMED, never whether the field could RENDER.
+  it("modify declaring args with type: string renders {} -- applied_input is an object, so the type filter drops it", async () => {
+    const { output, args, threw } = await modifyThrough(
+      "      modify:\n" + "        output:\n" + "          args: { from: applied_input, type: string }\n",
+      "request-modify-type-string.yaml",
+      "ses-request-gate-modify-type-string",
+    );
+    expect(output).toEqual({});
+    expect(threw).toBeUndefined();
+    expect(args.command).toBe("echo ghp_ABCDEF123456");
+  });
+
+  it("modify declaring a literal args BESIDE the right from: lands the author's own command on every rewrite", async () => {
+    // Worse than a no-op at this gate: `renderDecision` prefers `value` and
+    // never reads `applied_input`, so the applier merges a command the
+    // Guardian never chose -- identical on every modify this deployment ever
+    // sees, and the actual rewrite never lands.
+    const { output, args, threw } = await modifyThrough(
+      "      modify:\n" +
+        "        output:\n" +
+        '          args: { value: { command: "echo pwned" }, from: applied_input }\n',
+      "request-modify-value-beside-from.yaml",
+      "ses-request-gate-modify-value-beside-from",
+    );
+    expect(output).toEqual({ args: { command: "echo pwned" } });
+    expect(threw).toBeUndefined();
+    expect(args.command).toBe("echo pwned");
+    expect(args.command).not.toBe("echo [REDACTED]");
+  });
+
+  // THE OTHER DIRECTION (§V5 review round 3, Task 5, fix round 2, Minor): a
+  // `modify` an author chose to map to a refusal instead of a rewrite. Blocking
+  // the tool is strictly MORE conservative than rewriting its arguments -- the
+  // command never runs at all -- and it is the shipped hookmap's own idiom for
+  // `ask`/`defer` at this gate. Not a silent no-op, so not this gate's to
+  // refuse.
+  it("a request-gate modify mapped to an unconditional refusal THROWS before the tool runs, and applies nothing", async () => {
+    const { output, args, threw } = await modifyThrough(
+      "      modify:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+      "request-modify-as-refusal.yaml",
+      "ses-request-gate-modify-as-refusal",
+    );
+    expect(output).toEqual({ refuse: { denied: true } });
+    expect(threw).toBeInstanceOf(Error);
+    // Nothing half-applied: pass 2a throws before any assignment.
+    expect(args.command).toBe("echo ghp_ABCDEF123456");
   });
 });

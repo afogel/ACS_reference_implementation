@@ -99,7 +99,10 @@ hooks:
       # declares anything else -- the exact key (a path under it merges one
       # level too deep, landing the whole rewrite bag in a single argument) and
       # the exact source (a `from:` naming a field the decision does not carry
-      # renders nothing). Measured with this line removed, against a live
+      # renders nothing, and a `value:` beside it wins outright). An author who
+      # would rather BLOCK the tool than rewrite its arguments may declare
+      # `refuse.denied: { value: true }` here instead -- also accepted, and
+      # strictly more conservative. Measured with this line removed, against a live
       # Guardian: a real `modify` carrying
       # `applied_input: {command: "echo [REDACTED]"}` rendered `{}`, the
       # applier applied nothing and threw nothing, and the command ran
@@ -185,9 +188,27 @@ hooks:
       #     (`result: { from: applied_input }`, one copy-paste from the request
       #     gate above) -- renders no `result` key at all, same delivery. That
       #     one passed the first version of the gate, which asked only whether
-      #     the key was present.
+      #     the key was present;
+      #   - the right key AND the right source, declared so it can never
+      #     RENDER -- `{ from: applied_output, type: string }` (a `typeof`
+      #     filter, and `applied_output` is an object, so it is dropped every
+      #     time -- and every OTHER `from:` field in this file carries
+      #     `type: string`, so house style leads straight to it), or
+      #     `{ value: {}, from: applied_output }` (renderDecision reads `value`
+      #     first and never looks at `from`). Both passed the SECOND version of
+      #     the gate, which checked what the sink named and not whether it
+      #     could render.
       # `withResultOutput` guaranteed the DECISION carried `applied_output` the
       # whole time; nothing guaranteed this file declared anywhere to put it.
+      #
+      # A REFUSAL IS THE OTHER ACCEPTED ANSWER, not a third refused shape: a
+      # decision here may declare `refuse.denied: { value: true }` instead of a
+      # sink, and the gate accepts it. That throws -- the model never sees the
+      # output -- which is weaker than replacing (the plaintext survives in
+      # OpenCode's own session record, per this file's header) but is not a
+      # silent no-op, and refusing such a hookmap at LOAD would leave the
+      # plugin unloaded and the whole session ungoverned. This file replaces,
+      # because replacing is the stronger of the two.
       deny:
         output:
           result: { from: applied_output }

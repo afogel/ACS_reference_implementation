@@ -65,6 +65,54 @@ describe("opencode.hookmap.yaml", () => {
     expect(resultDeny).not.toContain("refuse.reason");
   });
 
+  it("exercises assertHostHonoursEveryDecision's SINK branch, not its refusal branch -- non-vacuously (§V5 review round 3, Task 5, fix round 2)", () => {
+    // The gate accepts a decision that can either LAND what it arrived
+    // carrying or UNCONDITIONALLY REFUSE (acs-plugin.ts's `satisfiesGate`).
+    // That means "the shipped hookmap passes the gate" is no longer, by
+    // itself, evidence that the sink rules work: a file that declared
+    // `refuse.denied` everywhere would pass them too, via the other branch,
+    // and every sink test in acs-plugin.test.ts would still be green while
+    // this file's own decisions rendered nothing.
+    //
+    // So: pinned that the shipped file takes the SINK branch, by asserting it
+    // declares no `refuse` path at all on any decision the sink rules govern.
+    // A future edit that "fixed" a gate failure by adding a refusal marker to
+    // one of these would fail here rather than quietly turning the sink rules
+    // vacuous.
+    const hooks = loadHookmap(HOOKMAP).hooks;
+    const requestDecisions = hooks["tool.execute.before"]!.decisions as DecisionsShape;
+    const resultDecisions = hooks["tool.execute.after"]!.decisions as DecisionsShape;
+
+    const refusePaths = (paths: string[]) => paths.filter((path) => path.split(".")[0] === "refuse");
+
+    // The request gate's `modify` is governed by the args-sink rule.
+    expect(Object.keys(requestDecisions.modify!.output)).toContain("args");
+    expect(refusePaths(Object.keys(requestDecisions.modify!.output))).toEqual([]);
+
+    // The result gate's `deny` and `modify` are governed by the result-sink
+    // rule. (`ask`/`defer` are not declared at this gate, so the rule has
+    // nothing to ask of them -- asserted below so that stays deliberate.)
+    for (const decisionName of ["deny", "modify"] as const) {
+      expect(Object.keys(resultDecisions[decisionName]!.output)).toContain("result");
+      expect(refusePaths(Object.keys(resultDecisions[decisionName]!.output))).toEqual([]);
+    }
+    expect(resultDecisions.ask).toBeUndefined();
+    expect(resultDecisions.defer).toBeUndefined();
+
+    // And the sinks are the RENDERABLE declaration, not merely the right key:
+    // no `value` beside the `from`, and no `type` that a `typeof` check on an
+    // object would fail. Both are the shapes fix round 2 closed.
+    for (const output of [
+      requestDecisions.modify!.output as Record<string, Record<string, unknown>>,
+      resultDecisions.deny!.output as Record<string, Record<string, unknown>>,
+      resultDecisions.modify!.output as Record<string, Record<string, unknown>>,
+    ]) {
+      const sink = (output.args ?? output.result)!;
+      expect(Object.hasOwn(sink, "value")).toBe(false);
+      expect(sink.type === undefined || sink.type === "object").toBe(true);
+    }
+  });
+
   it("scopes both gates to bash (§V5 review, Task 5, fix round 1 -- the request gate used to be left unscoped)", () => {
     // §V5 review, fix round 1, Important 1: OpenCode fires the RESULT gate's
     // hook for every tool with no matcher, and `metadata` is per-tool --
