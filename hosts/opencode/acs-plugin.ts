@@ -23,7 +23,7 @@
  * result-output.ts); `loadHookmap` went from ONE load-time gate
  * (`assertRenderableDecisions`) to FIVE (plus `assertMirrorsWellFormed`,
  * `assertToolsWellFormed`, `assertExitStatusNotBothForms`,
- * `assertRequestGateUnscopable`); and `exit_status` gained a second, `from:`
+ * `assertRequestGateDeclaresNoOutputs`); and `exit_status` gained a second, `from:`
  * form beside its original `literal:`. Only `render-decision.ts` and
  * `govern-step.ts` are genuinely untouched. So `buildEnvelope`, the hookmap
  * format, and every load-time check are NOT the unmodified set an earlier
@@ -256,7 +256,7 @@ const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
  * file ALONE, with no invocation payload needed -- the same class of fault
  * this slice has now moved to a load-time check three times already
  * (`assertMirrorsWellFormed`, `assertToolsWellFormed`,
- * `assertExitStatusNotBothForms`/`assertRequestGateUnscopable`, all in
+ * `assertExitStatusNotBothForms`/`assertRequestGateDeclaresNoOutputs`, all in
  * build-envelope.ts) rather than leaving it to surface downstream, where a
  * throw is caught by `governStep` and answered by the deployment's
  * NEGOTIATED delivery posture instead of refused outright -- and `proceed`

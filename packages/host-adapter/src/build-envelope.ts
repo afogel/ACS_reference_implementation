@@ -461,6 +461,19 @@ function assertExitStatusNotBothForms(hookmap: Hookmap, path: string): void {
  * and ALSO declares `outputs` (a result gate's own output/mirror
  * declaration), AT LOAD TIME.
  *
+ * NAMED `assertRequestGateDeclaresNoOutputs`, not `assertRequestGateUnscopable`
+ * (§V5 review round 3, Important). The old name described the state this
+ * function left BEHIND, not the one it produced: after Task 5's own
+ * narrowing (next paragraph), the shipped request gate IS scoped --
+ * `tools: [bash]` on `opencode.hookmap.yaml`'s `tool.execute.before` entry
+ * -- so a name built on "unscopable" taught a reader that this adapter
+ * forbids scoping a request gate at all, and that reader would go on to
+ * delete `tools: [bash]` from the shipped hookmap, or skip the tool check
+ * this function has nothing to do with, on the strength of a claim this
+ * function stopped making. What survives the rename, unchanged, is the one
+ * thing left in the new name: this function refuses a request-gate entry
+ * that also declares `outputs`, and nothing about `tools`.
+ *
  * §V5 review, fix round 2, Important 2, NARROWED in §V5 review, Task 5, fix
  * round 1 (priority item). This used to refuse a request-gate entry that
  * also declared `tools` -- on the theory that the request gate is the one
@@ -498,7 +511,7 @@ function assertExitStatusNotBothForms(hookmap: Hookmap, path: string): void {
  * `buildPayload`'s `arguments` branch never looks at `exit_status`. Out of
  * this review's two Important findings; not that task's to close.
  */
-function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
+function assertRequestGateDeclaresNoOutputs(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
     if (!isPlainObject(entry)) {
       continue;
@@ -518,6 +531,51 @@ function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
   }
 }
 
+/**
+ * Rewrites every entry whose `tools` key is present-but-`null` to OMIT the
+ * key instead, and returns the result as a fresh `Hookmap` -- never a
+ * mutation of the object `Bun.YAML.parse` produced.
+ *
+ * §V5 review round 3, Important. `assertToolsWellFormed`, above, already
+ * treats a bare `tools:` line (YAML's own parse for it is `null`: a key
+ * present and unusable, not a key absent) the same as no `tools` declared at
+ * all -- but only inside its own local `rawTools = entry.tools ?? undefined`,
+ * which is thrown away the moment that function returns. The `Hookmap` this
+ * function's caller (`loadHookmap`) handed back still carried `tools: null`
+ * on that entry, so every CONSUMER had to repeat the same `?? undefined`
+ * dance to read a well-formed role rather than the YAML parse tree
+ * `loadHookmap` actually returned. `hosts/opencode/acs-plugin.ts`'s
+ * `isGovernedTool` does exactly that today, and its own doc comment records
+ * what reading `tools !== undefined` instead produced: `TypeError: null is
+ * not an object`, thrown on every call to a gate whose hookmap entry
+ * declares a bare `tools:`. This is a REPRESENTATION change, not a semantic
+ * one -- `tools: null` and no `tools` key mean the same thing, "every tool"
+ * (`HookmapHookEntryCommon.tools`'s own doc comment) -- so it does not touch
+ * what `assertToolsWellFormed` already decided is well-formed; it only stops
+ * asking every future caller to decide, again, that `null` here means
+ * "absent".
+ *
+ * Called LAST, after every load-time check above it -- `assertToolsWellFormed`
+ * included -- so nothing upstream of this function loses sight of the
+ * hookmap exactly as `Bun.YAML.parse` produced it. Rewriting the entry
+ * before those checks ran would have hidden the very shape
+ * `assertToolsWellFormed` exists to inspect from the one function that
+ * inspects it; running this after, on a fresh copy, keeps every existing
+ * check seeing what it already sees today.
+ */
+function normalizeTools(hookmap: Hookmap): Hookmap {
+  const hooks: Record<string, HookmapHookEntry> = {};
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks)) {
+    if (isPlainObject(entry) && (entry as { tools?: unknown }).tools === null) {
+      const { tools: _tools, ...rest } = entry as Record<string, unknown>;
+      hooks[hookEventName] = rest as HookmapHookEntry;
+    } else {
+      hooks[hookEventName] = entry;
+    }
+  }
+  return { ...hookmap, hooks };
+}
+
 /** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
@@ -527,15 +585,20 @@ function assertRequestGateUnscopable(hookmap: Hookmap, path: string): void {
  * see assertToolsWellFormed. Also throws if any entry's `exit_status`
  * declares both `literal` and `from` -- see assertExitStatusNotBothForms.
  * Also throws if a request-gate entry (one declaring `arguments`) also
- * declares `outputs` -- see assertRequestGateUnscopable. */
+ * declares `outputs` -- see assertRequestGateDeclaresNoOutputs.
+ *
+ * Returns a NORMALISED `Hookmap`, not the raw parse tree `Bun.YAML.parse`
+ * produced: an entry whose `tools` key is present-but-`null` comes back with
+ * the key OMITTED instead -- see normalizeTools, run last, once every check
+ * above has passed. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
   assertRenderableDecisions(hookmap, path);
   assertMirrorsWellFormed(hookmap, path);
   assertToolsWellFormed(hookmap, path);
   assertExitStatusNotBothForms(hookmap, path);
-  assertRequestGateUnscopable(hookmap, path);
-  return hookmap;
+  assertRequestGateDeclaresNoOutputs(hookmap, path);
+  return normalizeTools(hookmap);
 }
 
 /**

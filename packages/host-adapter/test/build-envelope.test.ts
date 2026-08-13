@@ -995,4 +995,75 @@ describe("buildEnvelope", () => {
       });
     });
   });
+
+  /**
+   * §V5 review round 3, Important: `assertToolsWellFormed`, above, already
+   * treats a bare `tools:` line (YAML's own parse for it is `null` -- a key
+   * present and unusable, not a key absent) as "no tools declared", but only
+   * inside its own local variable. Before this fix, the `Hookmap` object
+   * `loadHookmap` actually returned still carried `tools: null` on that
+   * entry, so every CONSUMER had to repeat the same `?? undefined` dance --
+   * `hosts/opencode/acs-plugin.ts`'s `isGovernedTool` does, and its own doc
+   * comment records the crash (`TypeError: null is not an object`) that
+   * happened when an earlier version read `tools !== undefined` instead.
+   * `normalizeTools` (build-envelope.ts) closes that: `loadHookmap` now
+   * hands back a hookmap whose entries never carry a present-but-`null`
+   * `tools`, so a caller reading `tools === undefined` -- the natural,
+   * un-defensive reading -- gets the right answer.
+   */
+  describe("loadHookmap — a present-but-null `tools` normalises to absent (§V5 review round 3, Important)", () => {
+    function withHookmapFile(content: string, fn: (path: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-tools-normalise-"));
+      const path = join(dir, "hookmap.yaml");
+      writeFileSync(path, content);
+      try {
+        fn(path);
+      } finally {
+        unlinkSync(path);
+        rmdirSync(dir);
+      }
+    }
+
+    // The same otherwise-well-formed entry the sibling "tools is validated
+    // at load time" describe block above uses, minus its own `tools` line --
+    // each case here adds its own.
+    const POST_TOOL_USE =
+      "host: opencode\nhooks:\n  PostToolUse:\n    acs_method: steps/toolCallResult\n" +
+      "    tool_name: $.tool_name\n    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+      "    exit_status: { literal: success }\n" +
+      "    decisions:\n" +
+      "      allow: { output: { x: { value: y } } }\n" +
+      "      deny: { output: { x: { value: y } } }\n";
+
+    it("a bare `tools:` key loads and comes back with `tools` absent, not `null`", () => {
+      const bare = `${POST_TOOL_USE}    tools:\n`;
+      withHookmapFile(bare, (path) => {
+        const loaded = loadHookmap(path);
+        expect(loaded.hooks.PostToolUse?.tools).toBeUndefined();
+        // `toBeUndefined()` alone would also pass for a key present and set
+        // to literal `undefined` -- impossible from parsed YAML, but this
+        // pins the stronger claim the brief asks for: the key itself is
+        // OMITTED, not merely read back as `undefined`.
+        expect(Object.prototype.hasOwnProperty.call(loaded.hooks.PostToolUse, "tools")).toBe(false);
+      });
+    });
+
+    it("`tools: null` and no `tools` key at all are indistinguishable to a consumer", () => {
+      const bare = `${POST_TOOL_USE}    tools:\n`;
+      withHookmapFile(bare, (barePath) => {
+        withHookmapFile(POST_TOOL_USE, (noKeyPath) => {
+          const fromBareNull = loadHookmap(barePath);
+          const fromNoKey = loadHookmap(noKeyPath);
+          expect(fromBareNull.hooks.PostToolUse).toEqual(fromNoKey.hooks.PostToolUse);
+        });
+      });
+    });
+
+    // The existing malformed-`tools` throw tests (sibling describe block,
+    // above) are unaffected by this change -- they run before
+    // `normalizeTools` is ever reached (loadHookmap calls it last, after
+    // every check has passed) and continue to throw the same messages.
+    // Not re-asserted here; this comment records that they were re-run, not
+    // rewritten, for this task.
+  });
 });
