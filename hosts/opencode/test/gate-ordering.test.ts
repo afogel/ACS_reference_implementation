@@ -42,7 +42,7 @@
  * both gates -- which is what a shared `handle` makes a single property rather
  * than two.
  */
-import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -64,6 +64,18 @@ const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
 beforeAll(() => {
   process.env.ACS_AUDIT_LOG = AUDIT_LOG;
+});
+
+// PER TEST, NOT PER FILE, so "no audit entry" is a claim about THIS case and
+// not about whichever case ran before it. Measured while checking that the
+// three assertions below actually catch a reordering: with the sessionID check
+// moved past the handshake, the one case that then reaches `governStep` writes
+// an entry -- and every LATER test's `existsSync` assertion failed too, on a
+// path the reordering never touched. Four failures, two of them naming nothing
+// about the defect. The claim is worth asserting; the coupling is not part of
+// it (§V5 review round 3, Task 6, fix round 1, Minor 3).
+beforeEach(() => {
+  rmSync(AUDIT_LOG, { force: true });
 });
 
 afterAll(() => {

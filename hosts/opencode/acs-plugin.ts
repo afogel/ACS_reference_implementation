@@ -989,7 +989,7 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
         `(${JSON.stringify(forbidden)}) at a hook this shim treats as the "${shape.declares}" gate. governStep ` +
         `and buildEnvelope read a gate's KIND off the entry's shape and never off the event name -- ` +
         `deliberately, so an event-name typo cannot silently select the wrong behaviour -- while this shim ` +
-        `decides it by hook NAME, because its two call sites hardcode which live half the applier gets. When ` +
+        `decides it by hook NAME, because its two hook methods hardcode which live half the applier gets. When ` +
         `the two disagree, ${shape.mismatchCosts}. Remove "${shape.notDeclares}" from this hook (§V5 review ` +
         `round 3, Task 5, fix round 4 -- measured).`,
     );

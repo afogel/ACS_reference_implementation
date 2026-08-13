@@ -360,7 +360,7 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * asking a bag -- and `live.gate === "request"` moves the read onto a key
  * nothing this codebase's own attack surface ever writes to
  * `Object.prototype`, which is real protection for today's two, fully-typed
- * call sites. But `gate` is ALSO a plain property read, not something
+ * constructors. But `gate` is ALSO a plain property read, not something
  * immune to the chain the way an own-key check is -- see that type's own
  * doc comment for which of the two checks below is the one actually
  * load-bearing (`Object.hasOwn(live, ...)`, not `gate`) against a `live`
