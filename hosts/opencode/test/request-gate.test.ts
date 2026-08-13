@@ -21,6 +21,7 @@ import { startGuardian, type StartedGuardian } from "guardian";
 import {
   buildEnvelope,
   createGuardianClient,
+  governsTool,
   createSessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
@@ -458,6 +459,205 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
   // command never runs at all -- and it is the shipped hookmap's own idiom for
   // `ask`/`defer` at this gate. Not a silent no-op, so not this gate's to
   // refuse.
+  // §V5 review round 3, Task 5, FIX ROUND 4, CRITICAL 7B -- the request gate's
+  // own table entry is WRONG whenever the entry declares `outputs:` instead of
+  // `arguments:`. `governStep` builds its output location off the ENTRY'S
+  // SHAPE, so a request hook declaring `outputs:` gets one -- and `resolveModify`
+  // (decision-modify.ts) then fills `applied_output` instead of `applied_input`.
+  // The sink this gate demands (`args: { from: applied_input }`) is correct,
+  // declared, and unfillable.
+  it("a request hook declaring outputs: gets applied_output, not applied_input -- the mandated args sink renders nothing", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-hook-with-outputs.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool\n" +
+        "    outputs:\n" +
+        "      from: $.args.command\n" +
+        "      within: $.args\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          args: { from: applied_input }\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+    const sessionID = "ses-request-hook-with-outputs";
+    const args = { command: "echo ghp_ABCDEF123456" };
+    const client = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+      createSessionConfigStore(),
+    );
+    const governed = await governStep({
+      hookEventName: "tool.execute.before",
+      payload: { tool: TOOL, session_id: sessionID, callID: "c1", args },
+      hookmap,
+      guardian: client,
+      session,
+      sessionId: sessionID,
+      audit: NULL_AUDIT_SINK,
+    });
+
+    expect(governed.decision?.decision).toBe("modify");
+    // The rewrite arrived on the OTHER field.
+    const decision = governed.decision as { applied_input?: unknown; applied_output?: unknown };
+    expect(decision.applied_input).toBeUndefined();
+    expect(decision.applied_output).toBeDefined();
+
+    // So the mandated sink renders nothing, and the audit says honoured.
+    expect(Object.hasOwn(governed.output, "args")).toBe(false);
+    expect(governed.stage).toBe("honoured");
+    expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
+    expect(args.command).toBe("echo ghp_ABCDEF123456");
+  });
+
+  // §V5 review round 3, Task 5, FIX ROUND 4 -- NOT on the directed list. The
+  // shim asks `governsTool(hookmap, hook, input.tool)` while `governStep` asks
+  // the same function with whatever this entry's `tool_name` path resolves to.
+  // acs-plugin.ts's own header records that they can diverge and that "nothing
+  // detects that". This measures what the divergence actually costs.
+  it("a tool_name path pointing away from $.tool makes governStep skip a governed tool entirely -- silent and unaudited", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-tool-name-diverges.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.args.command\n" +
+        "    arguments: $.args\n" +
+        "    tools: [bash]\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+    );
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+    const sessionID = "ses-request-tool-name-diverges";
+    const args = { command: "rm -rf /" };
+    const client = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
+      createSessionConfigStore(),
+    );
+
+    // The shim's own early check says this tool IS governed -- it passes
+    // `input.tool`, which the `tools` list names.
+    expect(governsTool(hookmap, "tool.execute.before", TOOL)).toBe(true);
+
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      const governed = await governStep({
+        hookEventName: "tool.execute.before",
+        payload: { tool: TOOL, session_id: sessionID, callID: "c1", args },
+        hookmap,
+        guardian: client,
+        session,
+        sessionId: sessionID,
+        audit: NULL_AUDIT_SINK,
+      });
+      // But governStep resolves `tool_name` to the COMMAND, which the `tools`
+      // list does not name -- so it skips: ungoverned, no decision, no
+      // Guardian request, and nothing for an audit entry to record.
+      expect(governed.stage).toBe("ungoverned");
+      expect(governed.decision).toBeNull();
+      expect(governed.output).toEqual({});
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
+      expect(args.command).toBe("rm -rf /");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  // §V5 review round 3, Task 5, FIX ROUND 4, IMPORTANT 7A -- a DECLARED
+  // decision name the tables do not know is silently unchecked, because
+  // `assertDecisionsCanAct` iterates the TABLE and not the hookmap's own
+  // declared decisions. `expectationFor` throws on an unknown HOOK; the
+  // identical skip one level down was silent.
+  //
+  // Needs a non-conformant Guardian to reach at runtime, which is why it ranks
+  // below the others -- but declaring the inert entry is strictly WORSE than
+  // not declaring it: without the entry `renderDecision` throws, `governStep`
+  // catches it, and the posture answers it, audited. With it, nothing happens
+  // and nothing is recorded. Constructed decision, same reason as the
+  // `ask`/`defer` cases in result-gate.test.ts.
+  it("a declared decision name the gate's tables do not know renders an inert reason and applies nothing", () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-unknown-decision.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "      block:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+    const hookmap: Hookmap = loadHookmap(hookmapPath);
+    const args = { command: "rm -rf /" };
+
+    const rendered = renderDecision(
+      "tool.execute.before",
+      { decision: "block", reasoning: "blocked" } as unknown as Parameters<typeof renderDecision>[1],
+      hookmap,
+    );
+    expect(rendered).toEqual({ reason: { text: "blocked" } });
+    expect(() => applyOpenCodeOutput(rendered, { gate: "request", args })).not.toThrow();
+    expect(args.command).toBe("rm -rf /");
+
+    // WITHOUT the inert entry the same decision fails loudly instead -- which
+    // is what makes declaring it strictly worse than leaving it out.
+    const withoutPath = join(SCRATCH_DIR, "request-no-unknown-decision.yaml");
+    writeFileSync(
+      withoutPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n",
+    );
+    expect(() =>
+      renderDecision(
+        "tool.execute.before",
+        { decision: "block", reasoning: "blocked" } as unknown as Parameters<typeof renderDecision>[1],
+        loadHookmap(withoutPath),
+      ),
+    ).toThrow(/no decisions entry for ACS decision "block"/);
+  });
+
   it("a request-gate modify mapped to an unconditional refusal THROWS before the tool runs, and applies nothing", async () => {
     const { output, args, threw } = await modifyThrough(
       "      modify:\n" +

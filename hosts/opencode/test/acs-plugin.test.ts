@@ -419,10 +419,10 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "        output:\n" +
         "          result: { from: applied_output }\n",
     );
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "outputs" block/);
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/unfillable by construction/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no usable "outputs"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/withResultOutput .* returns every decision untouched/);
     // Blames the ENTRY, not the correctly-declared decision.
-    await expect(runPlugin(hookmapPath)).rejects.toThrow(/"hooks\.tool\.execute\.after" declares no "outputs"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/"hooks\.tool\.execute\.after" declares no usable/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-hook-without-outputs\.yaml/);
   });
 
@@ -665,6 +665,246 @@ describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
     const withoutModify = join(SCRATCH_DIR, "request-no-modify.yaml");
     writeFileSync(withoutModify, REQUEST_GATE_HEAD);
     await expect(runPlugin(withoutModify)).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * §V5 review round 3, Task 5, FIX ROUND 4 -- the entry-shape and fixed-path
+ * rules, which apply to BOTH gates and are therefore their own block.
+ *
+ * Every fail-open they close was measured first, routed around `AcsPlugin`, in
+ * request-gate.test.ts and result-gate.test.ts. See `GateEntryShape`'s own doc
+ * comment (acs-plugin.ts) for each one.
+ */
+describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () => {
+  const REQUEST_DECISIONS =
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          refuse.denied: { value: true }\n";
+  const RESULT_DECISIONS =
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          result: { from: applied_output }\n";
+
+  // CRITICAL 7B -- a request hook declaring `outputs:` gets an output location,
+  // so `resolveModify` fills `applied_output` and the `args` sink this gate
+  // demands is unfillable. Measured: stage "honoured", rewrite landed nowhere.
+  it("refuses a request hook declaring outputs: instead of arguments:", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-hook-with-outputs.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool\n" +
+        "    outputs:\n" +
+        "      from: $.args.command\n" +
+        "      within: $.args\n" +
+        "    exit_status: { literal: success }\n" +
+        REQUEST_DECISIONS,
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no usable "arguments"/);
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/fills "applied_output" instead of "applied_input"/);
+  });
+
+  it("refuses a request hook declaring BOTH arguments: and outputs:", async () => {
+    // `assertRequestGateDeclaresNoOutputs` (build-envelope.ts) already refuses
+    // this one upstream -- asserted here so the two checks' division stays
+    // visible, and so this gate's own coverage does not depend on which fires
+    // first.
+    const hookmapPath = join(SCRATCH_DIR, "request-hook-with-both.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    outputs:\n" +
+        "      from: $.args.command\n" +
+        "      within: $.args\n" +
+        "    exit_status: { literal: success }\n" +
+        REQUEST_DECISIONS,
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow();
+  });
+
+  // CRITICAL 7D -- `outputs.within` must name the object this shim hands the
+  // applier. Measured for both wrong containers.
+  it.each(["$", "$.result.metadata"] as const)(
+    "refuses a result hook whose outputs.within is %s rather than $.result",
+    async (within) => {
+      const hookmapPath = join(SCRATCH_DIR, `result-within-${within === "$" ? "root" : "metadata"}.yaml`);
+      const from = within === "$" ? "$.result.output" : "$.result.metadata.output";
+      writeFileSync(
+        hookmapPath,
+        "host: opencode\n" +
+          "hooks:\n" +
+          "  tool.execute.after:\n" +
+          "    acs_method: steps/toolCallResult\n" +
+          "    tool_name: $.tool\n" +
+          "    outputs:\n" +
+          `      from: ${from}\n` +
+          `      within: ${within}\n` +
+          "    exit_status: { from: $.result.metadata.exit }\n" +
+          RESULT_DECISIONS,
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.within" is/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/patched clone OF the container/);
+    },
+  );
+
+  // 7E -- NOT on the review's list. The shim and governStep ask `governsTool`
+  // with different arguments, and acs-plugin.ts's header has recorded since
+  // Task 2 that "nothing detects that". Measured: governStep skips a governed
+  // tool as "ungoverned", no Guardian request, no audit entry.
+  it.each(["tool.execute.before", "tool.execute.after"] as const)(
+    "refuses a %s entry whose tool_name points away from $.tool",
+    async (hookEventName) => {
+      const hookmapPath = join(SCRATCH_DIR, `tool-name-diverges-${hookEventName}.yaml`);
+      const body =
+        hookEventName === "tool.execute.before"
+          ? "    arguments: $.args\n" + REQUEST_DECISIONS
+          : "    outputs:\n" +
+            "      from: $.result.output\n" +
+            "      within: $.result\n" +
+            "    exit_status: { from: $.result.metadata.exit }\n" +
+            RESULT_DECISIONS;
+      writeFileSync(
+        hookmapPath,
+        "host: opencode\n" +
+          "hooks:\n" +
+          `  ${hookEventName}:\n` +
+          "    acs_method: steps/toolCallRequest\n" +
+          "    tool_name: $.args.command\n" +
+          "    tools: [bash]\n" +
+          body,
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/tool_name" is "\$\.args\.command"/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/skipped as\s+"ungoverned"/);
+    },
+  );
+
+  it("refuses a request hook whose arguments path points away from $.args", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "request-arguments-diverges.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.result\n" +
+        REQUEST_DECISIONS,
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/arguments" is "\$\.result"/);
+  });
+});
+
+/**
+ * IMPORTANT 7A -- a DECLARED decision name outside the gate's tables was
+ * silently unchecked, because the enforcement loop iterated the TABLE rather
+ * than the hookmap. Measured in request-gate.test.ts: declaring the inert entry
+ * is strictly worse than leaving it out, because without it `renderDecision`
+ * throws and the posture answers it, audited.
+ */
+describe("AcsPlugin's load-time gate, for a decision name it has no expectation for", () => {
+  it.each(["block", "Deny", "warn"] as const)(
+    "refuses a request-gate hookmap declaring decisions.%s",
+    async (decisionName) => {
+      const hookmapPath = join(SCRATCH_DIR, `request-unknown-decision-${decisionName}.yaml`);
+      writeFileSync(
+        hookmapPath,
+        "host: opencode\n" +
+          "hooks:\n" +
+          "  tool.execute.before:\n" +
+          "    acs_method: steps/toolCallRequest\n" +
+          "    tool_name: $.tool\n" +
+          "    arguments: $.args\n" +
+          "    decisions:\n" +
+          "      allow:\n" +
+          "        output:\n" +
+          "          reason.text: { from: reasoning, type: string }\n" +
+          "      deny:\n" +
+          "        output:\n" +
+          "          refuse.denied: { value: true }\n" +
+          `      ${decisionName}:\n` +
+          "        output:\n" +
+          "          reason.text: { from: reasoning, type: string }\n",
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(
+        new RegExp(`declares "${decisionName}", which this shim has no expectation for at this gate`),
+      );
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/strictly WORSE than leaving it out/);
+    },
+  );
+
+  it("refuses the same at the result gate", async () => {
+    const hookmapPath = join(SCRATCH_DIR, "result-unknown-decision.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.after:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool\n" +
+        "    outputs:\n" +
+        "      from: $.result.output\n" +
+        "      within: $.result\n" +
+        "    exit_status: { from: $.result.metadata.exit }\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          result: { from: applied_output }\n" +
+        "      block:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n",
+    );
+    await expect(runPlugin(hookmapPath)).rejects.toThrow(/has no expectation for at this gate/);
+  });
+
+  it("still accepts every decision name the tables DO know, and allow", async () => {
+    // The accept case, so the throw above cannot pass by refusing everything.
+    const hookmapPath = join(SCRATCH_DIR, "request-all-known-decisions.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "      ask:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "      defer:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "      modify:\n" +
+        "        output:\n" +
+        "          args: { from: applied_input }\n",
+    );
+    await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 });
 

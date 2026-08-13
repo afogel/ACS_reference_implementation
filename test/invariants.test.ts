@@ -1,4 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import {
+  withResultOutput,
+  type AcsDecision,
+  type HostOutputLocation,
+} from "host-adapter";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -878,5 +883,147 @@ describe("the source-file filter itself", () => {
     }));
 
     expect(paths).toEqual(paths.map(({ path }) => ({ path, excluded: false })));
+  });
+});
+
+/**
+ * THE NINTH GATE, and the one that closes a concern this project's own review
+ * process raised against itself (§V5 review round 3, Task 5, fix round 4).
+ *
+ * `hosts/opencode/acs-plugin.ts` decides what a hookmap must declare for each
+ * decision by consulting two hand-written tables -- `CARRIED_AT_REQUEST_GATE`
+ * and `CARRIED_AT_RESULT_GATE` -- which say, per gate per decision, WHICH
+ * decision field that decision actually arrives carrying (or `null` for "it
+ * carries nothing this host could land, so refusing is its only honest shape").
+ *
+ * THOSE TABLES ARE A FAIL-OPEN GENERATOR IF THEY ARE WRONG, and they have been
+ * wrong twice, in the same review round:
+ *
+ *   - the result gate's table claimed `ask`/`defer` carry `applied_output`.
+ *     `withResultOutput` returns both untouched, so the sink the gate demanded
+ *     was unfillable and a real `ask` delivered the tool's output in the leaf
+ *     and its mirror.
+ *   - the request gate's table claimed `modify` carries `applied_input`. True
+ *     only while the entry declares `arguments:` -- an entry declaring
+ *     `outputs:` gets an output location, and `resolveModify` fills
+ *     `applied_output` instead.
+ *
+ * Both were closed in the shim. Neither was DETECTABLE there: a table
+ * hand-derived from another package's behaviour can go stale the moment that
+ * package changes, and the failure direction is silent (over-refusal is loud;
+ * under-refusal is a delivered secret). This gate is what makes it loud in both
+ * directions -- it runs the adapter's own `withResultOutput`/`resolveModify`
+ * for every decision name at both gates and asserts the answer matches the
+ * table the shim is enforcing.
+ *
+ * LIVES HERE, NOT IN hosts/opencode/test/, for the reason this file states for
+ * its own sibling gates: the claim needs TWO artifacts at once -- the shim's
+ * table and the adapter's behaviour -- and neither package's own suite owns
+ * both. Same placement argument as the `tools`-at-PreToolUse gate and the
+ * export-count gate above.
+ *
+ * R3.2 IS NOT AT RISK from this file naming `applied_input`/`applied_output`:
+ * those are ACS's own decision-message vocabulary, not any host's field names,
+ * and the vocabulary gates above deliberately scope to
+ * `packages/host-adapter/src` rather than to this suite.
+ */
+describe("the shim's decision tables match the adapter's actual behaviour", () => {
+  /**
+   * The tables as `hosts/opencode/acs-plugin.ts` declares them. Duplicated
+   * here rather than exported: `acs-plugin.ts` exports exactly one symbol, and
+   * the export-count gate above exists precisely because a second export
+   * disables governance for a whole OpenCode session. So the shim's copy stays
+   * module-private and this gate re-states it -- which is also what makes the
+   * assertion meaningful, since a gate importing the value it checks would
+   * only ever be asserting that a constant equals itself.
+   *
+   * A DIVERGENCE BETWEEN THIS COPY AND THE SHIM'S IS A REAL RISK, and it is
+   * covered: every entry below is asserted against the ADAPTER, so a shim
+   * table that drifts away from this one drifts away from the adapter too and
+   * fails hosts/opencode/test/acs-plugin.test.ts's own accept cases.
+   */
+  const EXPECTED_CARRIED = {
+    "tool.execute.before": { allow: undefined, deny: null, ask: null, defer: null, modify: "applied_input" },
+    "tool.execute.after": { allow: undefined, deny: "applied_output", ask: null, defer: null, modify: "applied_output" },
+  } as const;
+
+  const OUTPUT_LOCATION: HostOutputLocation = {
+    payload: { result: { output: "SECRET", metadata: { output: "SECRET", exit: 0 } } },
+    outputs: { from: "$.result.output", within: "$.result" },
+  };
+
+  /**
+   * What the ADAPTER actually leaves on a decision of this name at this gate,
+   * composed the way `governStep`'s own `render()` composes it: the result gate
+   * passes an output location, the request gate passes `undefined`.
+   *
+   * `modify` is handed an `applied_input`/`applied_output` the way
+   * `validateDecision` would have left one, because `withResultOutput` THROWS
+   * on a `modify` carrying neither -- that throw is itself part of the
+   * behaviour this asserts, and it is checked separately below.
+   */
+  function carriedByAdapter(hookEventName: keyof typeof EXPECTED_CARRIED, decisionName: string): string | null | undefined {
+    const location = hookEventName === "tool.execute.after" ? OUTPUT_LOCATION : undefined;
+    const seed: Record<string, unknown> = { decision: decisionName, reasoning: "why" };
+    if (decisionName === "modify") {
+      // The field N7's apply step leaves for THIS gate -- the same split
+      // `resolveModify` makes off the presence of an output location.
+      seed[location === undefined ? "applied_input" : "applied_output"] = { command: "echo [REDACTED]" };
+    }
+    const projected = withResultOutput(seed as unknown as AcsDecision, location) as Record<string, unknown>;
+    const carries = ["applied_input", "applied_output"].filter((field) => projected[field] !== undefined);
+    if (carries.length === 0) {
+      return null;
+    }
+    expect({ decisionName, carries }).toEqual({ decisionName, carries: [carries[0]!] });
+    return carries[0]!;
+  }
+
+  it.each(["tool.execute.before", "tool.execute.after"] as const)(
+    "%s: every decision the shim's table names carries what the table says it carries",
+    (hookEventName) => {
+      const expected = EXPECTED_CARRIED[hookEventName];
+      for (const [decisionName, declared] of Object.entries(expected)) {
+        if (declared === undefined) {
+          // `allow` is the one decision both tables deliberately omit. Asserted
+          // rather than skipped: if the adapter ever started attaching a
+          // replacement to an `allow`, the shim would be leaving a landable
+          // decision unchecked.
+          expect({ decisionName, carries: carriedByAdapter(hookEventName, decisionName) }).toEqual({
+            decisionName,
+            carries: null,
+          });
+          continue;
+        }
+        expect({ hookEventName, decisionName, carries: carriedByAdapter(hookEventName, decisionName) }).toEqual({
+          hookEventName,
+          decisionName,
+          carries: declared,
+        });
+      }
+    },
+  );
+
+  it("the result gate's `modify` entry rests on a throw, and that throw is real", () => {
+    // `CARRIED_AT_RESULT_GATE` says `modify` carries `applied_output`. That is
+    // true only because `withResultOutput` refuses to return a result-gate
+    // `modify` that does not -- result-output.ts calls that guard "a call-site
+    // invariant" rather than a structural one, so the table's correctness rests
+    // on it and this pins it.
+    expect(() =>
+      withResultOutput({ decision: "modify", reasoning: "why" } as unknown as AcsDecision, OUTPUT_LOCATION),
+    ).toThrow(/carrying no applied output/);
+  });
+
+  it("a request gate genuinely gets no output location, which is what makes its table differ", () => {
+    // The other half of the same fact, and the one fix round 4's Critical 7B
+    // turned on: the two tables differ for `modify` ONLY because the request
+    // gate passes no location. `assertEntryMatchesGate` (acs-plugin.ts) is what
+    // keeps a request-gate ENTRY from acquiring one.
+    const projected = withResultOutput(
+      { decision: "deny", reasoning: "why" } as unknown as AcsDecision,
+      undefined,
+    ) as Record<string, unknown>;
+    expect(projected.applied_output).toBeUndefined();
   });
 });

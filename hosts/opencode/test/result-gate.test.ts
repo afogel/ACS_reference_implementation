@@ -986,6 +986,86 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     "          result: { from: applied_output }\n" +
     "          reason.text: { from: reasoning, type: string }\n";
 
+  // §V5 review round 3, Task 5, FIX ROUND 4, CRITICAL 7D -- `outputs.within`
+  // names the container a decision's `applied_output` is a patched clone OF,
+  // and nothing checked that it is the object this shim actually hands the
+  // applier. The shim passes `result: output` (the live
+  // `{title, output, metadata, attachments}`), and its payload puts that at
+  // `$.result` -- so `$.result` is the only path that names it. Any other
+  // container satisfies the sink rule and lands the clone somewhere else.
+  const RESULT_WITHIN = (from: string, within: string) =>
+    "host: opencode\n" +
+    "hooks:\n" +
+    "  tool.execute.after:\n" +
+    "    acs_method: steps/toolCallResult\n" +
+    "    tool_name: $.tool\n" +
+    "    tools: [bash]\n" +
+    "    outputs:\n" +
+    `      from: ${from}\n` +
+    `      within: ${within}\n` +
+    "    exit_status: { from: $.result.metadata.exit }\n" +
+    "    decisions:\n" +
+    "      allow:\n" +
+    "        output:\n" +
+    "          reason.text: { from: reasoning, type: string }\n" +
+    "      deny:\n" +
+    "        output:\n" +
+    "          result: { from: applied_output }\n" +
+    "      modify:\n" +
+    "        output:\n" +
+    "          result: { from: applied_output }\n";
+
+  it("within: $ makes the withheld clone land one level too deep -- leaf AND mirror keep the plaintext", async () => {
+    const { output, result, threw } = await governAndApply({
+      hookmapPath: fixture("result-within-root.yaml", RESULT_WITHIN("$.result.output", "$")),
+      sessionID: "ses-result-within-root",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    // The sink rule is satisfied -- a `result` key IS rendered and IS merged.
+    expect(Object.hasOwn(output, "result")).toBe(true);
+    expect(threw).toBeUndefined();
+    // And it withheld nothing: the clone is of the whole PAYLOAD, so its own
+    // `result` field is what carries the withholding, one level below where
+    // the live object lives.
+    expect(result.output).toBe("rm -rf /");
+    expect(result.metadata.output).toBe("rm -rf /");
+    // Worse: the payload's other top-level fields are merged onto OpenCode's
+    // own live result object as junk keys.
+    const asRecord = result as unknown as Record<string, unknown>;
+    expect(Object.hasOwn(asRecord, "tool")).toBe(true);
+    expect(Object.hasOwn(asRecord, "session_id")).toBe(true);
+    expect(Object.hasOwn(asRecord, "callID")).toBe(true);
+  });
+
+  it("within: $.result.metadata leaves the mirror plaintext -- the exact leak outputs.mirrors exists to close", async () => {
+    // `from`/`within` nest correctly here (`replacingOutput` refuses a pair
+    // that does not), so nothing upstream complains: this names `metadata` as
+    // the container and `metadata.output` as its leaf. Both are real paths in
+    // the payload. What is wrong is only that `metadata` is not the object the
+    // shim hands the applier.
+    const { result, threw } = await governAndApply({
+      hookmapPath: fixture(
+        "result-within-metadata.yaml",
+        RESULT_WITHIN("$.result.metadata.output", "$.result.metadata"),
+      ),
+      sessionID: "ses-result-within-metadata",
+      toolOutput: "rm -rf /",
+      expectedDecision: "deny",
+    });
+
+    expect(threw).toBeUndefined();
+    // THE MIRROR KEEPS THE PLAINTEXT -- the leak `outputs.mirrors` exists to
+    // close, reached from the container rather than from a missing mirror.
+    expect(result.metadata.output).toBe("rm -rf /");
+    // And `metadata`'s own siblings land on the live result object as junk,
+    // because the patched clone of `metadata` was merged one level too high.
+    const asRecord = result as unknown as Record<string, unknown>;
+    expect(asRecord.exit).toBe(0);
+    expect(asRecord.truncated).toBe(false);
+  });
+
   it("a result hook declaring no outputs block renders no result key for a real deny -- the sink is unfillable by construction", async () => {
     const { output, result, threw } = await governAndApply({
       hookmapPath: fixture("result-hook-without-outputs.yaml", RESULT_HOOK_WITH_NO_OUTPUTS),

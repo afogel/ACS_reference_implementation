@@ -169,7 +169,9 @@
  *   - TRUST, RATHER THAN RE-CHECK, THAT A DECISION THAT MUST REFUSE, WITHHOLD
  *     OR REWRITE HAS SOMEWHERE TO DO IT. `assertHostHonoursEveryDecision`
  *     (below), called from `AcsPlugin` beside `loadHookmap`, refuses this
- *     hookmap at LOAD TIME unless all three of these hold:
+ *     hookmap at LOAD TIME unless every one of these holds (deliberately not
+ *     counted -- this list has grown twice and a quoted count went stale each
+ *     time, §V5 review round 3, Task 5, fix rounds 3 and 4):
  *
  *       * every request-gate `deny`/`ask`/`defer` declares an unconditional
  *         (`value:`) output field under `refuse` -- `refuse.denied` in the
@@ -185,9 +187,18 @@
  *       * every result-gate `deny`/`modify` EITHER declares
  *         `result: { from: applied_output }` OR declares that same
  *         unconditional refusal;
- *       * and the result hook itself declares an `outputs` block, without
- *         which `withResultOutput` no-ops for EVERY decision and the sink
- *         above is unfillable however correctly it is written.
+ *       * every decision name either table names, or `allow`, and nothing
+ *         else -- a declared decision this shim has no expectation for is a
+ *         throw, not a skip, the same rule `expectationFor` states for an
+ *         unknown hook (§V5 review round 3, Task 5, fix round 4);
+ *       * and each hook's ENTRY matches the gate this shim runs it as: the
+ *         request hook declares `arguments` and not `outputs`, the result hook
+ *         declares `outputs` and not `arguments`, and the `$.` paths this
+ *         shim's own payload assembly fixes (`tool_name`, `arguments`,
+ *         `outputs.within`) name what it actually assembled. See
+ *         `GateEntryShape` below -- without those, the sinks above are
+ *         unfillable, or fillable with the wrong thing, however correctly they
+ *         are declared.
  *
  *     "EITHER ... OR" is the rule, not a convenience (§V5 review round 3,
  *     Task 5, fix round 2): landing what a decision arrived carrying and
@@ -212,7 +223,7 @@
  *     render one as `{}`, indistinguishable from a clean allow (§V5 review,
  *     fix round 1, Critical 1).
  *
- *     EVERYTHING PAST THE FIRST OF THOSE THREE IS NEW, AND THIS BULLET USED TO
+ *     EVERYTHING PAST THE FIRST BULLET IS NEW, AND THIS BULLET USED TO
  *     ARGUE AGAINST THE RESULT GATE'S (§V5 review round 3, Task 5, Critical).
  *     It said the result gate's own `deny`/`modify` "need no equivalent check
  *     here: they are already guaranteed a non-empty `applied_output` by
@@ -259,7 +270,17 @@
  *     resolves to. They agree here only because opencode.hookmap.yaml's
  *     `tool_name: $.tool` names the very field assembled from `input.tool`
  *     below; a hookmap pointing `tool_name` elsewhere would make the two
- *     answers diverge, and nothing detects that. See `governsTool`'s own doc
+ *     answers diverge. "AND NOTHING DETECTS THAT" IS NO LONGER TRUE, and it
+ *     was a live fail-open for as long as it stood (§V5 review round 3, Task 5,
+ *     fix round 4 -- found while measuring that round's directed findings,
+ *     not on its list). MEASURED with `tool_name: $.args.command` beside
+ *     `tools: [bash]`: this file's own `governsTool` answered TRUE on
+ *     `input.tool` and proceeded, `governStep` resolved `tool_name` to the
+ *     command, asked the same function, got FALSE, and returned
+ *     `stage: "ungoverned"` -- no Guardian request, no decision, no audit
+ *     entry, `rm -rf /` through. `assertEntryMatchesGate` (below) now refuses a
+ *     hookmap whose `tool_name` is anything but `$.tool`, at either gate, so
+ *     the two call sites cannot disagree. See `governsTool`'s own doc
  *     comment (govern-step.ts).
  *
  *     `tool` ITSELF must be validated first (`assertUsableTool`, below),
@@ -374,6 +395,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 type DecisionCarries = ReadonlyMap<string, string | null>;
 
 /**
+ * The decisions this gate asks nothing of, and the ONLY ones it may leave
+ * unasked -- named as a set rather than left implicit, because §V5 review round
+ * 3, Task 5, fix round 4 (Important 7A) found the implicit version silently
+ * covering every decision name the tables happened not to list.
+ *
+ * `allow` is the whole set, at both gates. Rendering nothing IS its own meaning
+ * there ("nothing to change" at the request gate, "deliver the output as the
+ * tool produced it" at the result gate) -- the same distinction `acs-hook.ts`'s
+ * `emptyOutputIsHonest` draws between host #1's two gates. Anything else a
+ * hookmap declares is either in a `CARRIED_AT_*` table or refused.
+ */
+const ALWAYS_HONEST_DECISIONS: ReadonlySet<string> = new Set(["allow"]);
+
+/**
  * THE REQUEST GATE (`tool.execute.before`), where the live half is `args`.
  *
  * `deny`/`ask`/`defer` carry nothing to land: the step has not run, there is
@@ -421,7 +456,7 @@ const CARRIED_AT_REQUEST_GATE: DecisionCarries = new Map([
  * land the same way" -- and then required a sink that can never be filled for
  * two of the four. RETRACTED: that sentence was false for `ask`/`defer` under
  * any entry, and false for all four under an entry declaring no `outputs`
- * block at all (see `assertResultHookCanWithhold`, below, for that second
+ * block at all (see `assertEntryMatchesGate`, below, for that second
  * face). Both were measured delivering the secret in leaf and mirror.
  *
  * So `ask`/`defer` are held to the refusal branch alone here, exactly as the
@@ -675,8 +710,14 @@ type HookExpectation = {
  *   - a field name -- it may land that field through `sinkKey`, or refuse.
  *
  * A decision the hookmap does not declare is skipped (`declaredOutputFor`
- * returns `undefined`), and a decision the table does not name is not asked
- * anything -- `allow` is the only one, at either gate.
+ * returns `undefined`). A decision the table does not name is REFUSED, not
+ * skipped -- see the loop's own comment below. An earlier version of this
+ * paragraph said such a decision "is not asked anything -- `allow` is the only
+ * one, at either gate", and that was false in a way that mattered: `allow` was
+ * the only one the tables OMITTED DELIBERATELY, but the skip covered every
+ * name a hookmap might declare (§V5 review round 3, Task 5, fix round 4,
+ * Important 7A). `ALWAYS_HONEST_DECISIONS` now names the deliberate set, and
+ * everything outside it throws.
  *
  * The two messages are built by the caller, because what a silent no-op COSTS
  * differs by gate: at the request gate the tool runs ungoverned; at the result
@@ -687,9 +728,46 @@ function assertDecisionsCanAct(
   decisions: unknown,
   carried: DecisionCarries,
   sinkKey: string,
+  path: string,
+  hookEventName: string,
   onCannotRefuse: (decisionName: string, output: Record<string, unknown>) => Error,
   onCannotLand: (decisionName: string, output: Record<string, unknown>, sourceField: string) => Error,
 ): void {
+  // A DECLARED DECISION THIS GATE HAS NO ANSWER FOR IS A THROW, NOT A SKIP --
+  // the same rule `expectationFor` states for an unknown HOOK, applied one
+  // level down where the identical skip used to be silent (§V5 review round 3,
+  // Task 5, fix round 4, Important 7A). The loop below iterates the TABLE, so
+  // a hookmap declaring `decisions.block` (or `Deny`, or `warn`) was never
+  // asked anything: it loaded clean, and a Guardian answering that string
+  // rendered whatever the entry declared -- `{reason}` for an inert one --
+  // while the applier applied nothing and threw nothing.
+  //
+  // WORSE THAN NOT DECLARING IT, which is what makes this a fault rather than
+  // a gap, and it is measured (request-gate.test.ts): the SAME hookmap without
+  // the entry makes `renderDecision` throw `no decisions entry for ACS
+  // decision "block"`, which `governStep` catches and the deployment's posture
+  // answers -- audited either way. Declaring the inert entry converts an
+  // audited failure into a silent one.
+  //
+  // Reaching it needs a non-conformant Guardian, so this ranks below the
+  // faults a conformant one reaches. It is still the same class, and the throw
+  // costs nothing a correct hookmap would ever pay.
+  const answerable = new Set([...carried.keys(), ...ALWAYS_HONEST_DECISIONS]);
+  for (const declaredName of Object.keys(isPlainObject(decisions) ? decisions : {})) {
+    if (!answerable.has(declaredName)) {
+      throw new Error(
+        `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions" declares ${JSON.stringify(declaredName)}, ` +
+          `which this shim has no expectation for at this gate -- it knows ${JSON.stringify([...answerable])} ` +
+          `here and nothing else. A decision name nothing checks is a decision nothing governs: if a Guardian ` +
+          `ever answered with it, this entry would render whatever it declares and this host's applier would ` +
+          `apply nothing and throw nothing, silently. Declaring it is strictly WORSE than leaving it out -- ` +
+          `without the entry renderDecision throws, governStep catches that, and the deployment's posture ` +
+          `answers it, audited either way. Remove it, or teach this shim the decision (CARRIED_AT_REQUEST_GATE ` +
+          `/ CARRIED_AT_RESULT_GATE, this file) so it can say what the decision may honestly do here (§V5 ` +
+          `review round 3, Task 5, fix round 4, Important 7A).`,
+      );
+    }
+  }
   for (const [decisionName, sourceField] of carried) {
     const output = declaredOutputFor(decisions, decisionName);
     if (output === undefined) {
@@ -708,62 +786,169 @@ function assertDecisionsCanAct(
 }
 
 /**
- * Refuses a `tool.execute.after` entry that declares no `outputs` block (§V5
- * review round 3, Task 5, fix round 3, Critical 6b).
+ * WHAT THIS SHIM'S OWN PAYLOAD ASSEMBLY FIXES ABOUT AN ENTRY, per gate -- the
+ * second half of "what does this decision arrive carrying here", and the half
+ * that is a property of the ENTRY rather than of any decision (§V5 review round
+ * 3, Task 5, fix rounds 3 and 4).
  *
- * `governStep` builds its output location from the entry's own `outputs`
- * (`outputs === undefined ? undefined : {payload, outputs}`, govern-step.ts),
- * and `withResultOutput` returns its decision UNTOUCHED when that location is
- * undefined -- for every decision, `deny` included. So at a result hook with no
- * `outputs` block, `result: { from: applied_output }` is unfillable BY
- * CONSTRUCTION: the rule this gate enforces is satisfiable in the letter and
- * impossible in fact.
+ * `AcsPlugin`'s two hooks assemble the payload themselves and hand the applier
+ * a hardcoded live half. That makes two things facts about the SHIM rather than
+ * choices left to a hookmap -- and a hookmap disagreeing with either produces a
+ * gate-SATISFYING entry that governs nothing:
  *
- * MEASURED, Guardian-produced end to end (result-gate.test.ts): an entry at
- * `tool.execute.after` declaring `arguments: $.args` instead of `outputs:`
- * loaded clean, passed this gate with a perfectly-declared sink, and a real
- * `destructive_shell_command_blocked` deny then rendered no `result` key --
- * applier applied nothing, threw nothing, `rm -rf /` delivered in leaf and
- * mirror.
+ *   - WHICH PAYLOAD SHAPE this hook builds. `governStep` and `buildEnvelope`
+ *     read that off the ENTRY'S SHAPE (`arguments` vs `outputs`) and never off
+ *     the event name -- deliberately, so a typo in an event name cannot
+ *     silently select the wrong behaviour (govern-step.ts's own comment). This
+ *     shim decides the same question by hook NAME, because its two call sites
+ *     hardcode `{gate: "request", args}` and `{gate: "result", result}`. When
+ *     the two disagree, the decision that arrives is shaped for the other gate.
+ *   - WHICH PATHS resolve against what this shim assembled. `tool_name` must
+ *     name `$.tool`, because this file passes `input.tool` to its own
+ *     `governsTool` call while `governStep` passes whatever `tool_name`
+ *     resolves to. `outputs.within` must name `$.result`, because that is where
+ *     this shim puts the live object it hands the applier -- an `applied_output`
+ *     is a patched clone OF that container, so naming another one lands the
+ *     clone at a depth the applier then merges wrongly.
  *
- * WHY REFUSED OUTRIGHT RATHER THAN TREATED AS "NOTHING CAN LAND, SO REFUSE
- * INSTEAD" -- which is what the invariant would otherwise suggest, and it is
- * worth saying why that reading is wrong here. Round 2's rule exists so a
- * CONSERVATIVE AUTHOR is not refused for choosing a safe mapping. This is not
- * that: an entry at the result hook declaring `arguments:` is not a
- * conservative choice, it is a hookmap declaring the wrong PAYLOAD SHAPE for
- * the gate it is mapped to -- `buildEnvelope` would build a tool-call-REQUEST
- * payload for a hook that fires after the step ran, so the Guardian is asked
- * the wrong question before any of this arises. Incoherent configuration, not
- * a cautious one, and nothing an author could mean by it is honoured by
- * accepting it.
+ * EACH FAULT WAS MEASURED AS A LIVE FAIL-OPEN BEFORE IT WAS CLOSED:
  *
- * THE ADAPTER CANNOT MAKE THIS CHECK and that is deliberate on its side, not an
- * omission: `governStep` reads the gate KIND off the entry's shape and never
- * off the event name, precisely so a typo in an event name cannot silently
- * select the wrong behaviour (govern-step.ts's own comment). Only a host shim
- * knows that `tool.execute.after` IS its result gate -- this file's two hook
- * call sites are what make it one -- so only a host shim can notice the entry's
- * shape contradicting it.
+ *   - 6b: a result hook with no `outputs` block. `governStep` builds no output
+ *     location, `withResultOutput` no-ops for EVERY decision, `deny` included,
+ *     and a perfectly-declared `result: { from: applied_output }` renders
+ *     nothing. `rm -rf /` in leaf and mirror.
+ *   - 7B: a REQUEST hook declaring `outputs:`. It gets an output location, so
+ *     `resolveModify` (decision-modify.ts) fills `applied_output` instead of
+ *     `applied_input` -- and the `args: { from: applied_input }` this gate
+ *     demands is then correct, declared, and unfillable. `stage: "honoured"`,
+ *     rewrite landed nowhere, secret ran. `assertRequestGateDeclaresNoOutputs`
+ *     (build-envelope.ts) does not cover it: that check returns early unless
+ *     `arguments` is a non-empty string, so it only catches an entry declaring
+ *     BOTH.
+ *   - 7D: `outputs.within: $` renders a `result` key that satisfies the sink
+ *     rule and merges a clone of the whole PAYLOAD -- leaf and mirror both keep
+ *     the plaintext, and `tool`/`session_id`/`callID` land on OpenCode's live
+ *     result object as junk keys. `within: $.result.metadata`, with a `from`
+ *     nesting correctly under it so nothing upstream complains, leaves the
+ *     mirror plaintext -- the exact leak `outputs.mirrors` exists to close.
+ *   - 7E, found while measuring the others and NOT on the review's own list:
+ *     `tool_name: $.args.command` beside `tools: [bash]`. This shim's own
+ *     `governsTool(hookmap, hook, input.tool)` answers TRUE and proceeds;
+ *     `governStep` resolves `tool_name` to the command, asks the same function,
+ *     gets FALSE, and returns `stage: "ungoverned"` with an empty output. No
+ *     Guardian request, no decision, no audit entry, and `rm -rf /` proceeds.
+ *     This file's own header has recorded since Task 2 that the two call sites
+ *     "would diverge, and nothing detects that". This is what the divergence
+ *     costs, and this is the check that detects it.
+ *
+ * THE ADAPTER CANNOT MAKE ANY OF THESE CHECKS, and that is deliberate on its
+ * side rather than an omission: every one rests on knowing which hook name IS
+ * which gate, and on what THIS shim's payload assembly named. Only a host shim
+ * has both.
  */
-function assertResultHookCanWithhold(entry: unknown, path: string, hookEventName: string): void {
-  const outputs = isPlainObject(entry) ? (entry as { outputs?: unknown }).outputs : undefined;
-  if (isPlainObject(outputs)) {
-    return;
+type GateEntryShape = {
+  /** The payload-shape key this gate's entry must declare. */
+  readonly declares: "arguments" | "outputs";
+  /** The other one, which it must not declare -- see `declares`. */
+  readonly notDeclares: "arguments" | "outputs";
+  /** What a mis-shaped entry costs at this gate, for the message. */
+  readonly mismatchCosts: string;
+  /**
+   * Dotted paths into the ENTRY whose value this shim's own payload assembly
+   * fixes, and the value it fixes them to.
+   */
+  readonly fixedPaths: ReadonlyArray<readonly [string, string]>;
+};
+
+const REQUEST_GATE_ENTRY: GateEntryShape = {
+  declares: "arguments",
+  notDeclares: "outputs",
+  mismatchCosts:
+    "governStep would build this gate an output location off that shape, so resolveModify (decision-modify.ts) " +
+    'fills "applied_output" instead of "applied_input" -- and the "args: { from: applied_input }" this gate ' +
+    'requires would then be correct, declared and unfillable: the rewrite lands nowhere while governStep still ' +
+    'reports stage "honoured"',
+  fixedPaths: [
+    ["tool_name", "$.tool"],
+    ["arguments", "$.args"],
+  ],
+};
+
+const RESULT_GATE_ENTRY: GateEntryShape = {
+  declares: "outputs",
+  notDeclares: "arguments",
+  mismatchCosts:
+    "governStep would build NO output location, so withResultOutput (result-output.ts) returns every decision " +
+    'untouched -- "deny" included -- and a perfectly-declared "result: { from: applied_output }" renders ' +
+    "nothing: the tool's own output, leaf and metadata.output mirror both, is delivered. It would also make " +
+    "buildEnvelope ask the Guardian a tool-call-REQUEST question about a step that already ran",
+  fixedPaths: [
+    ["tool_name", "$.tool"],
+    ["outputs.within", "$.result"],
+  ],
+};
+
+/** Reads a dotted path out of a loaded hookmap entry, for `fixedPaths` above. */
+function entryValueAt(entry: unknown, path: string): unknown {
+  let cursor: unknown = entry;
+  for (const segment of path.split(".")) {
+    if (!isPlainObject(cursor)) {
+      return undefined;
+    }
+    cursor = cursor[segment];
   }
-  throw new Error(
-    `acs-plugin: ${path}'s "hooks.${hookEventName}" declares no "outputs" block (it declares ` +
-      `${JSON.stringify(outputs)}), so nothing any decision there renders can withhold anything. governStep ` +
-      `builds this gate's output location from that block, and withResultOutput (result-output.ts) returns its ` +
-      `decision UNTOUCHED when the location is undefined -- for EVERY decision, "deny" included. So ` +
-      `"result: { from: applied_output }" here is unfillable by construction: the field never exists on the ` +
-      `arriving decision, this host's applier applies nothing and throws nothing, and the tool's own output -- ` +
-      `the leaf AND its metadata.output mirror -- is delivered. An entry at this hook declaring "arguments:" ` +
-      `instead is not a conservative mapping this gate should accept: buildEnvelope would build a tool-call- ` +
-      `REQUEST payload for a hook that fires after the step already ran, so the Guardian is asked the wrong ` +
-      `question entirely. Declare "outputs: { from: ..., within: ... }" for this hook (§V5 review round 3, ` +
-      `Task 5, fix round 3, Critical 6b -- measured).`,
-  );
+  return cursor;
+}
+
+/**
+ * Refuses an entry whose payload shape, or whose `$.` paths, disagree with what
+ * this shim's own hook of that name actually does -- see `GateEntryShape`
+ * above for each fault, what it was measured to cost, and why only a host shim
+ * can make the check.
+ */
+function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: string, shape: GateEntryShape): void {
+  const declared = isPlainObject(entry) ? (entry as Record<string, unknown>)[shape.declares] : undefined;
+  const wellDeclared =
+    shape.declares === "outputs" ? isPlainObject(declared) : typeof declared === "string" && declared.length > 0;
+  if (!wellDeclared) {
+    throw new Error(
+      `acs-plugin: ${path}'s "hooks.${hookEventName}" declares no usable "${shape.declares}" (it declares ` +
+        `${JSON.stringify(declared)}). This shim's "${hookEventName}" hook is fixed: it assembles the payload ` +
+        `itself and hands applyOpenCodeOutput a hardcoded live half, so an entry at this hook has to be the ` +
+        `matching payload shape. Without it, ${shape.mismatchCosts}. Declare "${shape.declares}" on this hook ` +
+        `(§V5 review round 3, Task 5, fix rounds 3 and 4 -- measured).`,
+    );
+  }
+  const forbidden = isPlainObject(entry) ? (entry as Record<string, unknown>)[shape.notDeclares] : undefined;
+  if (forbidden !== undefined && forbidden !== null) {
+    throw new Error(
+      `acs-plugin: ${path}'s "hooks.${hookEventName}" declares "${shape.notDeclares}" ` +
+        `(${JSON.stringify(forbidden)}) at a hook this shim treats as the "${shape.declares}" gate. governStep ` +
+        `and buildEnvelope read a gate's KIND off the entry's shape and never off the event name -- ` +
+        `deliberately, so an event-name typo cannot silently select the wrong behaviour -- while this shim ` +
+        `decides it by hook NAME, because its two call sites hardcode which live half the applier gets. When ` +
+        `the two disagree, ${shape.mismatchCosts}. Remove "${shape.notDeclares}" from this hook (§V5 review ` +
+        `round 3, Task 5, fix round 4 -- measured).`,
+    );
+  }
+  for (const [fixedPath, required] of shape.fixedPaths) {
+    const actual = entryValueAt(entry, fixedPath);
+    if (actual !== required) {
+      throw new Error(
+        `acs-plugin: ${path}'s "hooks.${hookEventName}.${fixedPath}" is ${JSON.stringify(actual)}, and this ` +
+          `shim's own payload assembly fixes it at ${JSON.stringify(required)}. That payload is built in this ` +
+          `file, not by the hookmap. "$.tool" is where "tool_name" has to look, because this shim passes ` +
+          `input.tool to its own governsTool call while governStep passes whatever "tool_name" resolves to: ` +
+          `they answer differently for any other path, and a step this gate governs is then skipped as ` +
+          `"ungoverned" with no Guardian request, no decision and no audit entry. "$.args"/"$.result" are where ` +
+          `this shim puts the live objects it hands applyOpenCodeOutput -- an "applied_output" is a patched ` +
+          `clone OF the container "outputs.within" names, so naming another container lands that clone at the ` +
+          `wrong depth: measured with "within: $", the leaf AND its metadata.output mirror both kept the ` +
+          `plaintext while the payload's own top-level fields were merged onto OpenCode's live result object. ` +
+          `Point this at ${JSON.stringify(required)} (§V5 review round 3, Task 5, fix round 4 -- measured).`,
+      );
+    }
+  }
 }
 
 /**
@@ -820,11 +1005,17 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    */
   "tool.execute.before": {
     assertEntry(entry, path, hookEventName) {
+      // The request gate had no entry-shape check at all until §V5 review
+      // round 3, Task 5, fix round 4 (Critical 7B and 7E) -- see
+      // `GateEntryShape`'s own doc comment for both measurements.
+      assertEntryMatchesGate(entry, path, hookEventName, REQUEST_GATE_ENTRY);
       const decisions = isPlainObject(entry) ? (entry as { decisions?: unknown }).decisions : undefined;
       assertDecisionsCanAct(
         decisions,
         CARRIED_AT_REQUEST_GATE,
         "args",
+        path,
+        hookEventName,
         (decisionName) =>
           new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
@@ -892,16 +1083,20 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    */
   "tool.execute.after": {
     assertEntry(entry, path, hookEventName) {
-      // BEFORE any decision is looked at: an entry with no `outputs` block
-      // makes every sink below unfillable by construction (§V5 review round 3,
-      // Task 5, fix round 3, Critical 6b). Checked first so the message names
-      // the real fault rather than blaming a correctly-declared decision.
-      assertResultHookCanWithhold(entry, path, hookEventName);
+      // BEFORE any decision is looked at: an entry whose payload shape or
+      // whose `$.` paths disagree with what this shim's own hook does makes
+      // every sink below unfillable, or fillable with the wrong thing, however
+      // correctly it is declared (§V5 review round 3, Task 5, fix rounds 3 and
+      // 4). Checked first so the message names the real fault rather than
+      // blaming a correctly-declared decision.
+      assertEntryMatchesGate(entry, path, hookEventName, RESULT_GATE_ENTRY);
       const decisions = isPlainObject(entry) ? (entry as { decisions?: unknown }).decisions : undefined;
       assertDecisionsCanAct(
         decisions,
         CARRIED_AT_RESULT_GATE,
         "result",
+        path,
+        hookEventName,
         (decisionName) =>
           new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
@@ -1087,7 +1282,7 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  *   - 6b: a `tool.execute.after` entry declaring no `outputs` block makes
  *     `withResultOutput` a no-op for EVERY decision, `deny` included, so a
  *     perfectly-declared sink is unfillable by construction. Closed by
- *     `assertResultHookCanWithhold` (above).
+ *     `assertEntryMatchesGate` (above).
  *
  * THAT IS WHY THE RULES ARE NOW TABLES. Each of the six satisfied the letter of
  * the rule that closed the last, because each rule was a LIST OF ACCEPTED

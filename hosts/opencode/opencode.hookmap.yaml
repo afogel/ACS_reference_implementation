@@ -16,6 +16,33 @@
 # rewrite's or a redaction's reasoning has nowhere to land on this host yet.
 # Task 4 either names a real sink for it or keeps it declared-inert
 # deliberately -- this is stated here so it does not silently look wired.
+# THREE THINGS IN THIS FILE ARE NOT FREE CHOICES, and acs-plugin.ts's
+# `assertEntryMatchesGate` refuses this file at load if any of them changes
+# (§V5 review round 3, Task 5, fix round 4 -- each measured as a live
+# fail-open first):
+#
+#   - each hook's PAYLOAD SHAPE must match the gate the shim runs it as: the
+#     request hook declares `arguments`, the result hook declares `outputs`,
+#     and neither declares the other. governStep reads gate KIND off the
+#     entry's shape while the shim reads it off the hook NAME, and when the
+#     two disagree the arriving decision is shaped for the other gate --
+#     measured, a request hook declaring `outputs:` got `applied_output`
+#     where its own `modify` sink expects `applied_input`, so the rewrite
+#     landed nowhere and governStep still reported `stage: honoured`.
+#   - `tool_name` must be `$.tool` at both hooks. The shim asks `governsTool`
+#     with OpenCode's own `input.tool` while governStep asks it with whatever
+#     `tool_name` resolves to; point it elsewhere and they disagree --
+#     measured, the shim proceeded and governStep skipped the step as
+#     `ungoverned`, with no Guardian request and no audit entry.
+#   - `outputs.within` must be `$.result`, because that is where the shim puts
+#     the live object it hands the applier. `applied_output` is a patched
+#     clone OF that container, so naming another one lands the clone at a
+#     depth the applier merges wrongly -- measured with `within: $`, the leaf
+#     AND its metadata.output mirror both kept the plaintext.
+#
+# And every decision name below must be one this shim has an expectation for:
+# a `decisions.` entry it does not know is refused rather than skipped, for
+# the same reason an unmapped HOOK is.
 host: opencode
 hooks:
   # The request gate. OpenCode hands the plugin `{tool, sessionID, callID}` and a
