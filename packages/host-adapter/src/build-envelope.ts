@@ -123,9 +123,14 @@ type HookmapHookEntryCommon = {
    *     `tools` here lets a host shim decline to ask at all for a tool its
    *     own deployment cannot express a target for.
    *
-   * Whether a given invocation's tool is actually IN this list is the host
-   * shim's concern (each gate honouring it), never this module's --
-   * `assertToolsWellFormed` (below) checks only the SHAPE.
+   * Whether a given invocation's tool is actually IN this list is
+   * `governsTool`'s question (govern-step.ts), never this module's --
+   * `assertToolsWellFormed` (below) checks only the SHAPE. That division is
+   * `outputs.mirrors`'s exactly: declared here, checked here, acted on in the
+   * module whose job the acting is. It USED TO BE "the host shim's concern
+   * (each gate honouring it)", which is what §V5 review round 3, Task 2
+   * changed: a rule stated in this field's own doc comment and enacted only
+   * in one host's shim is a rule the next host loads and does not apply.
    */
   tools?: string[];
 };
@@ -384,11 +389,11 @@ function assertMirrorsWellFormed(hookmap: Hookmap, path: string): void {
  *
  * §V5 review, fix round 1, Important 1. This check is the SHAPE check only
  * -- `tools`, when present, is a non-empty list of non-empty strings.
- * Whether a given invocation's tool is actually IN that list is each gate's
- * host shim's concern (the request gate's own, since §V5 review Task 5 fix
- * round 1; the result gate's, Task 6): nothing in this module reads `tools`
- * for either purpose, the same division `outputs.mirrors` has between this
- * file (shape) and result-output.ts (use).
+ * Whether a given invocation's tool is actually IN that list is
+ * `governsTool`'s question (govern-step.ts, since §V5 review round 3, Task
+ * 2), and each host shim asks the same function one call earlier: nothing in
+ * this module reads `tools` for either purpose, the same division
+ * `outputs.mirrors` has between this file (shape) and result-output.ts (use).
  */
 function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
@@ -544,11 +549,14 @@ function assertRequestGateDeclaresNoOutputs(hookmap: Hookmap, path: string): voi
  * function's caller (`loadHookmap`) handed back still carried `tools: null`
  * on that entry, so every CONSUMER had to repeat the same `?? undefined`
  * dance to read a well-formed role rather than the YAML parse tree
- * `loadHookmap` actually returned. `hosts/opencode/acs-plugin.ts`'s
- * `isGovernedTool` does exactly that today, and its own doc comment records
- * what reading `tools !== undefined` instead produced: `TypeError: null is
- * not an object`, thrown on every call to a gate whose hookmap entry
- * declares a bare `tools:`. This is a REPRESENTATION change, not a semantic
+ * `loadHookmap` actually returned. The consumer that did exactly that was
+ * host #2's own `isGovernedTool`, whose doc comment recorded what reading
+ * `tools !== undefined` instead produced: `TypeError: null is not an object`,
+ * thrown on every call to a gate whose hookmap entry declares a bare
+ * `tools:`. That function is gone as of Task 2 of the same review round, and
+ * its successor (`governsTool`, govern-step.ts) carries no such
+ * compensation -- which is this function's whole point, one round later than
+ * the crash that motivated it. This is a REPRESENTATION change, not a semantic
  * one -- `tools: null` and no `tools` key mean the same thing, "every tool"
  * (`HookmapHookEntryCommon.tools`'s own doc comment) -- so it does not touch
  * what `assertToolsWellFormed` already decided is well-formed; it only stops

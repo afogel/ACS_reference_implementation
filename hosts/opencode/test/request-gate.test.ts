@@ -186,13 +186,20 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
 
   it("does not crash on a bare `tools:` key (YAML null) -- read as \"every tool\", not a TypeError (§V5 review, Task 5, fix round 2, Important 1)", async () => {
     // `tools:` with nothing after it parses to YAML null -- present and
-    // unusable, not absent. assertToolsWellFormed (build-envelope.ts)
-    // normalises that to "absent" for ITS OWN validation only; the Hookmap
-    // object loadHookmap actually returns still carries the raw `null` on
-    // this entry. Before isGovernedTool's own `?? undefined` fix, EVERY
+    // unusable, not absent. Before the shim's own `?? undefined` fix, EVERY
     // call through this gate threw `TypeError: null is not an object
     // (evaluating 'tools.includes')`, naming neither the hookmap nor the
-    // field.
+    // field: assertToolsWellFormed (build-envelope.ts) normalised that key to
+    // "absent" for ITS OWN validation only, and the Hookmap object
+    // loadHookmap handed back still carried the raw `null` on this entry.
+    // NEITHER HALF OF THAT SENTENCE IS STILL TRUE, and this test outlived
+    // both: `loadHookmap` now returns a normalised hookmap with the key
+    // OMITTED (`normalizeTools`, §V5 review round 3, Task 1), and the shim
+    // function that carried the compensation is gone, replaced by the
+    // adapter's own `governsTool` (Task 2), which carries none. What this
+    // test still pins is the BEHAVIOUR both changes have to preserve -- a
+    // bare `tools:` means "every tool" -- through whichever of them is
+    // responsible for it next.
     const hookmapPath = join(SCRATCH_DIR, "bare-tools.hookmap.yaml");
     writeFileSync(
       hookmapPath,
@@ -234,9 +241,9 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
   });
 
   it("throws before asking the Guardian anything when `tool` is missing or not a string -- the same broken-deployment refusal `sessionID` gets, not a silent skip (§V5 review, Task 5, fix round 2, Important 2)", async () => {
-    // Before this fix, `isGovernedTool`'s own `tools.includes(undefined)`
-    // read as `false` -- "not in this gate's tools list" -- and the hook
-    // returned cleanly: no throw, no fetch, no audit line. Measured against
+    // Before this fix, the gate's own `tools.includes(undefined)` read as
+    // `false` -- "not in this gate's tools list" -- and the hook returned
+    // cleanly: no throw, no fetch, no audit line. Measured against
     // the PRIOR gate (before `tools` scoping existed at all): a malformed
     // `tool` reached `buildEnvelope`, which throws, caught by `governStep`'s
     // stage-"request" catch and answered by the negotiated posture --

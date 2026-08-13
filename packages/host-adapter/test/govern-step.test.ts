@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { AuditEvent, AuditSink } from "../src/audit-sink.ts";
 import type { Hookmap, HookmapRequestHookEntry, HookmapResultHookEntry } from "../src/build-envelope.ts";
-import { governStep } from "../src/govern-step.ts";
+import { governStep, governsTool, type GovernedStep } from "../src/govern-step.ts";
 import { GuardianTimeoutError, type DecisionOrFailure, type GuardianClient } from "../src/guardian-client.ts";
 import type { ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
@@ -101,12 +101,15 @@ function answering(answer: DecisionOrFailure): GuardianClient {
   };
 }
 
-function govern(
+type Overrides = { hookmap?: Hookmap; hookEventName?: string; payload?: Record<string, unknown> };
+
+/** `governStep`, with this suite's fixtures as the defaults. */
+function governRaw(
   guardian: GuardianClient,
   audit: AuditSink,
   session: ResolvedSessionConfig = { config: NEGOTIATED("proceed"), failure: undefined },
-  overrides: { hookmap?: Hookmap; hookEventName?: string; payload?: Record<string, unknown> } = {},
-) {
+  overrides: Overrides = {},
+): Promise<GovernedStep> {
   return governStep({
     hookEventName: overrides.hookEventName ?? "OnStep",
     payload: overrides.payload ?? payload,
@@ -116,6 +119,36 @@ function govern(
     sessionId: "sess-1",
     audit,
   });
+}
+
+/**
+ * The same call, narrowed to the steps this gate actually governs.
+ *
+ * `governStep` gained a third way out in §V5 review round 3, Task 2 -- a step
+ * whose tool the gate's own `tools` list does not name comes back
+ * `{stage: "ungoverned", decision: null}` -- and none of the fixtures above
+ * declares a `tools` list, so no test using this helper can produce one. Asked
+ * here, once, rather than at each of the assertions below that read
+ * `.decision`: those tests are about what happened to a decision, and making
+ * every one of them narrow a case its fixture cannot reach would be noise that
+ * hides the one thing they are each about. The tests that ARE about the skip
+ * call `governRaw` and assert on the whole discriminated union.
+ */
+async function govern(
+  guardian: GuardianClient,
+  audit: AuditSink,
+  session: ResolvedSessionConfig = { config: NEGOTIATED("proceed"), failure: undefined },
+  overrides: Overrides = {},
+): Promise<Exclude<GovernedStep, { stage: "ungoverned" }>> {
+  const governed = await governRaw(guardian, audit, session, overrides);
+  if (governed.stage === "ungoverned") {
+    throw new Error(
+      `govern(): this fixture's gate declares no "tools" list, so it governs every tool -- an "ungoverned" ` +
+        `answer here means the skip fired on a hookmap that never scoped itself, which is a defect in ` +
+        `governStep and not a case for this helper's caller to handle`,
+    );
+  }
+  return governed;
 }
 
 describe("governStep — a decision that arrived", () => {
@@ -583,5 +616,222 @@ describe("governStep — the session's failure travels beside the step's own", (
     expect(governed.decision.decision).toBe("deny");
     expect(governed.decision.reason_codes).toEqual(["decision_failure", "audit_unavailable"]);
     expect(governed.output).toEqual({ outcome: "stop", note: governed.decision.reasoning });
+  });
+});
+
+/**
+ * §V5 review round 3, Task 2. `tools` was shared hookmap vocabulary this
+ * package shape-checked (`assertToolsWellFormed`) and normalised
+ * (`normalizeTools`) and then had no opinion about: the only code that ACTED
+ * on it lived in one host's shim, so a third host written from an existing
+ * shim would load a `tools` list and govern every tool anyway -- and the
+ * envelope that follows is one the deployment's policy configuration cannot
+ * express a target for, answered by the negotiated posture, which is this
+ * slice's recurring fail-open shape.
+ *
+ * The rule is `governsTool`'s now, and `governStep` asks it before it does
+ * anything else. Both shims still ask it a call earlier, which is what makes
+ * an out-of-scope tool cost no session validation and no handshake either --
+ * that half is pinned in each host's own suite (hosts/opencode/test/
+ * request-gate.test.ts and result-gate.test.ts). What is pinned HERE is the
+ * half a shim cannot provide: that a shim which never asks still skips.
+ */
+describe("governStep — a gate governs only the tools its hookmap entry names", () => {
+  /**
+   * A Guardian that fails the test by being asked at all, and an audit sink
+   * that records what it was told. Both assertions are about absence, so both
+   * collaborators have to be able to report a call that should not happen.
+   */
+  function unaskedGuardian(): { guardian: GuardianClient; asked: () => number } {
+    let asks = 0;
+    return {
+      guardian: {
+        requestDecision: () => {
+          asks += 1;
+          return Promise.resolve({
+            decisionArrived: true,
+            decision: { decision: "allow" },
+          } satisfies DecisionOrFailure);
+        },
+        post: () => Promise.reject(new Error("governStep must not use the wire primitive")),
+      },
+      asked: () => asks,
+    };
+  }
+
+  /** The request-gate fixture, scoped to one tool name the payloads below can miss. */
+  const scoped = (tools: string[]): Hookmap => ({
+    host: "test-host",
+    hooks: { OnStep: { ...ON_STEP, tools } },
+  });
+
+  it("returns an empty output for a tool the list does not name, contacting no Guardian and auditing nothing", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const governed = await governRaw(guardian, sink, undefined, { hookmap: scoped(["Write"]) });
+
+    // The whole answer, asserted as one object rather than field by field:
+    // an empty output is what a host applies (no keys to write, no keys to
+    // merge), `null` is what says no decision was sought, and "ungoverned"
+    // is what a caller narrows on.
+    expect(governed).toEqual({ output: {}, decision: null, stage: "ungoverned" });
+    // No round trip, and no audit entry: a step this gate declines to govern
+    // is not a failure, so there is nothing for a posture to answer and
+    // nothing for an entry to record. An audit line here would read as a
+    // fail-open proceed that never happened.
+    expect({ asked: asked(), events }).toEqual({ asked: 0, events: [] });
+  });
+
+  it("governs a tool the list does name", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const governed = await governRaw(guardian, sink, undefined, { hookmap: scoped(["Bash", "Write"]) });
+
+    expect(governed.stage).toBe("honoured");
+    expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
+  });
+
+  /**
+   * HOST #1's OWN CASE, and the reason this is a separate test rather than an
+   * assumption: hosts/claude-code/claude-code.hookmap.yaml declares no `tools`
+   * key at either of its gates, because its settings.json matcher (`^Bash$`)
+   * already scopes both. A skip that treated an absent list as "no tools" --
+   * the obvious way to write this wrong -- would silently stop governing
+   * every step on the host this slice promises `+0/-0`.
+   */
+  it("governs every tool when the entry declares no tools list at all", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const governed = await governRaw(guardian, sink, undefined, {
+      // Deliberately a name nothing anywhere lists: the claim is "every
+      // tool", not "the ones some other fixture happens to name".
+      payload: { ...payload, tool_name: "a-tool-no-hookmap-in-this-repo-names" },
+    });
+
+    expect(governed.stage).toBe("honoured");
+    expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
+  });
+
+  /**
+   * A TOOL NAME THE HOOKMAP'S OWN PATH CANNOT READ IS UNREADABLE, NOT OUT OF
+   * SCOPE. `Array.prototype.includes` answers a silent `false` for a missing
+   * or non-string needle, so a skip built on it would convert an audited,
+   * posture-answered `buildEnvelope` throw into a silent, unaudited proceed --
+   * the exact asymmetry host #2's shim already refuses at its own boundary
+   * (`assertUsableTool`, acs-plugin.ts). `toolNameFor` answers `undefined`
+   * instead, and `governStep` falls through to the fault it already had.
+   */
+  it("does not skip a step whose tool name the hookmap's path cannot read — unreadable is not out of scope", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const governed = await governRaw(guardian, sink, undefined, {
+      hookmap: scoped(["Bash"]),
+      // `tool_name` resolves to nothing at all. Under the skip this would be
+      // "not in [Bash]" and a clean, silent no-op.
+      payload: { session_id: "sess-1", tool_input: { command: "ls -la" } },
+    });
+
+    expect(governed.stage).toBe("request");
+    expect(asked()).toBe(0);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ outcome: "proceeded", failure: { kind: "host_configuration" } });
+  });
+
+  /**
+   * THE ORDERING, and the reason the skip is the FIRST thing `governStep`
+   * does rather than merely an early one. `assertOutputIsReplaceable` refuses
+   * a result-gate payload whose named leaf no replacement can be built for --
+   * a loud, blocking stop, correctly, for a step this gate governs. But on
+   * host #2 an unlisted tool's payload is EXACTLY that shape: that gate's
+   * `outputs`/`exit_status` are written for the one tool it lists, and every
+   * other tool's `metadata` carries something else (opencode.hookmap.yaml's
+   * own measurement table). Asked after that refusal, an out-of-scope tool
+   * would stop the deployment instead of being skipped.
+   */
+  it("skips before the result gate's own refusal, so an unlisted tool costs no stop", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const governed = await governRaw(guardian, sink, undefined, {
+      hookEventName: "OnResult",
+      // Present, resolvable, and a flag -- the payload shape the test above
+      // this describe block proves is a blocking stop when the gate governs
+      // the tool.
+      hookmap: {
+        host: "test-host",
+        hooks: {
+          OnResult: {
+            ...ON_RESULT,
+            outputs: { from: "$.step_result.truncated", within: "$.step_result" },
+            tools: ["Write"],
+          },
+        },
+      },
+      payload: resultPayload,
+    });
+
+    expect(governed).toEqual({ output: {}, decision: null, stage: "ungoverned" });
+    expect({ asked: asked(), events }).toEqual({ asked: 0, events: [] });
+  });
+});
+
+/**
+ * The predicate itself, asked directly -- the single implementation of a rule
+ * two shims and `governStep` all depend on, so its edges are pinned here
+ * rather than inferred from the three call sites' behaviour.
+ */
+describe("governsTool — the rule both hosts and governStep share", () => {
+  const scopedHookmap: Hookmap = {
+    host: "test-host",
+    hooks: { OnStep: { ...ON_STEP, tools: ["bash", "Write"] } },
+  };
+
+  it("answers true for every tool when the entry declares no tools list", () => {
+    expect([
+      governsTool(hookmap, "OnStep", "Bash"),
+      governsTool(hookmap, "OnStep", "anything-at-all"),
+      governsTool(hookmap, "OnStep", ""),
+    ]).toEqual([true, true, true]);
+  });
+
+  it("answers true for a listed tool and false for an unlisted one, case-sensitively", () => {
+    expect([
+      governsTool(scopedHookmap, "OnStep", "bash"),
+      governsTool(scopedHookmap, "OnStep", "Write"),
+      governsTool(scopedHookmap, "OnStep", "read"),
+      // Case matters, and this is the asymmetry that made host #2's own suite
+      // pass against a tool name its host never sends: OpenCode reports
+      // `bash`, Claude Code reports `Bash`.
+      governsTool(scopedHookmap, "OnStep", "Bash"),
+    ]).toEqual([true, true, false, false]);
+  });
+
+  /**
+   * A hook this hookmap does not map has no `tools` list to be outside of, so
+   * this answers "governs" and leaves the refusal to `governStep`'s own guard
+   * -- which throws, because a hookmap missing the hook that fired can express
+   * neither an arriving decision nor a posture's answer to an absent one. An
+   * unmapped hook answered `false` here would turn that loud stop into a
+   * silent skip.
+   */
+  it("answers true for a hook the hookmap does not map, leaving that refusal where it belongs", () => {
+    expect(governsTool(scopedHookmap, "NoSuchHook", "bash")).toBe(true);
+  });
+
+  /**
+   * `hasOwnProperty`, not a bare index: `hookEventName` reaches some hosts
+   * from their own payloads, and `hooks["toString"]` resolves to an inherited
+   * `Object.prototype` function. Today both forms answer `true` -- that
+   * function carries no `tools` field either -- so this pins the answer as a
+   * property of the hookmap's own entries rather than of what
+   * `Object.prototype` happens to carry, and would fail if a future edit
+   * started reading anything else off the resolved entry.
+   */
+  it("answers true for a prototype-named hook rather than reading Object.prototype", () => {
+    expect(governsTool(scopedHookmap, "toString", "bash")).toBe(true);
   });
 });

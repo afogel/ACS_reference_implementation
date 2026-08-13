@@ -33,9 +33,15 @@ hooks:
   # unconditionally on a configuration mismatch, not a policy decision.
   # MEASURED against the shipped manifest before this line existed: every
   # tool OpenCode can call except the one name it registers denied, unasked
-  # by any rule. `tools` here lets the shim (acs-plugin.ts) decline to ask
-  # at all for a tool this deployment cannot express a target for, rather
-  # than asking and reporting that mismatch as governance.
+  # by any rule. `tools` here lets this deployment decline to ask at all for
+  # a tool it cannot express a target for, rather than asking and reporting
+  # that mismatch as governance. Enacted by `governsTool`
+  # (packages/host-adapter/src/govern-step.ts), which `governStep` asks
+  # before it builds anything and the shim (acs-plugin.ts) asks one call
+  # earlier still -- earlier being where it also saves the session handshake.
+  # §V5 review round 3, Task 2 moved that rule out of the shim: while only
+  # one shim enacted it, a third host would have loaded this line and
+  # governed every tool regardless.
   tool.execute.before:
     acs_method: steps/toolCallRequest
     tool_name: $.tool
@@ -96,9 +102,12 @@ hooks:
     # gets this scoping for free from settings.json's anchored `^Bash$`
     # matcher (§V4: "the exposure is the matcher's to hold rather than the
     # gate's"); host #2 has no matcher, so the equivalent has to be declared
-    # here instead, for the shim (Task 6) to honour. This task ships the data
-    # and its load-time shape validation only -- nothing in the adapter reads
-    # `tools` yet.
+    # here instead. "Nothing in the adapter reads `tools` yet" was true of
+    # the task that shipped this line and is not true now: §V5 review round 3,
+    # Task 2 made the adapter both shape-check the list (`loadHookmap`) and
+    # act on it (`governsTool`, asked at the top of `governStep`), which is
+    # the division `outputs.mirrors` below already had. The shim still asks
+    # the same function first -- see the request gate's own comment, above.
     tools: [bash]
     outputs:
       from: $.result.output

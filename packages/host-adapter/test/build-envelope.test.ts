@@ -1003,13 +1003,16 @@ describe("buildEnvelope", () => {
    * inside its own local variable. Before this fix, the `Hookmap` object
    * `loadHookmap` actually returned still carried `tools: null` on that
    * entry, so every CONSUMER had to repeat the same `?? undefined` dance --
-   * `hosts/opencode/acs-plugin.ts`'s `isGovernedTool` does, and its own doc
-   * comment records the crash (`TypeError: null is not an object`) that
-   * happened when an earlier version read `tools !== undefined` instead.
-   * `normalizeTools` (build-envelope.ts) closes that: `loadHookmap` now
-   * hands back a hookmap whose entries never carry a present-but-`null`
-   * `tools`, so a caller reading `tools === undefined` -- the natural,
-   * un-defensive reading -- gets the right answer.
+   * host #2's own shim did, and its doc comment recorded the crash
+   * (`TypeError: null is not an object`) that happened when an earlier
+   * version read `tools !== undefined` instead. `normalizeTools`
+   * (build-envelope.ts) closes that: `loadHookmap` now hands back a hookmap
+   * whose entries never carry a present-but-`null` `tools`, so a caller
+   * reading `tools === undefined` -- the natural, un-defensive reading --
+   * gets the right answer. `governsTool` (govern-step.ts, Task 2 of the same
+   * review round) is now that caller, for both hosts and for `governStep`
+   * itself, and it is written the un-defensive way this normalisation is what
+   * makes correct.
    */
   describe("loadHookmap — a present-but-null `tools` normalises to absent (§V5 review round 3, Important)", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {

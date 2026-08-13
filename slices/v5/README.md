@@ -30,15 +30,15 @@ host's own novel piece) instead of printed — mutating `{args}` at the request 
 output, metadata, attachments}` at the result gate, or throwing.
 
 That difference in mechanism is *not* proof that nothing else moved, and it would be false to say
-so: `packages/host-adapter/src` changed in four of its files to make this host work —
-`build-envelope.ts` (`loadHookmap` gained four new load-time gates beside its original one, and
-`exit_status` gained a second, `from:` form), `decision-modify.ts`, `modifications.ts`, and
-`result-output.ts`. Of the five things the retracted claim named, only `render-decision.ts` and
-`govern-step.ts` are genuinely untouched — thirteen of the package's seventeen files are, but the
-four that changed are the four that carry the seams a second host lands on. (No insertion/deletion
-count is quoted here — an earlier version of this sentence did, and it went stale three times in
-three consecutive commits during this slice's own review round, since nothing pins it and later
-tasks in that same round still edit this directory; run `git diff --shortstat slice/v4 HEAD --
+so. `packages/host-adapter/src` changed to make this host work, named by *what* changed rather
+than by how many files did: `loadHookmap` gained four new load-time gates beside its original one
+and now returns a normalised hookmap rather than the raw YAML parse tree; `exit_status` gained a
+second, `from:` form; `outputs.mirrors` was added and is read by the projection side; the modify
+path learned to fail closed on a rewrite it cannot land; and `governStep` gained the `tools` skip
+both shims share. (No count of any kind is quoted here. An earlier version of this sentence quoted
+an insertion/deletion count and it went stale three times in three consecutive commits during this
+slice's own review round; retiring it left a *file* count, which went stale inside the same round
+the moment `govern-step.ts` was edited. Nothing pins either. Run `git diff --stat slice/v4 HEAD --
 packages/host-adapter/src/` for a current one.) What
 *is* true, and is the stronger claim R3.4 actually rests on: none of that landed as a per-host
 fork. Every change is in `packages/host-adapter/src`, the package **both** hosts run, not in a
@@ -71,7 +71,12 @@ what a reasonable first guess would be:
   matcher.** Measured across four tools: only `bash`'s `metadata` carries `exit`/`output`; `read`'s
   carries `preview` (a *different* mirror, unmentioned here), `grep`'s carries `matches`. OpenCode
   fires the hook for every tool with no matcher, so both gates declare `tools: [bash]` — additive
-  data the shim honours before building any envelope, not a change to the adapter.
+  data, honoured before any envelope is built. It *was* the shim alone that honoured it, and that
+  turned out to be the defect rather than the design: the adapter shape-checked `tools` and had no
+  opinion about what it meant, so a third host copied from a shim would load the list and govern
+  every tool anyway. The rule now lives in the adapter (`governsTool`, `govern-step.ts`), which
+  `governStep` asks before it builds anything; each shim still asks the same function one call
+  earlier, where it is the only check early enough to skip the session handshake too.
 - **The request gate needed the identical scope, for a different reason.** `policy/manifest.yaml`'s
   fixed policy target is resolved before any authored rule runs, independent of the hookmap; an
   unscoped request gate does not govern every tool, it **denies every tool OpenCode can call** that

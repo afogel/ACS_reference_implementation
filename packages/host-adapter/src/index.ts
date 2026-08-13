@@ -36,6 +36,13 @@ export { renderDecision, type HostOutput } from "./render-decision.ts";
 export { type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 export {
   governStep,
+  // The `tools` rule itself, exported because BOTH sides of it are real: a
+  // shim asks it before it validates a session id or negotiates a session
+  // config, so an out-of-scope tool costs neither; `governStep` asks it again
+  // so a shim that never asked still skips. One implementation, two call
+  // sites -- see governsTool's own doc comment for why that is not one call
+  // site too many.
+  governsTool,
   type DecisionStage,
   type GovernStepInput,
   type GovernedStep,
