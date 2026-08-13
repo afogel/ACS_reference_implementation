@@ -39,8 +39,14 @@
  * doc comment -- not duplicated here. (An earlier version of this header
  * claimed this file "may not edit packages/host-adapter/src"; that was
  * never true -- Global Constraint 1 freezes `packages/guardian/src`,
- * `packages/agt-bridge/src`, `policy/`, `agt.lock`, `mapping.yaml`, and
- * `hosts/claude-code/`, and the adapter is not on that list.)
+ * `packages/agt-bridge/src`, `policy/lib/`, `agt.lock`, `mapping.yaml`, and
+ * `hosts/claude-code/`, and the adapter is not on that list. NOT
+ * `policy/` whole: `policy/manifest.yaml` and `policy/manifest.drift.yaml`
+ * are this deployment's own TOOL REGISTRY -- which tool names exist, not
+ * what any of them may do -- and §V5 review, Task 5, fix round 1 registers
+ * `bash` there, additively, beside the existing `Bash`/`run_shell` entries.
+ * `policy/lib/` is the pinned policy content itself (agt.lock); that stays
+ * frozen.)
  *
  * FOUR THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
  * because none of them is knowable until a hook actually fires (a fourth
@@ -115,19 +121,28 @@
  *     already guaranteed a non-empty `applied_output` by construction
  *     (`withResultOutput`, result-output.ts, host-agnostic) before this file
  *     is ever reached.
- *   - HONOUR `tools`, BEFORE ANY OF THE ABOVE. A gate whose hookmap entry
- *     declares a `tools` list must return, without building a payload,
- *     without validating `sessionID`, and without calling
- *     `resolveSessionConfig`/`governStep`, for any tool that list does not
- *     name (`isGovernedTool`, below -- see its own doc comment for what
- *     this costs and why it is right). This is data-turned-behaviour, not a
- *     nicety: `policy/manifest.yaml`'s own policy target is fixed and
- *     checked before any authored rule runs, independent of the tool
- *     registry, so a gate with no `tools` check does not govern every tool
- *     it is asked about -- it denies every tool its deployment cannot
- *     express a target for, unconditionally, and calls that governance
- *     (§V5 review, Task 5, fix round 1, priority item; measured against the
- *     shipped manifest before this bullet existed).
+ *   - HONOUR `tools`, BEFORE ANY OF THE ABOVE except validating `tool`
+ *     itself. A gate whose hookmap entry declares a `tools` list must
+ *     return, without building a payload, without validating `sessionID`,
+ *     and without calling `resolveSessionConfig`/`governStep`, for any tool
+ *     that list does not name (`isGovernedTool`, below -- see its own doc
+ *     comment for what this costs and why it is right, and for the
+ *     `null`-vs-`undefined` hazard fixed in §V5 review, Task 5, fix round
+ *     2, Important 1). This is data-turned-behaviour, not a nicety:
+ *     `policy/manifest.yaml`'s own policy target is fixed and checked
+ *     before any authored rule runs, independent of the tool registry, so
+ *     a gate with no `tools` check does not govern every tool it is asked
+ *     about -- it denies every tool its deployment cannot express a target
+ *     for, unconditionally, and calls that governance (§V5 review, Task 5,
+ *     fix round 1, priority item; measured against the shipped manifest
+ *     before this bullet existed). `tool` ITSELF must be validated first
+ *     (`assertUsableTool`, below), ahead of `isGovernedTool` -- a malformed
+ *     `tool` is not "out of scope", it is unreadable, and `Array.prototype
+ *     .includes` does not throw on one: it silently answers `false`, which
+ *     used to be the audited, posture-answered `buildEnvelope` throw and
+ *     became a silent, unaudited proceed the moment `isGovernedTool`
+ *     started intercepting every call before `governStep` (§V5 review,
+ *     Task 5, fix round 2, Important 2).
  *
  * S15 -- THE STORE IS IN MEMORY, and this is the half V3 built for exactly
  * this host. The Claude Code shim is a fresh subprocess per hook, so its
@@ -685,10 +700,67 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * fail-open shape this slice has hit four times, one call later. The skip
  * this function's caller takes runs BEFORE any envelope is built, which is
  * what keeps it a documented no-op rather than a posture-routed one.
+ *
+ * `?? undefined`, NOT a bare `=== undefined` check (§V5 review, Task 5, fix
+ * round 2, Important 1). `assertToolsWellFormed` (build-envelope.ts)
+ * normalises a bare `tools:` key -- YAML `null`, present and unusable, not
+ * absent -- to `undefined` ONLY inside its own local variable, for its own
+ * validation; the `Hookmap` object `loadHookmap` actually returns still
+ * carries `tools: null` on that entry, because that function shape-checks
+ * rather than rewrites. `null === undefined` is `false`, so a bare `!==
+ * undefined` read here fell through to `null.includes(tool)` and threw
+ * `TypeError: null is not an object` on EVERY call to this gate -- naming
+ * neither the hookmap nor the field, and contradicting both this function's
+ * own contract ("undeclared means every tool") and the load-time checker's
+ * stated intent. Measured end to end against a hookmap whose request gate
+ * declares a bare `tools:`. Not reachable through the SHIPPED hookmap
+ * (which declares `tools: [bash]`, never bare), but load-time-decidable
+ * faults belong caught at load time or handled defensively here, not left
+ * to crash a hook that already loaded -- the same rule this slice states
+ * for every other hookmap-shape hazard.
  */
 function isGovernedTool(hookmap: Hookmap, hookEventName: string, tool: string): boolean {
-  const tools = hookmap.hooks[hookEventName]?.tools;
+  const tools = hookmap.hooks[hookEventName]?.tools ?? undefined;
   return tools === undefined || tools.includes(tool);
+}
+
+/**
+ * Refuses BEFORE `isGovernedTool` is ever asked, when `tool` is not a
+ * non-empty string -- the same shape as `assertUsableSessionId`, above, and
+ * for a matching reason (§V5 review, Task 5, fix round 2, Important 2).
+ *
+ * WITHOUT THIS, `isGovernedTool`'s OWN CHECK SILENTLY ABSORBED THE FAULT.
+ * `Array.prototype.includes` never throws on a non-string needle -- a
+ * malformed `tool` (this host's own contract types `input.tool: string`,
+ * but nothing enforces that at the boundary a hook actually fires across)
+ * simply reads as "not in this gate's `tools` list" and the caller returns,
+ * the identical no-op path a genuinely out-of-scope tool takes. MEASURED,
+ * before `isGovernedTool` existed: a malformed `tool` reached
+ * `buildEnvelope`, which throws when `tool_name`'s path does not resolve to
+ * a string; that throw lands in `governStep`'s stage-"request" `catch` and
+ * is answered by the deployment's negotiated posture -- AUDITED regardless
+ * of which way the posture resolved, and a negotiated `deny` posture would
+ * have blocked. `isGovernedTool`'s clean, silent `false` for this one
+ * malformed shape converted an audited, posture-answered decision into an
+ * UNAUDITED, silent proceed -- the exact asymmetry this file otherwise
+ * refuses: a missing `sessionID` is a hard throw a few lines later; a
+ * missing `tool` was a no-op. This closes it, in the identical shape, so a
+ * broken host contract for `tool` is refused the same way a broken one for
+ * `sessionID` already is -- a THROW, this host's only blocking mechanism,
+ * never a fault that reaches `governStep` to be routed through a posture.
+ *
+ * Generic over `hookEventName`, exactly like `assertUsableSessionId`, so
+ * Task 6 calls this unchanged for the result gate.
+ */
+function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is string {
+  if (typeof tool !== "string" || tool.length === 0) {
+    throw new Error(
+      `acs-plugin: "${hookEventName}" fired with no usable tool name (got ${JSON.stringify(tool)}) -- a missing ` +
+        `or empty tool name is a broken deployment, not a policy question, so this refuses before isGovernedTool ` +
+        `or governStep are ever asked rather than letting a malformed value read as "not in this gate's tools ` +
+        `list" and silently proceed ungoverned and unaudited`,
+    );
+  }
 }
 
 /**
@@ -728,11 +800,21 @@ export const AcsPlugin: Plugin = async () => {
 
   return {
     // Task 6 fills in this hook's sibling, "tool.execute.after" (the result
-    // gate). See this file's own header, "THREE THINGS EVERY GATE TASK MUST
-    // DO", for what `assertUsableSessionId` and the two `sessionId` forms
-    // below have to do and why -- and for why a throw at the result gate
-    // specifically does not mean what it means here.
+    // gate). See this file's own header, "FOUR THINGS EVERY GATE TASK MUST
+    // DO", for what `assertUsableSessionId`/`assertUsableTool`, the `tools`
+    // bullet, and the two `sessionId` forms below have to do and why -- and
+    // for why a throw at the result gate specifically does not mean what it
+    // means here.
     "tool.execute.before": async (input, output) => {
+      // `tool` first, ahead of the `tools` check below (§V5 review, Task 5,
+      // fix round 2, Important 2): `isGovernedTool` cannot tell a malformed
+      // `tool` from a genuinely out-of-scope one, so a broken host contract
+      // for `tool` has to be refused here, the same "broken deployment"
+      // shape `assertUsableSessionId` already gives `sessionID` -- see
+      // `assertUsableTool`'s own doc comment for the measured asymmetry
+      // this closes.
+      assertUsableTool(input.tool, "tool.execute.before");
+
       // A tool this gate's own `tools` list does not name is NOT governed
       // here -- return before anything else, without building an envelope
       // or asking the Guardian anything. See `isGovernedTool`'s own doc

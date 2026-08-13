@@ -9,7 +9,7 @@
  * the first one that calls the hook OpenCode itself would call.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,6 +178,87 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
       ).resolves.toBeUndefined();
 
       expect(output.args).toEqual({ filePath: "/etc/passwd" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("does not crash on a bare `tools:` key (YAML null) -- read as \"every tool\", not a TypeError (§V5 review, Task 5, fix round 2, Important 1)", async () => {
+    // `tools:` with nothing after it parses to YAML null -- present and
+    // unusable, not absent. assertToolsWellFormed (build-envelope.ts)
+    // normalises that to "absent" for ITS OWN validation only; the Hookmap
+    // object loadHookmap actually returns still carries the raw `null` on
+    // this entry. Before isGovernedTool's own `?? undefined` fix, EVERY
+    // call through this gate threw `TypeError: null is not an object
+    // (evaluating 'tools.includes')`, naming neither the hookmap nor the
+    // field.
+    const hookmapPath = join(SCRATCH_DIR, "bare-tools.hookmap.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: opencode\n" +
+        "hooks:\n" +
+        "  tool.execute.before:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool\n" +
+        "    arguments: $.args\n" +
+        "    tools:\n" +
+        "    decisions:\n" +
+        "      allow:\n" +
+        "        output:\n" +
+        "          reason.text: { from: reasoning, type: string }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          refuse.denied: { value: true }\n" +
+        "          refuse.reason: { from: reasoning, type: string }\n",
+    );
+
+    const previousHookmapPath = process.env.ACS_HOOKMAP_PATH;
+    process.env.ACS_HOOKMAP_PATH = hookmapPath;
+    try {
+      const hooks = await AcsPlugin({} as never);
+      const output = { args: { command: "ls -la" } };
+      await expect(
+        hooks["tool.execute.before"]!({ tool: TOOL, sessionID: "ses-request-gate-bare-tools", callID: "c1" }, output),
+      ).resolves.toBeUndefined();
+      // Governed, not skipped: a bare `tools:` means "every tool", the same
+      // as an undeclared one -- a clean allow, so args is untouched.
+      expect(output.args).toEqual({ command: "ls -la" });
+    } finally {
+      if (previousHookmapPath === undefined) {
+        delete process.env.ACS_HOOKMAP_PATH;
+      } else {
+        process.env.ACS_HOOKMAP_PATH = previousHookmapPath;
+      }
+    }
+  });
+
+  it("throws before asking the Guardian anything when `tool` is missing or not a string -- the same broken-deployment refusal `sessionID` gets, not a silent skip (§V5 review, Task 5, fix round 2, Important 2)", async () => {
+    // Before this fix, `isGovernedTool`'s own `tools.includes(undefined)`
+    // read as `false` -- "not in this gate's tools list" -- and the hook
+    // returned cleanly: no throw, no fetch, no audit line. Measured against
+    // the PRIOR gate (before `tools` scoping existed at all): a malformed
+    // `tool` reached `buildEnvelope`, which throws, caught by `governStep`'s
+    // stage-"request" catch and answered by the negotiated posture --
+    // AUDITED regardless of which way the posture resolved. This asserts
+    // the fix restores an ungoverned-but-loud stop, closer to (loud stop
+    // beats silent proceed) rather than exactly reproducing the posture
+    // path -- no fetch at all, the same "broken deployment" shape
+    // `sessionID`'s own missing-value test already gets.
+    const hooks = await AcsPlugin({} as never);
+    const output = { args: { command: "ls -la" } };
+
+    const fetchSpy = spyOn(globalThis, "fetch");
+    try {
+      await expect(
+        hooks["tool.execute.before"]!(
+          { tool: undefined as unknown as string, sessionID: "ses-request-gate-bad-tool", callID: "c1" },
+          output,
+        ),
+      ).rejects.toThrow(/tool/i);
+      // Nothing half-applied, and nothing asked: the same discipline the
+      // sessionID refusal already gets.
+      expect(output.args.command).toBe("ls -la");
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
