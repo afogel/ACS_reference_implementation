@@ -80,6 +80,17 @@
  * round 3, Task 5, fix round 1, Minor 2 caught; the tense is the record of
  * which task built what, not a statement about what is left to do.
  *
+ * AND §V5 REVIEW ROUND 3'S OWN TASK 6 -- a DIFFERENT task from the one named
+ * two sentences up, which is why it is dated -- MERGED THE TWO BODIES
+ * (thread 3773262484). Both hooks made the same seven moves in the same
+ * order, written out twice; they are one module-private function now
+ * (`handle`, at the bottom of this file, beside the factory that calls it),
+ * and each hook method is the edge that names its own event, assembles its
+ * own payload, and constructs its own live half. OpenCode's `Plugin` type
+ * needs two method names; it never needed two copies of the exchange behind
+ * them -- host #1 already had the merged shape, one `main()` reading
+ * `hook_event_name` off the payload it was handed.
+ *
  * THE ADAPTER-SIDE HALF OF `apply-host-output.ts`'s OWN PROTOTYPE-CHAIN
  * GUARD (`assertNoReservedSegments`, in that file, wrapping the imported
  * `findReservedKey`) lives at its source: `reserved-segments.ts`
@@ -104,7 +115,15 @@
  * FOUR THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
  * because none of them is knowable until a hook actually fires (a fourth
  * joined the original three in §V5 review, Task 5, fix round 1 -- see its
- * own bullet, last, for why it is now load-bearing rather than a nicety):
+ * own bullet, last, for why it is now load-bearing rather than a nicety).
+ *
+ * DONE ONCE FOR BOTH GATES SINCE §V5 REVIEW ROUND 3, TASK 6, not once per
+ * gate: `handle` (bottom of this file) is the single function both hook
+ * methods call, so all four happen in one place rather than in two hook
+ * bodies that had to be kept in step by hand. Still not something this file
+ * can do at LOAD time, which is what this heading has always been about --
+ * each of the four is a property of a firing hook, so a load-time check
+ * cannot make any of them:
  *
  *   - Validate `sessionID` -- present, a non-empty string -- and refuse
  *     BEFORE calling `governStep`, the TYPEOF half of what
@@ -319,17 +338,26 @@ import {
   DEFAULT_TIMEOUT_MS,
   governStep,
   // The `tools` rule, as the adapter states it (§V5 review round 3, Task 2)
-  // -- this file used to carry its own copy, `isGovernedTool`. Both hooks
-  // below call this exactly where they called that, and for what the earlier
-  // call buys rather than for what it decides: `governStep` asks the same
-  // function itself, so a shim that forgot would still skip, but only this
-  // call site is early enough to skip the session validation and the
-  // handshake too.
+  // -- this file used to carry its own copy, `isGovernedTool`. Called from
+  // `handle` (below), exactly where each hook body used to call that copy
+  // before Task 6 merged the two, and for what the earlier call buys rather
+  // than for what it decides: `governStep` asks the same function itself, so
+  // a shim that forgot would still skip, but only this call site is early
+  // enough to skip the session validation and the handshake too.
   governsTool,
   loadHookmap,
   resolveSessionConfig,
   toSessionUuid,
+  // `AuditSink`/`GuardianClient`/`SessionConfigStore` -- the three
+  // collaborators `AcsPlugin`'s factory builds once and hands `handle` on
+  // every call (`Deployment`, below). Named by the adapter's own published
+  // types rather than by `ReturnType<typeof create...>`: what `handle` depends
+  // on is the INTERFACES, which is the whole reason the in-memory and
+  // file-backed session config stores are interchangeable at all (S15).
+  type AuditSink,
+  type GuardianClient,
   type Hookmap,
+  type SessionConfigStore,
 } from "host-adapter";
 // applyOpenCodeOutput (named for this host, §V5 review round 3, Task 4 --
 // it was `applyHostOutput` before that task; see apply-host-output.ts's own
@@ -791,16 +819,17 @@ function assertDecisionsCanAct(
  * that is a property of the ENTRY rather than of any decision (§V5 review round
  * 3, Task 5, fix rounds 3 and 4).
  *
- * `AcsPlugin`'s two hooks assemble the payload themselves and hand the applier
- * a hardcoded live half. That makes two things facts about the SHIM rather than
- * choices left to a hookmap -- and a hookmap disagreeing with either produces a
- * gate-SATISFYING entry that governs nothing:
+ * `AcsPlugin`'s two hook methods assemble the payload themselves and construct
+ * a hardcoded live half for the applier (handed to `handle`, below, which makes
+ * the one `applyOpenCodeOutput` call). That makes two things facts about the
+ * SHIM rather than choices left to a hookmap -- and a hookmap disagreeing with
+ * either produces a gate-SATISFYING entry that governs nothing:
  *
  *   - WHICH PAYLOAD SHAPE this hook builds. `governStep` and `buildEnvelope`
  *     read that off the ENTRY'S SHAPE (`arguments` vs `outputs`) and never off
  *     the event name -- deliberately, so a typo in an event name cannot
  *     silently select the wrong behaviour (govern-step.ts's own comment). This
- *     shim decides the same question by hook NAME, because its two call sites
+ *     shim decides the same question by hook NAME, because its two hook methods
  *     hardcode `{gate: "request", args}` and `{gate: "result", result}`. When
  *     the two disagree, the decision that arrives is shaped for the other gate.
  *   - WHICH PATHS resolve against what this shim assembled. `tool_name` must
@@ -997,11 +1026,12 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
  * and skipped everything else, which is exactly how the result gate went
  * unchecked. Hook name is the better key because it is what actually decides
  * which live half the applier gets: `AcsPlugin`'s returned object has exactly
- * two hooks, and each passes a hardcoded tag -- `"tool.execute.before"` calls
- * `applyOpenCodeOutput(..., { gate: "request", args })` and
- * `"tool.execute.after"` calls `applyOpenCodeOutput(..., { gate: "result",
- * result })` (both call sites are at the bottom of this file). So "which key
- * withholds here" is a fact about the CALL SITE, which is per hook name,
+ * two hooks, and each constructs a hardcoded tag -- `"tool.execute.before"`
+ * builds `{ gate: "request", args }` and `"tool.execute.after"` builds
+ * `{ gate: "result", result }` (both at the bottom of this file; since §V5
+ * review round 3, Task 6 each hands its own to `handle`, which makes the one
+ * `applyOpenCodeOutput` call with whichever it was given). So "which key
+ * withholds here" is a fact about the HOOK METHOD, which is per hook name,
  * regardless of what payload shape the hookmap entry declares. A hookmap
  * declaring `tool.execute.before` with `outputs:` instead of `arguments:`
  * would still be handed `{gate: "request", args}` at runtime, and still needs
@@ -1371,11 +1401,14 @@ function assertHostHonoursEveryDecision(hookmap: Hookmap, path: string): void {
  * report a failure through -- the same mechanism `applyOpenCodeOutput`'s own
  * `refuse` path (apply-host-output.ts) uses to stop a tool call.
  *
- * Shared by both gates (Task 6 calls this too) rather than written twice --
- * the same reason `assertUsableTool`, below, is one function rather than one
- * per gate, and the reason the `tools` rule both gates apply is now one
- * function in the adapter (`governsTool`, govern-step.ts) rather than a copy
- * per host.
+ * ONE CALL SITE NOW, NOT ONE PER GATE (§V5 review round 3, Task 6). This was
+ * always one function rather than one per gate -- the same reason
+ * `assertUsableTool`, below, is, and the reason the `tools` rule both gates
+ * apply is now one function in the adapter (`governsTool`, govern-step.ts)
+ * rather than a copy per host -- but it was CALLED from each hook body, once
+ * each. Both gates reach it through `handle` (below) now, which is where the
+ * whole exchange they share lives. The `hookEventName` parameter stays for the
+ * reason it was added: the message names the gate that actually fired.
  */
 function assertUsableSessionId(sessionID: unknown, hookEventName: string): asserts sessionID is string {
   if (typeof sessionID !== "string" || sessionID.length === 0) {
@@ -1431,8 +1464,10 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * (govern-step.ts) carries the full measurement and the reason its length
  * check is load-bearing anyway.
  *
- * Generic over `hookEventName`, exactly like `assertUsableSessionId`, so
- * both gates call this unchanged.
+ * Generic over `hookEventName`, exactly like `assertUsableSessionId` -- and,
+ * like it, called from ONE place since §V5 review round 3, Task 6 (`handle`,
+ * below, runs the exchange both gates share). The parameter is what puts the
+ * firing gate's own name in the message.
  */
 function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is string {
   if (typeof tool !== "string" || tool.length === 0) {
@@ -1443,6 +1478,169 @@ function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is
         `list" and silently proceed ungoverned and unaudited`,
     );
   }
+}
+
+/**
+ * The long-lived collaborators `AcsPlugin`'s factory builds ONCE and every
+ * hook call then shares for the rest of the session -- passed to `handle`
+ * (below) as an argument rather than closed over, so the one exchange both
+ * gates run is a module-level function whose dependencies are named in its
+ * signature.
+ *
+ * HOST #1 NEEDS NO EQUIVALENT, and the difference is this host's own shape
+ * rather than a disagreement: hosts/claude-code/acs-hook.ts is a fresh
+ * subprocess per hook, so its `main()` takes no arguments and builds its own
+ * collaborators on the way through. What the two shims share is ONE function
+ * carrying the whole exchange -- not how that function is handed what it
+ * needs.
+ *
+ * Interfaces, not implementations: `SessionConfigStore` is the one S15 rests
+ * on (this host binds the in-memory implementation, host #1 the file-backed
+ * one, and neither `resolveSessionConfig` nor `governStep` learns which).
+ */
+type Deployment = {
+  readonly hookmap: Hookmap;
+  readonly guardian: GuardianClient;
+  readonly audit: AuditSink;
+  readonly store: SessionConfigStore;
+};
+
+/**
+ * The live half `applyOpenCodeOutput` is handed -- DERIVED from that
+ * function's own parameter rather than re-declared here, because the type it
+ * names (`LiveHookObjects`, apply-host-output.ts) is module-private there and
+ * a second hand-written copy of a discriminated union is a copy that can
+ * drift from the applier that dispatches on it.
+ *
+ * The tag is constructed at the two hook methods below, never inferred here
+ * from which field is present -- that inference is exactly what §V5 review
+ * round 3, Task 4 removed from the applier (see `LiveHookObjects`' own doc
+ * comment for the prototype-chain read it closed), so this carries the tag
+ * through rather than reconstructing it.
+ */
+type LiveHalf = Parameters<typeof applyOpenCodeOutput>[1];
+
+/**
+ * What ONE gate's own payload assembly produces: the single object
+ * `opencode.hookmap.yaml`'s `$.` paths resolve against, and the live object
+ * that gate's rendered decision is applied to.
+ *
+ * The two halves are assembled together, at the edge, because they share a
+ * reference: the live object the applier mutates is the same one the payload
+ * carries, which is what makes a rendered `args`/`result` land on the object
+ * OpenCode is actually holding.
+ */
+type AssembledStep = {
+  readonly payload: Record<string, unknown>;
+  readonly live: LiveHalf;
+};
+
+/**
+ * THE ONE EXCHANGE BOTH GATES RUN (§V5 review round 3, Task 6, thread
+ * 3773262484).
+ *
+ * `"tool.execute.before"` and `"tool.execute.after"` made the same seven
+ * moves in the same order -- validate `tool`, honour `tools`, validate
+ * `sessionID`, assemble the payload, negotiate the session, govern the step,
+ * apply what comes back -- written out twice. They are this function now, and
+ * the two hook methods below are edges: each names its own event, assembles
+ * its own payload, and constructs its own live half.
+ *
+ * THE ORDER IS LOAD-BEARING, EVERY STEP OF IT. This file's header ("FOUR
+ * THINGS EVERY GATE TASK MUST DO") carries each measurement in full; in
+ * short:
+ *
+ *   - `assertUsableTool` FIRST, ahead of the `tools` check, because
+ *     `Array.prototype.includes` does not throw on a malformed `tool` -- it
+ *     answers a silent `false`, which reads as "out of scope" and turns an
+ *     audited, posture-answered fault into a silent unaudited proceed.
+ *   - `governsTool`'s early return BEFORE `assertUsableSessionId`, so a tool
+ *     this gate does not govern costs no session validation and no handshake
+ *     round trip. `governStep` asks the same function itself (§V5 review
+ *     round 3, Task 2), so a shim that forgot would still skip; this call
+ *     site is the only one early enough to skip the rest as well.
+ *   - `assertUsableSessionId` BEFORE `governStep`, because `buildEnvelope`'s
+ *     own throw on a missing `session_id` lands in `governStep`'s
+ *     stage-"request" catch and is answered by the negotiated posture, where
+ *     a `proceed` is an ungoverned step.
+ *
+ * PAYLOAD ASSEMBLY STAYS AT THE EDGE, called from here rather than done here,
+ * because the two gates genuinely differ: the request gate reads `args` off
+ * the mutable `output` object OpenCode hands it (the only place OpenCode puts
+ * them at that gate), while the result gate reads `args` off `input` directly
+ * and passes the whole live `{title, output, metadata, attachments}` object
+ * as `result`. Called in the ORDERED position -- after both validations, not
+ * before -- and handed the two values this function has just checked, so a
+ * gate cannot put an unvalidated `tool` or `sessionID` on its payload.
+ *
+ * BOTH `sessionId` FORMS ARE HERE, WHICH IS WHY THIS IS WHERE THE NOTE
+ * BELONGS: `resolveSessionConfig` takes the derived ACS uuid
+ * (`toSessionUuid`), `governStep` takes the RAW host id for the audit entry
+ * (S14), and the payload carries the raw one too because `buildEnvelope`
+ * reads `payload.session_id` as a hardcoded top-level field and derives the
+ * uuid itself. Mixing the two is the exact bug class that note exists to
+ * prevent -- see acs-hook.ts's own step 4 and step 5 for host #1's two calls
+ * side by side, and this file's header for the full statement.
+ */
+async function handle(
+  deployment: Deployment,
+  hookEventName: string,
+  input: { tool: string; sessionID: string; callID: string },
+  assemble: (tool: string, sessionID: string) => AssembledStep,
+): Promise<void> {
+  // `tool` first, ahead of the `tools` check below (§V5 review, Task 5, fix
+  // round 2, Important 2): a list membership test cannot tell a malformed
+  // `tool` from a genuinely out-of-scope one, so a broken host contract for
+  // `tool` has to be refused here, the same "broken deployment" shape
+  // `assertUsableSessionId` gives `sessionID` -- see `assertUsableTool`'s own
+  // doc comment for the measured asymmetry this closes.
+  assertUsableTool(input.tool, hookEventName);
+
+  // A tool this gate's own `tools` list does not name is NOT governed here --
+  // return before anything else, without validating a session id, without
+  // negotiating a session config, without building an envelope, and without
+  // asking the Guardian anything. See `governsTool`'s own doc comment
+  // (govern-step.ts) for what this costs and why it is right anyway (§V5
+  // review, Task 5, fix round 1, priority item; moved into the adapter in
+  // review round 3, Task 2).
+  if (!governsTool(deployment.hookmap, hookEventName, input.tool)) {
+    return;
+  }
+
+  assertUsableSessionId(input.sessionID, hookEventName);
+
+  // ONE payload object, so `opencode.hookmap.yaml`'s `$.` paths have a single
+  // thing to resolve against -- OpenCode hands a hook two arguments, not one
+  // blob, so this assembly is a shim job the same way reading stdin is host
+  // #1's (this file's header). Handed the checked `tool` and the RAW,
+  // un-converted `sessionID`; see this function's own doc comment above for
+  // why the raw host id and the derived uuid must never be mixed.
+  const { payload, live } = assemble(input.tool, input.sessionID);
+
+  const session = await resolveSessionConfig(
+    {
+      guardian: deployment.guardian,
+      agentId: deployment.hookmap.host,
+      sessionId: toSessionUuid(input.sessionID),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    deployment.store,
+  );
+
+  const governed = await governStep({
+    hookEventName,
+    payload,
+    hookmap: deployment.hookmap,
+    guardian: deployment.guardian,
+    session,
+    // RAW, the other of the two `sessionId` forms -- this one is for the
+    // audit entry (S14), never the uuid `resolveSessionConfig` above was
+    // given.
+    sessionId: input.sessionID,
+    audit: deployment.audit,
+  });
+
+  applyOpenCodeOutput(governed.output, live);
 }
 
 /**
@@ -1483,86 +1681,60 @@ export const AcsPlugin: Plugin = async () => {
   const hookmap = loadHookmap(hookmapPath);
   assertHostHonoursEveryDecision(hookmap, hookmapPath);
 
-  const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
-  const audit = createAuditSink({ path: process.env.ACS_AUDIT_LOG ?? ".acs/audit.jsonl" });
-  // S15 -- IN MEMORY, and this is the half V3 built for exactly this host. See
-  // this file's own header for the measured reason: one plugin object per
-  // session, so the negotiated config survives in a variable and the second
-  // hook of a session skips the handshake round trip. One interface, two
-  // implementations, and the adapter never learns which host is running.
-  const store = createSessionConfigStore();
+  // Built once, here, and handed to `handle` on every call -- the four this
+  // deployment runs on, in one object so the exchange both gates share can
+  // take them as one argument.
+  const deployment: Deployment = {
+    hookmap,
+    guardian: createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL),
+    audit: createAuditSink({ path: process.env.ACS_AUDIT_LOG ?? ".acs/audit.jsonl" }),
+    // S15 -- IN MEMORY, and this is the half V3 built for exactly this host.
+    // See this file's own header for the measured reason: one plugin object
+    // per session, so the negotiated config survives in a variable and the
+    // second hook of a session skips the handshake round trip. One interface,
+    // two implementations, and the adapter never learns which host is
+    // running.
+    store: createSessionConfigStore(),
+  };
 
   return {
-    // See this file's own header, "FOUR THINGS EVERY GATE TASK MUST DO", for
-    // what `assertUsableSessionId`/`assertUsableTool`, the `tools` bullet,
-    // and the two `sessionId` forms below have to do and why -- shared by
-    // both hooks below, unchanged. And for why a throw at the result gate
-    // specifically does not mean what it means here, see
-    // "tool.execute.after"'s own doc comment, below.
-    "tool.execute.before": async (input, output) => {
-      // `tool` first, ahead of the `tools` check below (§V5 review, Task 5,
-      // fix round 2, Important 2): a list membership test cannot tell a
-      // malformed `tool` from a genuinely out-of-scope one, so a broken host
-      // contract for `tool` has to be refused here, the same "broken
-      // deployment" shape `assertUsableSessionId` already gives `sessionID`
-      // -- see `assertUsableTool`'s own doc comment for the measured
-      // asymmetry this closes.
-      assertUsableTool(input.tool, "tool.execute.before");
+    // BOTH HOOKS ARE EDGES ON ONE EXCHANGE (§V5 review round 3, Task 6): the
+    // seven moves they share -- validate `tool`, honour `tools`, validate
+    // `sessionID`, assemble the payload, negotiate the session, govern the
+    // step, apply what comes back -- are `handle` (above), which is also
+    // where the order they must happen in is stated and defended. What is
+    // left here is the half the two gates genuinely differ on: which event
+    // name this is, and where OpenCode puts the live objects it hands this
+    // hook. See this file's own header, "FOUR THINGS EVERY GATE TASK MUST
+    // DO", for what `assertUsableSessionId`/`assertUsableTool`, the `tools`
+    // bullet and the two `sessionId` forms have to do and why. And for why a
+    // throw at the result gate specifically does not mean what it means at
+    // the request gate, see "tool.execute.after"'s own doc comment, below.
 
-      // A tool this gate's own `tools` list does not name is NOT governed
-      // here -- return before anything else, without validating a session
-      // id, without negotiating a session config, without building an
-      // envelope, and without asking the Guardian anything. See
-      // `governsTool`'s own doc comment (govern-step.ts) for what this costs
-      // and why it is right anyway (§V5 review, Task 5, fix round 1,
-      // priority item; moved into the adapter in review round 3, Task 2).
-      if (!governsTool(hookmap, "tool.execute.before", input.tool)) {
-        return;
-      }
-
-      assertUsableSessionId(input.sessionID, "tool.execute.before");
-
-      // ONE payload object so opencode.hookmap.yaml's `$.` paths ($.tool,
-      // $.args) have a single thing to resolve against -- OpenCode hands
-      // this hook `{tool, sessionID, callID}` and a separate, mutable
-      // `{args}`; assembling the two into one object is the shim's own job
-      // (this file's header). `session_id`, RAW and not pre-converted:
-      // `buildEnvelope` reads `payload.session_id` as a hardcoded top-level
-      // field and derives the ACS uuid itself -- see this file's header,
-      // second bullet, for why the raw host id and the derived uuid must
-      // never be mixed.
-      const payload = { tool: input.tool, session_id: input.sessionID, callID: input.callID, args: output.args };
-
-      const session = await resolveSessionConfig(
-        { guardian, agentId: hookmap.host, sessionId: toSessionUuid(input.sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-        store,
-      );
-
-      const governed = await governStep({
-        hookEventName: "tool.execute.before",
-        payload,
-        hookmap,
-        guardian,
-        session,
-        // RAW, the other of the two `sessionId` forms this file's header
-        // warns against mixing -- this one is for the audit entry (S14),
-        // never the uuid `resolveSessionConfig` above was given.
-        sessionId: input.sessionID,
-        audit,
-      });
-
-      applyOpenCodeOutput(governed.output, { gate: "request", args: output.args });
-    },
+    /**
+     * The request gate. `args` off the MUTABLE `output` object OpenCode hands
+     * this hook -- the only place it puts them at this gate, which is why the
+     * payload's `args` and the applier's live half are both read from there:
+     * they are the same object, so a rendered rewrite lands on the arguments
+     * OpenCode is actually about to run (`applyOpenCodeOutput`'s in-place
+     * merge, apply-host-output.ts).
+     */
+    "tool.execute.before": async (input, output) =>
+      handle(deployment, "tool.execute.before", input, (tool, sessionID) => ({
+        payload: { tool, session_id: sessionID, callID: input.callID, args: output.args },
+        live: { gate: "request", args: output.args },
+      })),
 
     /**
      * The result gate, wired by Task 6 (past tense as of §V5 review round 3,
      * Task 5, fix round 1, Minor 2 -- this comment opened with "Task 6:" as
-     * though the hook below were still to be written). The same seven moves as
-     * "tool.execute.before"
-     * above -- validate `tool`, honour `tools`, validate `sessionID`,
+     * though the hook below were still to be written). The seven moves it
+     * makes -- validate `tool`, honour `tools`, validate `sessionID`,
      * assemble one payload object, negotiate the session, govern the step,
-     * apply what comes back -- one seam later, for `{result}` in place of
-     * `{args}`.
+     * apply what comes back -- are `handle`'s (above), NOT written out here:
+     * they were a second copy of `"tool.execute.before"`'s until §V5 review
+     * round 3's own Task 6 merged the two. What remains this hook's is the
+     * seam that differs -- `{result}` in place of `{args}`, one step later.
      *
      * `tools: [bash]` on this hookmap entry too (opencode.hookmap.yaml's own
      * comment, on this entry): `metadata` is PER-TOOL on this host, measured
@@ -1588,10 +1760,11 @@ export const AcsPlugin: Plugin = async () => {
      * `metadata.exit`/`metadata.output` (`cat missing-file.txt` ->
      * `{output: "cat: missing-file.txt: No such file or directory\n", exit:
      * 1, truncated: false}`), and an INVALID tool call reports itself as
-     * `tool: "invalid"`, not `bash`, so the `tools` check below skips it
-     * before any payload naming `metadata.exit` is ever built. Unreachable
-     * through the shipped config -- this gate's own `tools: [bash]` scope --
-     * not unreachable outright, the same qualification `governsTool`'s own
+     * `tool: "invalid"`, not `bash`, so the `tools` check (`governsTool`, in
+     * `handle`) skips it before any payload naming `metadata.exit` is ever
+     * built. Unreachable through the shipped config -- this gate's own
+     * `tools: [bash]` scope -- not unreachable outright, the same
+     * qualification `governsTool`'s own
      * doc comment (govern-step.ts) makes. And this does not weaken
      * that scope's own justification: opencode.hookmap.yaml's measurement
      * table's fourth row ("an invalid call's [metadata] is `{truncated}`
@@ -1614,8 +1787,9 @@ export const AcsPlugin: Plugin = async () => {
      * opaque). `governed.output.result`, when a `deny`/`modify` renders one,
      * is `applied_output` -- the WHOLE patched clone of that same object,
      * mirror included (`outputs.mirrors`, opencode.hookmap.yaml's own result
-     * gate) -- so `applyOpenCodeOutput`'s merge (called below; its own
-     * `mergeInPlace`, in apply-host-output.ts) lands `output` and
+     * gate) -- so `applyOpenCodeOutput`'s merge (called by `handle`, on the
+     * live half this hook constructs below; its own `mergeInPlace`, in
+     * apply-host-output.ts) lands `output` and
      * `metadata.output` together, and leaves `title`/`attachments`/
      * `metadata.exit`/`metadata.truncated` -- everything a render does not
      * name -- exactly as OpenCode handed them in.
@@ -1627,47 +1801,25 @@ export const AcsPlugin: Plugin = async () => {
      * throw out of `tool.execute.after` and rebuilds `metadata` from its own
      * pre-hook copy, so a secret scrubbed by a throw does not stay scrubbed
      * on disk. That is why this entry's `deny`/`modify` decisions render
-     * `result` (a REPLACING merge, applied below) instead of `refuse` (a
-     * throw) -- the `refuse` key never appears in either decision here.
+     * `result` (a REPLACING merge, applied through `handle`) instead of
+     * `refuse` (a throw) -- the `refuse` key never appears in either decision
+     * here.
      * `assertUsableTool`/`assertUsableSessionId` still refuse a broken
      * `tool`/`sessionID` by throwing, same as the request gate: an ungoverned
      * step is worse than a stop that does not scrub the disk, and neither of
      * those two faults is a governed decision this gate could instead
      * withhold by replacing.
      */
-    "tool.execute.after": async (input, output) => {
-      assertUsableTool(input.tool, "tool.execute.after");
-
-      if (!governsTool(hookmap, "tool.execute.after", input.tool)) {
-        return;
-      }
-
-      assertUsableSessionId(input.sessionID, "tool.execute.after");
-
-      const payload = {
-        tool: input.tool,
-        session_id: input.sessionID,
-        callID: input.callID,
-        args: input.args,
-        result: output,
-      };
-
-      const session = await resolveSessionConfig(
-        { guardian, agentId: hookmap.host, sessionId: toSessionUuid(input.sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-        store,
-      );
-
-      const governed = await governStep({
-        hookEventName: "tool.execute.after",
-        payload,
-        hookmap,
-        guardian,
-        session,
-        sessionId: input.sessionID,
-        audit,
-      });
-
-      applyOpenCodeOutput(governed.output, { gate: "result", result: output as unknown as Record<string, unknown> });
-    },
+    "tool.execute.after": async (input, output) =>
+      handle(deployment, "tool.execute.after", input, (tool, sessionID) => ({
+        payload: { tool, session_id: sessionID, callID: input.callID, args: input.args, result: output },
+        // The cast is on the FIELD, never on `live` itself: OpenCode's
+        // published 1.18.15 type for this object (`{title, output, metadata}`)
+        // has no index signature, and the applier takes what it may merge as a
+        // `Record<string, unknown>`. `live` stays a typed object literal
+        // owning its own `gate` -- which is the fact `LiveHookObjects`' own
+        // doc comment (apply-host-output.ts) rests part of its reasoning on.
+        live: { gate: "result", result: output as unknown as Record<string, unknown> },
+      })),
   };
 };
