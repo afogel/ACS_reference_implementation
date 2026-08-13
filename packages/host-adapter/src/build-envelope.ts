@@ -565,7 +565,14 @@ function assertRequestGateDeclaresNoOutputs(hookmap: Hookmap, path: string): voi
  */
 function normalizeTools(hookmap: Hookmap): Hookmap {
   const hooks: Record<string, HookmapHookEntry> = {};
-  for (const [hookEventName, entry] of Object.entries(hookmap.hooks)) {
+  // `?? {}` for the same reason every sibling check above uses it, even
+  // though `assertRenderableDecisions` already throws before this function
+  // is ever reached if `hookmap.hooks` is not a non-empty plain object: this
+  // keeps the guard a property of every function that walks `hooks`, not of
+  // the one check that happens to run first today, so a reordering of
+  // `loadHookmap`'s own call sequence cannot turn a named
+  // `loadHookmap: … maps no hooks` throw into a bare `TypeError` here.
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
     if (isPlainObject(entry) && (entry as { tools?: unknown }).tools === null) {
       const { tools: _tools, ...rest } = entry as Record<string, unknown>;
       hooks[hookEventName] = rest as HookmapHookEntry;

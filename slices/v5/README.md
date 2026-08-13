@@ -30,7 +30,7 @@ host's own novel piece) instead of printed — mutating `{args}` at the request 
 output, metadata, attachments}` at the result gate, or throwing.
 
 That difference in mechanism is *not* proof that nothing else moved, and it would be false to say
-so: `packages/host-adapter/src` changed in four of its files (+962/−62) to make this host work —
+so: `packages/host-adapter/src` changed in four of its files (+1026/−63) to make this host work —
 `build-envelope.ts` (`loadHookmap` gained four new load-time gates beside its original one, and
 `exit_status` gained a second, `from:` form), `decision-modify.ts`, `modifications.ts`, and
 `result-output.ts`. Of the five things the retracted claim named, only `render-decision.ts` and

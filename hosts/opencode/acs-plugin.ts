@@ -18,16 +18,16 @@
  * semantics this slice owns.
  *
  * THE ADAPTER IS NOT "UNCHANGED" (§V5 final review, F3) -- MEASURED:
- * packages/host-adapter/src changed in FOUR of its files, +962/-62
+ * packages/host-adapter/src changed in FOUR of its files, +1026/-63
  * (build-envelope.ts, decision-modify.ts, modifications.ts,
  * result-output.ts); `loadHookmap` went from ONE load-time gate
  * (`assertRenderableDecisions`) to FIVE (plus `assertMirrorsWellFormed`,
  * `assertToolsWellFormed`, `assertExitStatusNotBothForms`,
- * `assertRequestGateDeclaresNoOutputs`); and `exit_status` gained a second, `from:`
- * form beside its original `literal:`. Only `render-decision.ts` and
- * `govern-step.ts` are genuinely untouched. So `buildEnvelope`, the hookmap
- * format, and every load-time check are NOT the unmodified set an earlier
- * claim here named.
+ * `assertRequestGateDeclaresNoOutputs`); and `exit_status` gained a
+ * second, `from:` form beside its original `literal:`. Only
+ * `render-decision.ts` and `govern-step.ts` are genuinely untouched. So
+ * `buildEnvelope`, the hookmap format, and every load-time check are NOT
+ * the unmodified set an earlier claim here named.
  *
  * THE CLAIM THAT IS ACTUALLY TRUE, AND STRONGER THAN "UNCHANGED": this
  * second host cost no PER-HOST FORK. Every one of those changes landed in
@@ -406,22 +406,35 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * what keeps it a documented no-op rather than a posture-routed one.
  *
  * `?? undefined`, NOT a bare `=== undefined` check (§V5 review, Task 5, fix
- * round 2, Important 1). `assertToolsWellFormed` (build-envelope.ts)
- * normalises a bare `tools:` key -- YAML `null`, present and unusable, not
- * absent -- to `undefined` ONLY inside its own local variable, for its own
- * validation; the `Hookmap` object `loadHookmap` actually returns still
- * carries `tools: null` on that entry, because that function shape-checks
- * rather than rewrites. `null === undefined` is `false`, so a bare `!==
- * undefined` read here fell through to `null.includes(tool)` and threw
- * `TypeError: null is not an object` on EVERY call to this gate -- naming
- * neither the hookmap nor the field, and contradicting both this function's
- * own contract ("undeclared means every tool") and the load-time checker's
+ * round 2, Important 1) -- HISTORICALLY. `assertToolsWellFormed`
+ * (build-envelope.ts) normalises a bare `tools:` key -- YAML `null`,
+ * present and unusable, not absent -- to `undefined` ONLY inside its own
+ * local variable, for its own validation; AT THE TIME this compensation was
+ * added, the `Hookmap` object `loadHookmap` returned still carried
+ * `tools: null` on that entry, because that function shape-checked rather
+ * than rewrote. `null === undefined` is `false`, so a bare `!== undefined`
+ * read here fell through to `null.includes(tool)` and threw `TypeError:
+ * null is not an object` on EVERY call to this gate -- naming neither the
+ * hookmap nor the field, and contradicting both this function's own
+ * contract ("undeclared means every tool") and the load-time checker's
  * stated intent. Measured end to end against a hookmap whose request gate
  * declares a bare `tools:`. Not reachable through the SHIPPED hookmap
  * (which declares `tools: [bash]`, never bare), but load-time-decidable
  * faults belong caught at load time or handled defensively here, not left
  * to crash a hook that already loaded -- the same rule this slice states
  * for every other hookmap-shape hazard.
+ *
+ * NO LONGER LOAD-BEARING, AS OF §V5 review round 3, Task 1. `loadHookmap`
+ * now returns a NORMALISED `Hookmap`: a present-but-`null` `tools` key
+ * comes back OMITTED, never `null` (`normalizeTools`, build-envelope.ts --
+ * whose own doc comment cites the crash above as ITS motivation). So the
+ * `?? undefined` immediately below is a NO-OP on every call this file can
+ * reach: `hookmap.hooks[hookEventName]?.tools` can no longer read `null`,
+ * only `undefined` or a well-formed array. Left in place rather than
+ * simplified to `=== undefined` here: Task 2 deletes this whole function
+ * and moves the rule into the adapter, so the dead compensation is that
+ * task's to remove, once, with the rest of the function, not this one's to
+ * edit twice.
  */
 function isGovernedTool(hookmap: Hookmap, hookEventName: string, tool: string): boolean {
   const tools = hookmap.hooks[hookEventName]?.tools ?? undefined;
