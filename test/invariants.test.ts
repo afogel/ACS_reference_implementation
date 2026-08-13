@@ -152,6 +152,9 @@ describe("architectural invariants", () => {
    * What makes a second host cost zero AGT code: the bridge that knows AGT
    * must never learn a specific host's wire shape, or adding a host would
    * mean touching this package too.
+  it("the adapter names no OpenCode field", () => {
+    assertNoVocabulary("packages/host-adapter/src", ["tool.execute", "callID", "attachments"]);
+  });
    */
   it("AGT bridge's source contains zero host-specific code", () => {
     assertNoVocabulary("packages/agt-bridge/src", [

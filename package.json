@@ -7,6 +7,7 @@
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:pin": "bash scripts/verify-pin.sh",
+    "verify:zero-diff": "bash scripts/verify-zero-diff.sh",
     "guardian": "bun run packages/guardian/src/main.ts",
     "inspector": "bun run packages/inspector/src/main.ts"
   },
