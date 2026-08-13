@@ -59,7 +59,7 @@
  *
  * TASK 4 SHIPPED THE SKELETON: the plugin factory's setup -- loading the
  * hookmap, the Guardian client, the audit sink, the negotiated session
- * config store -- `applyHostOutput`, the one function novel to this host,
+ * config store -- `applyOpenCodeOutput`, the one function novel to this host,
  * and one load-time correctness gate this host's own applier needs
  * (`assertRefusalRendersUnconditionally`, below -- see its own doc comment).
  * TASK 5 WIRED THE REQUEST GATE, `"tool.execute.before"`: it assembles the
@@ -67,7 +67,7 @@
  * (`{tool, session_id, callID, args}` -- OpenCode hands the plugin two
  * arguments per hook, not one blob, so THAT assembly is a shim job, the
  * same way reading stdin is host #1's), calls `resolveSessionConfig` then
- * `governStep`, and applies what comes back through `applyHostOutput`
+ * `governStep`, and applies what comes back through `applyOpenCodeOutput`
  * (`apply-host-output.ts`, imported below -- see ITS OWN header for why it
  * is not defined in this file). TASK 6 WIRES `"tool.execute.after"` (the
  * result gate): the same shape, one seam later, for `{result}` (the live
@@ -127,12 +127,12 @@
  *
  *     NAME THE MECHANISM (§V5 review, fix round 1, Minor 3): this host has no
  *     exit code to set. The only "blocking stop" it has is a THROW out of the
- *     hook function itself -- the same mechanism `applyHostOutput`'s own
+ *     hook function itself -- the same mechanism `applyOpenCodeOutput`'s own
  *     `refuse` path uses (apply-host-output.ts) -- because OpenCode's hooks
  *     return `void` and have no other channel to report a failure through.
  *
  *     AND AT THE RESULT GATE SPECIFICALLY, that throw -- this one, or
- *     `applyHostOutput`'s -- does not do what a reader of host #1's own
+ *     `applyOpenCodeOutput`'s -- does not do what a reader of host #1's own
  *     "exit 2 blocks the tool call" might expect. opencode.hookmap.yaml's own
  *     header states the measurement: a throw at `tool.execute.after` stops
  *     the MODEL from ever seeing the tool's output, but OpenCode discards the
@@ -140,7 +140,7 @@
  *     pre-hook copy, so whatever the tool actually produced survives in
  *     OpenCode's own session record regardless of how early the throw fires.
  *     That is exactly why the result gate's own `deny`/`modify` withhold by
- *     REPLACING `result` (`applyHostOutput`'s merge, in apply-host-output.ts)
+ *     REPLACING `result` (`applyOpenCodeOutput`'s merge, in apply-host-output.ts)
  *     rather than by throwing. A sessionID check that refuses at the result gate is still
  *     the right call -- an ungoverned step is worse than a stop that does not
  *     scrub the disk -- but Task 6 must not read "it threw, so the secret is
@@ -251,12 +251,15 @@ import {
   toSessionUuid,
   type Hookmap,
 } from "host-adapter";
-// applyHostOutput, and every private helper it alone needs, moved to
-// apply-host-output.ts (§V5 review, Task 8, fix round 1, Important 1) --
-// see that file's own header for why exporting it from THIS module was a
-// hazard rather than a convenience, and test/invariants.test.ts's new gate
-// for what now keeps this file's export surface to exactly one symbol.
-import { applyHostOutput } from "./apply-host-output.ts";
+// applyOpenCodeOutput (named for this host, §V5 review round 3, Task 4 --
+// it was `applyHostOutput` before that task; see apply-host-output.ts's own
+// header, top, for why a generic name was the wrong one), and every private
+// helper it alone needs, moved to apply-host-output.ts (§V5 review, Task 8,
+// fix round 1, Important 1) -- see that file's own header for why exporting
+// it from THIS module was a hazard rather than a convenience, and
+// test/invariants.test.ts's new gate for what now keeps this file's export
+// surface to exactly one symbol.
+import { applyOpenCodeOutput } from "./apply-host-output.ts";
 
 // Matches packages/guardian/src/main.ts's own default port, and
 // hosts/claude-code/acs-hook.ts's identical constant -- the runbook and both
@@ -329,14 +332,14 @@ const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
  * Checks by STRUCTURE, not by trusting the shipped field name -- but the
  * structure that matters is WHICH KEY the unconditional field sits under, not
  * merely that some field somewhere in the block carries `{value: ...}`.
- * `applyHostOutput` (apply-host-output.ts) refuses on exactly one output key:
- * `refuse` -- read in pass 2a and thrown. `reason` is declared-inert (pass
+ * `applyOpenCodeOutput` (apply-host-output.ts) refuses on exactly one output
+ * key: `refuse` -- read in pass 2a and thrown. `reason` is declared-inert (pass
  * 2b never throws), and `args`/`result` are MERGES that leave a governed
  * decision looking like a successful, unremarkable rewrite: an unconditional
  * `{value: ...}` planted at `reason.text` or `args.something` renders a
  * non-empty output block, which is what an earlier version of this check
  * accepted, but a non-empty render at the wrong key is not a refusal --
- * `applyHostOutput` never reads `refuse` from it, so the applier proceeds all
+ * `applyOpenCodeOutput` never reads `refuse` from it, so the applier proceeds all
  * the same. This is the exact hole a hookmap author (or a compromised
  * config) could use to satisfy this gate's letter while reintroducing
  * Critical 1's rendered-`{}` failure mode by another route: an entry naming
@@ -378,7 +381,7 @@ function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): vo
       if (!hasUnconditionalRefuseField) {
         throw new Error(
           `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
-            `"value:" output field under "refuse" -- applyHostOutput (apply-host-output.ts) refuses only on the ` +
+            `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-host-output.ts) refuses only on the ` +
             `"refuse" key; an unconditional field declared under any other key (e.g. "reason.text" or "args...") ` +
             `renders a non-empty output block without making this a refusal, and "refuse.reason" alone is a ` +
             `"from:" field that renders NOTHING when the arriving decision does not carry that source field, or ` +
@@ -405,7 +408,7 @@ function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): vo
  *
  * THE MECHANISM IS A THROW, not an exit code (this file's header, same
  * bullet): OpenCode's hooks return `void` and have no other channel to
- * report a failure through -- the same mechanism `applyHostOutput`'s own
+ * report a failure through -- the same mechanism `applyOpenCodeOutput`'s own
  * `refuse` path (apply-host-output.ts) uses to stop a tool call.
  *
  * Shared by both gates (Task 6 calls this too) rather than written twice --
@@ -587,7 +590,7 @@ export const AcsPlugin: Plugin = async () => {
         audit,
       });
 
-      applyHostOutput(governed.output, { args: output.args });
+      applyOpenCodeOutput(governed.output, { gate: "request", args: output.args });
     },
 
     /**
@@ -647,7 +650,7 @@ export const AcsPlugin: Plugin = async () => {
      * opaque). `governed.output.result`, when a `deny`/`modify` renders one,
      * is `applied_output` -- the WHOLE patched clone of that same object,
      * mirror included (`outputs.mirrors`, opencode.hookmap.yaml's own result
-     * gate) -- so `applyHostOutput`'s merge (called below; its own
+     * gate) -- so `applyOpenCodeOutput`'s merge (called below; its own
      * `mergeInPlace`, in apply-host-output.ts) lands `output` and
      * `metadata.output` together, and leaves `title`/`attachments`/
      * `metadata.exit`/`metadata.truncated` -- everything a render does not
@@ -700,7 +703,7 @@ export const AcsPlugin: Plugin = async () => {
         audit,
       });
 
-      applyHostOutput(governed.output, { result: output as unknown as Record<string, unknown> });
+      applyOpenCodeOutput(governed.output, { gate: "result", result: output as unknown as Record<string, unknown> });
     },
   };
 };

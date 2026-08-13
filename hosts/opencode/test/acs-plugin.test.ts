@@ -3,7 +3,7 @@
  * plain async factory a test can call directly (acs-plugin.ts's own header
  * states why `ACS_HOOKMAP_PATH` is read inside the factory rather than at
  * module scope, exactly so this works). Scoped to what nothing else in this
- * suite exercises: that the factory itself, not only `applyHostOutput` in
+ * suite exercises: that the factory itself, not only `applyOpenCodeOutput` in
  * isolation (apply-host-output.test.ts) or the shipped hookmap's static
  * shape (hookmap.test.ts), refuses to register a hookmap whose
  * `assertRefusalRendersUnconditionally` gate would otherwise let a
@@ -86,9 +86,9 @@ describe("AcsPlugin's load-time gate", () => {
   // inside the gate built to close the fourteenth". Before this fix, the gate
   // accepted any deny/ask/defer entry with at least one `{value: ...}` field
   // ANYWHERE in its output block, not only under `refuse` -- the one key
-  // `applyHostOutput` (apply-host-output.ts) actually throws on. Both
+  // `applyOpenCodeOutput` (apply-host-output.ts) actually throws on. Both
   // reproductions below were measured LIVE, before this fix, against the
-  // real `AcsPlugin`, `applyHostOutput`, `loadHookmap`, and a stub Guardian
+  // real `AcsPlugin`, `applyOpenCodeOutput`, `loadHookmap`, and a stub Guardian
   // returning a genuine `{"decision":"deny"}`: the hookmap loaded cleanly,
   // `tool.execute.before` returned normally with no throw, `live.args` was
   // untouched, and no audit entry was written -- Task 4's Critical, byte for
@@ -96,7 +96,7 @@ describe("AcsPlugin's load-time gate", () => {
   it("refuses to register a hookmap whose deny declares an unconditional value: field OUTSIDE refuse (reason.text)", async () => {
     const hookmapPath = join(SCRATCH_DIR, "value-outside-refuse-reason.yaml");
     // The author "answers" this gate at the wrong key: reason.text is
-    // unconditional, but applyHostOutput never reads reason to throw -- it
+    // unconditional, but applyOpenCodeOutput never reads reason to throw -- it
     // is declared-inert (pass 2b). refuse.reason alone is a from: field and
     // can still render nothing.
     writeFileSync(

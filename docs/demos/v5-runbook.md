@@ -85,7 +85,7 @@ That claim was retracted during execution; both gates carry the scope for the re
    own header says so. OpenCode's hooks return `void` and expose no field this host reads an
    explanation back from; the only channel that delivers text *to OpenCode, or to the model* is the
    thrown message on a request-gate deny (watch-for 1). A second channel exists but does not deliver
-   anywhere a user or the model would see it: `applyHostOutput` writes `reason.text` to **this
+   anywhere a user or the model would see it: `applyOpenCodeOutput` writes `reason.text` to **this
    process's own stderr**, labelled undelivered, when `ACS_DEBUG` is set — a diagnostic for whoever
    runs the plugin, not a delivery mechanism (see "The `ACS_DEBUG` stderr channel, captured" below).
    Neither capture in this runbook triggers it: the deny throws before that code ever runs, and the
@@ -303,7 +303,7 @@ event carrying its outcome was ever recorded:
 `payload.tool.name` is `"bash"`, not `"Bash"` — the wire is honest about which host and which tool
 name actually asked, which is the whole reason the manifest needed the additive entry described
 above. `renderDecision` turns this `deny` into `opencode.hookmap.yaml`'s `refuse.denied: {value:
-true}` plus `refuse.reason: {from: reasoning}`; `applyHostOutput` reads `refuse` and **throws**
+true}` plus `refuse.reason: {from: reasoning}`; `applyOpenCodeOutput` reads `refuse` and **throws**
 `reasoning`'s exact text, before touching the live `{args}` object at all — which is the thrown
 message the capture above shows OpenCode reporting back as `state.error`. Only 4 envelopes total
 for this session (a `handshake/hello` pair precedes this pair, seq 1–2 in the log): the tool never
@@ -420,7 +420,7 @@ applied_output}` — **the whole `{title, output, metadata, attachments}` contai
 plain string on this host, and bury the mirror's own patched copy one level too deep for OpenCode
 to ever apply — the exact critical finding this slice's own review caught and fixed). `applied_output`
 already carries the leaf and the mirror patched together (`result-output.ts`'s `replacingOutput`),
-so `applyHostOutput`'s in-place merge lands both at once, and `title`/`metadata.exit`/
+so `applyOpenCodeOutput`'s in-place merge lands both at once, and `title`/`metadata.exit`/
 `metadata.truncated` — the fields the render does not name and that this capture actually carries —
 come through unchanged. `attachments` is part of the container's declared shape (this file's own
 header: `{title, output, metadata, attachments}`, measured present at runtime on 1.18.15 though
@@ -468,15 +468,15 @@ so the negotiated `proceed` posture was never consulted.
 
 Watch-for 5 names a second, opt-in text channel neither capture above triggers. Demonstrating it
 needs a decision that carries `reasoning` on something other than a request-gate deny — the pinned
-bundle's redaction sends no `reasoning`, and a deny always throws in `applyHostOutput`'s pass 2a
+bundle's redaction sends no `reasoning`, and a deny always throws in `applyOpenCodeOutput`'s pass 2a
 before its pass 2b (the stderr write) ever runs. So, the same "short script rather than
 `bun run guardian`" precedent [`docs/demos/v4-runbook.md`](v4-runbook.md)'s F1 section sets and
 names explicitly: a scratch HTTP server standing in for the Guardian, answering `steps/toolCallRequest`
 with a real `modify` decision that carries `reasoning`, driving the **real, unmodified** `AcsPlugin`
-and `applyHostOutput` against it with `ACS_DEBUG=1`:
+and `applyOpenCodeOutput` against it with `ACS_DEBUG=1`:
 
 ```ts
-// Only the Guardian's answer is stubbed -- AcsPlugin, applyHostOutput, and
+// Only the Guardian's answer is stubbed -- AcsPlugin, applyOpenCodeOutput, and
 // the hookmap are the real, committed modules.
 process.env.ACS_DEBUG = "1";
 process.env.ACS_GUARDIAN_URL = "http://127.0.0.1:8798/acs";
@@ -519,14 +519,15 @@ timestamp=2026-08-13T03:48:36.457Z level=ERROR run=30258ebf message="failed to l
 That draft called this "harmless" and explained it as a caught, non-fatal artifact of OpenCode's own
 plugin-loading convention — measured accurately (OpenCode's plugin loader calls **every exported
 function** from a plugin module as a candidate factory, not only the one shaped like `Plugin`, and
-`acs-plugin.ts` exported a second symbol, `applyHostOutput`, for no reason but its own unit test's
+`acs-plugin.ts` exported a second symbol, `applyOpenCodeOutput` (named `applyHostOutput` at the
+time; renamed in §V5 review round 3, Task 4), for no reason but its own unit test's
 convenience) — but review found the framing itself was the defect. **Two things make "harmless" the
 wrong word for what a reader should take from that line:**
 
 1. **A single non-function export beside a working factory disables governance entirely, silently.**
    `Array.isArray`, a string, a number — anything OpenCode's loader cannot call — produces
    `error="Plugin export is not a function"`, and **the working factory next to it is never called at
-   all**. `applyHostOutput` happened to be a function, so it merely threw instead; a hookmap change,
+   all**. `applyOpenCodeOutput` happened to be a function, so it merely threw instead; a hookmap change,
    a refactor, or a copy-paste that replaced it with a constant would have turned "logged and
    harmless" into "the whole session is ungoverned and nothing says so any louder than the case that
    wasn't."
@@ -538,7 +539,7 @@ wrong word for what a reader should take from that line:**
    was training a reader to discount the one line that would ever announce total governance loss.
 
 **The fix is structural, closes point 1 completely, and is captured below closing it.**
-`applyHostOutput`, and every private helper it alone needs, moved out of `acs-plugin.ts` into its own
+`applyOpenCodeOutput`, and every private helper it alone needs, moved out of `acs-plugin.ts` into its own
 module, `hosts/opencode/apply-host-output.ts` (imported back into `acs-plugin.ts`, tested directly by
 `hosts/opencode/test/apply-host-output.test.ts`) — so `acs-plugin.ts` exports exactly one symbol,
 `AcsPlugin`, and OpenCode's loader has no second export to find. `test/invariants.test.ts` pins that

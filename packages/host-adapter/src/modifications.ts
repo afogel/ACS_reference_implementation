@@ -193,7 +193,7 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `reserved-segments.ts`'s
  * exported `findReservedKey`, called from every host applier that recurses
  * into a rendered value the way `apply-host-output.ts`'s `mergeInPlace`
- * does (`apply-host-output.ts`'s own `applyHostOutput`, pass 1, over the
+ * does (`apply-host-output.ts`'s own `applyOpenCodeOutput`, pass 1, over the
  * rendered `args`/`result` value as a whole tree, before its recursive merge
  * ever runs on it -- see that file's own doc comment). Not
  * `hosts/opencode/`'s own source, any longer: a shared package pointing at

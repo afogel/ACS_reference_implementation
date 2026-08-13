@@ -3,7 +3,7 @@
  * `"tool.execute.after"` hook, against a LIVE Guardian -- the same precedent
  * request-gate.test.ts sets for this host's other gate, and
  * hosts/claude-code/test/post-tool-use.test.ts sets for host #1's own result
- * gate. `applyHostOutput` in isolation, the shipped hookmap's static shape,
+ * gate. `applyOpenCodeOutput` in isolation, the shipped hookmap's static shape,
  * and `AcsPlugin`'s own load-time gate already have their own suites
  * (apply-host-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
  * the first one that calls THIS hook the way OpenCode itself would.
@@ -197,7 +197,7 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     });
 
     // A clean allow renders no `result` field at all (only the
-    // declared-inert `reason.text`), so applyHostOutput's pass 3 merges
+    // declared-inert `reason.text`), so applyOpenCodeOutput's pass 3 merges
     // nothing -- the tool's own output survives exactly as produced.
     expect(result).toEqual(liveResult("hello world"));
     // No audit entry either: a decision arrived, so no fail-open posture was
@@ -332,7 +332,7 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     // throw, caught by governStep before the Guardian is ever asked -- is
     // answered by this deployment's negotiated posture, which defaults to
     // "proceed" (handshake.ts's own spec default). A posture "allow" renders
-    // no `result` field, so applyHostOutput merges nothing: the tool's own
+    // no `result` field, so applyOpenCodeOutput merges nothing: the tool's own
     // output -- secret included -- is delivered exactly as produced, in both
     // the leaf and the mirror. Correct per this slice's own rule (the fault
     // is payload-dependent, so `resolveByPosture` is the right seam), and

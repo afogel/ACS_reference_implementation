@@ -353,15 +353,18 @@ describe("architectural invariants", () => {
    * neither this comment nor that one goes stale by renumbering when a
    * ninth gate is eventually appended.
    *
-   * `acs-plugin.ts` used to export a second symbol, `applyHostOutput`, for
-   * no reason but its own unit test's convenience (`hosts/opencode/test/
-   * apply-host-output.test.ts` imported it directly, to test it against
-   * plain objects rather than a live OpenCode session). Measured: OpenCode's
-   * plugin loader hands EVERY exported function of a plugin module its own
-   * registration context -- a live `client`, `directory`, `worktree`, and
-   * `$` (its shell executor) -- and calls each one as a candidate plugin
-   * factory, not only the export shaped like `Plugin`. `applyHostOutput`
-   * happened to be the safest possible accident: its own pass-1 validation
+   * `acs-plugin.ts` used to export a second symbol, `applyOpenCodeOutput`
+   * (named `applyHostOutput` at the time this gate was added, renamed in
+   * §V5 review round 3, Task 4 -- the mechanism this gate pins is unchanged
+   * by that rename), for no reason but its own unit test's convenience
+   * (`hosts/opencode/test/apply-host-output.test.ts` imported it directly,
+   * to test it against plain objects rather than a live OpenCode session).
+   * Measured: OpenCode's plugin loader hands EVERY exported function of a
+   * plugin module its own registration context -- a live `client`,
+   * `directory`, `worktree`, and `$` (its shell executor) -- and calls each
+   * one as a candidate plugin factory, not only the export shaped like
+   * `Plugin`. `applyOpenCodeOutput` happened to be the safest possible
+   * accident: its own pass-1 validation
    * rejected the context object's first key (`"client"`) before touching
    * anything, so the mis-invocation surfaced as a caught, non-fatal `ERROR`
    * log line and `AcsPlugin` itself still registered. But the SAME mechanism
@@ -373,7 +376,7 @@ describe("architectural invariants", () => {
    * which is byte-identical in shape whether the fault is harmless or total
    * -- would say so.
    *
-   * `applyHostOutput` now lives in its own module (`apply-host-output.ts`,
+   * `applyOpenCodeOutput` now lives in its own module (`apply-host-output.ts`,
    * imported into `acs-plugin.ts`, tested directly by
    * `apply-host-output.test.ts`) specifically so `acs-plugin.ts` has exactly
    * one export for OpenCode's loader to find. This gate is what keeps that
@@ -722,9 +725,9 @@ describe("the export-count gate itself", () => {
   it("counts two exports, in source order, on a file that declares two -- the exact shape this gate exists to catch", () => {
     expect(
       exportedNames(
-        'export function applyHostOutput(output, live) {}\n\nexport const AcsPlugin = async () => ({});\n',
+        'export function applyOpenCodeOutput(output, live) {}\n\nexport const AcsPlugin = async () => ({});\n',
       ),
-    ).toEqual(["applyHostOutput", "AcsPlugin"]);
+    ).toEqual(["applyOpenCodeOutput", "AcsPlugin"]);
   });
 
   it("does not count a plain function or const that is not exported", () => {
@@ -746,7 +749,7 @@ describe("the export-count gate itself", () => {
 
   it("does not count an import naming a symbol also used as an export's type", () => {
     expect(
-      exportedNames('import { applyHostOutput } from "./apply-host-output.ts";\n\nexport const AcsPlugin = 1;\n'),
+      exportedNames('import { applyOpenCodeOutput } from "./apply-host-output.ts";\n\nexport const AcsPlugin = 1;\n'),
     ).toEqual(["AcsPlugin"]);
   });
 

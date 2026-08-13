@@ -1,14 +1,24 @@
 /**
- * apply-host-output.ts -- `applyHostOutput`, split out of `acs-plugin.ts` into its own module
+ * apply-host-output.ts -- `applyOpenCodeOutput`, split out of `acs-plugin.ts` into its own module
  * (§V5 review, Task 8, fix round 1, Important 1).
  *
- * WHY A SEPARATE FILE, AND WHY THIS IS NOT COSMETIC. `applyHostOutput` used to be exported
+ * NAMED FOR THE HOST IT APPLIES TO, NOT GENERICALLY (§V5 review round 3, Task 4). This function
+ * used to be called `applyHostOutput` -- a name that named neither of the two things this module
+ * actually is: the twin of host #1's own `asClaudeCodeOutput` (`hosts/claude-code/acs-hook.ts`),
+ * and a module that knows exactly four OpenCode-shaped keys (`refuse`, `reason`, `args`, `result`).
+ * A generic name invites a later reader to try moving it into `packages/host-adapter/` -- R3.2
+ * forbids that outright, host-specific field names have no business in the package both hosts
+ * share -- and every error this file throws used to say `acs-plugin:`, naming a DIFFERENT file's
+ * own prefix rather than this one's. Both are fixed here: the function is `applyOpenCodeOutput`,
+ * and every thrown message below says `apply-host-output:`.
+ *
+ * WHY A SEPARATE FILE, AND WHY THIS IS NOT COSMETIC. `applyOpenCodeOutput` used to be exported
  * alongside `AcsPlugin` from `acs-plugin.ts`, for exactly one reason: so
  * `hosts/opencode/test/apply-host-output.test.ts` could import and test it directly, in
  * isolation from a live Guardian. That export was measured to be a hazard, not a convenience.
  * OpenCode's plugin loader hands its own registration context -- a live `client`, `directory`,
  * `worktree`, and `$` (its shell executor) -- to EVERY exported function of a plugin module, not
- * only the one shaped like `Plugin`, and calls each as a candidate factory. `applyHostOutput`
+ * only the one shaped like `Plugin`, and calls each as a candidate factory. `applyOpenCodeOutput`
  * happened to be the safest possible accident: its own pass-1 validation rejects the context
  * object's first key (`"client"`) before touching anything, so OpenCode caught the throw and
  * logged a non-fatal `ERROR` line. But the SAME mis-invocation mechanism is not always safe --
@@ -34,13 +44,16 @@
  *
  * `isPlainObject` is duplicated here rather than imported from `acs-plugin.ts`, and that is a
  * SEPARATE decision from where the reserved-segment guard below now comes from (§V5 review round
- * 3, Task 3) -- `RESERVED_SEGMENTS`/`findReservedKey` moved to `host-adapter`'s public surface
- * because a security invariant that any host applier might need belongs in the package both hosts
- * run, not in host #2's own source; `isPlainObject` here is a three-line structural-typing helper with
- * no such invariant to drift, and `acs-plugin.ts` needs its own copy of IT regardless
- * (`assertRefusalRendersUnconditionally` uses it, and that function stays where it is -- it is
- * called from `AcsPlugin`'s own factory body, at plugin registration time, not from
- * `applyHostOutput`), so keeping two small, identical three-line functions is simpler and more
+ * 3, Task 3) -- `findReservedKey` moved to `host-adapter`'s public surface (`RESERVED_SEGMENTS`,
+ * the name list it walks, did NOT move onto that surface -- it stayed module-private inside
+ * `reserved-segments.ts`, importable by nothing outside it, not even this file; see that file's
+ * own header for why a reachable shared `Set` was a hazard §V5 review round 3, Task 3's own fix
+ * round closed) because a security invariant that any host applier might need belongs in the
+ * package both hosts run, not in host #2's own source; `isPlainObject` here is a three-line
+ * structural-typing helper with no such invariant to drift, and `acs-plugin.ts` needs its own copy
+ * of IT regardless (`assertRefusalRendersUnconditionally` uses it, and that function stays where
+ * it is -- it is called from `AcsPlugin`'s own factory body, at plugin registration time, not from
+ * `applyOpenCodeOutput`), so keeping two small, identical three-line functions is simpler and more
  * honest than an import whose only purpose is to avoid six lines of duplication.
  */
 import { findReservedKey, type HostOutput } from "host-adapter";
@@ -113,7 +126,7 @@ function isDebugEnabled(): boolean {
  * comment: "that value arrives verbatim from the Guardian's own JSON") --
  * reaches `applied_input` with `__proto__` intact, `renderDecision` copies
  * it into `args` unexamined (R3.2: it walks the hookmap's declared paths,
- * not the arriving decision's), and without this check `applyHostOutput`
+ * not the arriving decision's), and without this check `applyOpenCodeOutput`
  * merged it: `Object.prototype.args` became `{command: "curl ... | sh"}`,
  * observable as `({}).args` in the SAME process afterward, on a wholly
  * unrelated allowed tool call that rendered `{}`.
@@ -128,7 +141,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
   const hit = findReservedKey(value, label);
   if (hit !== undefined) {
     throw new Error(
-      `acs-plugin: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(hit.key)} at ` +
+      `apply-host-output: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(hit.key)} at ` +
         `"${hit.path}", which addresses prototype machinery rather than a field this applier can merge. A ` +
         `recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
         `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
@@ -138,13 +151,63 @@ function assertNoReservedSegments(value: unknown, label: string): void {
 }
 
 /**
- * What this applier is allowed to touch: the live objects OpenCode handed
- * the hook that is applying a rendered `HostOutput`. Both members optional
- * because the two gates hand different halves of this -- the request gate
- * has `args` and no `result`, the result gate has `result` and no `args` --
- * and a caller with neither would have nothing for this function to do.
+ * What this applier is allowed to touch: the live object OpenCode handed the
+ * hook that is applying a rendered `HostOutput` -- TAGGED by which gate is
+ * calling, not a bag with two optional fields a caller asks the presence of
+ * (§V5 review round 3, Task 4, thread 3773262488). The request gate hands
+ * `{gate: "request", args}`; the result gate hands `{gate: "result", result}`;
+ * a caller with neither would have nothing for this function to do, so
+ * neither variant allows that.
+ *
+ * THE TAG IS THE DISPATCH MECHANISM BELOW, NOT A PRESENCE CHECK, and that is
+ * most of the fix. This type used to be
+ * `{ args?: Record<string, unknown>; result?: Record<string, unknown> }`, one
+ * bag with both fields optional, and `applyOpenCodeOutput` (as this function
+ * is named below; it was `applyHostOutput` before this task) ASKED which half
+ * it had been handed -- `live.args !== undefined` / `live.result !== undefined`
+ * in both pass 1 and pass 3. A plain property READ resolves through the
+ * JavaScript prototype chain on an object that owns no field of that name --
+ * the EXACT class of gap pass 3's own `Object.hasOwn(output, ...)` fix
+ * (below) already closed for `output`, left open on the `live` side. If
+ * `Object.prototype.args` were ever polluted -- by anything, anywhere in this
+ * long-lived process, including the very `parameter_overrides` vector
+ * `assertNoReservedSegments` (above) refuses -- a call handed only
+ * `{gate: "result", result}` would have read `live.args` as the polluted
+ * value through the chain, believed it had been handed a live args object it
+ * was never given, and (together with the pre-fix pass 3) merged a rendered
+ * `"args"` straight onto the SHARED `Object.prototype.args` object itself
+ * rather than refusing -- amplifying the pollution rather than merely
+ * misreading it once.
+ *
+ * `gate` closes the common case a different way than an `Object.hasOwn(live,
+ * "args")` rewrite of the same question would: it removes the question
+ * rather than answering it more carefully. `args`/`result` are `HostOutput`'s
+ * own field names -- the exact vocabulary a rendered decision, and therefore
+ * a polluted `Object.prototype`, could plausibly collide with. `gate` is
+ * neither: it never appears in any `HostOutput`, any hookmap output path, or
+ * any value this applier reads off the wire, and both live objects that ever
+ * reach this function are built by `acs-plugin.ts` itself, as object
+ * literals, at its two call sites -- never parsed from JSON, never merged
+ * from an untrusted source. Reading `live.gate` is exactly as safe as reading
+ * any other field on a value this codebase constructed from a literal.
+ *
+ * PASS 1 AND PASS 3 BELOW STILL ALSO CHECK `Object.hasOwn(live, "args")` /
+ * `Object.hasOwn(live, "result")`, beside the `gate` compare, and that is
+ * deliberate belt-and-suspenders, not a leftover. `gate` is honest about
+ * which variant `live` IS, but it is trusted, not verified -- a future call
+ * site that narrows the type with an unsafe cast (`as never`, the same escape
+ * hatch several of this file's own tests already use on `output`) could hand
+ * this function a `live` whose `gate` says `"request"` while its `args` field
+ * is actually absent. Nothing today builds such a value, but if one ever did,
+ * `Object.hasOwn(live, ...)` is what stops `mergeInPlace` (pass 3, below)
+ * from reading THAT read through the prototype chain instead -- matching
+ * pass 1's `Object.keys` basis and pass 3's `Object.hasOwn(output, ...)`
+ * basis exactly, on the one remaining presence question this reshape did not
+ * remove outright.
  */
-type LiveHookObjects = { args?: Record<string, unknown>; result?: Record<string, unknown> };
+type LiveHookObjects =
+  | { gate: "request"; args: Record<string, unknown> }
+  | { gate: "result"; result: Record<string, unknown> };
 
 /**
  * Merges `source` onto `target`, IN PLACE and recursively through every pair
@@ -243,13 +306,27 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * chain and merge it onto `live.args`, silently rewriting an argument no
  * decision for THIS call ever named. Not reachable today: the one known
  * route to a polluted `Object.prototype` is refused in pass 1, before pass 3
- * ever runs (see the second half of this file's own `applyHostOutput` suite
- * for that non-reachability pinned end to end). But it is a second,
+ * ever runs (see the second half of this file's own `applyOpenCodeOutput`
+ * suite for that non-reachability pinned end to end). But it is a second,
  * independent gap in the same defence -- pass 1 checking own keys while pass
  * 3 reads through the prototype chain is an inconsistency this applier
  * should not carry regardless of whether anything reaches it today -- so
  * pass 3 below uses `Object.hasOwn(output, ...)`, matching pass 1's basis
  * exactly rather than resting on pass 1 being the only door.
+ *
+ * THE SAME GAP EXISTED ON THE `live` SIDE, AND IS CLOSED MOSTLY A DIFFERENT
+ * WAY (§V5 review round 3, Task 4, thread 3773262488). Both passes below used
+ * to ask `live.args !== undefined` / `live.result !== undefined` too -- the
+ * identical prototype-chain read, on the OTHER object this function touches.
+ * `LiveHookObjects` (above) is why neither pass rests on an `Object.hasOwn`
+ * rewrite of that question ALONE any more: `live.gate` is a required, host-
+ * constructed tag, never a field name a rendered `HostOutput` (and therefore
+ * a polluted `Object.prototype`) could collide with, so comparing it is safe
+ * on its own -- see that type's own doc comment for why removing the question
+ * is a more complete fix than answering it more carefully would have been,
+ * and for why `Object.hasOwn(live, ...)` still runs BESIDE the `gate` compare
+ * in both passes below, as a second, independent check on the one part of
+ * this that `gate` alone trusts rather than verifies.
  *
  * THE FOUR KEYS, and why `result` is the whole container rather than a leaf
  * (§V5 review, fix round 1, Critical 1 -- opencode.hookmap.yaml's own header
@@ -297,9 +374,12 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     the log honest without making it noise a real deployment has to filter
  *     on every clean tool call. If this host ever grows a real sink for it,
  *     this is where that sink gets named.
- *   - `args` -- merged onto `live.args`, only at a gate that was handed one.
- *   - `result` -- merged onto `live.result`, only at a gate that was handed
- *     one. See above for why this is the whole container, not a leaf.
+ *   - `args` -- merged onto `live.args`, only when `live.gate === "request"`
+ *     (and `live` owns an `args` field -- see `LiveHookObjects`'s own doc
+ *     comment for why both are checked).
+ *   - `result` -- merged onto `live.result`, only when `live.gate ===
+ *     "result"` (same, for `result`). See above for why this is the whole
+ *     container, not a leaf.
  *
  * A key this render declares that is none of the four above -- or one of
  * `args`/`result` at a gate that was not handed the live half it targets, or
@@ -308,7 +388,7 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * this shape (or a call from the wrong gate) fails loudly instead of quietly
  * discarding or corrupting whatever it could not place.
  */
-export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void {
+export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): void {
   // Pass 1: validate every key AND every value shape this applier is about
   // to touch. No assignment happens in this loop -- only a throw (refusing
   // everything) or falling through to pass 2 (applying everything). That
@@ -319,10 +399,15 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
     if (key === "refuse" || key === "reason") {
       continue;
     }
-    if (key === "args" && live.args !== undefined) {
+    // `Object.hasOwn(live, ...)` beside the `gate` compare, in this pass and
+    // in pass 3 below -- see `LiveHookObjects`'s own doc comment for why
+    // `gate` alone is trusted rather than verified, and why both passes check
+    // the SAME compound condition so a key pass 1 accepts is never one pass 3
+    // then silently declines to apply.
+    if (key === "args" && live.gate === "request" && Object.hasOwn(live, "args")) {
       if (!isPlainObject(output.args)) {
         throw new Error(
-          `acs-plugin: cannot apply rendered "args" -- expected an object, got ${JSON.stringify(output.args)}. ` +
+          `apply-host-output: cannot apply rendered "args" -- expected an object, got ${JSON.stringify(output.args)}. ` +
             `A hookmap field sourcing "args" from a decision field that is not itself an object (e.g. "reasoning" ` +
             `where "applied_input" belongs) would otherwise merge its characters onto index keys instead of ` +
             `throwing, and the actual rewrite would never land.`,
@@ -334,17 +419,17 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
       assertNoReservedSegments(output.args, "args");
       continue;
     }
-    if (key === "result" && live.result !== undefined) {
+    if (key === "result" && live.gate === "result" && Object.hasOwn(live, "result")) {
       if (!isPlainObject(output.result)) {
         throw new Error(
-          `acs-plugin: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
+          `apply-host-output: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
         );
       }
       assertNoReservedSegments(output.result, "result");
       continue;
     }
     throw new Error(
-      `acs-plugin: cannot apply rendered key ${JSON.stringify(key)} at this gate -- opencode.hookmap.yaml ` +
+      `apply-host-output: cannot apply rendered key ${JSON.stringify(key)} at this gate -- opencode.hookmap.yaml ` +
         `declares an output field this applier has no live object to land it in`,
     );
   }
@@ -367,7 +452,7 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   const reason = output.reason as { text?: unknown } | undefined;
   if (reason !== undefined && isDebugEnabled()) {
     console.error(
-      `acs-plugin: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
+      `apply-host-output: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
         `to OpenCode -- reasoning: ${JSON.stringify(reason.text)}`,
     );
   }
@@ -378,14 +463,23 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   // leaf and mirror together, never one without the other, and merged
   // in place rather than replacing a nested reference (mergeInPlace, above).
   //
-  // `Object.hasOwn`, not `!== undefined` (see this function's own doc
-  // comment, "PASS 3 READS ITS OWN-KEY BASIS..."): an own-key check cannot
-  // be fooled by a polluted `Object.prototype`, exactly like pass 1's
-  // `Object.keys` above it.
-  if (Object.hasOwn(output, "args") && live.args !== undefined) {
+  // TWO DIFFERENT SAFE BASES, ONE ON EACH SIDE (see this function's own doc
+  // comment, both "PASS 3 READS ITS OWN-KEY BASIS..." paragraphs, for why
+  // each is safe and why they differ). `Object.hasOwn(output, ...)`, not
+  // `output.args !== undefined`: an own-key check on a value that arrived
+  // over the wire cannot be fooled by a polluted `Object.prototype`, exactly
+  // like pass 1's `Object.keys` above it. `live.gate === ...`, not
+  // `live.args !== undefined`: `gate` is a tag this file itself constructs,
+  // naming neither an OpenCode output field nor anything a rendered
+  // `HostOutput` could collide with, so comparing it needs no presence check
+  // to be safe on its own -- and `Object.hasOwn(live, ...)` still runs beside
+  // it anyway, matching pass 1's identical compound condition, for the one
+  // residual case `gate` alone trusts rather than verifies (`LiveHookObjects`'s
+  // own doc comment, above).
+  if (Object.hasOwn(output, "args") && live.gate === "request" && Object.hasOwn(live, "args")) {
     mergeInPlace(live.args, output.args as Record<string, unknown>);
   }
-  if (Object.hasOwn(output, "result") && live.result !== undefined) {
+  if (Object.hasOwn(output, "result") && live.gate === "result" && Object.hasOwn(live, "result")) {
     mergeInPlace(live.result, output.result as Record<string, unknown>);
   }
 }

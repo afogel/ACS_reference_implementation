@@ -3,7 +3,7 @@
  * `"tool.execute.before"` hook, against a LIVE Guardian -- exactly as
  * hosts/claude-code/test/hook.test.ts proves the wire contract for host #1,
  * not against a hand-copied shape. Everything below the plugin factory
- * itself -- `applyHostOutput` in isolation, the shipped hookmap's static
+ * itself -- `applyOpenCodeOutput` in isolation, the shipped hookmap's static
  * shape, `AcsPlugin`'s own load-time gate -- already has its own suite
  * (apply-host-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
  * the first one that calls the hook OpenCode itself would call.
@@ -74,7 +74,7 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     ).resolves.toBeUndefined();
 
     // A clean allow renders no `args` field at all (only the declared-inert
-    // `reason.text`), so applyHostOutput's pass 3 merges nothing -- the live
+    // `reason.text`), so applyOpenCodeOutput's pass 3 merges nothing -- the live
     // object is the SAME reference, untouched.
     expect(output.args).toEqual({ command: "ls -la" });
     // No audit entry either: a decision arrived, so no fail-open posture was
@@ -138,7 +138,7 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
       ),
     ).resolves.toBeUndefined();
 
-    // Mutated in place -- applyHostOutput's own contract -- not replaced with
+    // Mutated in place -- applyOpenCodeOutput's own contract -- not replaced with
     // a new object.
     expect(output.args).toBe(originalArgs);
     expect(output.args.command).toBe("echo [REDACTED]");

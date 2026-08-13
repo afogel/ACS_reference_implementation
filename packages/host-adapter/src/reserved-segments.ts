@@ -61,7 +61,7 @@
  *     not that gate: a caller's error class and wording are a fact about
  *     THAT CALLER's contract with ITS OWN callers (`applyModifications`'s
  *     documented promise to throw `ModificationsInvalidError` on every
- *     violation; `applyHostOutput`'s own mergeInPlace-specific message), and
+ *     violation; `applyOpenCodeOutput`'s own mergeInPlace-specific message), and
  *     this module has no way to know which contract a given caller needs to
  *     honour. So `findReservedKey` answers the one question every caller
  *     actually shares -- "does this value own a reserved key, and where" --
