@@ -41,13 +41,22 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 
 What V4 does **not** deliver, stated here because the demo is easy to over-read: the redaction reaches the model **unexplained**. The hookmap's `modify` entry carries a reason field and it works, but the pinned bundle's redaction verdict sends no text for it — `mapping.yaml` sources `reasoning` from `verdict.message` and `policy/lib/redact.rego` emits none. Four more findings V4 measured and recorded rather than fixed are listed in [`slices/v4/README.md`](slices/v4/README.md).
 
+**Delivered in V5** — a second host, OpenCode, governed by the same Guardian and policy.
+
+| Claim | How it is demonstrated |
+|---|---|
+| R3.4 — the same policy governs two structurally different coding agents, with the second host costing zero added AGT code | `hosts/opencode/acs-plugin.ts` and `hosts/opencode/opencode.hookmap.yaml` are the only two new artifacts; `bun run verify:zero-diff` checks mechanically that the Guardian, the AGT bridge, `policy/lib`, `agt.lock`, `mapping.yaml`, and host #1's own wire contract are byte-identical to `slice/v4` ([`scripts/verify-zero-diff.sh`](scripts/verify-zero-diff.sh)); [`docs/demos/v5-runbook.md`](docs/demos/v5-runbook.md) has the real captured output, driven by the actual `opencode` CLI against a local stub model |
+| A redaction lands in a leaf **and its mirror**, not the leaf alone | OpenCode's `tool.execute.after` hands the plugin a `metadata.output` that duplicates the leaf; a replacement patching only the leaf would leave the plaintext sitting in OpenCode's own session record while the model saw the redaction. `outputs.mirrors` (host-agnostic, in the adapter) patches both together — captured end to end, including a query against OpenCode's own persisted SQLite session record, in the runbook above |
+| A host with no native permission field for deny still refuses correctly | OpenCode's `tool.execute.before`/`tool.execute.after` return `void` and accept mutation or a thrown error only; `output.status`/`output.decision` fields are measured accepted and silently ignored. The request gate's only deny channel is a throw carrying the Guardian's own reasoning text; the result gate's deny/modify **replace** the live result object instead, because OpenCode discards a throwing hook's mutations and rebuilds `metadata` from its own pre-hook copy |
+
+What V5 does **not** deliver: `modifications.modified_content` still has no builder (`mapVerdict` emitting it is a Guardian change, out of this slice's scope even though OpenCode's opaque `output.output` finally gives it a target), `permission.ask` is mapped to a refusal rather than wired as a real three-valued decision, and `tool.execute.error` is not a hook this version of OpenCode dispatches at all. Full list in [`slices/v5/README.md`](slices/v5/README.md).
+
 **Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
 
 | Claim | Slice |
 |---|---|
 | A machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell — every cell resolved, green where ACS v0.1.0 expresses AGT and red with a named reason where it does not. Four are already known red: the two model-call points have no v0.1.0 hook, and two attributes the Trace pillar marks required have no source on the wire | V7 |
 | Which ACS profiles and pillars this implementation claims, and which it does not — the matrix is the declaration. Trace is a measured non-claim, not a silence | V7 |
-| The same policy governs two structurally different coding agents, with the second host costing zero added AGT code | V5 |
 | A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
 
 ## Layout
@@ -120,7 +129,7 @@ cp hosts/claude-code/settings.json .claude/settings.json
 
 This registers `hosts/claude-code/acs-hook.ts` against **two** of Claude Code's hook events, both running the same command: `PreToolUse` — the "one hook" of V1's name, which decides whether the call runs — and `PostToolUse` (added by V4), which sees what the call produced and can redact it before the model does.
 
-Both entries are scoped to the `Bash` tool, and the matcher is written **anchored**: `^Bash$`, not `Bash`. That scopes the hook to a tool `policy/manifest.yaml` registers rather than intercepting every tool call. The anchor is load-bearing, and what it buys is that a question nobody here has verified stops mattering: `matcher` is a regular expression, so whether a bare `Bash` would *also* select `BashOutput` and `KillShell` depends on matching semantics this project has not measured — and `^Bash$` selects exactly one tool either way, `Bash`. Precisely, because the sentence before it names the file: `policy/manifest.yaml` registers **two** tools, `Bash` and `run_shell`, and only the first is a name Claude Code ever sends. `run_shell` is AGT's own stock example name, kept for the bridge and Guardian fixtures written against it — the manifest says so at `policy/manifest.yaml:82-91`. [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) Step 2 states what the unanchored form would have exposed, and what the second entry changes about a live session.
+Both entries are scoped to the `Bash` tool, and the matcher is written **anchored**: `^Bash$`, not `Bash`. That scopes the hook to a tool `policy/manifest.yaml` registers rather than intercepting every tool call. The anchor is load-bearing, and what it buys is that a question nobody here has verified stops mattering: `matcher` is a regular expression, so whether a bare `Bash` would *also* select `BashOutput` and `KillShell` depends on matching semantics this project has not measured — and `^Bash$` selects exactly one tool either way, `Bash`. Precisely, because the sentence before it names the file: `policy/manifest.yaml` registers **three** tools, `Bash`, `run_shell`, and `bash`, and only the first is a name Claude Code ever sends. `run_shell` is AGT's own stock example name, kept for the bridge and Guardian fixtures written against it; `bash` (lowercase) is OpenCode's own real tool name, registered for V5's second host below — the manifest says so at `policy/manifest.yaml:88-121`. [`docs/demos/v1-runbook.md`](docs/demos/v1-runbook.md) Step 2 states what the unanchored form would have exposed, and what the second entry changes about a live session.
 
 **5. Run Claude Code with the hook.**
 
@@ -144,6 +153,24 @@ echo '{"session_id":"demo","hook_event_name":"PreToolUse","tool_name":"Bash","to
 
 Second, through the real `claude` CLI with `.claude/settings.json` installed — Claude Code spawning `acs-hook.ts` as an actual `PreToolUse` subprocess and honouring the decision. That run was **headless** (`claude -p '<prompt>' --allowedTools Bash`), not an interactive TUI session, and the payload was `echo rm -rf /` rather than `rm -rf /`: the configured pattern matches the raw command string with no argv parse, so it is denied by the same rule at offset 5 while being inert if it ever did execute. An unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test. The interactive TUI session was not run, so nothing here describes how the TUI renders the block. See [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md) for the full captured output of both.
 
+**6. (V5) Govern a second host, OpenCode, against the same running Guardian.** Nothing above needs
+restarting — the same Guardian, on the same port, over the same pinned policy bundle, governs both
+hosts at once, which is R3.4's whole claim. Where step 4 pointed Claude Code at a shipped
+`settings.json`, OpenCode is configured through its own `opencode.json`, naming this repo's
+`hosts/opencode/acs-plugin.ts` as a plugin:
+
+```json
+{
+  "plugin": ["/absolute/path/to/ACS_reference_implementation/hosts/opencode/acs-plugin.ts"]
+}
+```
+
+Run `opencode` from a project directory with that config, and `acs-plugin.ts` reads
+`ACS_GUARDIAN_URL` (same default, `http://localhost:8787/acs`), `ACS_HOOKMAP_PATH` (defaulting to
+this repo's own `hosts/opencode/opencode.hookmap.yaml`), and `ACS_AUDIT_LOG`, exactly like
+`hosts/claude-code/acs-hook.ts` does. Full walkthrough — including how to drive it without a paid
+model account, for a reproducible offline demo — is [`docs/demos/v5-runbook.md`](docs/demos/v5-runbook.md).
+
 ### Configuration
 
 Everything above runs with no configuration at all. These are the environment
@@ -159,6 +186,13 @@ subprocess per hook):
 | `ACS_SESSION_DIR` | `.acs/sessions` | Where the negotiated ServerHello (S13) is filed, one JSON file per host `session_id`, so a fresh hook subprocess finds the posture a previous one negotiated |
 | `ACS_AUDIT_LOG` | `.acs/audit.jsonl` | Where the audit sink (S14) appends every fail-open proceed and every posture-driven block — §6.4's MUST |
 | `ACS_HOOKMAP_PATH` | `hosts/claude-code/claude-code.hookmap.yaml` | **Repoints the governance mapping itself.** The hookmap decides which ACS method each hook fires and how each ACS decision renders as a Claude Code `permissionDecision`, so this variable changes what governance *means* for this host, not merely where a file lives. It exists for tests that need a deliberately broken hookmap; a deployment should leave it unset |
+
+**OpenCode's shim** (`hosts/opencode/acs-plugin.ts`, V5, loaded once as a plugin for the whole
+session) reads the same three variables with the same meanings and the same defaults, substituting
+its own hookmap (`hosts/opencode/opencode.hookmap.yaml`) for `ACS_HOOKMAP_PATH`'s default — with
+one difference: it has no `ACS_SESSION_DIR`, because this host is one long-lived plugin object
+rather than a fresh subprocess per hook, so the negotiated ServerHello (S13) survives in memory for
+the life of the session instead of being filed to disk (S15).
 
 **The Guardian** (`bun run guardian`):
 
@@ -206,7 +240,26 @@ The sixth of the gates counted above is V3's, and it is the one V5's whole claim
 
 V4 ("output redaction on Claude Code") is implemented: `PostToolUse` is registered as a second gate beside V1's `PreToolUse`, mapped to ACS `steps/toolCallResult`, and an AGT `transform` at that point becomes an ACS `modify` carrying `modifications.redactions` which the adapter applies as `updatedToolOutput` — so a secret-bearing `Bash` result reaches the model redacted, in the tool's own output shape, with every sibling field intact. See [`slices/v4/README.md`](slices/v4/README.md) and [`docs/demos/v4-runbook.md`](docs/demos/v4-runbook.md) for the real captured output. Three boundaries worth stating up front. **The shape is the mechanism:** Claude Code validates a replacement against the tool's own output schema and silently delivers the **original** when it does not match, so the adapter patches a clone of the object the host handed it rather than constructing one, and refuses before asking for a decision where it cannot — which is also why AGT's own package says `PostToolUse` "cannot **reliably** redact tool output", wording this slice's evidence supports rather than corrects. **A deny here withholds or it does nothing:** `decision: block` alone injects a reason and suppresses nothing once the tool has run, so a result-gate deny renders `block` **and** a replacing output. And **the redaction reaches the model unexplained** — the hookmap's reason field works, but the pinned bundle's redaction verdict carries no text for it, permanently until the mapping or the Rego rule changes. `redact` and a `post_tool_call` intervention point now ship in the tracked config (`policy/lib/data.json`, `policy/manifest.yaml`), both additive; because AGT's stock priority chain consults that rule at every point, it also rewrites a *command* carrying a secret at V1's gate. **The handshake declares the new gate**, which it did not at first: both sides went on naming `steps/toolCallRequest` alone while evaluating result envelopes for real, and `handshake.json` tells a client to treat a method absent from `methods_evaluated` as ALLOW-by-default — so a conformant host was being told to ignore this slice's gate. Both declarations now name both methods, and a test derives the truth from a live Guardian rather than restating the literal.
 
-Slices V5–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
+V5 ("second host, zero AGT changes") is implemented: OpenCode 1.18.15 is governed through
+`packages/host-adapter`, unchanged — two new artifacts (`hosts/opencode/acs-plugin.ts`,
+`hosts/opencode/opencode.hookmap.yaml`) against zero changed lines in the Guardian, the AGT
+bridge, `policy/lib`, `agt.lock`, `mapping.yaml`, or host #1's own wire contract, which
+`bun run verify:zero-diff` checks mechanically rather than by inspection. See
+[`slices/v5/README.md`](slices/v5/README.md) and [`docs/demos/v5-runbook.md`](docs/demos/v5-runbook.md)
+for the real captured output, driven by the actual `opencode` CLI against a local, deterministic
+stub model rather than a paid one. The one deployment-side edit is additive: OpenCode reports its
+shell tool as `bash` (lowercase) where Claude Code reports `Bash`, and AGT resolves the manifest's
+fixed policy target before any authored rule runs and fails closed on an unregistered name — so
+`policy/manifest.yaml` and `policy/manifest.drift.yaml` each gained one `tools:` entry, beside the
+existing `Bash`/`run_shell`. Two measured findings shaped the shim: OpenCode's `metadata` mirrors
+the result-gate output leaf, so a redaction that patches the leaf alone would leave the plaintext
+sitting in OpenCode's own session record while the model saw the redaction — closed by a
+host-agnostic `outputs.mirrors` in the adapter, patching both together; and deny/modify use
+**opposite** mechanisms at the two gates, because OpenCode discards a throwing hook's mutations at
+the result gate and rebuilds `metadata` from its own pre-hook copy, so only the request gate's
+refusal is a throw and the result gate's is a replacement.
+
+Slices V6–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
 
 ## License
 
