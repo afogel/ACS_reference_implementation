@@ -26,6 +26,19 @@ base="${1:-slice/v4}"
 # instead of a `bun test` (see the header above, and the plan this brief
 # quotes). Falls back to `origin/$base` before giving up, since that is what
 # a fresh clone actually has.
+#
+# §V5 review, fix round 2: resolving the ref stops the bad-ref trigger, but
+# not the MECHANISM -- `|| true` around the whole pipeline still swallows any
+# OTHER git failure past this point. A shallow clone (`git clone --depth 1`
+# plus `git fetch --depth 1 origin slice/v4`, the standard CI checkout shape)
+# resolves `origin/slice/v4` fine -- the guard above passes -- and THEN
+# `git diff "$base"...HEAD` itself fails with "no merge base", because the
+# shallow history has no common ancestor to diff from. That fails the same
+# way an unresolvable ref did: silently, as a clean pass. Fixed at the root
+# this time (both diff sites below), not by guarding one more trigger --
+# `git diff --name-only` runs on its own line first, so ITS failure hits
+# `set -e` and stops the script with git's own message, and only grep's
+# "no match" (a real, expected, non-error outcome) gets `|| true`.
 resolve_ref() {
   local candidate="$1"
   if git rev-parse --verify --quiet "${candidate}^{commit}" >/dev/null; then
@@ -74,7 +87,11 @@ fi
 # change either" -- part of what the script proves, not just prose.
 frozen='^(packages/guardian/src/|packages/agt-bridge/src/|policy/lib/|agt\.lock$|mapping\.yaml$|hosts/claude-code/[^/]+\.(ts|yaml)$)'
 
-changed="$(git diff --name-only "$base"...HEAD | grep -E "$frozen" || true)"
+diff_output="$(git diff --name-only "$base"...HEAD)" || {
+  echo "verify-zero-diff: git diff against '$base' failed -- is this a shallow clone? try 'git fetch --unshallow'" >&2
+  exit 1
+}
+changed="$(printf '%s\n' "$diff_output" | grep -E "$frozen" || true)"
 if [ -n "$changed" ]; then
   echo "verify-zero-diff: R3.4 violated -- these are frozen for this slice:" >&2
   echo "$changed" >&2
@@ -96,7 +113,11 @@ fi
 # check above still reports zero, since it never touched HEAD. This closes
 # both: staged and unstaged changes against the same frozen set, diffed
 # against HEAD directly.
-working_tree_changed="$(git diff --name-only HEAD | grep -E "$frozen" || true)"
+working_tree_diff="$(git diff --name-only HEAD)" || {
+  echo "verify-zero-diff: git diff against HEAD failed" >&2
+  exit 1
+}
+working_tree_changed="$(printf '%s\n' "$working_tree_diff" | grep -E "$frozen" || true)"
 if [ -n "$working_tree_changed" ]; then
   echo "verify-zero-diff: R3.4 violated -- these are frozen for this slice, uncommitted in the working tree:" >&2
   echo "$working_tree_changed" >&2

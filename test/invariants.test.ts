@@ -301,9 +301,16 @@ describe("architectural invariants", () => {
    * adapter; this one catches host #2's (OpenCode's). Placed last rather than
    * beside the gate it parallels, so the sixth gate stays V3's and this stays
    * countable as "the seventh" without renumbering anything above it --
-   * README.md:195/203 name both positions, and inserting a new gate in the
-   * middle is exactly how a stale ordinal gets written (see V4's own fifth
-   * name, gate 2's comment above).
+   * README.md's "Status" section names both the total count ("Seven ... of
+   * this project's architectural claims are enforced by
+   * test/invariants.test.ts") and V3's own ordinal ("The sixth of the gates
+   * counted above is V3's"), in two different paragraphs. Section-referenced
+   * rather than by line number deliberately: this comment already went stale
+   * once, when an unrelated paragraph added above both of them shifted their
+   * line numbers, and inserting a new gate in the middle of this describe
+   * block is exactly how a stale ORDINAL gets written (see V4's own fifth
+   * name, gate 2's comment above) -- the same failure mode, twice over, is
+   * worth not inviting a third time by citing a line number here too.
    *
    * `attachments` is the term this slice could most plausibly get wrong: it
    * is the field OpenCode's result payload carries at runtime and does not

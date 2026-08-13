@@ -178,7 +178,7 @@ a TTY.
 ### Verify
 
 ```bash
-bun test          # 495 tests across 32 files (494 pass, 1 skip), including the R3.2/R3.3
+bun test          # 606 tests across 39 files (605 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
