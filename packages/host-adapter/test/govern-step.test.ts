@@ -717,28 +717,67 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
 
   /**
    * A TOOL NAME THE HOOKMAP'S OWN PATH CANNOT READ IS UNREADABLE, NOT OUT OF
-   * SCOPE. `Array.prototype.includes` answers a silent `false` for a missing
-   * or non-string needle, so a skip built on it would convert an audited,
-   * posture-answered `buildEnvelope` throw into a silent, unaudited proceed --
-   * the exact asymmetry host #2's shim already refuses at its own boundary
+   * SCOPE. `Array.prototype.includes` answers a silent `false` for a missing,
+   * non-string, or empty needle, so a skip built on it would convert a step
+   * that is currently governed or audited into a silent, unaudited one -- the
+   * exact asymmetry host #2's shim already refuses at its own boundary
    * (`assertUsableTool`, acs-plugin.ts). `toolNameFor` answers `undefined`
-   * instead, and `governStep` falls through to the fault it already had.
+   * instead, and `governStep` falls through to whatever already handles the
+   * case.
+   *
+   * ALL THREE CASES, because "whatever already handles it" is NOT one
+   * mechanism, and `toolNameFor`'s own doc comment claimed it was until §V5
+   * review round 3, Task 2, fix round 1 measured otherwise. An absent or
+   * non-string name is a `buildEnvelope` throw the posture answers, audited;
+   * an EMPTY name is not -- `buildEnvelope` checks the type and not the
+   * length, so the step is asked about and governed. Pinned here so that the
+   * comment's distinction is a property of the code rather than of the
+   * paragraph, and so that the third row fails loudly if anyone "simplifies"
+   * `toolNameFor` by dropping its length check.
    */
   it("does not skip a step whose tool name the hookmap's path cannot read — unreadable is not out of scope", async () => {
-    const { sink, events } = recordingSink();
-    const { guardian, asked } = unaskedGuardian();
+    const rows: Record<string, unknown>[] = [];
+    for (const [label, toolName] of [
+      ["absent", undefined],
+      ["a non-string", 42],
+      ["the empty string", ""],
+    ] as const) {
+      const { sink, events } = recordingSink();
+      const { guardian, asked } = unaskedGuardian();
+      const payload: Record<string, unknown> = { session_id: "sess-1", tool_input: { command: "ls -la" } };
+      if (toolName !== undefined) {
+        payload.tool_name = toolName;
+      }
 
-    const governed = await governRaw(guardian, sink, undefined, {
-      hookmap: scoped(["Bash"]),
-      // `tool_name` resolves to nothing at all. Under the skip this would be
-      // "not in [Bash]" and a clean, silent no-op.
-      payload: { session_id: "sess-1", tool_input: { command: "ls -la" } },
-    });
+      const governed = await governRaw(guardian, sink, undefined, { hookmap: scoped(["Bash"]), payload });
 
-    expect(governed.stage).toBe("request");
-    expect(asked()).toBe(0);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ outcome: "proceeded", failure: { kind: "host_configuration" } });
+      rows.push({ label, stage: governed.stage, asked: asked(), audited: events.length });
+    }
+
+    // Not one of them is `stage: "ungoverned"` with nothing asked and nothing
+    // audited, which is the single shape this test exists to refuse.
+    expect(rows).toEqual([
+      // The posture answers a request that could not be built, and records it.
+      { label: "absent", stage: "request", asked: 0, audited: 1 },
+      { label: "a non-string", stage: "request", asked: 0, audited: 1 },
+      // Governed, not skipped and not faulted: `buildEnvelope` accepts an
+      // empty string, so this step is really asked about. (Against a live
+      // Guardian and this repo's own shipped configuration that answer is a
+      // deny -- `runtime_error:tool_unknown` -- which is why leaving it
+      // governed is better than refusing it here. See `toolNameFor`.)
+      { label: "the empty string", stage: "honoured", asked: 1, audited: 0 },
+    ]);
+  });
+
+  /**
+   * The other half of the same measurement, and the reason the length check in
+   * `toolNameFor` is load-bearing: `governsTool` itself answers `false` for an
+   * empty name against any declared list. So an empty name that DID reach the
+   * skip would be skipped -- silently, unaudited -- which is what the test
+   * above proves does not happen.
+   */
+  it("would skip an empty tool name if one ever reached the predicate, which is why toolNameFor never passes one", () => {
+    expect(governsTool(scoped(["Bash"]), "OnStep", "")).toBe(false);
   });
 
   /**

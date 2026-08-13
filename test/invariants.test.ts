@@ -386,6 +386,84 @@ describe("architectural invariants", () => {
     expect(file).toBeDefined();
     expect(exportedNames(file!.code)).toEqual(["AcsPlugin"]);
   });
+
+  /**
+   * §V5 review round 3, Task 2, fix round 1, Critical 1 -- the gate that turns
+   * "unreachable by accident" into "unreachable by construction".
+   *
+   * Task 2 made `governStep` honour a hookmap entry's `tools` list itself, so
+   * a step this gate does not govern comes back carrying an EMPTY rendered
+   * output. That is a clean no-op on host #2's applier and at host #1's
+   * PostToolUse. It is NOT a no-op at host #1's PreToolUse. Measured, with
+   * `tools: [Bash]` added to hosts/claude-code/claude-code.hookmap.yaml's
+   * request gate and the real shim invoked for `Read`:
+   *
+   *     EXIT 2, audit log not created, stderr:
+   *     acs-hook: the rendered output for hook "PreToolUse" has no
+   *     "hookSpecificOutput" object for Claude Code to read a decision from,
+   *     so there is no output this host could honestly write
+   *
+   * The same hookmap scoped at PostToolUse instead, invoked for `Read`: exit
+   * 0, `{"hookSpecificOutput":{"hookEventName":"PostToolUse"}}`, no audit
+   * entry -- the skip that was intended. The difference is that shim's own
+   * `emptyOutputIsHonest` flag, which is `false` at PreToolUse precisely
+   * because an absent wrapper there is an absence rather than an answer.
+   *
+   * FAIL-CLOSED, NOT FAIL-OPEN: the tool call does not run ungoverned, and no
+   * audit entry claims it did. So this is a watch-for rather than a
+   * regression -- but it is reachable by nothing more than a one-line hookmap
+   * edit, and the reason it has not happened is that nobody has made that
+   * edit, which is not a reason. This gate is the reason instead.
+   *
+   * Scoped to gates whose `emptyOutputIsHonest` is FALSE, not to the whole
+   * hookmap: `tools` at PostToolUse would be legitimate, would work, and
+   * refusing it would be this gate inventing a rule the shim does not have.
+   *
+   * Lives here rather than under hosts/claude-code/ so that host #1's own
+   * directory stays +0/-0 for slice V5 (scripts/verify-zero-diff.sh).
+   */
+  it("host #1's hookmap declares no `tools` at a gate where an empty render is not an answer", () => {
+    const SHIM = "hosts/claude-code/acs-hook.ts";
+    const HOOKMAP = "hosts/claude-code/claude-code.hookmap.yaml";
+
+    const dishonestGates = hooksWhereEmptyOutputIsDishonest(readFileSync(SHIM, "utf8"));
+    // The emptiness check every gate in this file carries, for the same
+    // reason: a parser that silently found nothing would make this test pass
+    // while asserting about no gate at all, which is worse than no gate.
+    expect({ shim: SHIM, foundGates: dishonestGates.length > 0 }).toEqual({ shim: SHIM, foundGates: true });
+
+    const hookmap = Bun.YAML.parse(readFileSync(HOOKMAP, "utf8")) as {
+      hooks?: Record<string, { tools?: unknown } | undefined>;
+    };
+    const declared = dishonestGates.map((hookEventName) => ({
+      hookEventName,
+      // `?? "(none declared)"` collapses YAML's `null` (a key written bare)
+      // and an absent key, which mean the same thing everywhere else in this
+      // repo -- and neither is what this gate refuses.
+      tools: hookmap.hooks?.[hookEventName]?.tools ?? "(none declared)",
+    }));
+
+    // The assertion is the `expect` below; this throw is what tells whoever
+    // trips it WHY, since an object diff can name the gate but not the
+    // consequence.
+    for (const { hookEventName, tools } of declared) {
+      if (tools !== "(none declared)") {
+        throw new Error(
+          `${HOOKMAP}'s "hooks.${hookEventName}" declares "tools": ${JSON.stringify(tools)}, and ` +
+            `${SHIM} declares "emptyOutputIsHonest: false" for that hook. governStep returns an EMPTY rendered ` +
+            `output for a tool a gate's "tools" list does not name (packages/host-adapter/src/govern-step.ts, ` +
+            `the "ungoverned" member of GovernedStep -- see its "output" field for the measurement). At a gate ` +
+            `whose empty render is not an answer, that shim's asClaudeCodeOutput throws rather than writing one, ` +
+            `and main().catch exits 2 -- so every call to an unlisted tool becomes a BLOCKING STOP with no audit ` +
+            `entry, not the silent skip the list was added for. Fail-closed, so nothing runs ungoverned, but it ` +
+            `is not what a "tools" list means anywhere else. Scope this gate by its host's own matcher ` +
+            `(settings.json, "^Bash$") as it already is, or teach that shim that an empty render at this hook is ` +
+            `a skip, before declaring "tools" here.`,
+        );
+      }
+    }
+    expect(declared).toEqual(dishonestGates.map((hookEventName) => ({ hookEventName, tools: "(none declared)" })));
+  });
 });
 
 /**
@@ -464,6 +542,47 @@ function exportedNames(code: string): string[] {
     }
   }
   return names;
+}
+
+/**
+ * The hook names whose `HOOK_EXPECTATIONS` entry in
+ * hosts/claude-code/acs-hook.ts declares `emptyOutputIsHonest: false` -- the
+ * gates where that shim treats an output carrying no `hookSpecificOutput`
+ * wrapper as a thing it must not write, and throws instead.
+ *
+ * Read out of the shim's SOURCE rather than imported, because `acs-hook.ts`
+ * exports none of this and is frozen for slice V5 (`scripts/verify-zero-diff.sh`
+ * fails on any change to it, so "export the table for the test" is not
+ * available). The same pragmatism `exportedNames` and `importsSpecifier`
+ * above already apply: a regex precise enough for the shape this codebase
+ * actually writes, with its own meta-tests below, not a TypeScript parser.
+ *
+ * Comments are stripped first, so the several doc comments in that file that
+ * discuss `emptyOutputIsHonest` in prose are never mistaken for a
+ * declaration.
+ */
+function hooksWhereEmptyOutputIsDishonest(source: string): string[] {
+  const code = stripComments(source);
+  // Every `  SomeName: {` at exactly two-space indent -- one entry of the
+  // `HOOK_EXPECTATIONS` object literal -- paired with where it starts.
+  const entryStarts = [...code.matchAll(/^ {2}([A-Za-z_$][\w$]*): \{$/gm)].map((m) => ({
+    name: m[1]!,
+    index: m.index!,
+  }));
+  const names = new Set<string>();
+  for (const declaration of code.matchAll(/emptyOutputIsHonest:\s*(true|false)/g)) {
+    if (declaration[1] !== "false") {
+      continue;
+    }
+    // The entry this declaration sits inside is the nearest one that opened
+    // before it. Nothing re-joins or re-parses: the match indices are the
+    // only ordering used.
+    const owner = entryStarts.filter((start) => start.index < declaration.index!).at(-1);
+    if (owner !== undefined) {
+      names.add(owner.name);
+    }
+  }
+  return [...names];
 }
 
 describe("the import gate itself", () => {
@@ -644,6 +763,68 @@ describe("the export-count gate itself", () => {
     expect(
       exportedNames('export { early };\nconst early = 1;\nexport const AcsPlugin = 1;\nexport { late };\nconst late = 1;\n'),
     ).toEqual(["early", "AcsPlugin", "late"]);
+  });
+});
+
+/**
+ * §V5 review round 3, Task 2, fix round 1, Critical 1. The gate that reads
+ * `emptyOutputIsHonest` out of host #1's shim is only worth having if the
+ * reading is right, and it reads SOURCE TEXT because that shim exports none
+ * of this and is frozen for this slice. So the parser gets the same split
+ * treatment `exportedNames` and `importsSpecifier` already have: the gate
+ * asserts about the real file, these assert about the parser.
+ *
+ * The fixture below is the shape hosts/claude-code/acs-hook.ts actually
+ * writes -- an object literal of two-space-indented entries, each with a
+ * method and a flag -- not a minimal one, because the failure mode this
+ * guards against is a parser that attributes a flag to the wrong entry.
+ */
+describe("the empty-render-honesty reader itself", () => {
+  const TABLE =
+    "const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {\n" +
+    "  PreToolUse: {\n" +
+    "    assertDecisions(decisions, path, hookEventName) {\n" +
+    "      return decisions;\n" +
+    "    },\n" +
+    "    emptyOutputIsHonest: false,\n" +
+    "  },\n" +
+    "  PostToolUse: {\n" +
+    "    assertDecisions(decisions, path, hookEventName) {\n" +
+    "      return decisions;\n" +
+    "    },\n" +
+    "    emptyOutputIsHonest: true,\n" +
+    "  },\n" +
+    "};\n";
+
+  it("names the entry whose flag is false, and only that one", () => {
+    expect(hooksWhereEmptyOutputIsDishonest(TABLE)).toEqual(["PreToolUse"]);
+  });
+
+  it("names nothing when every entry's flag is true -- so the gate cannot pass by finding a false positive", () => {
+    const allHonest = TABLE.replace("emptyOutputIsHonest: false", "emptyOutputIsHonest: true");
+    expect(hooksWhereEmptyOutputIsDishonest(allHonest)).toEqual([]);
+  });
+
+  it("attributes the flag to the entry it sits inside, not to the first entry in the table", () => {
+    // The mutation that matters: move `false` to the SECOND entry. A parser
+    // that reported "the first entry" or "every entry" would pass the test
+    // above and be wrong here -- and wrong in the direction that lets a
+    // `tools` key land on the gate that exits 2.
+    const secondIsDishonest = TABLE.replace("emptyOutputIsHonest: false", "emptyOutputIsHonest: true").replace(
+      "    emptyOutputIsHonest: true,\n  },\n};\n",
+      "    emptyOutputIsHonest: false,\n  },\n};\n",
+    );
+    expect(hooksWhereEmptyOutputIsDishonest(secondIsDishonest)).toEqual(["PostToolUse"]);
+  });
+
+  it("ignores the flag named in a doc comment, since comments are stripped first", () => {
+    // hosts/claude-code/acs-hook.ts's own header discusses
+    // `emptyOutputIsHonest` in prose several times; a reader that counted
+    // those would name gates that do not exist.
+    const commented =
+      "/**\n * `emptyOutputIsHonest: false` is what makes an absent wrapper a throw.\n */\n" +
+      "const HOOK_EXPECTATIONS = {\n  PostToolUse: {\n    emptyOutputIsHonest: true,\n  },\n};\n";
+    expect(hooksWhereEmptyOutputIsDishonest(commented)).toEqual([]);
   });
 });
 

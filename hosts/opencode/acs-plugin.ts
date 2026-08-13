@@ -188,7 +188,14 @@
  *     that third host inherits the skip instead of copying it. The call
  *     below stays because of what it saves rather than what it decides: it
  *     is the only one early enough to skip `assertUsableSessionId` and the
- *     session handshake as well as the envelope. Two call sites, one rule.
+ *     session handshake as well as the envelope. Two call sites, one rule --
+ *     but NOT one argument: this file passes `input.tool`, OpenCode's own
+ *     field, while `governStep` passes whatever this hook's `tool_name` path
+ *     resolves to. They agree here only because opencode.hookmap.yaml's
+ *     `tool_name: $.tool` names the very field assembled from `input.tool`
+ *     below; a hookmap pointing `tool_name` elsewhere would make the two
+ *     answers diverge, and nothing detects that. See `governsTool`'s own doc
+ *     comment (govern-step.ts).
  *
  *     `tool` ITSELF must be validated first (`assertUsableTool`, below),
  *     ahead of the `tools` check -- a malformed `tool` is not "out of
@@ -443,9 +450,17 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * and the adapter's own skip is deliberately written not to absorb one
  * either: `governStep` reads the tool name through the hookmap's `tool_name`
  * path and, when that resolves to no usable string, does NOT skip -- it lets
- * `buildEnvelope` throw into the posture-answered, audited path described
- * above (see `toolNameFor`, govern-step.ts). So both gates keep an audited
- * or loud answer for a malformed `tool`, and neither has a silent one.
+ * the step continue to whatever already handles it. WHAT THAT IS DIFFERS BY
+ * CASE, and fix round 1 of that same task measured it rather than assuming
+ * one mechanism covered all of them: an ABSENT or NON-STRING name is a
+ * `buildEnvelope` throw, posture-answered and audited (the path this
+ * paragraph's own measurement above describes); an EMPTY-STRING name is
+ * neither, because `buildEnvelope` checks the type and not the length -- the
+ * envelope is built carrying `tool: {"name": ""}`, the step is asked about,
+ * and this repo's own shipped policy configuration answers it `deny`. Both
+ * outcomes are governed or audited; neither is silent. `toolNameFor`
+ * (govern-step.ts) carries the full measurement and the reason its length
+ * check is load-bearing anyway.
  *
  * Generic over `hookEventName`, exactly like `assertUsableSessionId`, so
  * both gates call this unchanged.

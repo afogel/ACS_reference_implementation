@@ -219,9 +219,11 @@ a TTY.
 ### Verify
 
 ```bash
-bun test          # 619 tests across 39 files (618 pass, 1 skip), including the R3.2/R3.3
-                  # and R5.1/R5.2 gates below
-                  # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
+bun test          # the whole suite, including the R3.2/R3.3 and R5.1/R5.2 gates below
+                  # exactly one test skips: the byte-identity check, which needs
+                  # UPSTREAM_BUNDLE — see verify:pin. Everything else must pass.
+                  # (No test count is quoted here. One was, and it went stale the next
+                  # time anyone added a test, which is every slice.)
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
 ```
 
@@ -252,10 +254,12 @@ V5 ("second host, zero AGT changes") is implemented: OpenCode 1.18.15 is governe
 `hosts/opencode/opencode.hookmap.yaml`) against zero changed lines in the Guardian, the AGT
 bridge, `policy/lib`, `agt.lock`, `mapping.yaml`, or host #1's own wire contract, which
 `bun run verify:zero-diff` checks mechanically rather than by inspection. The adapter package
-itself is *not* unchanged (four of its files, to add four load-time hookmap gates and a
-second `exit_status` form — no insertion/deletion count is quoted here; it isn't pinned by
-anything and went stale three times during one review round, see `slices/v5/README.md` for
-why) — the claim is that none of it forked per host: every change landed in
+itself is *not* unchanged: it gained four load-time hookmap gates, a second `exit_status` form,
+a normalising `loadHookmap`, and the `tools` rule both host shims now share. (No count is quoted
+here — not of insertions and not of files. Neither is pinned by anything, and both went stale
+inside a single review round; see `slices/v5/README.md` for why, and run `git diff --stat
+slice/v4 HEAD -- packages/host-adapter/src/` for a current one.) The claim is that none of it
+forked per host: every change landed in
 the package both hosts share, and host #1's own source gained zero lines, only two additive test
 files. See
 [`slices/v5/README.md`](slices/v5/README.md) and [`docs/demos/v5-runbook.md`](docs/demos/v5-runbook.md)

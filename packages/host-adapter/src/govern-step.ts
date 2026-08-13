@@ -55,7 +55,11 @@
  *     for) is answered by the negotiated posture, which is this slice's
  *     recurring fail-open shape. The shim's own check stays where it is, for
  *     what it saves rather than for what it decides; this one is what a shim
- *     that never wrote one still inherits.
+ *     that never wrote one still gets. WHAT that shim gets is its own
+ *     applier's business, and measurably not the same on both hosts already
+ *     -- on host #1's request gate an empty render is a blocking stop, not a
+ *     silent skip. See the `output` field of the `"ungoverned"` member below
+ *     for the measurement and for what makes it unreachable.
  *   - There are exactly three ways out: a `GovernedStep` for a step this gate
  *     governs, a `GovernedStep` for one it does not (`stage: "ungoverned"`, no
  *     decision, nothing asked and nothing audited), or a throw. A throw means
@@ -177,10 +181,40 @@ export type GovernedStep =
   | {
       /**
        * Empty, always: this gate does not govern this step's tool, so there is
-       * nothing for the host to write. A host applies this the same way it
-       * applies any other render that names no key -- there is no third code
-       * path for a shim to add, which is the point of returning a
-       * `GovernedStep` here rather than a fourth kind of answer.
+       * nothing for this module to render. It is a `GovernedStep` rather than
+       * a fourth kind of answer so that a shim needs no new branch to receive
+       * it -- but WHAT AN EMPTY RENDER MEANS IS THE HOST'S, NOT THIS
+       * MODULE'S, and an earlier version of this comment claimed otherwise
+       * ("a host applies this the same way it applies any other render that
+       * names no key"). MEASURED, §V5 review round 3, Task 2, fix round 1,
+       * against host #1's own shim with `tools: [Bash]` added to its hookmap:
+       *
+       *   - `PostToolUse` (`emptyOutputIsHonest: true`, acs-hook.ts),
+       *     invoked for `Read`: exit 0, `{"hookSpecificOutput":
+       *     {"hookEventName":"PostToolUse"}}`, no audit entry. A clean no-op,
+       *     which is what "inherits the skip" promises.
+       *   - `PreToolUse` (`emptyOutputIsHonest: false`), invoked for `Read`:
+       *     EXIT 2, no audit entry, stderr `acs-hook: the rendered output for
+       *     hook "PreToolUse" has no "hookSpecificOutput" object for Claude
+       *     Code to read a decision from, so there is no output this host
+       *     could honestly write`. That shim treats an absent wrapper at its
+       *     request gate as a thing it must not write, and `main().catch`
+       *     turns the throw into a blocking stop.
+       *
+       * So on host #1's request gate the inherited behaviour is not a skip:
+       * it is a blocking stop for every unlisted tool. FAIL-CLOSED, NOT
+       * FAIL-OPEN -- the tool call does not run ungoverned, and no audit entry
+       * claims it did -- so this is a defect in what this comment used to
+       * claim and a watch-for, not a security regression. It is also
+       * unreachable today, and unreachable BY CONSTRUCTION rather than by
+       * accident since this fix round: host #1's hookmap declares no `tools`
+       * key, and `test/invariants.test.ts`'s "host #1's hookmap declares no
+       * `tools` at a gate where an empty render is not an answer" gate fails
+       * if one is ever added at a gate whose `emptyOutputIsHonest` is false.
+       *
+       * A host that wants a skip to be silent at such a gate has to say so in
+       * its own applier -- that is host semantics, and R3.2 is exactly why
+       * this module cannot say it here.
        */
       output: Record<string, never>;
       /**
@@ -241,6 +275,20 @@ export type GovernedStep =
  * no handshake either. Two call sites, one rule; the shim's saves work, this
  * module's is what a shim that never wrote one still gets.
  *
+ * ONE RULE, BUT NOT ONE ARGUMENT, and that is worth saying because "one rule"
+ * invites the assumption that the two call sites cannot disagree. They can. A
+ * shim passes the tool name off its OWN input field (host #2:
+ * `governsTool(hookmap, "tool.execute.before", input.tool)`), while
+ * `governStep` passes what this hook's `tool_name` path resolves to against
+ * the assembled payload (`toolNameFor`, below). Both shipped hookmaps make
+ * those the same value -- host #2's `tool_name: $.tool` names the very field
+ * its shim reads, and host #1 declares no `tools` at all, so the question
+ * never arises there -- but a hookmap whose `tool_name` names some other
+ * field would have its shim skipping on one name while `governStep` scopes on
+ * another. The shim's answer wins when the shim returns; this module's wins
+ * for anything that reaches it. Nothing here can detect that divergence: the
+ * shim's field is a host-side value this module never sees.
+ *
  * NO `?? undefined` COMPENSATION HERE, unlike the shim function this replaces
  * (§V5 review round 3, Task 1). `loadHookmap` returns a normalised hookmap:
  * a `tools` key written bare in YAML (parsed as `null` -- present and
@@ -274,17 +322,48 @@ export function governsTool(hookmap: Hookmap, hookEventName: string, tool: strin
  * make every host restate a value its hookmap already says where to find, and
  * a walk of two or three object keys is not worth that.
  *
- * `undefined` MEANS UNREADABLE, AND UNREADABLE IS NOT OUT OF SCOPE. A payload
- * whose `tool_name` path resolves to nothing, to a non-string, or to an empty
- * string is a fault, and it is `buildEnvelope`'s to report: it throws, that
- * throw lands in `governStep`'s stage-"request" catch, and the deployment's
- * negotiated posture answers it AUDITED, whichever way it resolves. Answering
- * it here with a skip instead would convert an audited, posture-answered
- * decision into a silent, unaudited proceed -- the exact asymmetry host #2's
- * shim already refuses at its own boundary (`assertUsableTool`, which throws
- * on a malformed tool before this module is reached at all). So this reports
- * "no name to scope by" and lets the step continue to the code that already
- * knows how to fail on it.
+ * `undefined` MEANS UNREADABLE, AND UNREADABLE IS NOT OUT OF SCOPE. Answering
+ * "not in this gate's list" for a name this gate could not read would convert
+ * a step that is currently governed or audited into a silent, unaudited
+ * skip -- the exact asymmetry host #2's shim already refuses at its own
+ * boundary (`assertUsableTool`, which throws on a malformed tool before this
+ * module is reached at all). So this reports "no name to scope by" and lets
+ * the step continue to whatever already handles it.
+ *
+ * WHAT "ALREADY HANDLES IT" IS DIFFERS BY CASE, and an earlier version of
+ * this paragraph named one mechanism for all three (§V5 review round 3, Task
+ * 2, fix round 1, Important 1). Measured, through `governStep` with
+ * `tools: ["Write"]` declared:
+ *
+ *   - `tool_name` ABSENT, or resolving to a NON-STRING (`42`): `buildEnvelope`
+ *     throws (`typeof toolName !== "string"`), that throw lands in the
+ *     stage-"request" catch, and the negotiated posture answers it AUDITED --
+ *     `stage: "request"`, Guardian asked 0 times, 1 audit event.
+ *   - `tool_name` resolving to the EMPTY STRING: `buildEnvelope` does NOT
+ *     throw. It checks the type and not the length, so the envelope is built
+ *     carrying `tool: {"name": ""}` and the step is GOVERNED -- `stage:
+ *     "honoured"`, Guardian asked 1 time, 0 audit events. Against this repo's
+ *     own shipped configuration a real Guardian answers that envelope
+ *     `deny`/`runtime_error:tool_unknown`, measured.
+ *
+ * SO THE LENGTH CHECK BELOW IS LOAD-BEARING FOR A REASON THE OLD WORDING GOT
+ * WRONG. It is not that `buildEnvelope` would report an empty name -- it does
+ * not. It is that `governsTool(entry, "")` answers `false` against any
+ * declared list (measured), so dropping `raw.length > 0` here would turn an
+ * empty tool name from a step that is asked about and really denied into a
+ * step that is silently skipped and never audited. Anyone tempted to simplify
+ * this on the strength of "buildEnvelope throws on it anyway" would be acting
+ * on a mechanism that does not exist.
+ *
+ * MAKING `buildEnvelope` REFUSE AN EMPTY NAME WAS CONSIDERED AND NOT DONE,
+ * deliberately and not for scope. Today an empty name produces a real
+ * envelope and a real ARRIVING deny; refusing it there would replace that
+ * with a stage-"request" posture answer, and under a negotiated `proceed` the
+ * step would proceed (audited) where it is currently denied by the policy
+ * runtime. That is this module's own "a decision that ARRIVED always outranks
+ * a posture" running backwards, so the change would have to argue its way
+ * past the header above rather than ride along with a comment fix. Left as a
+ * separate question with its own test to write, if anyone takes it up.
  *
  * The `catch` is for the path itself rather than the payload: `resolvePath`
  * throws on a path that is not a string and on one naming a reserved segment
