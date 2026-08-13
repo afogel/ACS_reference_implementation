@@ -898,10 +898,47 @@ function assertDecisionsCanAct(
  * live Guardian: a real `deny` landed `[OUTPUT WITHHELD BY POLICY]` on the
  * leaf and left `rm -rf /` in `metadata.output`. Not closed here because the
  * same freedom that makes it possible is what lets a second host deployment
- * declare the right mirror at all -- and it is a WEAKER failure than the rest
- * of this list: the model does see the redaction, so it is a session-record
- * leak rather than a delivered secret. Carried as a known parked item rather
- * than silently accepted.
+ * declare the right mirror at all.
+ *
+ * "WEAKER THAN THE REST OF THIS LIST" IS A CLAIM ABOUT A `tools`-SCOPED GATE,
+ * and it was stated here without that condition until §V5 review round 3's
+ * final whole-branch review. Scoped, the bound is real: the model does see the
+ * redaction, so what a `mirrors`-less deployment loses is OpenCode's session
+ * record rather than the secret itself. What the bound RESTS ON is this
+ * entry's own `tools: [bash]`, because that is what keeps `outputs` and
+ * `exit_status` pointed at a tool whose result carries those fields -- and
+ * `tools` is precisely what `fixedPaths` above does NOT pin. MEASURED, on the
+ * shipped hookmap minus this gate's `tools: [bash]` (which registers clean:
+ * `loadHookmap` and this file's own `assertHostHonoursEveryDecision` both
+ * accept it, so `AcsPlugin` returns both hooks), against a `read`-shaped
+ * result whose `metadata` carries no `exit`: `buildEnvelope` throws,
+ * `governStep`'s stage-"request" catch answers with the delivery posture --
+ * measured with none negotiated, so ACS's default `proceed` applied -- one
+ * audit entry says `outcome: "proceeded"`, and the file's contents stand
+ * untouched in the leaf. A DELIVERED SECRET, through a hookmap this gate
+ * loaded, and nothing withholds it: the step was never asked about, and
+ * `read`'s own mirror is `metadata.preview`, a field this entry does not name.
+ *
+ * AND `mirrors` IS NOT WHAT WAS HOLDING THAT SHUT, which is the part to know
+ * before deleting either line. Measured both ways: `mirrors` declared and
+ * `mirrors` deleted produce the IDENTICAL posture-answered proceed for that
+ * `read` payload, because `buildEnvelope` throws before
+ * `assertOutputIsReplaceable` (govern-step.ts) is ever reached. Where
+ * `mirrors` does act as a backstop is the other route -- a payload the
+ * envelope CAN be built from (leaf and `exit_status` both resolve) whose
+ * DECLARED mirror is absent from it: there `assertOutputIsReplaceable` cannot
+ * build the withholding, and the deployment stops loudly with nothing asked
+ * and nothing audited, where the same payload against a `mirrors`-less entry
+ * is governed normally. So `mirrors` has been refusing a fault it was never
+ * written for, and deleting it deletes that refusal too -- but not on the
+ * route above. The two lines are independent; each deletion is load-clean on
+ * its own, and so is both together.
+ *
+ * NEITHER IS CLOSED HERE, AND CLOSING THEM BELONGS TO V6: requiring `tools`
+ * wherever `exit_status`/`outputs` name per-tool fields, or moving the
+ * hookmap-decidable posture faults docs/demos/v5-runbook.md enumerates to load
+ * time, are changes to what a hookmap MEANS rather than to what this comment
+ * says. Carried as known parked items rather than silently accepted.
  *
  * THE ADAPTER CANNOT MAKE ANY OF THESE CHECKS, and that is deliberate on its
  * side rather than an omission: every one rests on knowing which hook name IS
@@ -1268,9 +1305,10 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  * `output` block, so a result-gate `deny` declaring only `reason.text` loaded
  * clean -- and then applied nothing and threw nothing on a real Guardian deny,
  * delivering the tool's output in both the leaf and its mirror. Measured; see
- * `MUST_WITHHOLD_BY_REPLACING`'s own doc comment for the three cases and
+ * `CARRIED_AT_RESULT_GATE`'s own doc comment (above) for what each decision
+ * actually arrives carrying at this gate, and
  * hosts/opencode/test/result-gate.test.ts for the tests that keep measuring
- * them.
+ * the fault.
  *
  * LOAD TIME, NOT POSTURE TIME, and that is the whole point. This fault is
  * decidable from the hookmap file ALONE, with no invocation payload -- the
@@ -1313,10 +1351,12 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  *   - `ask`/`defer` DECLARED at the result gate were unchecked, excluded on
  *     the grounds that the shipped hookmap declares neither -- reasoning from
  *     the shipped file to the class, the same move the request-gate-only skip
- *     was making. See `MUST_WITHHOLD_BY_REPLACING`'s own doc comment for why
- *     direction makes this a fault rather than a gap.
+ *     was making. See `CARRIED_AT_RESULT_GATE`'s own doc comment (above) for
+ *     what those two carry here -- and 6a below for the half of this round's
+ *     own answer that had to be retracted.
  *   - The request gate's own `modify` had no rule at all
- *     (`MUST_LAND_A_REWRITE`, above). An earlier version of this file named
+ *     (`CARRIED_AT_REQUEST_GATE`, above, is where its carrying is stated
+ *     now). An earlier version of this file named
  *     that gap in a comment and declined to close it as unmeasured; measuring
  *     it showed `governStep` returning `stage: "honoured"` while the rewrite
  *     landed nowhere, so the audit trail asserted the opposite of what
@@ -1765,7 +1805,14 @@ export const AcsPlugin: Plugin = async () => {
      * built. Unreachable through the shipped config -- this gate's own
      * `tools: [bash]` scope -- not unreachable outright, the same
      * qualification `governsTool`'s own
-     * doc comment (govern-step.ts) makes. And this does not weaken
+     * doc comment (govern-step.ts) makes. AND THE SHIPPED CONFIG IS ONE
+     * LOAD-CLEAN EDIT AWAY FROM REACHING IT: nothing refuses a hookmap that
+     * drops this entry's `tools` line -- measured, `AcsPlugin` registers both
+     * hooks off it -- and a `read` call against that hookmap takes exactly
+     * this route on its first invocation, leaving the file's contents standing
+     * in the leaf under a `proceed` posture. `GateEntryShape`'s own doc
+     * comment (above) carries that measurement, what `mirrors` does and does
+     * not backstop about it, and where closing it belongs. And this does not weaken
      * that scope's own justification: opencode.hookmap.yaml's measurement
      * table's fourth row ("an invalid call's [metadata] is `{truncated}`
      * alone") names a tool called `invalid`, which this gate never governs

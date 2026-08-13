@@ -728,6 +728,21 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   same class as V4's identity over-refusal. An invalid tool call is not a counter-example: it
   reports itself as tool `invalid`, which `tools: [bash]` skips before any envelope naming
   `metadata.exit` is ever built.
+  **What that unreachability rests on is a hookmap line nothing pins — measured by the branch's
+  final review rather than assumed.** The load-time gate that fixes this entry's shape
+  (`assertEntryMatchesGate`, `acs-plugin.ts`) pins `tool_name`, `outputs.from`, `outputs.within`
+  and each hook's payload shape; it has no opinion about `tools`. Deleting the result gate's
+  `tools: [bash]` registers clean through `AcsPlugin`, and a `read` call against that hookmap then
+  takes exactly the route above on its first invocation: `metadata` carries no `exit`, the throw
+  lands at stage `"request"`, the posture answers, and under `proceed` the file's contents stand in
+  the leaf, unasked, with the step audited as proceeded. `outputs.mirrors` does not backstop it —
+  measured with the line present and absent, the outcome is identical, because the envelope throw
+  happens before the adapter asks whether a withholding could be built (what
+  `mirrors` does refuse is a *different* payload: one whose envelope builds while its declared
+  mirror is absent). This adds no row to the table below: the fault there is a payload's, not a
+  hookmap's. What it shows is that the *reachability* of a payload fault is a hookmap property,
+  and this one is unchecked — which is why V6's repair is either half (require `tools` where
+  `exit_status`/`outputs` name per-tool fields, or move the six below to load time).
 - **The posture-answered seam this slice put three checks on (`mirrors`, the `exit_status`
   both-forms refusal, request-gate scopability) already carried six more, pre-existing, and none of
   them is this slice's to repair.** Every one is decidable from the hookmap alone, with no payload
