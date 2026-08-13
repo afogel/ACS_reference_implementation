@@ -188,11 +188,16 @@ subprocess per hook):
 | `ACS_HOOKMAP_PATH` | `hosts/claude-code/claude-code.hookmap.yaml` | **Repoints the governance mapping itself.** The hookmap decides which ACS method each hook fires and how each ACS decision renders as a Claude Code `permissionDecision`, so this variable changes what governance *means* for this host, not merely where a file lives. It exists for tests that need a deliberately broken hookmap; a deployment should leave it unset |
 
 **OpenCode's shim** (`hosts/opencode/acs-plugin.ts`, V5, loaded once as a plugin for the whole
-session) reads the same three variables with the same meanings and the same defaults, substituting
-its own hookmap (`hosts/opencode/opencode.hookmap.yaml`) for `ACS_HOOKMAP_PATH`'s default — with
-one difference: it has no `ACS_SESSION_DIR`, because this host is one long-lived plugin object
-rather than a fresh subprocess per hook, so the negotiated ServerHello (S13) survives in memory for
-the life of the session instead of being filed to disk (S15).
+session) reads three of the same four variables with the same meanings and the same defaults,
+substituting its own hookmap (`hosts/opencode/opencode.hookmap.yaml`) for `ACS_HOOKMAP_PATH`'s
+default — with one difference: it has no `ACS_SESSION_DIR`, because this host is one long-lived
+plugin object rather than a fresh subprocess per hook, so the negotiated ServerHello (S13) survives
+in memory for the life of the session instead of being filed to disk (S15). It also reads a fourth
+variable host #1 has no counterpart for: `ACS_DEBUG` (unset by default), which surfaces
+`reason.text` on stderr when set to anything but `""` or `"0"` — this host's `reason.text` is
+declared-inert (nothing OpenCode reads text back from), so this is a diagnostic opt-in, not a real
+delivery channel, and it is silent by default so a clean deployment sees nothing extra on every
+tool call.
 
 **The Guardian** (`bun run guardian`):
 

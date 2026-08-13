@@ -285,7 +285,11 @@ describe("architectural invariants", () => {
     // them; one that stopped returning the shim would leave a gate that scans
     // something irrelevant and always passes. Pinned to the exact list, so a
     // second shim has to be added here consciously.
-    expect(scanned.map(({ file }) => file).sort()).toEqual(["claude-code/acs-hook.ts", "opencode/acs-plugin.ts"]);
+    expect(scanned.map(({ file }) => file).sort()).toEqual([
+      "claude-code/acs-hook.ts",
+      "opencode/acs-plugin.ts",
+      "opencode/apply-host-output.ts",
+    ]);
 
     for (const { file, code } of scanned) {
       for (const spec of ["agt-bridge", "guardian"]) {
@@ -342,6 +346,46 @@ describe("architectural invariants", () => {
   it("the adapter names no OpenCode field", () => {
     assertNoVocabulary("packages/host-adapter/src", ["tool.execute", "callID", "attachments"]);
   });
+
+  /**
+   * The eighth gate, V5's second -- §V5 review, Task 8, fix round 1,
+   * Important 1. Placed last for the same reason the seventh gate is: so
+   * neither this comment nor that one goes stale by renumbering when a
+   * ninth gate is eventually appended.
+   *
+   * `acs-plugin.ts` used to export a second symbol, `applyHostOutput`, for
+   * no reason but its own unit test's convenience (`hosts/opencode/test/
+   * apply-host-output.test.ts` imported it directly, to test it against
+   * plain objects rather than a live OpenCode session). Measured: OpenCode's
+   * plugin loader hands EVERY exported function of a plugin module its own
+   * registration context -- a live `client`, `directory`, `worktree`, and
+   * `$` (its shell executor) -- and calls each one as a candidate plugin
+   * factory, not only the export shaped like `Plugin`. `applyHostOutput`
+   * happened to be the safest possible accident: its own pass-1 validation
+   * rejected the context object's first key (`"client"`) before touching
+   * anything, so the mis-invocation surfaced as a caught, non-fatal `ERROR`
+   * log line and `AcsPlugin` itself still registered. But the SAME mechanism
+   * is not always safe -- measured, same review: a single **non-function**
+   * export placed beside a working factory produces `error="Plugin export is
+   * not a function"`, and the factory is **never called at all**. One
+   * exported constant would silently disable governance for the whole
+   * session, and nothing in this suite -- or in OpenCode's own log line,
+   * which is byte-identical in shape whether the fault is harmless or total
+   * -- would say so.
+   *
+   * `applyHostOutput` now lives in its own module (`apply-host-output.ts`,
+   * imported into `acs-plugin.ts`, tested directly by
+   * `apply-host-output.test.ts`) specifically so `acs-plugin.ts` has exactly
+   * one export for OpenCode's loader to find. This gate is what keeps that
+   * true going forward, mechanically: a second export added here -- for a
+   * new helper, a re-exported type, anything -- fails this test rather than
+   * silently reopening the hazard.
+   */
+  it("hosts/opencode/acs-plugin.ts exports exactly one symbol, so OpenCode's plugin loader has no second export to mis-invoke as a candidate factory", () => {
+    const file = readSourceFiles("hosts").find(({ file }) => file === "opencode/acs-plugin.ts");
+    expect(file).toBeDefined();
+    expect(exportedNames(file!.code)).toEqual(["AcsPlugin"]);
+  });
 });
 
 /**
@@ -369,6 +413,30 @@ describe("architectural invariants", () => {
  */
 function importsSpecifier(code: string, spec: string): boolean {
   return new RegExp(`(?:from|import|require)\\s*\\(?\\s*["'][^"']*${spec}[^"']*["']`, "i").test(code);
+}
+
+/**
+ * Every name a top-level `export` declaration binds in `code`, in source
+ * order -- `export (default )?(async )?(function|const|class|type|interface|
+ * let|var) NAME`. Deliberately narrow, the same pragmatism `assertNoVocabulary`
+ * and `importsSpecifier` above already apply: a regex precise enough for the
+ * shape this codebase actually writes exports in, not a full TS parser and
+ * not every legal export form. `export { a, b }` re-export lists are not
+ * matched -- nothing in this codebase's host shims uses one, and a shim that
+ * grew one would be a new shape worth a human reading this gate again, not
+ * one to guess about silently. Callers pass comment-stripped code (this
+ * suite's own `readSourceFiles` already does that), so a doc comment that
+ * happens to contain the word "export" -- this file has several -- is never
+ * mistaken for a declaration.
+ */
+function exportedNames(code: string): string[] {
+  const pattern = /^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|class|type|interface|let|var)\s+([A-Za-z_$][\w$]*)/gm;
+  const names: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(code)) !== null) {
+    names.push(match[1]!);
+  }
+  return names;
 }
 
 describe("the import gate itself", () => {
@@ -465,6 +533,54 @@ describe("the host-vocabulary gate itself", () => {
     withScratchSourceFile('export const hookName = "tool_execute";\n', (dir) => {
       expect(() => assertNoVocabulary(dir, ["tool.execute"])).not.toThrow();
     });
+  });
+});
+
+describe("the export-count gate itself", () => {
+  /**
+   * §V5 review, Task 8, fix round 1, Important 1, "mutation-tested": proves
+   * `exportedNames` actually distinguishes one export from two, rather than
+   * always returning a fixed-length answer that would let the real gate
+   * above pass no matter what `acs-plugin.ts` exports. The reviewer's own
+   * measured case -- a second export appearing beside a working factory --
+   * is reproduced here directly, on a scratch file rather than the real
+   * `hosts/opencode/acs-plugin.ts`: this checks the CHECK, the same split
+   * "the import gate itself" and "the host-vocabulary gate itself" already
+   * make for their own helpers.
+   */
+  it("counts exactly one export on a file that declares one", () => {
+    expect(exportedNames('export const AcsPlugin = async () => ({});\n')).toEqual(["AcsPlugin"]);
+  });
+
+  it("counts two exports, in source order, on a file that declares two -- the exact shape this gate exists to catch", () => {
+    expect(
+      exportedNames(
+        'export function applyHostOutput(output, live) {}\n\nexport const AcsPlugin = async () => ({});\n',
+      ),
+    ).toEqual(["applyHostOutput", "AcsPlugin"]);
+  });
+
+  it("does not count a plain function or const that is not exported", () => {
+    expect(exportedNames('function helper() {}\nconst AcsPlugin = async () => ({});\n')).toEqual([]);
+  });
+
+  it("does not mistake the word \"export\" inside a comment for a declaration", () => {
+    // Mirrors this suite's own convention: callers pass comment-stripped
+    // code, so a doc comment is never a source of a false export -- proven
+    // here the same way "stays quiet when 'refuse' appears only in a
+    // comment" proves it for assertNoVocabulary, just without needing
+    // stripComments as an extra step, since the fixture is written already
+    // comment-free at the code level being tested (a raw block comment
+    // would not match `^export\s+...` at a line start regardless).
+    expect(exportedNames('// acs-plugin.ts exports exactly one symbol\nexport const AcsPlugin = 1;\n')).toEqual([
+      "AcsPlugin",
+    ]);
+  });
+
+  it("does not count an import naming a symbol also used as an export's type", () => {
+    expect(
+      exportedNames('import { applyHostOutput } from "./apply-host-output.ts";\n\nexport const AcsPlugin = 1;\n'),
+    ).toEqual(["AcsPlugin"]);
   });
 });
 

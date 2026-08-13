@@ -82,6 +82,17 @@ what a reasonable first guess would be:
 - **An OpenCode-specific Inspector view.** `bun run inspector` is host-agnostic already and tails
   whatever `.acs/envelopes.jsonl` any host's Guardian writes to; R5.2's own gate would forbid
   naming a host inside it.
+- **A mirror scan that tells "holds the same value" apart from "is a copy of the leaf".** The
+  survivor scan `outputs.mirrors` runs closes the fail-open Task 2 measured (risk row 17) by asking
+  two questions instead of one — every *declared* mirror received the replacement, and no other
+  field still holds the original — but the second question is still the same value-equality
+  inference, narrowed rather than removed. On a host that declares mirrors at all, which is host
+  #2, this slice's own subject, an unrelated sibling inside `outputs.within` that happens to equal
+  the leaf's value is refused as a blocking stop, with no audit entry — pinned as a deliberate
+  over-refusal on the safe side, not claimed away. Two further limits: the scan walks only the
+  clone of `outputs.within`, so a duplicate the host keeps outside that container is invisible
+  regardless of how it is declared, and an undeclared mirror on a host declaring none is not
+  detectable at all. All three are the hookmap author's to get right; V7's matrix carries the cells.
 
 The implementation plan this slice followed, task by task, is
 [`docs/superpowers/plans/2026-08-12-v5-second-host.md`](../../docs/superpowers/plans/2026-08-12-v5-second-host.md).

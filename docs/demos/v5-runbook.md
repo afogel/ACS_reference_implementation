@@ -12,8 +12,13 @@ This runbook is written from real runs against this tree, driving the actual **O
 CLI, `hosts/opencode/acs-plugin.ts` exactly as committed, and a live Guardian — nothing here is
 composed or hand-derived. Every JSON block below is pasted from an actual `opencode run
 --format json` capture, an `.acs/envelopes.jsonl` line, or a query against OpenCode's own
-persisted session database. Where a capture needed a short script rather than a real model, that
-is stated plainly, the same rule V3's and V4's runbooks set.
+persisted session database, and every triple of capture, envelope pair, and SQLite row for a given
+exchange comes from **one** `opencode run` invocation, never assembled from more than one — an
+earlier draft of this file broke that rule once (mixed a `tool_use` block from one run with an
+envelope pair and a SQLite row from another) and review caught it; see the opening of "The secret
+redacted at the result gate" below for exactly what was wrong and how this version is built instead.
+Where a capture needed a short script rather than a real model, that is stated plainly, the same
+rule V3's and V4's runbooks set.
 
 ## Read this first — no real model was used to produce anything in this file
 
@@ -78,11 +83,16 @@ That claim was retracted during execution; both gates carry the scope for the re
    (or, below, of a redirected scratch equivalent) is itself part of the evidence.
 5. **`reason.text` is declared-inert on this host, unconditionally** — `opencode.hookmap.yaml`'s
    own header says so. OpenCode's hooks return `void` and expose no field this host reads an
-   explanation back from; the only channel that carries text anywhere is the thrown message on a
-   request-gate deny (watch-for 1). So even where the Guardian's decision *does* carry `reasoning`,
-   as it does for the redaction below, nothing on this host delivers it to the model or the
-   transcript — a stronger, host-specific version of §V4's "the redaction reaches the model
-   unexplained".
+   explanation back from; the only channel that delivers text *to OpenCode, or to the model* is the
+   thrown message on a request-gate deny (watch-for 1). A second channel exists but does not deliver
+   anywhere a user or the model would see it: `applyHostOutput` writes `reason.text` to **this
+   process's own stderr**, labelled undelivered, when `ACS_DEBUG` is set — a diagnostic for whoever
+   runs the plugin, not a delivery mechanism (see "The `ACS_DEBUG` stderr channel, captured" below).
+   Neither capture in this runbook triggers it: the deny throws before that code ever runs, and the
+   redaction below carries no `reasoning` for it to read. So even where the Guardian's decision
+   *does* carry `reasoning`, as it does for the redaction below, nothing on this host delivers it to
+   the model or the transcript — a stronger, host-specific version of §V4's "the redaction reaches
+   the model unexplained".
 
 ## Prerequisites
 
@@ -233,10 +243,11 @@ opencode run "run the bash tool" --dir <scratch-project> -m stub/model-1 --forma
 
 Captured, verbatim, from that run's own `--format json` stream (the one `tool_use` event; the rest
 of the stream is `step_start`/`step_finish` bookkeeping and the model's own final text, omitted for
-length):
+length — and see "One export was a hazard, not a convenience" below for what `--print-logs`
+produces on this exact run, which is nothing beyond ordinary `INFO`/`WARN` bootstrap noise):
 
 ```json
-{"type":"tool_use","timestamp":1786592921246,"sessionID":"ses_006c38bd0ffepNkpp7cGhWAShF","part":{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"error","input":{"command":"echo rm -rf /","description":"demo"},"error":"matched pattern (?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$) at offset 5","time":{"start":1786592920578,"end":1786592921238}},"id":"prt_ff93c8400001GQGWRmUCZClZO8","sessionID":"ses_006c38bd0ffepNkpp7cGhWAShF","messageID":"msg_ff93c75b9001B6uImWcyKl67nZ"}}
+{"type":"tool_use","timestamp":1786596133697,"sessionID":"ses_006928896ffe0HvJQLi58Ohydd","part":{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"error","input":{"command":"echo rm -rf /","description":"demo"},"error":"matched pattern (?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$) at offset 5","time":{"start":1786596132948,"end":1786596133679}},"id":"prt_ff96d884f001TieMapjTFknP2d","sessionID":"ses_006928896ffe0HvJQLi58Ohydd","messageID":"msg_ff96d7960001xMVUvT89AbOqLr"}}
 ```
 
 **`"error"` is the policy's own pattern text, not a generic string** — `matched pattern
@@ -246,18 +257,22 @@ against on Claude Code. `state.status: "error"` and the absent `output`/`metadat
 OpenCode's own report that the tool call never produced anything — the command genuinely did not
 run.
 
-The envelope pair behind it, from `.acs/v5-runbook.jsonl`, pretty-printed from the raw log line:
+The envelope pair behind it, from `.acs/v5-runbook.jsonl`, pretty-printed from the raw log line —
+the same run: `sessionID` above (`ses_006928896ffe0HvJQLi58Ohydd`) is `host-adapter`'s own
+`toSessionUuid` input for `metadata.session_id` below (`17f8297d-…`), verified by calling
+`toSessionUuid` directly rather than by inspection, and every timestamp below sits within
+milliseconds of the `tool_use` event's own `1786596133697`:
 
 ```json
 {
   "jsonrpc": "2.0",
   "method": "steps/toolCallRequest",
-  "id": "9da03ec4-ef1e-46a0-9945-929512521f9c",
+  "id": "b540e247-368e-4f17-b6e4-3c5f35ac5774",
   "params": {
     "acs_version": "0.1.0",
-    "request_id": "9da03ec4-ef1e-46a0-9945-929512521f9c",
-    "timestamp": "2026-08-13T03:48:40.619Z",
-    "metadata": { "agent_id": "opencode", "session_id": "1c0e7a5d-9a47-56b4-b8fd-6e870d8af164" },
+    "request_id": "b540e247-368e-4f17-b6e4-3c5f35ac5774",
+    "timestamp": "2026-08-13T04:42:13.002Z",
+    "metadata": { "agent_id": "opencode", "session_id": "17f8297d-52a7-59e7-a385-ffd412a9135e" },
     "payload": {
       "tool": { "name": "bash" },
       "arguments": { "command": { "value": "echo rm -rf /" }, "description": { "value": "demo" } }
@@ -269,11 +284,11 @@ The envelope pair behind it, from `.acs/v5-runbook.jsonl`, pretty-printed from t
 ```json
 {
   "jsonrpc": "2.0",
-  "id": "9da03ec4-ef1e-46a0-9945-929512521f9c",
+  "id": "b540e247-368e-4f17-b6e4-3c5f35ac5774",
   "result": {
     "type": "final",
     "acs_version": "0.1.0",
-    "request_id": "9da03ec4-ef1e-46a0-9945-929512521f9c",
+    "request_id": "b540e247-368e-4f17-b6e4-3c5f35ac5774",
     "decision": "deny",
     "reasoning": "matched pattern (?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$) at offset 5",
     "reason_codes": ["destructive_shell_command_blocked"],
@@ -312,10 +327,18 @@ ACS_AUDIT_LOG=<scratch>/audit.jsonl \
 opencode run "run the bash tool" --dir <scratch-project> -m stub/model-1 --format json
 ```
 
-The `tool_use` event, captured verbatim:
+The `tool_use` event, captured verbatim, from the same run as every artifact below it — a
+requirement stated plainly here because an earlier draft of this runbook violated it: it pasted a
+`tool_use` block from one run under an envelope pair and a SQLite row from a *different* run,
+labelled "captured verbatim" in a file that opens "nothing here is composed or hand-derived". That
+was caught in review — the two runs' `sessionID`s differed, and the wrapper's `time.end` sat over a
+minute before the envelope it was placed beside, both signs invisible unless a reader checked. Every
+value in it was still individually true and reproduced, but the *presentation* was composed, which
+is exactly the failure this file exists to be free of. What follows is one `opencode run` invocation,
+top to bottom:
 
 ```json
-{"type":"tool_use","timestamp":1786592938087,"sessionID":"ses_006c33f3fffeoSBZYUBB8CLFQm","part":{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"cat secret.txt","description":"demo"},"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","metadata":{"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","exit":0,"truncated":false},"title":"cat secret.txt","time":{"start":1786592875293,"end":1786592875342}},"id":"prt_ff93bd0d9001aQob8X1EMPUUvG","sessionID":"ses_006c43387ffe7PvbFUkDD6kmiW","messageID":"msg_ff93bcdc0001vN059pYy0EAcjx"}}
+{"type":"tool_use","timestamp":1786596163409,"sessionID":"ses_00692095effeEXxALzYtyqn5R1","part":{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"cat secret.txt","description":"demo"},"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","metadata":{"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","exit":0,"truncated":false},"title":"cat secret.txt","time":{"start":1786596163324,"end":1786596163397}},"id":"prt_ff96dfc3d001VI8hoiW1JM3K0s","sessionID":"ses_00692095effeEXxALzYtyqn5R1","messageID":"msg_ff96df878001u2UeBsFHhUeqDZ"}}
 ```
 
 **Both `state.output` and `state.metadata.output` are redacted — the leaf and its mirror,
@@ -324,17 +347,21 @@ govern — survive untouched, the same "everything not named comes through exact
 property V4 established for Claude Code, now proven on a host where the mirror is the interesting
 part rather than an afterthought. A capture showing only `output` redacted, with `metadata.output`
 left alone, is exactly the leak `opencode.hookmap.yaml`'s `outputs.mirrors: [$.result.metadata.output]`
-exists to prevent — see watch-for 3 above.
+exists to prevent — see watch-for 3 above. Note what this `part` object does **not** carry: no
+`attachments` key at all, at any level. This session's `bash` call never produced one, so this
+capture says nothing about what happens to that field when one is present — see "What was not
+verified" below.
 
-Three envelopes matter here (a `handshake/hello` pair precedes them, seq 5–6). First, the request
-gate — a clean **allow**, because `cat secret.txt` carries no secret in the *command* itself, only
-in what it prints:
+Three envelopes matter here (a `handshake/hello` pair precedes them, seq 5–6, same log, same run —
+`sessionID` above derives to `metadata.session_id` below the same way the deny capture's does).
+First, the request gate — a clean **allow**, because `cat secret.txt` carries no secret in the
+*command* itself, only in what it prints:
 
 ```json
 {
   "jsonrpc": "2.0",
-  "id": "7f4ec18c-06b8-404b-87a1-1d2673898467",
-  "result": { "type": "final", "acs_version": "0.1.0", "request_id": "7f4ec18c-06b8-404b-87a1-1d2673898467", "decision": "allow" }
+  "id": "9ba0e7cd-2a8c-41dc-b335-b1753d8a23af",
+  "result": { "type": "final", "acs_version": "0.1.0", "request_id": "9ba0e7cd-2a8c-41dc-b335-b1753d8a23af", "decision": "allow" }
 }
 ```
 
@@ -344,12 +371,12 @@ Then the result gate, carrying what the command actually printed:
 {
   "jsonrpc": "2.0",
   "method": "steps/toolCallResult",
-  "id": "dbc63c79-ff0b-4e39-983e-106810e2c2e1",
+  "id": "790575ca-3b04-4578-94c6-aa4d00cfd717",
   "params": {
     "acs_version": "0.1.0",
-    "request_id": "dbc63c79-ff0b-4e39-983e-106810e2c2e1",
-    "timestamp": "2026-08-13T03:48:58.027Z",
-    "metadata": { "agent_id": "opencode", "session_id": "311c21c7-227b-5711-9691-475500c8ae7b" },
+    "request_id": "790575ca-3b04-4578-94c6-aa4d00cfd717",
+    "timestamp": "2026-08-13T04:42:43.328Z",
+    "metadata": { "agent_id": "opencode", "session_id": "07d4d43a-a59f-58bb-837d-39970f750b3d" },
     "payload": {
       "tool": { "name": "bash" },
       "exit_status": "success",
@@ -362,11 +389,11 @@ Then the result gate, carrying what the command actually printed:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": "dbc63c79-ff0b-4e39-983e-106810e2c2e1",
+  "id": "790575ca-3b04-4578-94c6-aa4d00cfd717",
   "result": {
     "type": "final",
     "acs_version": "0.1.0",
-    "request_id": "dbc63c79-ff0b-4e39-983e-106810e2c2e1",
+    "request_id": "790575ca-3b04-4578-94c6-aa4d00cfd717",
     "decision": "modify",
     "reason_codes": ["redaction_applied"],
     "policy_references": [{ "policy_id": "agt_stock", "rule_id": "redaction_applied" }],
@@ -390,13 +417,18 @@ applied_output}` — **the whole `{title, output, metadata, attachments}` contai
 plain string on this host, and bury the mirror's own patched copy one level too deep for OpenCode
 to ever apply — the exact critical finding this slice's own review caught and fixed). `applied_output`
 already carries the leaf and the mirror patched together (`result-output.ts`'s `replacingOutput`),
-so `applyHostOutput`'s in-place merge lands both at once, and `title`/`attachments`/`metadata.exit`/
-`metadata.truncated` — everything the render does not name — come through unchanged.
+so `applyHostOutput`'s in-place merge lands both at once, and `title`/`metadata.exit`/
+`metadata.truncated` — the fields the render does not name and that this capture actually carries —
+come through unchanged. `attachments` is part of the container's declared shape (this file's own
+header: `{title, output, metadata, attachments}`, measured present at runtime on 1.18.15 though
+absent from its own published type) but is not part of *this* capture — this `bash` call produced
+none, so nothing here demonstrates what happens to one; see "What was not verified" below.
 
 **The persisted session record, not only the live stream.** OpenCode writes every tool-call part
 to its own SQLite database (`XDG_DATA_HOME/opencode/opencode.db`, isolated to this run by the
 redirect above); querying it directly, after the session ended, is what Task 8's own capture
-instructions call "the persisted session record":
+instructions call "the persisted session record" — same run, same `sessionID`, queried after the
+process that produced it had already exited:
 
 ```bash
 sqlite3 "$XDG_DATA_HOME/opencode/opencode.db" \
@@ -404,8 +436,11 @@ sqlite3 "$XDG_DATA_HOME/opencode/opencode.db" \
 ```
 
 ```json
-{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"cat secret.txt","description":"demo"},"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","metadata":{"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","exit":0,"truncated":false},"title":"cat secret.txt","time":{"start":1786592875293,"end":1786592875342}}}
+{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"cat secret.txt","description":"demo"},"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","metadata":{"output":"GITHUB_TOKEN=[REDACTED] and [REDACTED]\n","exit":0,"truncated":false},"title":"cat secret.txt","time":{"start":1786596163324,"end":1786596163397}}}
 ```
+
+Byte-identical to the `part` field of the `tool_use` event captured above, `time` included — the
+same call, read back from disk rather than off the live stream.
 
 The redaction is on disk, in both fields, not merely in-flight. A second query against the same
 database, across both the `part` and `message` tables, for the raw secret text (`ghp_ABCDEF123456`
@@ -417,31 +452,145 @@ No audit entry was written for this exchange either — `<scratch>/audit.jsonl` 
 the run, the same as the deny capture above: a real decision arrived from the Guardian both times,
 so the negotiated `proceed` posture was never consulted.
 
-## A harmless quirk in the raw capture, measured and explained
+## The `ACS_DEBUG` stderr channel, captured
 
-Running `opencode run` with `--print-logs` against this exact, unmodified `acs-plugin.ts` produces
-one `ERROR`-level line during plugin registration, before either capture above:
+Watch-for 5 names a second, opt-in text channel neither capture above triggers. Demonstrating it
+needs a decision that carries `reasoning` on something other than a request-gate deny — the pinned
+bundle's redaction sends no `reasoning`, and a deny always throws in `applyHostOutput`'s pass 2a
+before its pass 2b (the stderr write) ever runs. So, the same "short script rather than
+`bun run guardian`" precedent [`docs/demos/v4-runbook.md`](v4-runbook.md)'s F1 section sets and
+names explicitly: a scratch HTTP server standing in for the Guardian, answering `steps/toolCallRequest`
+with a real `modify` decision that carries `reasoning`, driving the **real, unmodified** `AcsPlugin`
+and `applyHostOutput` against it with `ACS_DEBUG=1`:
+
+```ts
+// Only the Guardian's answer is stubbed -- AcsPlugin, applyHostOutput, and
+// the hookmap are the real, committed modules.
+process.env.ACS_DEBUG = "1";
+process.env.ACS_GUARDIAN_URL = "http://127.0.0.1:8798/acs";
+Bun.serve({
+  port: 8798,
+  async fetch(req) {
+    const rpc = await req.json();
+    if (rpc.method === "handshake/hello") {
+      return Response.json({ jsonrpc: "2.0", id: rpc.id, result: { negotiated_version: "0.1.0", methods_evaluated: ["steps/toolCallRequest"], selected_transport: "http", timeout_config: { default_ms: 5000 }, on_decision_failure: "proceed" } });
+    }
+    return Response.json({ jsonrpc: "2.0", id: rpc.id, result: { type: "final", acs_version: "0.1.0", request_id: rpc.id, decision: "modify", reasoning: "DEBUG_CHANNEL_PROBE_TEXT", modifications: { parameter_overrides: { command: "echo safe" } } } });
+  },
+});
+const { AcsPlugin } = await import("./hosts/opencode/acs-plugin.ts");
+const hooks = await AcsPlugin({});
+const output = { args: { command: "echo original" } };
+await hooks["tool.execute.before"]({ tool: "bash", sessionID: "debug-channel-probe", callID: "c1" }, output);
+```
+
+Captured verbatim, on stderr:
+
+```
+acs-plugin: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered to OpenCode -- reasoning: "DEBUG_CHANNEL_PROBE_TEXT"
+```
+
+The rewrite still lands (`output.args.command` became `"echo safe"`) — `ACS_DEBUG` changes nothing
+about governance, only about what this process tells whoever is running it. Off by default (unset,
+`""`, or `"0"` all count as off), so a deployment sees nothing extra on any of the captures above.
+
+## One export was a hazard, not a convenience — found, fixed, and one thing still open
+
+An earlier draft of this runbook ran `opencode run --print-logs` against the tree as it stood after
+Task 7 and got one `ERROR`-level line on every single run, before either capture above:
 
 ```
 level=ERROR message="failed to load plugin" path=file:///.../hosts/opencode/acs-plugin.ts error="acs-plugin: cannot apply rendered key \"client\" at this gate -- opencode.hookmap.yaml declares an output field this applier has no live object to land it in"
 ```
 
-This is real and reproduces on every run, but it is **not** a governance failure, and both
-captures above show that: `AcsPlugin`'s own hooks register and fire correctly regardless.
-Measured, with a one-line diagnostic added to a scratch copy of the file (never the committed
-one): OpenCode's plugin loader calls **every exported function** from a plugin module as a
-candidate plugin factory, not only the one shaped like `Plugin`. `acs-plugin.ts` exports two
-symbols — `AcsPlugin` (the real plugin) and `applyHostOutput` (exported only so
-`hosts/opencode/test/apply-host-output.test.ts` can import and test it directly). OpenCode calls
-`applyHostOutput` too, with its own plugin-registration context object (`{client, project,
-worktree, directory, experimental_workspace, serverUrl, $}`) standing in for `applyHostOutput`'s
-first parameter — and that object's first key, `"client"`, is not `"refuse"`, `"reason"`,
-`"args"`, or `"result"`, so pass 1 of `applyHostOutput`'s own validation throws immediately,
-naming that key. OpenCode's loader catches the throw, logs it at `ERROR`, and moves on to the
-module's other export, which registers cleanly — exactly what both captures above demonstrate.
-Recorded here so a reader re-running this file with `--print-logs` does not mistake a logged,
-caught, non-fatal artifact of OpenCode's own plugin-loading convention for a defect in the
-governance path.
+That draft called this "harmless" and explained it as a caught, non-fatal artifact of OpenCode's own
+plugin-loading convention — measured accurately (OpenCode's plugin loader calls **every exported
+function** from a plugin module as a candidate factory, not only the one shaped like `Plugin`, and
+`acs-plugin.ts` exported a second symbol, `applyHostOutput`, for no reason but its own unit test's
+convenience) — but review found the framing itself was the defect. **Two things make "harmless" the
+wrong word for what a reader should take from that line:**
+
+1. **A single non-function export beside a working factory disables governance entirely, silently.**
+   `Array.isArray`, a string, a number — anything OpenCode's loader cannot call — produces
+   `error="Plugin export is not a function"`, and **the working factory next to it is never called at
+   all**. `applyHostOutput` happened to be a function, so it merely threw instead; a hookmap change,
+   a refactor, or a copy-paste that replaced it with a constant would have turned "logged and
+   harmless" into "the whole session is ungoverned and nothing says so any louder than the case that
+   wasn't."
+2. **A genuinely broken plugin produces the byte-identical line shape.** Same `level=ERROR`, same
+   `message="failed to load plugin"`, same `path=`. Only the `error=` payload differs — and telling
+   "a second export got mis-invoked, harmless" from "the plugin never registered, and every tool call
+   this session makes from here on is completely ungoverned" means reading that payload character by
+   character. A runbook section whose purpose was "so a reader does not mistake this for a defect"
+   was training a reader to discount the one line that would ever announce total governance loss.
+
+**The fix is structural, closes point 1 completely, and is captured below closing it.**
+`applyHostOutput`, and every private helper it alone needs, moved out of `acs-plugin.ts` into its own
+module, `hosts/opencode/apply-host-output.ts` (imported back into `acs-plugin.ts`, tested directly by
+`hosts/opencode/test/apply-host-output.test.ts`) — so `acs-plugin.ts` exports exactly one symbol,
+`AcsPlugin`, and OpenCode's loader has no second export to find. `test/invariants.test.ts` pins that
+mechanically now, and the pin was mutation-tested: temporarily re-adding a second export to
+`acs-plugin.ts` and re-running the suite fails exactly that one new test, naming the spurious export;
+reverting passes it again.
+
+**Captured, against the fixed file.** Both real captures above were run with `--print-logs` added
+to the same command shown in each section, output redirected to a file, and that file grepped
+afterward — the deny run's file first, the redaction run's file second:
+
+```bash
+$ grep -c "failed to load plugin" run-deny.out
+0
+$ grep -c "failed to load plugin" run-redaction.out
+0
+```
+
+Zero, both times — the spurious line is gone from the exact two runs quoted above, not merely
+explained in the abstract.
+
+**Point 2 is real, is not this task's to fix, and this section does not paper over it.** A genuinely
+broken plugin still produces the same line shape, because the mechanism is OpenCode's, not this
+project's: it catches whatever a plugin module's factory throws during registration, logs it, and
+continues the session **without that plugin** — never refusing to start, the way Claude Code's shim
+refuses at exit 2 for the equivalent "broken deployment, not a policy question" case. Reproduced
+directly: a scratch copy of `opencode.hookmap.yaml` with every `refuse.denied: { value: true }` line
+removed (the exact fault `assertRefusalRendersUnconditionally` exists to catch — the tracked file is
+never touched), pointed at with `ACS_HOOKMAP_PATH`, run against the same destructive-command probe.
+The whole diff, four lines removed, nothing else:
+
+```diff
+49d48
+<       # `refuse.denied: { value: true }` (§V5 review, fix round 1, Critical 1):
+68d66
+<           refuse.denied: { value: true }
+75d72
+<           refuse.denied: { value: true }
+79d75
+<           refuse.denied: { value: true }
+```
+
+```
+timestamp=2026-08-13T04:43:20.332Z level=ERROR run=cb6f0a9f message="failed to load plugin" path=file:///Users/arielfogel/Pillar/ACS_reference_implementation/hosts/opencode/acs-plugin.ts error="acs-plugin: /…/broken-hookmap.yaml's \"hooks.tool.execute.before.decisions.deny\" declares no unconditional \"value:\" output field -- every field it names is \"from:\", which renders NOTHING when the arriving decision does not carry that source field, or carries it as the wrong type (render-decision.ts). This host's applier would then see an empty render, apply nothing, and the tool would proceed -- a deny indistinguishable from a clean allow. Add a literal sibling, e.g. \"refuse.denied: { value: true }\", so this decision always renders something."
+```
+
+Same `level=ERROR`, same `message`, same `path` — and this time the `error=` payload names a real,
+load-time-decidable hookmap fault rather than a stray export. What happened next, from the same run's
+own `--format json` stream:
+
+```json
+{"type":"tool_use","timestamp":1786596204884,"sessionID":"ses_006917011ffeyzqsxqf1GqsZ6J","part":{"type":"tool","tool":"bash","callID":"call_stub_1","state":{"status":"completed","input":{"command":"echo BROKEN_HOOKMAP_PROBE_MARKER","description":"demo"},"output":"BROKEN_HOOKMAP_PROBE_MARKER\n","metadata":{"output":"BROKEN_HOOKMAP_PROBE_MARKER\n","exit":0,"truncated":false},"title":"echo BROKEN_HOOKMAP_PROBE_MARKER","time":{"start":1786596204866,"end":1786596204871}},"id":"prt_ff96ea0ef0011gbkunnB59ctT3","sessionID":"ses_006917011ffeyzqsxqf1GqsZ6J","messageID":"msg_ff96e91e5001kz1GfRZ4E6LQzb"}}
+```
+
+`status: "completed"` — the probe marker, a stand-in for a real destructive command, ran to
+completion with no interception at all. `.acs/v5-runbook.jsonl` gained **zero new lines** for this
+session (still 10, exactly the two pairs of pairs from the two real captures above): no
+`handshake/hello`, no `steps/toolCallRequest`, nothing — because `AcsPlugin`'s factory threw before
+any hook was ever registered, so `tool.execute.before` never fired, no envelope was ever built, and
+the Guardian was never asked. Every tool call for the rest of that session would have run exactly
+this way. **This is real, measured, and not repaired here** — a fix would mean either OpenCode
+refusing to start a session when a plugin fails to load, or this project shipping a wrapper OpenCode
+itself would have to call instead of the plugin API it defines, and neither is a change this slice's
+files can make. It belongs in `docs/shaping/acs-reference-impl-slices.md`'s docs of record, not in
+this runbook, and not edited by this task.
 
 ## Verify
 
@@ -455,12 +604,19 @@ $ bun test
 ```
 bun test v1.3.14 (0d9b296a)
 
- 605 pass
+ 611 pass
  1 skip
  0 fail
- 1726 expect() calls
-Ran 606 tests across 39 files. [7.07s]
+ 1736 expect() calls
+Ran 612 tests across 39 files. [9.27s]
 ```
+
+Six more than the baseline this task started from (605 pass, 1 skip) — all six are
+`test/invariants.test.ts`'s new eighth gate and its own self-tests, added by this task's fix round
+(see "One export was a hazard, not a convenience" above). The gate itself was mutation-tested against
+the real file: temporarily re-adding a second export to `hosts/opencode/acs-plugin.ts` and re-running
+`bun test test/invariants.test.ts` failed exactly that one new test, naming the spurious export
+(`SPURIOUS_EXPORT`); reverting passed all 21 again.
 
 ```bash
 $ bun run typecheck
@@ -535,6 +691,32 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
 - **No OpenCode-specific Inspector view was built, or needed.** `bun run inspector` is already
   host-agnostic and tails whatever `.acs/envelopes.jsonl` any host's Guardian writes to, which is
   exactly what produced the envelope pairs above.
+- **A result payload missing `metadata.exit` posture-proceeds, delivering the unredacted output —
+  correct by this branch's own rule, and not reachable through `bash`, the only tool this gate
+  governs.** `exitStatusOf` throws when `$.result.metadata.exit` resolves to nothing; that throw
+  lands at `governStep`'s stage `"request"` and is answered by the negotiated posture, which under
+  `proceed` delivers the tool's own output — secret included, in both the leaf and the mirror —
+  audited as `host_configuration`. Measured, both paths a `bash` call can take: a succeeding one
+  carries `exit: 0` (this runbook's own redaction capture, above), and a failing one carries `exit:
+  1` with the error text in `metadata.output`. So the governed tool always supplies the field, and
+  this residual is unreachable through the shipped config rather than unreachable outright — the
+  same class as V4's identity over-refusal. An invalid tool call is not a counter-example: it
+  reports itself as tool `invalid`, which `tools: [bash]` skips before any envelope naming
+  `metadata.exit` is ever built.
+- **The posture-answered seam this slice put three checks on (`mirrors`, the `exit_status`
+  both-forms refusal, request-gate scopability) already carried six more, pre-existing, and none of
+  them is this slice's to repair.** Every one is decidable from the hookmap alone, with no payload
+  needed — a missing `exit_status.literal`/`.from`, an empty or missing `outputs.from`, an empty or
+  missing `outputs.within`, a `from` not inside `within`, a non-string `arguments`, and an entry
+  declaring neither `arguments` nor `outputs` — and all six are answered today by
+  `applyFailurePosture` rather than refused at `loadHookmap`, so under `proceed` a hookmap carrying
+  any of them runs the step ungoverned rather than failing to load. The rule they violate is one
+  sentence, stated in `govern-step.ts` for a different pair already: a fault decidable from the
+  hookmap alone belongs at load time; only a fault needing the invocation's payload belongs where a
+  posture can answer it. Neither shipped hookmap reaches any of the six (both are pinned by tests
+  that load them), and the repair is one sweep of `buildPayload`, not six edits — so it is recorded
+  rather than fixed here, the same reasoning V4 gave for parking its own landing check rather than
+  doing it twice by gate.
 
 ## What was not verified
 
@@ -546,9 +728,20 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   shapes, and mutation semantics was measured against **1.18.15**, matching
   `hosts/opencode/package.json`'s own pin exactly — `opencode --version` on the machine that
   produced these captures printed the identical string.
-- **The "failed to load plugin" mechanism** was diagnosed with a one-line diagnostic added to a
-  **scratch copy** of `acs-plugin.ts`, never the committed file — see the section above for exactly
-  what was added and why the conclusion still describes the shipped file's real behaviour.
+- **`attachments` is never exercised.** It is part of the result gate's live object by this file's
+  own header (`{title, output, metadata, attachments}`, measured present at runtime on 1.18.15,
+  absent from the published type), and `mergeInPlace`'s own contract (an array replaces wholesale
+  rather than merging element-wise) covers it by construction — but no capture in this runbook drove
+  a `bash` call that produced one, so nothing here shows it surviving a merge, only that the code
+  path that would touch it is the same one proven for `title`/`metadata.exit`/`metadata.truncated`.
+- **Why OpenCode's plugin loader calls every export, rather than only one shaped like `Plugin`, was
+  first diagnosed with a one-line print added to a scratch copy of `acs-plugin.ts` (never the
+  committed file), before the fix existed.** That diagnostic explained the *mechanism*; every claim
+  built on it since is a capture against the real, unmodified tree: the grep counts of `0` against
+  the two real runs above, the mutation test against the real `test/invariants.test.ts` gate, and the
+  broken-hookmap reproduction against the real, unmodified `hosts/opencode/acs-plugin.ts` with only
+  `ACS_HOOKMAP_PATH` repointed at a scratch YAML file — the same env-var override this project's own
+  tests use throughout, never a second copy of the plugin.
 - **Timestamps, request ids, and session ids above are real** — genuine UUIDs and wall-clock times
   from the actual runs — and will not match a re-run's. What should match on a re-run is every
   `decision`, `reason_codes`, `policy_references`, `modifications`, and tool-output value.

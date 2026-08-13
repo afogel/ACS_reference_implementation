@@ -1,14 +1,18 @@
 /**
  * applyHostOutput's own tests, in isolation from OpenCode -- plain objects in,
- * mutation or a throw out. See acs-plugin.ts's own header for why this
- * function exists at all: this host's hooks return `void`, so applying the
- * rendered `HostOutput` (rather than writing it, as host #1 does) is the one
- * piece of host semantics this slice owns.
+ * mutation or a throw out. See apply-host-output.ts's own header for why this
+ * function exists at all, and why it lives in its own module rather than in
+ * acs-plugin.ts beside the plugin factory (§V5 review, Task 8, fix round 1,
+ * Important 1): this host's hooks return `void`, so applying the rendered
+ * `HostOutput` (rather than writing it, as host #1 does) is the one piece of
+ * host semantics this slice owns -- and it was the ONLY reason acs-plugin.ts
+ * exported a second symbol beside `AcsPlugin`, which OpenCode's plugin loader
+ * was measured to mis-invoke as a candidate factory.
  */
 import { describe, expect, it, spyOn } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { type AcsDecision, loadHookmap, renderDecision, validateDecision } from "host-adapter";
-import { applyHostOutput } from "../acs-plugin.ts";
+import { applyHostOutput } from "../apply-host-output.ts";
 
 const HOOKMAP = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
