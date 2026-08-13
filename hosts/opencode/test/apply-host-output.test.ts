@@ -51,6 +51,38 @@ describe("applyHostOutput", () => {
     expect(live.result.attachments).toEqual([]);
   });
 
+  it("merges metadata IN PLACE -- the object reference survives the redaction (§V5 review, fix round 1, Minor 1)", () => {
+    // A shallow Object.assign would REPLACE live.result.metadata with a new
+    // object rather than mutate the one already there. The only measurement
+    // on record (opencode.hookmap.yaml's own header) covers an in-place
+    // mutation of metadata.output; nothing proves OpenCode re-reads metadata
+    // off `result` after the hook returns rather than holding a reference it
+    // already took, so the merge must not depend on the answer either way.
+    const live = { result: { output: "SECRET", metadata: { output: "SECRET", exit: 0 } } };
+    const metadataRef = live.result.metadata;
+    applyHostOutput({ result: { output: "[REDACTED]", metadata: { output: "[REDACTED]", exit: 0 } } }, live);
+    expect(live.result.metadata).toBe(metadataRef);
+    expect(live.result.metadata.output).toBe("[REDACTED]");
+  });
+
+  it("refuses a rendered 'result' that is not an object, rather than spreading it onto index keys (§V5 review, fix round 1, Important 1)", () => {
+    // The exact hazard: a hookmap one character from the shipped file
+    // (sourcing "result" from a string-valued decision field instead of
+    // applied_output) would otherwise render a STRING, and
+    // Object.assign({}, "gone") spreads characters onto "0", "1", ... while
+    // never actually landing a rewrite. Refused instead of silently corrupting
+    // the live object.
+    const live = { result: { output: "SECRET", metadata: { output: "SECRET" } } };
+    expect(() => applyHostOutput({ result: "gone" } as never, live)).toThrow(/cannot apply/);
+    expect(live.result).toEqual({ output: "SECRET", metadata: { output: "SECRET" } });
+  });
+
+  it("refuses a rendered 'args' that is not an object, applying nothing (§V5 review, fix round 1, Important 1)", () => {
+    const live = { args: { command: "cat .env" } };
+    expect(() => applyHostOutput({ args: 42 } as never, live)).toThrow(/cannot apply/);
+    expect(live.args).toEqual({ command: "cat .env" });
+  });
+
   it("throws the declared refusal, and assigns nothing first", () => {
     const live = { args: { command: "cat .env" } };
     expect(() => applyHostOutput({ refuse: { reason: "denied by policy" }, args: { command: "x" } }, live)).toThrow(
@@ -94,19 +126,51 @@ describe("applyHostOutput", () => {
     expect(live.args.command).toBe("cat .env");
   });
 
-  it("reason.text is declared-inert on this host: surfaced on stderr, not applied and not silently dropped", () => {
+  it("reason.text is declared-inert on this host: not applied, and not surfaced on stderr on the common path (§V5 review, fix round 1, Minor 4)", () => {
+    // A V3 observe-only allow synthesizes `reasoning` for every governed
+    // step, so an unconditional stderr line here would fire on every clean
+    // tool call. Gated behind ACS_DEBUG, so the common path stays silent --
+    // see acs-plugin.ts's own doc comment for why that is not the same as
+    // silently dropping the text (the ACS_DEBUG=1 case below still surfaces it).
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const previousDebug = process.env.ACS_DEBUG;
+    delete process.env.ACS_DEBUG;
     try {
       const live = { args: { command: "cat .env" } };
       applyHostOutput({ args: { command: "echo safe" }, reason: { text: "matched rule R1" } }, live);
       expect(live.args.command).toBe("echo safe");
       // Not invented as a channel: no field of `live.args` carries it.
       expect(live.args).not.toHaveProperty("reason");
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      if (previousDebug === undefined) {
+        delete process.env.ACS_DEBUG;
+      } else {
+        process.env.ACS_DEBUG = previousDebug;
+      }
+    }
+  });
+
+  it("reason.text is surfaced on stderr, honestly labelled as undelivered, when ACS_DEBUG is set (§V5 review, fix round 1, Minor 4)", () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const previousDebug = process.env.ACS_DEBUG;
+    process.env.ACS_DEBUG = "1";
+    try {
+      const live = { args: { command: "cat .env" } };
+      applyHostOutput({ args: { command: "echo safe" }, reason: { text: "matched rule R1" } }, live);
+      expect(live.args.command).toBe("echo safe");
+      expect(live.args).not.toHaveProperty("reason");
       // Not silently dropped: surfaced, and the actual text is in the message.
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(String(errorSpy.mock.calls[0]?.[0])).toContain("matched rule R1");
     } finally {
       errorSpy.mockRestore();
+      if (previousDebug === undefined) {
+        delete process.env.ACS_DEBUG;
+      } else {
+        process.env.ACS_DEBUG = previousDebug;
+      }
     }
   });
 

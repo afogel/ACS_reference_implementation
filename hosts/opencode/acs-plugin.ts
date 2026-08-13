@@ -21,30 +21,54 @@
  *
  * SKELETON ONLY (this task). This file ships the plugin factory's setup --
  * loading the hookmap, the Guardian client, the audit sink, the negotiated
- * session config store -- and `applyHostOutput`, the one function novel to
- * this host. The two gates themselves, `"tool.execute.before"` (the request
- * gate) and `"tool.execute.after"` (the result gate), are Tasks 5 and 6: they
- * assemble the payload shape `opencode.hookmap.yaml`'s `$.` paths resolve
- * against (`{tool, session_id, callID, args, result}` -- OpenCode hands the
- * plugin two arguments per hook, not one blob, so THAT assembly is a shim
- * job, the same way reading stdin is host #1's), call `resolveSessionConfig`
- * then `governStep`, and apply what comes back through `applyHostOutput`
- * below. Neither gate is wired here; `AcsPlugin` returns an object those
- * tasks fill in.
+ * session config store -- `applyHostOutput`, the one function novel to this
+ * host, and one load-time correctness gate this host's own applier needs
+ * (`assertRefusalRendersUnconditionally`, below -- see its own doc comment).
+ * The two gates themselves, `"tool.execute.before"` (the request gate) and
+ * `"tool.execute.after"` (the result gate), are Tasks 5 and 6: they assemble
+ * the payload shape `opencode.hookmap.yaml`'s `$.` paths resolve against
+ * (`{tool, session_id, callID, args, result}` -- OpenCode hands the plugin
+ * two arguments per hook, not one blob, so THAT assembly is a shim job, the
+ * same way reading stdin is host #1's), call `resolveSessionConfig` then
+ * `governStep`, and apply what comes back through `applyHostOutput` below.
+ * Neither gate is wired here; `AcsPlugin` returns an object those tasks fill
+ * in.
  *
- * TWO THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
- * because neither is knowable until a hook actually fires:
+ * THREE THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
+ * because none of them is knowable until a hook actually fires:
  *
- *   - Validate `sessionID` -- present, a non-empty string -- and raise a
- *     BLOCKING stop BEFORE calling `governStep`, exactly as
- *     hosts/claude-code/acs-hook.ts's `main()` step 1 does for
- *     `payload.session_id`. `buildEnvelope` already throws on a missing
- *     `session_id`, but that throw lands inside `governStep`'s stage-
- *     "request" `catch` and is answered by the deployment's NEGOTIATED
- *     posture (`resolveByPosture`) -- and a negotiated `proceed` there is an
- *     ungoverned step. A missing session id is a broken deployment, not a
- *     policy question, so it has to be refused before `governStep` is ever
- *     called, not left to arrive as a payload fault it then resolves.
+ *   - Validate `sessionID` -- present, a non-empty string -- and refuse
+ *     BEFORE calling `governStep`, exactly as hosts/claude-code/acs-hook.ts's
+ *     `main()` step 1 does for `payload.session_id`. `buildEnvelope` already
+ *     throws on a missing `session_id`, but that throw lands inside
+ *     `governStep`'s stage-"request" `catch` and is answered by the
+ *     deployment's NEGOTIATED posture (`resolveByPosture`) -- and a
+ *     negotiated `proceed` there is an ungoverned step. A missing session id
+ *     is a broken deployment, not a policy question, so it has to be refused
+ *     before `governStep` is ever called, not left to arrive as a payload
+ *     fault it then resolves.
+ *
+ *     NAME THE MECHANISM (§V5 review, fix round 1, Minor 3): this host has no
+ *     exit code to set. The only "blocking stop" it has is a THROW out of the
+ *     hook function itself -- the same mechanism `applyHostOutput`'s own
+ *     `refuse` path uses below -- because OpenCode's hooks return `void` and
+ *     have no other channel to report a failure through.
+ *
+ *     AND AT THE RESULT GATE SPECIFICALLY, that throw -- this one, or
+ *     `applyHostOutput`'s -- does not do what a reader of host #1's own
+ *     "exit 2 blocks the tool call" might expect. opencode.hookmap.yaml's own
+ *     header states the measurement: a throw at `tool.execute.after` stops
+ *     the MODEL from ever seeing the tool's output, but OpenCode discards the
+ *     plugin's mutations on that path and rebuilds `metadata` from its own
+ *     pre-hook copy, so whatever the tool actually produced survives in
+ *     OpenCode's own session record regardless of how early the throw fires.
+ *     That is exactly why the result gate's own `deny`/`modify` withhold by
+ *     REPLACING `result` (`applyHostOutput`'s merge, below) rather than by
+ *     throwing. A sessionID check that refuses at the result gate is still
+ *     the right call -- an ungoverned step is worse than a stop that does not
+ *     scrub the disk -- but Task 6 must not read "it threw, so the secret is
+ *     contained" into a result-gate throw the way that reading would be
+ *     correct at the request gate.
  *   - Assemble `session_id: input.sessionID` onto the payload RAW, not
  *     pre-converted -- `buildEnvelope` reads `payload.session_id` as a
  *     hardcoded top-level field and derives the ACS uuid itself. The uuid
@@ -54,6 +78,20 @@
  *     for the audit entry (S14). Mixing the two is the exact bug class this
  *     note exists to prevent -- see acs-hook.ts's own step 4 and step 5 for
  *     both call sites side by side.
+ *   - TRUST, RATHER THAN RE-CHECK, THAT deny/ask/defer AT THE REQUEST GATE
+ *     CANNOT RENDER EMPTY. `assertRefusalRendersUnconditionally` (below),
+ *     called from `AcsPlugin` beside `loadHookmap`, refuses this hookmap at
+ *     LOAD TIME unless every one of those three decisions declares an
+ *     unconditional (`value:`) output field -- `refuse.denied` in the
+ *     shipped hookmap. Neither gate task needs to special-case an arriving
+ *     `deny`/`ask`/`defer` that carries no (or a wrongly typed) `reasoning`:
+ *     by the time either hook fires, this file has already refused to
+ *     register a hookmap that could render one as `{}`, indistinguishable
+ *     from a clean allow (§V5 review, fix round 1, Critical 1). The result
+ *     gate's own `deny`/`modify` need no equivalent check here: they are
+ *     already guaranteed a non-empty `applied_output` by construction
+ *     (`withResultOutput`, result-output.ts, host-agnostic) before this file
+ *     is ever reached.
  *
  * S15 -- THE STORE IS IN MEMORY, and this is the half V3 built for exactly
  * this host. The Claude Code shim is a fresh subprocess per hook, so its
@@ -81,18 +119,17 @@ import {
   createSessionConfigStore,
   loadHookmap,
   type HostOutput,
+  type Hookmap,
 } from "host-adapter";
-
-// Override with ACS_HOOKMAP_PATH to point this shim at a different hookmap --
-// same convention as hosts/claude-code/acs-hook.ts, and for the same reason
-// (a test proving the load-time failure path without touching the real file
-// every other test and the real deployment read off this default).
-const HOOKMAP_PATH = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./opencode.hookmap.yaml", import.meta.url));
 
 // Matches packages/guardian/src/main.ts's own default port, and
 // hosts/claude-code/acs-hook.ts's identical constant -- the runbook and both
 // shims agree on 8787 without any of the three hardcoding another's value.
 const DEFAULT_GUARDIAN_URL = "http://localhost:8787/acs";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /**
  * What this applier is allowed to touch: the live objects OpenCode handed
@@ -102,6 +139,41 @@ const DEFAULT_GUARDIAN_URL = "http://localhost:8787/acs";
  * and a caller with neither would have nothing for this function to do.
  */
 type LiveHookObjects = { args?: Record<string, unknown>; result?: Record<string, unknown> };
+
+/**
+ * Merges `source` onto `target`, IN PLACE and recursively through every pair
+ * of matching plain-object fields (§V5 review, fix round 1, Minor 1).
+ *
+ * A shallow `Object.assign` is functionally correct for the shipped hookmap
+ * -- every field `applied_output`/`applied_input` carries is present in the
+ * merge source -- but it REPLACES a nested object like `result.metadata`
+ * with a brand-new reference rather than mutating the one already there.
+ * This applier's entire contract with OpenCode is "mutate what you were
+ * handed," and nothing here can prove OpenCode re-reads `metadata` off
+ * `result` after the hook returns rather than holding a reference it took
+ * earlier: the one measurement on record (opencode.hookmap.yaml's own
+ * header) covers mutating `metadata.output` IN PLACE, and says nothing about
+ * a wholesale replacement of `metadata` itself. A deep, in-place merge is
+ * immune to the question rather than resting on an unmeasured assumption
+ * about which OpenCode actually does.
+ *
+ * A field present on `source` but absent on `target` is added. A field on
+ * `target` whose value is not itself a plain object matching a plain object
+ * on `source` is overwritten wholesale -- which is what every actual
+ * non-container sibling here needs (a redacted `output` string; `exit`,
+ * `truncated`), and covers arrays too: `isPlainObject` excludes them, so
+ * `attachments` replaces rather than merges element-wise.
+ */
+function mergeInPlace(target: Record<string, unknown>, source: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(source)) {
+    const existing = target[key];
+    if (isPlainObject(existing) && isPlainObject(value)) {
+      mergeInPlace(existing, value);
+    } else {
+      target[key] = value;
+    }
+  }
+}
 
 /**
  * Applies what `governStep` rendered onto the objects OpenCode handed this
@@ -126,6 +198,19 @@ type LiveHookObjects = { args?: Record<string, unknown>; result?: Record<string,
  * buildEnvelope never skip a hookmap fault they could quietly ignore: a
  * silently-dropped field is a governed decision that only partially arrived.
  *
+ * VALIDATION IS ALSO ABOUT SHAPE, NOT ONLY ABOUT WHICH KEYS ARE PRESENT
+ * (§V5 review, fix round 1, Important 1). `output.args`/`output.result` are
+ * checked to be plain objects in the SAME pass, before anything is merged.
+ * Without that, `Object.assign`/`mergeInPlace` do not throw on a
+ * non-object right-hand side -- a hookmap one character from the shipped
+ * file (`args: { from: reasoning, type: string }` in place of
+ * `{ from: applied_input }`) would render `args` as a plain STRING (the
+ * `reasoning` text), and merging a string into an object spreads its
+ * characters onto index keys (`Object.assign({}, "go")` -> `{0:"g",1:"o"}`)
+ * while the actual rewrite never lands -- the exact "reported but not
+ * applied" defect this project exists to catch, reached silently instead of
+ * refused.
+ *
  * THE FOUR KEYS, and why `result` is the whole container rather than a leaf
  * (§V5 review, fix round 1, Critical 1 -- opencode.hookmap.yaml's own header
  * states the same correction): `applied_output` is the WHOLE patched clone of
@@ -149,6 +234,10 @@ type LiveHookObjects = { args?: Record<string, unknown>; result?: Record<string,
  *     output object are both measured ACCEPTED AND IGNORED, and the tool
  *     runs regardless). Throwing is what stops it, so this key is never
  *     applied to anything -- it is read and thrown, before any assignment.
+ *     `refuse.reason` is a `from:` field and therefore conditional; this
+ *     host's load-time gate (`assertRefusalRendersUnconditionally`, below)
+ *     is what guarantees `refuse` itself is never entirely absent for a real
+ *     `deny`/`ask`/`defer` -- see its own doc comment.
  *   - `reason` -- DECLARED-INERT ON THIS HOST, and opencode.hookmap.yaml's
  *     own header says so: `reason.text` is declared on every disposition
  *     only because an empty `output` block fails `assertRenderableDecisions`
@@ -160,34 +249,53 @@ type LiveHookObjects = { args?: Record<string, unknown>; result?: Record<string,
  *     there is no field on either that means "why", and inventing one would
  *     be a channel nothing on this host actually reads) and without being
  *     silently dropped either: it is written to stderr, honestly labelled as
- *     undelivered, so a reader of this host's own logs is not left to assume
- *     the reasoning reached the model when nothing on this host carries it
- *     there. If this host ever grows a real sink for it, this is where that
- *     sink gets named.
+ *     undelivered -- but only when `ACS_DEBUG` is set (§V5 review, fix round
+ *     1, Minor 4). A V3 observe-only `allow` synthesizes `reasoning` for
+ *     every governed step, so an unconditional stderr line here would fire on
+ *     the common path of ordinary operation, not only when something is
+ *     actually being lost quietly; gating it behind an explicit opt-in keeps
+ *     the log honest without making it noise a real deployment has to filter
+ *     on every clean tool call. If this host ever grows a real sink for it,
+ *     this is where that sink gets named.
  *   - `args` -- merged onto `live.args`, only at a gate that was handed one.
  *   - `result` -- merged onto `live.result`, only at a gate that was handed
  *     one. See above for why this is the whole container, not a leaf.
  *
  * A key this render declares that is none of the four above -- or one of
- * `args`/`result` at a gate that was not handed the live half it targets --
+ * `args`/`result` at a gate that was not handed the live half it targets, or
+ * one of `args`/`result` whose rendered value is not itself a plain object --
  * throws rather than being skipped, naming the key, so a hookmap fault of
  * this shape (or a call from the wrong gate) fails loudly instead of quietly
- * discarding whatever it could not place.
+ * discarding or corrupting whatever it could not place.
  */
 export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void {
-  // Pass 1: validate every key. No assignment happens in this loop -- only a
-  // throw (refusing everything) or falling through to pass 2 (applying
-  // everything). That ordering is the whole "all-or-nothing" guarantee: a key
-  // that cannot be honoured is discovered before any live object has been
+  // Pass 1: validate every key AND every value shape this applier is about
+  // to touch. No assignment happens in this loop -- only a throw (refusing
+  // everything) or falling through to pass 2 (applying everything). That
+  // ordering is the whole "all-or-nothing" guarantee: a key or a shape that
+  // cannot be honoured is discovered before any live object has been
   // touched, regardless of where in `output` it sits.
   for (const key of Object.keys(output)) {
     if (key === "refuse" || key === "reason") {
       continue;
     }
     if (key === "args" && live.args !== undefined) {
+      if (!isPlainObject(output.args)) {
+        throw new Error(
+          `acs-plugin: cannot apply rendered "args" -- expected an object, got ${JSON.stringify(output.args)}. ` +
+            `A hookmap field sourcing "args" from a decision field that is not itself an object (e.g. "reasoning" ` +
+            `where "applied_input" belongs) would otherwise merge its characters onto index keys instead of ` +
+            `throwing, and the actual rewrite would never land.`,
+        );
+      }
       continue;
     }
     if (key === "result" && live.result !== undefined) {
+      if (!isPlainObject(output.result)) {
+        throw new Error(
+          `acs-plugin: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
+        );
+      }
       continue;
     }
     throw new Error(
@@ -207,10 +315,12 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   }
 
   // Pass 2b: reason.text -- declared-inert on this host (see this function's
-  // own doc comment and opencode.hookmap.yaml's header). Surfaced on stderr,
-  // not applied to either live object and not silently ignored.
+  // own doc comment and opencode.hookmap.yaml's header). Surfaced on stderr
+  // only under ACS_DEBUG (Minor 4 -- see the doc comment above for why an
+  // unconditional line here would be noise, not a diagnostic); never applied
+  // to either live object, and never silently ignored when the flag is set.
   const reason = output.reason as { text?: unknown } | undefined;
-  if (reason !== undefined) {
+  if (reason !== undefined && process.env.ACS_DEBUG) {
     console.error(
       `acs-plugin: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
         `to OpenCode -- reasoning: ${JSON.stringify(reason.text)}`,
@@ -218,13 +328,118 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   }
 
   // Pass 3: the assignment. Nothing above threw, so every key `output`
-  // carries is one this applier is about to land -- args and result together,
-  // leaf and mirror together, never one without the other.
+  // carries is one this applier is about to land, and `args`/`result` are
+  // both already known to be plain objects -- args and result together,
+  // leaf and mirror together, never one without the other, and merged
+  // in place rather than replacing a nested reference (mergeInPlace, above).
   if (output.args !== undefined && live.args !== undefined) {
-    Object.assign(live.args, output.args as Record<string, unknown>);
+    mergeInPlace(live.args, output.args as Record<string, unknown>);
   }
   if (output.result !== undefined && live.result !== undefined) {
-    Object.assign(live.result, output.result as Record<string, unknown>);
+    mergeInPlace(live.result, output.result as Record<string, unknown>);
+  }
+}
+
+/**
+ * Decisions whose ENTIRE signal to this host is a refusal: `deny`, `ask`
+ * (this hookmap's own least-wrong mapping for a hook with no native "ask"),
+ * and `defer` (the same, for "defer"). None of these three declares any
+ * OTHER output field at the request gate -- `refuse.reason` is the whole
+ * entry -- and a `from:` field renders NOTHING when its source is absent or
+ * the wrong type (render-decision.ts). So an entry built only from `from:`
+ * fields can, on a Guardian's minimal or malformed decision message, render
+ * `{}`: this applier sees no keys at all, applies nothing, throws nothing,
+ * and the tool proceeds -- indistinguishable from a clean allow.
+ *
+ * `allow` and `modify` are deliberately NOT in this set:
+ *   - `allow` rendering `{}` IS its own meaning ("nothing to change"); there
+ *     is no ambiguity a marker would resolve.
+ *   - `modify` is guaranteed, by construction and host-agnostically
+ *     (`resolveModify`, decision-modify.ts), to reach this render EITHER
+ *     carrying a non-empty `applied_input` OR already converted into a
+ *     `deny` whose `reasoning` is a guaranteed non-empty string (`deny()`,
+ *     decision-message.ts) -- so it can never actually reach this host's
+ *     applier as an empty render either.
+ *
+ * §V5 review, fix round 1, Critical 1. Measured against the shipped hookmap
+ * before this set and `assertRefusalRendersUnconditionally` existed:
+ * `{"decision":"deny"}` and `{"decision":"deny","reasoning":{"code":"R7"}}`
+ * (a `reasoning` of the wrong type) both rendered `{}` -- applied nothing,
+ * threw nothing, and the tool ran. Same for `{"decision":"ask"}`.
+ */
+const MUST_RENDER_UNCONDITIONALLY = new Set(["deny", "ask", "defer"]);
+
+/**
+ * Refuses to register a hookmap in which a request-gate `deny`/`ask`/`defer`
+ * entry declares no unconditional (`value:`) output field -- called from
+ * `AcsPlugin`, beside `loadHookmap`, so this is a LOAD-TIME stop rather than
+ * a fault this shim could only discover from a live decision.
+ *
+ * §V5 review, fix round 1, Critical 1. This is decidable from the hookmap
+ * file ALONE, with no invocation payload needed -- the same class of fault
+ * this slice has now moved to a load-time check three times already
+ * (`assertMirrorsWellFormed`, `assertToolsWellFormed`,
+ * `assertExitStatusNotBothForms`/`assertRequestGateUnscopable`, all in
+ * build-envelope.ts) rather than leaving it to surface downstream, where a
+ * throw is caught by `governStep` and answered by the deployment's
+ * NEGOTIATED delivery posture instead of refused outright -- and `proceed`
+ * there is an ungoverned step.
+ *
+ * This check cannot live in `loadHookmap` itself, host-agnostically: it is
+ * host #2's own rule about what THIS host's applier needs -- which decisions
+ * exist and which of them can render nothing -- not a claim
+ * packages/host-adapter/src may make about any host's field names (R3.2).
+ * The identical reasoning is why `assertHostAcceptsEveryDecision` lives in
+ * hosts/claude-code/acs-hook.ts and not in the adapter; this is host #2's
+ * general form of that same rule.
+ *
+ * Scoped to the REQUEST gate only (an entry declaring `arguments`), mirroring
+ * `acs-hook.ts`'s own asymmetry between its two gates: the result gate's own
+ * `deny`/`modify` are protected a different way, by construction
+ * (`withResultOutput`, result-output.ts, host-agnostic), not by a hookmap
+ * shape check -- see MUST_RENDER_UNCONDITIONALLY's own doc comment.
+ *
+ * Checks by STRUCTURE, not by trusting the shipped field name: any
+ * `deny`/`ask`/`defer` entry with at least one `{value: ...}` field passes,
+ * whether that field is `refuse.denied` (this hookmap's own marker) or
+ * something else entirely -- an entry naming ONLY `from:` fields, whatever
+ * their paths, is what gets refused. A decision this hookmap does not
+ * declare at all (`ask`/`defer` are optional; `loadHookmap`'s own
+ * `assertRenderableDecisions` requires only `allow` and `deny`) has nothing
+ * here to check.
+ */
+function assertRefusalRendersUnconditionally(hookmap: Hookmap, path: string): void {
+  for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
+    const isRequestGate = isPlainObject(entry) && typeof (entry as { arguments?: unknown }).arguments === "string";
+    if (!isRequestGate) {
+      continue;
+    }
+    const decisions = (isPlainObject(entry) ? (entry as { decisions?: unknown }).decisions : undefined) ?? {};
+    for (const decisionName of MUST_RENDER_UNCONDITIONALLY) {
+      const rule = isPlainObject(decisions) ? (decisions as Record<string, unknown>)[decisionName] : undefined;
+      const output = isPlainObject(rule) ? (rule as { output?: unknown }).output : undefined;
+      if (!isPlainObject(output)) {
+        // loadHookmap's own assertRenderableDecisions has already refused a
+        // present-but-malformed entry (null, {}, a non-object field) or
+        // required allow/deny to exist at all -- not this check's job to
+        // re-report that, or to require a decision this hookmap never
+        // declares.
+        continue;
+      }
+      const hasUnconditionalField = Object.values(output).some(
+        (field) => isPlainObject(field) && Object.prototype.hasOwnProperty.call(field, "value"),
+      );
+      if (!hasUnconditionalField) {
+        throw new Error(
+          `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
+            `"value:" output field -- every field it names is "from:", which renders NOTHING when the arriving ` +
+            `decision does not carry that source field, or carries it as the wrong type (render-decision.ts). ` +
+            `This host's applier would then see an empty render, apply nothing, and the tool would proceed -- a ` +
+            `${decisionName} indistinguishable from a clean allow. Add a literal sibling, e.g. ` +
+            `"refuse.denied: { value: true }", so this decision always renders something.`,
+        );
+      }
+    }
   }
 }
 
@@ -233,15 +448,27 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
  * long-lived collaborators once, and returns the hooks OpenCode calls for
  * the rest of the session's lifetime.
  *
- * A throw here (an unreadable or invalid hookmap -- `loadHookmap` shape-checks
- * everything statically decidable from the hookmap file alone) fails plugin
- * registration itself, before any hook can fire -- the same "broken
- * deployment, not a policy question" stop `BlockingConfigurationError`/exit 2
- * is for on host #1, reached at the equivalent point in this host's own
- * lifecycle: load time, never per-invocation.
+ * A throw here -- an unreadable or invalid hookmap (`loadHookmap` shape-checks
+ * everything statically decidable from the hookmap file alone, and
+ * `assertRefusalRendersUnconditionally` adds this host's own such check) --
+ * fails plugin registration itself, before any hook can fire: the same
+ * "broken deployment, not a policy question" stop `BlockingConfigurationError`
+ * /exit 2 is for on host #1, reached at the equivalent point in this host's
+ * own lifecycle -- load time, never per-invocation.
  */
 export const AcsPlugin: Plugin = async () => {
-  const hookmap = loadHookmap(HOOKMAP_PATH);
+  // Override with ACS_HOOKMAP_PATH to point this shim at a different hookmap
+  // -- same convention as hosts/claude-code/acs-hook.ts. Read HERE, inside
+  // the factory, rather than at module scope (unlike acs-hook.ts's own
+  // HOOKMAP_PATH): this plugin factory is a plain function a test can call
+  // directly, with no subprocess boundary forcing a fresh module evaluation
+  // per test the way spawning acs-hook.ts does for its own suite, so a
+  // module-scope constant would freeze whatever ACS_HOOKMAP_PATH was at
+  // import time and ignore anything a test set afterwards.
+  const hookmapPath = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./opencode.hookmap.yaml", import.meta.url));
+  const hookmap = loadHookmap(hookmapPath);
+  assertRefusalRendersUnconditionally(hookmap, hookmapPath);
+
   const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
   const audit = createAuditSink({ path: process.env.ACS_AUDIT_LOG ?? ".acs/audit.jsonl" });
   // S15 -- IN MEMORY, and this is the half V3 built for exactly this host. See
@@ -256,8 +483,9 @@ export const AcsPlugin: Plugin = async () => {
     // "tool.execute.after" (the result gate). Each assembles this hook's own
     // {tool, session_id, callID, args, result} payload, validates sessionID
     // (this file's header states why that check belongs here and not inside
-    // governStep), calls resolveSessionConfig -> governStep against `hookmap`,
-    // `guardian`, `session`/`store` and `audit` above, and applies the
-    // result through `applyHostOutput`.
+    // governStep, and what it does and does not protect at the result gate),
+    // calls resolveSessionConfig -> governStep against `hookmap`, `guardian`,
+    // `session`/`store` and `audit` above, and applies the result through
+    // `applyHostOutput`.
   };
 };

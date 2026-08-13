@@ -33,20 +33,38 @@ hooks:
       # `refuse.reason` is this host's deny channel and there is no other:
       # measured, `output.status = "deny"` and `output.decision = "deny"` are
       # both ACCEPTED and IGNORED, and the tool runs. Throwing is what stops it.
+      #
+      # `refuse.denied: { value: true }` (§V5 review, fix round 1, Critical 1):
+      # UNCONDITIONAL, beside `refuse.reason`'s own `from:`. A `from:` field
+      # renders NOTHING when the arriving decision does not carry that source,
+      # or carries it as the wrong type (render-decision.ts) -- so `deny`,
+      # `ask` and `defer` below, each built ONLY from `refuse.reason` before
+      # this line existed, could render `{}` on a Guardian's minimal or
+      # malformed decision message. Measured: `{"decision":"deny"}` and
+      # `{"decision":"deny","reasoning":{"code":"R7"}}` both rendered `{}` --
+      # this host's applier saw no keys, applied nothing, threw nothing, and
+      # the tool ran, indistinguishable from a clean allow. `acs-plugin.ts`'s
+      # own load-time gate (`assertRefusalRendersUnconditionally`) now refuses
+      # to register a hookmap missing this marker on any of the three; it is
+      # declared on all three here so this file passes that gate rather than
+      # relying on it to catch an omission.
       allow:
         output:
           reason.text: { from: reasoning, type: string }
       deny:
         output:
+          refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
       # No native "ask" at this hook -- `permission.ask` is a different event
       # this slice does not wire -- so ask fails CLOSED, the same least-wrong
       # mapping V1 made for Claude Code's absent `defer`.
       ask:
         output:
+          refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
       defer:
         output:
+          refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
       modify:
         output:
