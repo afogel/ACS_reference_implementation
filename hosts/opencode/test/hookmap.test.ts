@@ -40,6 +40,15 @@ describe("opencode.hookmap.yaml", () => {
     const hooks = loadHookmap(HOOKMAP).hooks;
     const requestDecisions = hooks["tool.execute.before"]!.decisions as DecisionsShape;
     expect(Object.keys(requestDecisions.deny!.output)).toContain("refuse.reason");
+    // §V5 review, fix round 1, Critical 1, closed as a pin gap in fix round
+    // 2: `refuse.reason` alone is a `from:` field and renders NOTHING when
+    // the arriving decision carries no (or the wrong type of) `reasoning` --
+    // `refuse.denied: { value: true }` is the unconditional sibling that
+    // keeps `deny`/`ask`/`defer` from ever rendering `{}`. Declared on all
+    // three; asserted on all three here, not only `deny`.
+    for (const decisionName of ["deny", "ask", "defer"] as const) {
+      expect(Object.keys(requestDecisions[decisionName]!.output)).toContain("refuse.denied");
+    }
     // Measured: a throw at the result gate discards the mutation channel, so the
     // mirror keeps the secret. Deny there withholds by replacing, never by throwing.
     //

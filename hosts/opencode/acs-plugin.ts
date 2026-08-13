@@ -34,6 +34,27 @@
  * Neither gate is wired here; `AcsPlugin` returns an object those tasks fill
  * in.
  *
+ * THIS FILE CORRECTS A CLAIM `packages/host-adapter/src/modifications.ts`
+ * MAKES ABOUT ITSELF (§V5 review, fix round 2, Critical). Its own
+ * `RESERVED_SEGMENTS` doc comment (around that module's line 128) says "No
+ * global pollution is reachable today -- `setAtPath` assigns into a fresh
+ * clone of the caller's arguments, never into a shared prototype." That is
+ * still true of `setAtPath` in isolation: a `parameter_overrides` value
+ * (unlike its KEYS, which `modifications.ts` checks) arrives verbatim,
+ * `__proto__` included as an ordinary own key when it came off the
+ * Guardian's wire through `JSON.parse`. It stopped being true of the
+ * SYSTEM the moment this host's `mergeInPlace` (Minor 1, fix round 1)
+ * started reading a rendered `args`/`result` back through the prototype
+ * chain: on a plain object with no own `__proto__`, `target["__proto__"]`
+ * resolves to `Object.prototype` itself, and a recursive merge that
+ * follows writes through it, global to this whole long-lived plugin
+ * process -- not a claim about `setAtPath`, but about what this file does
+ * downstream of it. `assertNoReservedSegments` below is this file's own
+ * guard against exactly that, run from pass 1 before `mergeInPlace` ever
+ * sees the value. This file may not edit `packages/host-adapter/src`
+ * (Global Constraint 1), so the correction is recorded here instead, naming
+ * the comment it qualifies, for whoever amends it there.
+ *
  * THREE THINGS EVERY GATE TASK MUST DO THAT THIS FILE CANNOT DO FOR THEM,
  * because none of them is knowable until a hook actually fires:
  *
@@ -132,6 +153,104 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * True when `ACS_DEBUG` asks for the stderr line in pass 2b (below) to
+ * fire. Unset or empty both mean "off", and so does the literal string
+ * "0" -- an env var is always a string, so the bare `process.env.ACS_DEBUG`
+ * truthiness check this replaced treated "0" as ON, the one value every
+ * shell convention this flag is meant to follow uses to mean OFF (§V5
+ * review, fix round 2, nit).
+ */
+function isDebugEnabled(): boolean {
+  const value = process.env.ACS_DEBUG;
+  return value !== undefined && value !== "" && value !== "0";
+}
+
+/**
+ * Keys that address a JavaScript object's prototype machinery rather than a
+ * field a decision actually rendered -- the same three names, and the same
+ * reasoning, as `render-decision.ts`'s and `hookmap-path.ts`'s own
+ * `RESERVED_SEGMENTS`, and `modifications.ts`'s `assertNoReservedSegments`
+ * (§V5 review, fix round 2, Critical). This file cannot import any of
+ * theirs -- they are module-private -- so the convention is repeated here
+ * rather than shared, the same way `isPlainObject` above already is.
+ */
+const RESERVED_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Refuses `value` if it, or anything nested inside it, owns a key from
+ * `RESERVED_SEGMENTS` -- called from pass 1, below, on `output.args` and
+ * `output.result`, BEFORE `mergeInPlace` ever runs (§V5 review, fix round 2,
+ * Critical).
+ *
+ * WHY `mergeInPlace` NEEDED THIS AND `Object.assign` DID NOT. A value that
+ * reaches this applier came off the Guardian's wire through `JSON.parse`,
+ * which -- unlike an object literal in source -- gives `__proto__` an
+ * ordinary OWN, enumerable property; `Object.keys`/`Object.entries` list it
+ * like any other field. `mergeInPlace` walks those keys and, for each one,
+ * reads `target[key]` and recurses when both sides are plain objects. Read
+ * on a plain object with no OWN `__proto__` property, `target["__proto__"]`
+ * does not return `undefined` -- it resolves through the prototype chain to
+ * `Object.prototype` itself, which `isPlainObject` accepts (it IS a plain
+ * object). The recursive call that follows then does not touch `target` at
+ * all; every assignment inside it lands on `Object.prototype`, global to the
+ * whole process, for every object that will ever exist in it -- and this
+ * host is one long-lived plugin object per session, not a fresh subprocess
+ * per hook, so the blast radius is the rest of the session, not one
+ * invocation. `Object.assign(target, source)` never recurses, so it can only
+ * ever repoint `target`'s own `__proto__` (itself refused elsewhere, in
+ * `render-decision.ts`'s `place`), never write through it onto the shared
+ * one -- the exposure is specific to the recursive merge Minor 1 added.
+ *
+ * MEASURED, end to end, through the shipped hookmap and the unmodified
+ * adapter: a `modify` decision whose `modifications.parameter_overrides`
+ * carries `{env: {PATH: "/bin", __proto__: {args: {command: "curl ... |
+ * sh"}}}}` -- `parameter_overrides`' KEYS are checked against these same
+ * three names (`modifications.ts`'s `assertNoReservedSegments`, called on
+ * `Object.keys(mods.parameter_overrides)`), but the override VALUE at each
+ * key is applied verbatim (`modifications.ts` around `setAtPath`, its own
+ * comment: "that value arrives verbatim from the Guardian's own JSON") --
+ * reaches `applied_input` with `__proto__` intact, `renderDecision` copies
+ * it into `args` unexamined (R3.2: it walks the hookmap's declared paths,
+ * not the arriving decision's), and without this check `applyHostOutput`
+ * merged it: `Object.prototype.args` became `{command: "curl ... | sh"}`,
+ * observable as `({}).args` in the SAME process afterward, on a wholly
+ * unrelated allowed tool call that rendered `{}`.
+ *
+ * This is also the fact that falsifies a claim `packages/host-adapter/src/
+ * modifications.ts` makes about itself -- see this file's own top header
+ * ("THIS FILE CORRECTS A CLAIM...") for the correction, recorded there
+ * rather than at the source because this file may not edit
+ * `packages/host-adapter/src` (Global Constraint 1).
+ *
+ * Recurses through arrays too (an override value could as easily nest the
+ * key inside a list element as inside an object), and refuses on the FIRST
+ * reserved key found anywhere in the tree, at any depth -- consistent with
+ * `assertNoReservedSegments` in `modifications.ts`, which refuses the same
+ * way rather than trying to salvage the rest of a render.
+ */
+function assertNoReservedSegments(value: unknown, label: string): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoReservedSegments(item, `${label}[${index}]`));
+    return;
+  }
+  if (!isPlainObject(value)) {
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    if (RESERVED_SEGMENTS.has(key)) {
+      throw new Error(
+        `acs-plugin: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(key)} at ` +
+          `"${label}.${key}", which addresses prototype machinery rather than a field this applier can merge. ` +
+          `A recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
+          `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
+          `refused rather than merged (§V5 review, fix round 2, Critical).`,
+      );
+    }
+    assertNoReservedSegments(value[key], `${label}.${key}`);
+  }
+}
+
+/**
  * What this applier is allowed to touch: the live objects OpenCode handed
  * the hook that is applying a rendered `HostOutput`. Both members optional
  * because the two gates hand different halves of this -- the request gate
@@ -211,6 +330,17 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  * applied" defect this project exists to catch, reached silently instead of
  * refused.
  *
+ * VALIDATION ALSO WALKS INTO THE SHAPE, RECURSIVELY, FOR ONE SPECIFIC HAZARD
+ * (§V5 review, fix round 2, Critical). `assertNoReservedSegments` (above)
+ * refuses an `args`/`result` that owns a `__proto__`/`constructor`/
+ * `prototype` key at any depth, in this same pass, before `mergeInPlace`
+ * (which reads the rendered value back through the prototype chain, unlike
+ * a shallow `Object.assign`) ever runs on it. See that function's own doc
+ * comment for the measured attack this closes -- a `parameter_overrides`
+ * value that reaches `applied_input` with `__proto__` intact writes onto
+ * `Object.prototype` itself, global to this whole long-lived plugin
+ * process, not merely to the one live object this call was handed.
+ *
  * THE FOUR KEYS, and why `result` is the whole container rather than a leaf
  * (§V5 review, fix round 1, Critical 1 -- opencode.hookmap.yaml's own header
  * states the same correction): `applied_output` is the WHOLE patched clone of
@@ -288,6 +418,10 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
             `throwing, and the actual rewrite would never land.`,
         );
       }
+      // §V5 review, fix round 2, Critical -- before any assignment, same as
+      // the shape check above. See assertNoReservedSegments's own doc
+      // comment for the attack this closes.
+      assertNoReservedSegments(output.args, "args");
       continue;
     }
     if (key === "result" && live.result !== undefined) {
@@ -296,6 +430,7 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
           `acs-plugin: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
         );
       }
+      assertNoReservedSegments(output.result, "result");
       continue;
     }
     throw new Error(
@@ -320,7 +455,7 @@ export function applyHostOutput(output: HostOutput, live: LiveHookObjects): void
   // unconditional line here would be noise, not a diagnostic); never applied
   // to either live object, and never silently ignored when the flag is set.
   const reason = output.reason as { text?: unknown } | undefined;
-  if (reason !== undefined && process.env.ACS_DEBUG) {
+  if (reason !== undefined && isDebugEnabled()) {
     console.error(
       `acs-plugin: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
         `to OpenCode -- reasoning: ${JSON.stringify(reason.text)}`,
