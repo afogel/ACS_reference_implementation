@@ -489,6 +489,10 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       // decision failed to arrive, and every caller below asserts a real one
       // did. Nothing here writes an audit line, so nothing here needs a path.
       audit: NULL_AUDIT_SINK,
+      // What `runExchange` passes: the tool this exchange already scoped on
+      // (§V5 review round 4). Every fixture below declares `tools: [bash]`,
+      // and a gate that declares a list refuses a caller that names no tool.
+      scopedTool: TOOL,
     });
 
     // A REAL policy decision, not a posture-resolved one: `stage: "honoured"`

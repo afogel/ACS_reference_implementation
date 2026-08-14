@@ -35,11 +35,18 @@
 #     measured, a request hook declaring `outputs:` got `applied_output`
 #     where its own `modify` sink expects `applied_input`, so the rewrite
 #     landed nowhere and governStep still reported `stage: honoured`.
-#   - `tool_name` must be `$.tool` at both hooks. The shim asks `governsTool`
-#     with OpenCode's own `input.tool` while governStep asks it with whatever
-#     `tool_name` resolves to; point it elsewhere and they disagree --
-#     measured, the shim proceeded and governStep skipped the step as
-#     `ungoverned`, with no Guardian request and no audit entry.
+#   - `tool_name` must be `$.tool` at both hooks. `$.tool` is where the shim
+#     puts OpenCode's own `input.tool`, and `tool_name` is what buildEnvelope
+#     reads to name the tool ON THE WIRE -- point it elsewhere and the policy
+#     runtime is asked about something that is not the tool that ran.
+#     Measured with `tool_name: $.args.command`: the step was governed and
+#     audited normally, `stage: honoured`, while the envelope carried
+#     `payload.tool.name: "rm -rf /"` where this file puts `bash`. (Until §V5
+#     review round 4 this bullet named a different fault: the shim scoped on
+#     `input.tool` while governStep re-derived a name from `tool_name`, and a
+#     divergence made governStep skip a governed step as `ungoverned` with no
+#     Guardian request and no audit entry. The shim now TELLS governStep the
+#     tool it scoped on, so that one is closed in the adapter for every host.)
 #   - `outputs.within` must be `$.result`, because that is where the shim puts
 #     the live object it hands the applier. `applied_output` is a patched
 #     clone OF that container, so naming another one lands the clone at a

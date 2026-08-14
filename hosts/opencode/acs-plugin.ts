@@ -283,24 +283,29 @@
  *     that third host inherits the skip instead of copying it. The call
  *     below stays because of what it saves rather than what it decides: it
  *     is the only one early enough to skip `assertUsableSessionId` and the
- *     session handshake as well as the envelope. Two call sites, one rule --
- *     but NOT one argument: this file passes `input.tool`, OpenCode's own
- *     field, while `governStep` passes whatever this hook's `tool_name` path
- *     resolves to. They agree here only because opencode.hookmap.yaml's
- *     `tool_name: $.tool` names the very field assembled from `input.tool`
- *     below; a hookmap pointing `tool_name` elsewhere would make the two
- *     answers diverge. "AND NOTHING DETECTS THAT" IS NO LONGER TRUE, and it
- *     was a live fail-open for as long as it stood (§V5 review round 3, Task 5,
- *     fix round 4 -- found while measuring that round's directed findings,
- *     not on its list). MEASURED with `tool_name: $.args.command` beside
- *     `tools: [bash]`: this file's own `governsTool` answered TRUE on
- *     `input.tool` and proceeded, `governStep` resolved `tool_name` to the
- *     command, asked the same function, got FALSE, and returned
- *     `stage: "ungoverned"` -- no Guardian request, no decision, no audit
- *     entry, `rm -rf /` through. `assertEntryMatchesGate` (below) now refuses a
- *     hookmap whose `tool_name` is anything but `$.tool`, at either gate, so
- *     the two call sites cannot disagree. See `governsTool`'s own doc
- *     comment (govern-step.ts).
+ *     session handshake as well as the envelope.
+ *
+ *     TWO CALL SITES, ONE RULE, AND SINCE §V5 review round 4 (thread
+ *     3778055539) ONE ARGUMENT TOO. This file used to pass `input.tool`,
+ *     OpenCode's own field, while `governStep` re-derived a name by resolving
+ *     this hook's `tool_name` path against the payload assembled below --
+ *     two questions off two sources, agreeing only because
+ *     opencode.hookmap.yaml's `tool_name: $.tool` happens to name the very
+ *     field this file reads. MEASURED with `tool_name: $.args.command`
+ *     beside `tools: [bash]` (§V5 review round 3, Task 5, fix round 4 --
+ *     found while measuring that round's directed findings, not on its
+ *     list): this file's own `governsTool` answered TRUE on `input.tool` and
+ *     proceeded, `governStep` resolved `tool_name` to the command, asked the
+ *     same function, got FALSE, and returned `stage: "ungoverned"` -- no
+ *     Guardian request, no decision, no audit entry, `rm -rf /` through.
+ *     `runExchange` now TELLS `governStep` the tool it scoped on
+ *     (`scopedTool`), so the adapter asks about that value and no other, and
+ *     a caller reaching a gate that declares `tools` without telling is
+ *     refused there outright. The divergence is closed in the ADAPTER, which
+ *     is where the two-ask pattern lived; `assertEntryMatchesGate` (below)
+ *     still refuses a `tool_name` that is anything but `$.tool`, for what it
+ *     still says -- see its own note. See `governsTool`'s doc comment
+ *     (govern-step.ts).
  *
  *     `tool` ITSELF must be validated first (`assertUsableTool`, below),
  *     ahead of the `tools` check -- a malformed `tool` is not "out of
@@ -341,9 +346,10 @@ import {
   // -- this file used to carry its own copy, `isGovernedTool`. Called from
   // `runExchange` (below), exactly where each hook body used to call that copy
   // before Task 6 merged the two, and for what the earlier call buys rather
-  // than for what it decides: `governStep` asks the same function itself, so
-  // a shim that forgot would still skip, but only this call site is early
-  // enough to skip the session validation and the handshake too.
+  // than for what it decides: `governStep` asks the same function itself,
+  // about the very value this call site passes it (`scopedTool`, §V5 review
+  // round 4), so a shim that forgot would still skip -- but only this call
+  // site is early enough to skip the session validation and the handshake too.
   governsTool,
   loadHookmap,
   resolveSessionConfig,
@@ -833,9 +839,9 @@ function assertDecisionsCanAct(
  *     hardcode `{gate: "request", args}` and `{gate: "result", result}`. When
  *     the two disagree, the decision that arrives is shaped for the other gate.
  *   - WHICH PATHS resolve against what this shim assembled. `tool_name` must
- *     name `$.tool`, because this file passes `input.tool` to its own
- *     `governsTool` call while `governStep` passes whatever `tool_name`
- *     resolves to. `outputs.within` must name `$.result`, because that is where
+ *     name `$.tool`, because `$.tool` is the field this shim's own payload
+ *     assembly puts `input.tool` in, and `tool_name` is what `buildEnvelope`
+ *     reads to NAME THE TOOL ON THE WIRE. `outputs.within` must name `$.result`, because that is where
  *     this shim puts the live object it hands the applier -- an `applied_output`
  *     is a patched clone OF that container, so naming another one lands the
  *     clone at a depth the applier then merges wrongly.
@@ -874,13 +880,29 @@ function assertDecisionsCanAct(
  *     mirror. Variant 1's observable reached by never asking the question.
  *   - 7E, found while measuring the others and NOT on the review's own list:
  *     `tool_name: $.args.command` beside `tools: [bash]`. This shim's own
- *     `governsTool(hookmap, hook, input.tool)` answers TRUE and proceeds;
- *     `governStep` resolves `tool_name` to the command, asks the same function,
- *     gets FALSE, and returns `stage: "ungoverned"` with an empty output. No
- *     Guardian request, no decision, no audit entry, and `rm -rf /` proceeds.
- *     This file's own header has recorded since Task 2 that the two call sites
- *     "would diverge, and nothing detects that". This is what the divergence
- *     costs, and this is the check that detects it.
+ *     `governsTool(hookmap, hook, input.tool)` answered TRUE and proceeded;
+ *     `governStep` resolved `tool_name` to the command, asked the same
+ *     function, got FALSE, and returned `stage: "ungoverned"` with an empty
+ *     output. No Guardian request, no decision, no audit entry, and `rm -rf /`
+ *     proceeded.
+ *
+ *     THAT FAULT IS NOT WHAT THIS CHECK REFUSES ANY MORE, AND THE CHECK STAYS
+ *     ANYWAY (§V5 review round 4, thread 3778055539). `governStep` is now TOLD
+ *     the tool this file scoped on (`scopedTool`, `runExchange` below), so it
+ *     derives no second name and the two can no longer disagree -- the skip
+ *     above is closed in the adapter, for every host, rather than by this
+ *     one hookmap check. What a divergent `tool_name` costs INSTEAD is a
+ *     different fault of the same family as 8, and it is why this check is
+ *     not now redundant. RE-MEASURED against the same hookmap, told
+ *     `scopedTool: "bash"`: the step is governed and audited normally --
+ *     `stage: "honoured"`, one Guardian request -- and the envelope that goes
+ *     out carries `payload.tool.name: "rm -rf /"`, the COMMAND, where the
+ *     shipped hookmap puts `bash`. The policy runtime is asked about a tool
+ *     the deployment never registered, so its answer is a configuration
+ *     mismatch reported as governance, and the tool that actually ran was
+ *     never named to it. A load-time refusal beats a runtime one, and this is
+ *     the one thing only this file can say: `tool_name` has to read the field
+ *     THIS shim feeds.
  *
  * `outputs.mirrors` IS DELIBERATELY NOT FIXED HERE, and the asymmetry with
  * `outputs.from`/`within` is the point rather than an oversight. Which
@@ -1050,10 +1072,11 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
       throw new Error(
         `acs-plugin: ${path}'s "hooks.${hookEventName}.${fixedPath}" is ${JSON.stringify(actual)}, and this ` +
           `shim's own payload assembly fixes it at ${JSON.stringify(required)}. That payload is built in this ` +
-          `file, not by the hookmap. "$.tool" is where "tool_name" has to look, because this shim passes ` +
-          `input.tool to its own governsTool call while governStep passes whatever "tool_name" resolves to: ` +
-          `they answer differently for any other path, and a step this gate governs is then skipped as ` +
-          `"ungoverned" with no Guardian request, no decision and no audit entry. "$.args"/"$.result" are where ` +
+          `file, not by the hookmap. "$.tool" is where "tool_name" has to look, because that is the field this ` +
+          `shim puts input.tool in and "tool_name" is what buildEnvelope reads to NAME THE TOOL ON THE WIRE: ` +
+          `measured with "tool_name: $.args.command", the step was governed and audited normally while the ` +
+          `envelope carried payload.tool.name "rm -rf /" -- the command, not the tool -- so the policy runtime ` +
+          `was asked about a tool this deployment never registered. "$.args"/"$.result" are where ` +
           `this shim puts the live objects it hands applyOpenCodeOutput -- an "applied_output" is a patched ` +
           `clone OF the container "outputs.within" names, so naming another container lands that clone at the ` +
           `wrong depth: measured with "within: $", the leaf AND its metadata.output mirror both kept the ` +
@@ -1500,22 +1523,31 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * reaches `governStep` to be routed through a posture.
  *
  * STILL THIS FILE'S JOB AFTER §V5 review round 3, Task 2 moved the `tools`
- * rule itself into the adapter (`governsTool`, govern-step.ts). That move
- * did not change what a malformed tool name does to a list membership test,
- * and the adapter's own skip is deliberately written not to absorb one
- * either: `governStep` reads the tool name through the hookmap's `tool_name`
- * path and, when that resolves to no usable string, does NOT skip -- it lets
- * the step continue to whatever already handles it. WHAT THAT IS DIFFERS BY
- * CASE, and fix round 1 of that same task measured it rather than assuming
- * one mechanism covered all of them: an ABSENT or NON-STRING name is a
- * `buildEnvelope` throw, posture-answered and audited (the path this
- * paragraph's own measurement above describes); an EMPTY-STRING name is
- * neither, because `buildEnvelope` checks the type and not the length -- the
- * envelope is built carrying `tool: {"name": ""}`, the step is asked about,
- * and this repo's own shipped policy configuration answers it `deny`. Both
- * outcomes are governed or audited; neither is silent. `toolNameFor`
- * (govern-step.ts) carries the full measurement and the reason its length
- * check is load-bearing anyway.
+ * rule itself into the adapter (`governsTool`, govern-step.ts), and MORE
+ * squarely this file's job since §V5 review round 4 made the adapter take the
+ * scoped tool as an argument instead of deriving one. What `governStep` now
+ * scopes on is the value THIS function has just vouched for, handed to it as
+ * `scopedTool` (`runExchange`, below) -- so a malformed `tool` that got past
+ * here would be a malformed needle for `Array.prototype.includes` at BOTH
+ * call sites, silently `false` at both, and the adapter's own guard would not
+ * catch it either: it refuses an ABSENT or empty told tool, which a
+ * non-string is not. This is the boundary that has the value in its host's
+ * own type, so this is where the shape is checked.
+ *
+ * WHAT AN UNREADABLE `tool_name` PATH DOES IS NO LONGER PART OF THIS, and
+ * that is the simplification the round-4 change bought: nothing scopes off
+ * the payload any more, so no payload shape can produce a silent skip.
+ * Re-measured through `governStep` with the tool told and `tools` declared:
+ * an ABSENT or NON-STRING `tool_name` is a `buildEnvelope` throw,
+ * posture-answered and AUDITED (`stage: "request"`, Guardian asked 0 times, 1
+ * audit event -- the path this paragraph's own measurement above describes);
+ * an EMPTY-STRING one does not throw at all, because `buildEnvelope` checks
+ * the type and not the length, so the envelope is built carrying
+ * `tool: {"name": ""}` and the step is really asked about (`stage:
+ * "honoured"`, Guardian asked 1 time, 0 audit events; this repo's own shipped
+ * policy configuration answers it `deny`). Governed or audited; never silent.
+ * `GovernStepInput.scopedTool`'s doc comment (govern-step.ts) carries the
+ * table.
  *
  * Generic over `hookEventName`, exactly like `assertUsableSessionId` -- and,
  * like it, called from ONE place since §V5 review round 3, Task 6 (`runExchange`,
@@ -1595,8 +1627,10 @@ type AssembledStep = {
  *   - `governsTool`'s early return BEFORE `assertUsableSessionId`, so a tool
  *     this gate does not govern costs no session validation and no handshake
  *     round trip. `governStep` asks the same function itself (§V5 review
- *     round 3, Task 2), so a shim that forgot would still skip; this call
- *     site is the only one early enough to skip the rest as well.
+ *     round 3, Task 2) about the very value this function hands it
+ *     (`scopedTool`, §V5 review round 4), so a shim that forgot would still
+ *     skip; this call site is the only one early enough to skip the rest as
+ *     well.
  *   - `assertUsableSessionId` BEFORE `governStep`, because `buildEnvelope`'s
  *     own throw on a missing `session_id` lands in `governStep`'s
  *     stage-"request" catch and is answered by the negotiated posture, where
@@ -1676,6 +1710,18 @@ async function runExchange(
     // given.
     sessionId: input.sessionID,
     audit: deployment.audit,
+    // THE TOOL THIS EXCHANGE ALREADY SCOPED ON, told rather than left to be
+    // asked a second time (§V5 review round 4, thread 3778055539). It is the
+    // very value `governsTool` was asked about a few lines up, and passing it
+    // is what makes the two checks two askings of ONE question: `governStep`
+    // used to re-derive a name by resolving the entry's `tool_name` path
+    // against the payload assembled below, so a hookmap pointing that path
+    // elsewhere had this file proceeding on `input.tool` while the adapter
+    // scoped on something else -- measured as a governed step returned
+    // `stage: "ungoverned"`, unaudited, with `rm -rf /` through. Both of this
+    // shim's gates pass through here, so this one line is both of its call
+    // sites.
+    scopedTool: input.tool,
   });
 
   applyOpenCodeOutput(governed.output, live);

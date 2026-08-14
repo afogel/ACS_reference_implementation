@@ -810,10 +810,17 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
-  // 7E -- NOT on the review's list. The shim and governStep ask `governsTool`
-  // with different arguments, and acs-plugin.ts's header has recorded since
-  // Task 2 that "nothing detects that". Measured: governStep skips a governed
-  // tool as "ungoverned", no Guardian request, no audit entry.
+  // 7E -- NOT on the review's list. It was first measured as a SCOPING
+  // divergence: the shim and `governStep` asked `governsTool` with different
+  // arguments, and `governStep` skipped a governed tool as "ungoverned" with
+  // no Guardian request and no audit entry. §V5 review round 4 closed that in
+  // the adapter (`governStep` is TOLD the scoped tool), and this gate stays
+  // for the fault that remains -- re-measured with `tool_name:
+  // $.args.command` and the tool told: the step is governed and audited
+  // normally while the envelope carries `payload.tool.name: "rm -rf /"`, so
+  // the policy runtime is asked about a tool this deployment never
+  // registered. Same family as 8, and only this file can say which field the
+  // shim feeds.
   it.each(["tool.execute.before", "tool.execute.after"] as const)(
     "refuses a %s entry whose tool_name points away from $.tool",
     async (hookEventName) => {
@@ -837,7 +844,7 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
           body,
       );
       await expect(runPlugin(hookmapPath)).rejects.toThrow(/tool_name" is "\$\.args\.command"/);
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(/skipped as\s+"ungoverned"/);
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/NAME THE TOOL ON THE WIRE/);
     },
   );
 

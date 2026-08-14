@@ -9,7 +9,19 @@ import { fileURLToPath } from "node:url";
 // is used the same way the shim itself uses it, so this test also proves
 // what a subprocess sees is what the adapter would have produced directly.
 import { startGuardian, type StartedGuardian } from "guardian";
-import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type Hookmap } from "host-adapter";
+import {
+  buildEnvelope,
+  createGuardianClient,
+  createSessionConfigStore,
+  DEFAULT_TIMEOUT_MS,
+  governStep,
+  loadHookmap,
+  NULL_AUDIT_SINK,
+  renderDecision,
+  resolveSessionConfig,
+  toSessionUuid,
+  type Hookmap,
+} from "host-adapter";
 
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
@@ -177,5 +189,72 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
     // permission to grant once the step has run), no `decision: block`, and no
     // replacement -- an empty wrapper and nothing else.
     expect(JSON.parse(stdout)).toEqual({ hookSpecificOutput: { hookEventName: "PostToolUse" } });
+  });
+});
+
+/**
+ * §V5 review round 4, thread 3778055539. `governStep` was given an optional
+ * `scopedTool` -- the tool a caller has already scoped on -- and a gate whose
+ * hookmap entry declares a `tools` list now REFUSES a caller that names none.
+ * This shim declares no `tools` at either gate (its settings.json matcher
+ * `^Bash$` already scopes both), passes no `scopedTool`, and is frozen at
+ * `+0/-0` for this whole slice: `scripts/verify-zero-diff.sh` pins
+ * `hosts/claude-code/*.ts` and `*.yaml`, so its one `governStep` call cannot
+ * be updated even if the field became required.
+ *
+ * `verify:zero-diff` proves the file did not change. It cannot prove the call
+ * still WORKS -- that is this suite's job, and the two subprocess tests above
+ * already prove it end to end for the request gate. Pinned separately, and at
+ * the adapter seam rather than through stdin/stdout, because the property is
+ * specifically "untold is a complete call at BOTH gates": a refusal that fired
+ * on an absent `tools` key rather than a declared one would break this host
+ * everywhere at once, and the failure that reported it should name the field
+ * rather than an exit code.
+ *
+ * Against the SHIPPED hookmap, not a fixture, because the thing under test is
+ * that this deployment's own entries declare no list.
+ */
+describe("host #1 tells governStep no scoped tool, and that is a complete call at both gates", () => {
+  const SESSION_ID = "abc123";
+
+  it.each([
+    ["PreToolUse", () => preToolUsePayload("ls -la")],
+    ["PostToolUse", () => postToolUsePayload("total 0\n")],
+  ] as const)("governs a %s step with no scopedTool passed", async (hookEventName, buildPayload) => {
+    const hookmap: Hookmap = loadHookmap(HOOKMAP_PATH);
+
+    // WHY untold is legal here, stated as an assertion rather than as a
+    // comment: this entry declares no `tools`, so there is no list for a
+    // caller to be scoped against and nothing for it to tell. If a future
+    // edit adds one, this row fails before the call below does, and it names
+    // the reason.
+    expect(hookmap.hooks[hookEventName]?.tools).toBeUndefined();
+
+    const guardianClient = createGuardianClient(guardian.url);
+    const session = await resolveSessionConfig(
+      {
+        guardian: guardianClient,
+        agentId: hookmap.host,
+        sessionId: toSessionUuid(SESSION_ID),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      createSessionConfigStore(),
+    );
+
+    // Exactly acs-hook.ts's own call: every field it passes, and no
+    // `scopedTool`.
+    const governed = await governStep({
+      hookEventName,
+      payload: buildPayload(),
+      hookmap,
+      guardian: guardianClient,
+      session,
+      sessionId: SESSION_ID,
+      audit: NULL_AUDIT_SINK,
+    });
+
+    // Governed by a decision that really arrived -- not refused, and not
+    // skipped as a tool this gate does not govern.
+    expect(governed.stage).toBe("honoured");
   });
 });

@@ -360,6 +360,10 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
+      // What `runExchange` passes: the tool this exchange already scoped on
+      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
+      // gate that declares a list refuses a caller that names no tool.
+      scopedTool: TOOL,
     });
 
     // A REAL modify, and the rewrite it carries is right there on the decision.
@@ -410,6 +414,10 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
+      // What `runExchange` passes: the tool this exchange already scoped on
+      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
+      // gate that declares a list refuses a caller that names no tool.
+      scopedTool: TOOL,
     });
     expect(governed.decision?.decision).toBe("modify");
     let threw: unknown;
@@ -507,6 +515,10 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
+      // What `runExchange` passes: the tool this exchange already scoped on
+      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
+      // gate that declares a list refuses a caller that names no tool.
+      scopedTool: TOOL,
     });
 
     expect(governed.decision?.decision).toBe("modify");
@@ -522,12 +534,22 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(args.command).toBe("echo ghp_ABCDEF123456");
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 4 -- NOT on the directed list. The
-  // shim asks `governsTool(hookmap, hook, input.tool)` while `governStep` asks
-  // the same function with whatever this entry's `tool_name` path resolves to.
-  // acs-plugin.ts's own header records that they can diverge and that "nothing
-  // detects that". This measures what the divergence actually costs.
-  it("a tool_name path pointing away from $.tool makes governStep skip a governed tool entirely -- silent and unaudited", async () => {
+  // §V5 review round 3, Task 5, FIX ROUND 4 -- NOT on the directed list.
+  // Originally: the shim asked `governsTool(hookmap, hook, input.tool)` while
+  // `governStep` asked the same function with whatever this entry's
+  // `tool_name` path resolved to, and this test measured what that divergence
+  // cost -- `stage: "ungoverned"`, no Guardian request, no audit entry, `rm
+  // -rf /` through.
+  //
+  // §V5 REVIEW ROUND 4 CLOSED THAT IN THE ADAPTER, and this test now measures
+  // what the same hookmap costs INSTEAD, which is why it is still here.
+  // `runExchange` tells `governStep` the tool it scoped on, so the step is
+  // governed -- and the envelope that goes out names the COMMAND as the tool,
+  // because `tool_name` is what `buildEnvelope` reads for the wire. That is a
+  // wrong question asked, not a question skipped, and it is what
+  // `assertEntryMatchesGate` still refuses at load time (acs-plugin.test.ts's
+  // own gate for this hookmap).
+  it("a tool_name path pointing away from $.tool no longer skips the step -- it asks the Guardian about the command", async () => {
     const hookmapPath = join(SCRATCH_DIR, "request-tool-name-diverges.yaml");
     writeFileSync(
       hookmapPath,
@@ -556,33 +578,41 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       createSessionConfigStore(),
     );
 
+    const payload = { tool: TOOL, session_id: sessionID, callID: "c1", args };
+
     // The shim's own early check says this tool IS governed -- it passes
-    // `input.tool`, which the `tools` list names.
+    // `input.tool`, which the `tools` list names -- and it is now the value
+    // `governStep` is told, so there is no second answer for it to disagree
+    // with.
     expect(governsTool(hookmap, "tool.execute.before", TOOL)).toBe(true);
 
-    const fetchSpy = spyOn(globalThis, "fetch");
-    try {
-      const governed = await governStep({
-        hookEventName: "tool.execute.before",
-        payload: { tool: TOOL, session_id: sessionID, callID: "c1", args },
-        hookmap,
-        guardian: client,
-        session,
-        sessionId: sessionID,
-        audit: NULL_AUDIT_SINK,
-      });
-      // But governStep resolves `tool_name` to the COMMAND, which the `tools`
-      // list does not name -- so it skips: ungoverned, no decision, no
-      // Guardian request, and nothing for an audit entry to record.
-      expect(governed.stage).toBe("ungoverned");
-      expect(governed.decision).toBeNull();
-      expect(governed.output).toEqual({});
-      expect(fetchSpy).not.toHaveBeenCalled();
-      expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
-      expect(args.command).toBe("rm -rf /");
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    // WHAT THIS HOOKMAP STILL COSTS, and the reason the load gate that refuses
+    // it is not now redundant: `tool_name` is what names the tool ON THE WIRE,
+    // so the policy runtime is asked about a "tool" called `rm -rf /` -- one
+    // this deployment never registered -- while the tool that actually runs is
+    // never named to it.
+    const envelope = buildEnvelope("tool.execute.before", payload, hookmap) as {
+      params: { payload: { tool: { name: string } } };
+    };
+    expect(envelope.params.payload.tool.name).toBe("rm -rf /");
+
+    const governed = await governStep({
+      hookEventName: "tool.execute.before",
+      payload,
+      hookmap,
+      guardian: client,
+      session,
+      sessionId: sessionID,
+      audit: NULL_AUDIT_SINK,
+      // What `runExchange` passes -- the tool this exchange already scoped on.
+      scopedTool: TOOL,
+    });
+
+    // GOVERNED, not skipped: a real decision arrived from the real Guardian
+    // for this step. The silent, unaudited `stage: "ungoverned"` this test
+    // used to pin is gone.
+    expect(governed.stage).toBe("honoured");
+    expect(governed.decision).not.toBeNull();
   });
 
   // §V5 review round 3, Task 5, FIX ROUND 4, IMPORTANT 7A -- a DECLARED

@@ -79,13 +79,7 @@
  * it returns, which is what lets the same function serve a second host with a
  * different wire shape (see render-decision.ts).
  */
-import {
-  buildEnvelope,
-  modificationDocumentOf,
-  type AcsRequestEnvelope,
-  type Hookmap,
-  type HookmapHookEntry,
-} from "./build-envelope.ts";
+import { buildEnvelope, modificationDocumentOf, type AcsRequestEnvelope, type Hookmap } from "./build-envelope.ts";
 import type { AuditSink } from "./audit-sink.ts";
 import {
   applyFailurePosture,
@@ -96,7 +90,6 @@ import {
 import type { GuardianClient } from "./guardian-client.ts";
 import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { renderDecision, type HostOutput } from "./render-decision.ts";
-import { resolvePath } from "./hookmap-path.ts";
 import type { ResolvedSessionConfig } from "./handshake.ts";
 import { assertOutputIsReplaceable, withResultOutput, type HostOutputLocation } from "./result-output.ts";
 import { validateDecision } from "./validate-decision.ts";
@@ -135,6 +128,60 @@ export type GovernStepInput = {
   sessionId: string;
   /** Required, not optional: §6.4 makes auditing a fail-open non-skippable. */
   audit: AuditSink;
+  /**
+   * The tool this caller has ALREADY scoped this step on -- the same value it
+   * asked `governsTool` about a call earlier, off whatever field its own host
+   * hands it. When it is here, it is what this gate's `tools` list is checked
+   * against, and no second source is consulted.
+   *
+   * TELL, DON'T ASK (§V5 review round 4, thread 3778055539). This function
+   * used to derive the tool itself, by resolving the entry's own `tool_name`
+   * path against the payload -- so the shim asked one question off its host's
+   * field and this module asked a second one off the hookmap's path, and the
+   * two could answer differently. MEASURED, on a hookmap declaring
+   * `tool_name: $.args.command` beside `tools: [bash]`, driven through this
+   * function directly with a `bash` step: the shim's own check answered TRUE
+   * and proceeded, this module resolved the COMMAND as the name, asked the
+   * same predicate, got FALSE, and returned `stage: "ungoverned"` -- 0
+   * Guardian requests, 0 audit events, `rm -rf /` through, silent. Host #2's
+   * load-time `assertEntryMatchesGate` refuses that particular hookmap today,
+   * but the refusal lived in one shim while the two-ask PATTERN lived here,
+   * so a third host copying the pattern re-opened it.
+   *
+   * OPTIONAL, AND THAT IS NOT A SOFTENING. Host #1 declares no `tools` at
+   * either of its gates -- its settings.json matcher (`^Bash$`) already scopes
+   * both -- so there is no list for it to be scoped against and nothing for it
+   * to tell; its call is valid untold and its shipped source is unchanged for
+   * this whole slice (`scripts/verify-zero-diff.sh` pins it). A caller whose
+   * entry DOES declare a list and does not tell is refused outright, before
+   * anything is asked or audited -- see the guard in `governStep` below, which
+   * is what makes this structural rather than a convention a third host can
+   * skip.
+   *
+   * WHAT AN UNREADABLE `tool_name` DOES IS NOW `buildEnvelope`'s ALONE, which
+   * is a simplification and not a loss. Nothing scopes off the payload any
+   * more, so no payload shape can produce a silent skip. Measured through this
+   * function with the tool told and `tools` declared: a `tool_name` that is
+   * ABSENT or resolves to a NON-STRING is a `buildEnvelope` throw, answered by
+   * the negotiated posture and AUDITED -- `stage: "request"`, Guardian asked 0
+   * times, 1 audit event; one resolving to the EMPTY STRING does not throw at
+   * all, because `buildEnvelope` checks the type and not the length, so the
+   * envelope is built carrying `tool: {"name": ""}` and the step is really
+   * asked about (`stage: "honoured"`, Guardian asked 1 time, 0 audit events;
+   * against this repo's own shipped configuration a real Guardian answers that
+   * envelope `deny`/`runtime_error:tool_unknown`). Governed or audited, never
+   * silent, in every one of the three.
+   *
+   * MAKING `buildEnvelope` REFUSE AN EMPTY NAME IS STILL PARKED, and still for
+   * the reason it was parked under the derived-name scheme: today an empty name
+   * produces a real envelope and a real ARRIVING deny, and refusing it there
+   * would replace that with a stage-"request" posture answer -- under a
+   * negotiated `proceed`, a step that proceeds where the policy runtime
+   * currently denies it. That is this module's own "a decision that ARRIVED
+   * always outranks a posture" running backwards, so it is a separate question
+   * with its own test to write, not a tidy-up to ride along with this one.
+   */
+  scopedTool?: string;
 };
 
 /**
@@ -275,19 +322,23 @@ export type GovernedStep =
  * no handshake either. Two call sites, one rule; the shim's saves work, this
  * module's is what a shim that never wrote one still gets.
  *
- * ONE RULE, BUT NOT ONE ARGUMENT, and that is worth saying because "one rule"
- * invites the assumption that the two call sites cannot disagree. They can. A
- * shim passes the tool name off its OWN input field (host #2:
- * `governsTool(hookmap, "tool.execute.before", input.tool)`), while
- * `governStep` passes what this hook's `tool_name` path resolves to against
- * the assembled payload (`toolNameFor`, below). Both shipped hookmaps make
- * those the same value -- host #2's `tool_name: $.tool` names the very field
- * its shim reads, and host #1 declares no `tools` at all, so the question
- * never arises there -- but a hookmap whose `tool_name` names some other
- * field would have its shim skipping on one name while `governStep` scopes on
- * another. The shim's answer wins when the shim returns; this module's wins
- * for anything that reaches it. Nothing here can detect that divergence: the
- * shim's field is a host-side value this module never sees.
+ * ONE RULE, AND NOW ONE ARGUMENT (§V5 review round 4, thread 3778055539).
+ * That is worth saying because it was NOT true until this round, and the way
+ * it was untrue is the shape this whole slice keeps finding. A shim passed the
+ * tool name off its OWN input field (host #2:
+ * `governsTool(hookmap, "tool.execute.before", input.tool)`), and `governStep`
+ * then asked this same function a SECOND question, about whatever this hook's
+ * `tool_name` path resolved to against the assembled payload. Both shipped
+ * hookmaps made those the same value, so both shipped deployments were fine --
+ * but a hookmap pointing `tool_name` at some other field had its shim
+ * proceeding on one name while `governStep` scoped on another, and the
+ * measured cost of that divergence was a governed step returned
+ * `stage: "ungoverned"` with no Guardian request, no decision, and no audit
+ * entry. `governStep` no longer derives anything: it is TOLD the tool its
+ * caller already checked (`GovernStepInput.scopedTool`, above) and refuses,
+ * loudly, when an entry declaring a `tools` list is reached by a caller that
+ * did not tell. So the two call sites are two askings of one question about
+ * one value, which is what "one rule" was always claiming and is now true of.
  *
  * NO `?? undefined` COMPENSATION HERE, unlike the shim function this replaces
  * (§V5 review round 3, Task 1). `loadHookmap` returns a normalised hookmap:
@@ -315,80 +366,13 @@ export function governsTool(hookmap: Hookmap, hookEventName: string, tool: strin
 }
 
 /**
- * The tool name this payload names, read through this entry's own `tool_name`
- * path -- the same path, against the same payload, that `buildEnvelope` reads
- * it from a moment later. Resolved twice per governed step, deliberately: the
- * alternative is `governStep` taking the tool name as an input, which would
- * make every host restate a value its hookmap already says where to find, and
- * a walk of two or three object keys is not worth that.
- *
- * `undefined` MEANS UNREADABLE, AND UNREADABLE IS NOT OUT OF SCOPE. Answering
- * "not in this gate's list" for a name this gate could not read would convert
- * a step that is currently governed or audited into a silent, unaudited
- * skip -- the exact asymmetry host #2's shim already refuses at its own
- * boundary (`assertUsableTool`, which throws on a malformed tool before this
- * module is reached at all). So this reports "no name to scope by" and lets
- * the step continue to whatever already handles it.
- *
- * WHAT "ALREADY HANDLES IT" IS DIFFERS BY CASE, and an earlier version of
- * this paragraph named one mechanism for all three (§V5 review round 3, Task
- * 2, fix round 1, Important 1). Measured, through `governStep` with
- * `tools: ["Write"]` declared:
- *
- *   - `tool_name` ABSENT, or resolving to a NON-STRING (`42`): `buildEnvelope`
- *     throws (`typeof toolName !== "string"`), that throw lands in the
- *     stage-"request" catch, and the negotiated posture answers it AUDITED --
- *     `stage: "request"`, Guardian asked 0 times, 1 audit event.
- *   - `tool_name` resolving to the EMPTY STRING: `buildEnvelope` does NOT
- *     throw. It checks the type and not the length, so the envelope is built
- *     carrying `tool: {"name": ""}` and the step is GOVERNED -- `stage:
- *     "honoured"`, Guardian asked 1 time, 0 audit events. Against this repo's
- *     own shipped configuration a real Guardian answers that envelope
- *     `deny`/`runtime_error:tool_unknown`, measured.
- *
- * SO THE LENGTH CHECK BELOW IS LOAD-BEARING FOR A REASON THE OLD WORDING GOT
- * WRONG. It is not that `buildEnvelope` would report an empty name -- it does
- * not. It is that `governsTool(entry, "")` answers `false` against any
- * declared list (measured), so dropping `raw.length > 0` here would turn an
- * empty tool name from a step that is asked about and really denied into a
- * step that is silently skipped and never audited. Anyone tempted to simplify
- * this on the strength of "buildEnvelope throws on it anyway" would be acting
- * on a mechanism that does not exist.
- *
- * MAKING `buildEnvelope` REFUSE AN EMPTY NAME WAS CONSIDERED AND NOT DONE,
- * deliberately and not for scope. Today an empty name produces a real
- * envelope and a real ARRIVING deny; refusing it there would replace that
- * with a stage-"request" posture answer, and under a negotiated `proceed` the
- * step would proceed (audited) where it is currently denied by the policy
- * runtime. That is this module's own "a decision that ARRIVED always outranks
- * a posture" running backwards, so the change would have to argue its way
- * past the header above rather than ride along with a comment fix. Left as a
- * separate question with its own test to write, if anyone takes it up.
- *
- * The `catch` is for the path itself rather than the payload: `resolvePath`
- * throws on a path that is not a string and on one naming a reserved segment
- * (hookmap-path.ts). Both are hookmap faults `buildEnvelope` throws on too,
- * and both go the same way as an unresolvable path for the same reason.
- */
-function toolNameFor(entry: HookmapHookEntry | undefined, payload: Record<string, unknown>): string | undefined {
-  if (entry === undefined) {
-    return undefined;
-  }
-  let raw: unknown;
-  try {
-    raw = resolvePath(payload, entry.tool_name);
-  } catch {
-    return undefined;
-  }
-  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
-}
-
-/**
  * Governs one step: build the ACS request, ask the Guardian for a decision,
  * honour it, and render it -- answering any failure along the way with the
  * deployment's negotiated posture, audited, at the stage that failed. A step
  * whose tool this gate's own `tools` list does not name is returned as
- * `stage: "ungoverned"` before any of that begins.
+ * `stage: "ungoverned"` before any of that begins -- scoped on the tool the
+ * caller says it already checked (`scopedTool`), and refusing outright when a
+ * gate that declares a list is reached by a caller that named none.
  */
 export async function governStep({
   hookEventName,
@@ -398,6 +382,7 @@ export async function governStep({
   session,
   sessionId,
   audit,
+  scopedTool,
 }: GovernStepInput): Promise<GovernedStep> {
   // Every render below -- the arriving decision's and the posture's -- goes
   // through the hook's own decisions block, so a hook this hookmap does not map
@@ -427,7 +412,7 @@ export async function governStep({
     );
   }
 
-  // THE `tools` SKIP, and it is FIRST for a reason that is not tidiness
+  // SCOPING, AND IT IS FIRST for a reason that is not tidiness
   // (§V5 review round 3, Task 2). A step this gate does not govern must cost
   // nothing and record nothing, and every line below this one either costs
   // something (a Guardian round trip, an audit entry) or can REFUSE the step
@@ -446,10 +431,61 @@ export async function governStep({
   // to read and nothing to be out of the scope of. An unmapped hook is a
   // broken deployment whichever tool fired it.
   //
+  // A bare index from here on: the guard above has established that
+  // `hookEventName` is an OWN property of `hooks`, so this cannot resolve to an
+  // inherited `Object.prototype` member the way the guard's own lookup could
+  // have. Read once, into one const, and used for both questions this function
+  // asks of the entry -- the `tools` scope here and the gate's KIND below.
+  const entry = hookmap.hooks[hookEventName];
+
+  // A CALLER WHOSE GATE DECLARES A `tools` LIST HAS TO SAY WHICH TOOL IT
+  // SCOPED ON -- and this is a THROW, deliberately, not a posture question
+  // (§V5 review round 4, thread 3778055539, `tell, don't ask`).
+  //
+  // The fault is decidable from this hookmap entry and this call's own
+  // arguments, with no payload consulted at all: the entry says this gate
+  // governs some tools and not others, and the caller has not said which tool
+  // this step is. There is no version of that this function can answer
+  // correctly -- scoping on a second source is exactly the divergence this
+  // round removed (`GovernStepInput.scopedTool`), and governing everything
+  // would ignore a list the deployment wrote down.
+  //
+  // OUTSIDE EVERY `try` `resolveByPosture` CATCHES, and that placement is the
+  // whole of what makes this a fix rather than a fail-open of its own.
+  // Measured: a throw that lands in the stage-"request" catch is answered by
+  // the negotiated `on_decision_failure`, and under `proceed` -- the ACS
+  // default and what this deployment ships -- that is an ungoverned step,
+  // proceeded and audited as a fail-open. This throw reaches the caller, which
+  // is host #1's exit 2 and host #2's own loud stop. Same class, same
+  // placement, and for the same reason as the hook-entry guard immediately
+  // above.
+  //
+  // A PRESENT-BUT-EMPTY `scopedTool` IS REFUSED HERE TOO, and that is not
+  // defensive typing: `governsTool(hookmap, hook, "")` answers `false` against
+  // any declared list, so an empty told name would be a silent, unaudited skip
+  // of a step this gate governs -- the same asymmetry host #2's own
+  // `assertUsableTool` refuses at its boundary. Refused only where a list is
+  // declared, because that is the only place the value decides anything: with
+  // no list, `governsTool` answers `true` for every string including that one.
+  if (entry?.tools !== undefined && (typeof scopedTool !== "string" || scopedTool.length === 0)) {
+    throw new Error(
+      `governStep: hookmap entry for hook "${hookEventName}" declares a "tools" list, so this gate governs some ` +
+        `tools and not others -- and this call named no scoped tool (scopedTool is ${JSON.stringify(scopedTool)}). ` +
+        `Pass the tool the caller already checked as "scopedTool". Deriving a second name from the payload is ` +
+        `what let a hookmap pointing "tool_name" at another field skip a governed step as "ungoverned", with no ` +
+        `Guardian request, no decision and no audit entry`,
+    );
+  }
+
+  // THE `tools` SKIP, on the tool this caller was TOLD to scope on and on no
+  // other source. Reached only when the caller told (the guard above refuses
+  // every other way to reach a gate that declares a list), so this is the
+  // shim's own answer asked a second time about the same value rather than a
+  // second question about a second value.
+  //
   // Both host shims run this same check themselves, one call earlier, and
   // that is not redundancy to remove -- see `governsTool`'s own doc comment
   // for what each of the two call sites is for.
-  const scopedTool = toolNameFor(hookmap.hooks[hookEventName], payload);
   if (scopedTool !== undefined && !governsTool(hookmap, hookEventName, scopedTool)) {
     return { output: {}, decision: null, stage: "ungoverned" };
   }
@@ -467,12 +503,7 @@ export async function governStep({
   //
   // `?? undefined` because a hookmap is YAML: a key written with nothing after
   // it parses to null, which is a key present and unusable, not a key absent.
-  //
-  // A bare index is safe here and only here: the guard above has already
-  // established `hookEventName` is an own property of `hooks`, so this cannot
-  // resolve to an inherited `Object.prototype` member the way the guard's own
-  // lookup could have.
-  const outputs = hookmap.hooks[hookEventName]?.outputs ?? undefined;
+  const outputs = entry?.outputs ?? undefined;
   const outputLocation: HostOutputLocation | undefined = outputs === undefined ? undefined : { payload, outputs };
 
   /**
