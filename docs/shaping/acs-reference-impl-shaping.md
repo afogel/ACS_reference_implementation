@@ -160,7 +160,7 @@ The runtime exists, but the artifact Microsoft reads is a machine-checked mappin
 | **C3** | Host adapters driven by a per-host hook-mapping file rather than handwritten dispatch | |
 | **C4** | Guardian service, session layer, and AGT bridge, as A2–A4 | |
 | **C5** | Published artifact = mapping table + coverage matrix; the running demo is the proof it holds | |
-| **C6** | Upstream drift watch: the same harness runs on a schedule against AGT `main`. A red cell names the changed intervention point, verdict, or schema field | |
+| **C6** | Upstream contract watch: the same harness runs on a schedule against AGT `main`. A reported surface diff names the changed intervention point, verdict, or schema field | |
 
 ⚠️ **C5 said "test matrix".** That was a third name for the 8 × 5 — U30's `CoverageMatrix`, which N47 `renderCoverageMatrix()` publishes — in the one commitment whose subject is which two artifacts get published. `slices/v7/README.md` commitment 2 freezes the three names apart: `Mapping` is S10's data, `MappingTable` is U32's rendering of it, `CoverageMatrix` is U30's measurements. C5 names the two published artifacts, so it uses the two published names (PR #16 review).
 
@@ -227,7 +227,7 @@ All resolved — see `spike-agt-integration.md`.
 | P3 | ACS Guardian service | The ACS wire boundary and all session state |
 | P3.1 | AGT bridge | Subplace of P3. Embedded AGT runtime, stateless |
 | P4 | Envelope Inspector | Live view of ACS traffic |
-| P5 | Conformance Report | Coverage matrix, mapping table, drift check |
+| P5 | Conformance Report | Coverage matrix, mapping table, upstream contract check |
 
 ### UI Affordances
 
@@ -245,7 +245,7 @@ All resolved — see `spike-agt-integration.md`.
 | U23 | P4 | inspector | posture badge: negotiated `on_decision_failure`, plus a running count of audited fail-open proceeds | render | — | — |
 | U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 AGT verdicts | render | — | — |
 | U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
-| U31 | P5 | conformance | drift detail: changed point, verdict, or schema field | render | — | — |
+| U31 | P5 | conformance | surface-diff detail: changed point, verdict, or schema field | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
 
 ### Code Affordances
@@ -391,7 +391,7 @@ flowchart TB
 
     subgraph P5["P5: Conformance Report"]
         U30["U30: 8x5 coverage matrix"]
-        U31["U31: drift detail"]
+        U31["U31: surface-diff detail"]
         U32["U32: mapping table"]
         U33["U33: trace-pillar row"]
         N40["N40: conformance runner"]

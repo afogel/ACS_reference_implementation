@@ -21,7 +21,7 @@ Every slice ends in something demo-able.
 | V5 | Second host, zero AGT changes | C3 | "Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`." ⚠️ *was "same manifest" — see §V5* |
 | V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried in the `IfcLabels` field of the ACS provenance record." |
 | V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five AGT verdicts, every cell resolved — `expressed` where ACS v0.1.0 expresses AGT, `guardian_only` where only process-local Guardian knowledge can, `unexpressed` with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
-| V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
+| V8 | Upstream contract watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
 
 **Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but its cells can only be *resolved* once V1–V6 exist to be measured — never "green", which is the success name §V7 retracted and which this line had gone on carrying. V8 is what keeps V7 true after upstream moves.
 
@@ -559,13 +559,13 @@ Plan: `docs/superpowers/plans/2026-08-16-v7-conformance-matrix.md`.
 
 ---
 
-## V8: Upstream drift watch
+## V8: Upstream contract watch
 
 **Demo:** Point the harness at AGT `main`. A changed enum value turns a cell red and names the field.
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
-| U31 | P5 | conformance | drift detail: changed point, verdict, or schema field | render | — | — |
+| U31 | P5 | conformance | surface-diff detail: changed point, verdict, or schema field | render | — | — |
 | N45 | P5 | conformance | `fetchUpstreamSurfaces()` — AGT wire schemas and enums at `main` | call | → S12 | — |
 | N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N53 |
 | N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff | call | → U31 | — |

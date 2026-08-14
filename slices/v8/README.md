@@ -1,4 +1,4 @@
-# V8: Upstream drift watch
+# V8: Upstream contract watch
 
 **Demo:** Point the harness at AGT `main`. A changed enum turns a cell red and names the field.
 

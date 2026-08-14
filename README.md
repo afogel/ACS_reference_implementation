@@ -62,7 +62,7 @@ What V5 does **not** deliver: `modifications.modified_content` still has no buil
 
 | Claim | Slice |
 |---|---|
-| A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
+| A scheduled harness run against AGT `main` catches an upstream contract change automatically | V8 |
 
 ## Layout
 
