@@ -265,10 +265,10 @@ All resolved — see `spike-agt-integration.md`.
 | N16 | P2 | `@acs/host-adapter` | `validateDecision()` — **same module as N7** | call | → N12, → N15 | — |
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N22, → N27 | — |
-| N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
-| N23 | P3 | guardian | `assembleSnapshot()` / `assembleResultSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point | call | → N30 | — |
+| N22 | P3 | guardian | `appendContextEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
+| N23 | P3 | guardian | `assemblePreToolCallSnapshot()` / `assemblePostToolCallSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict **+ the resolved intervention point** → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → the modification that point's own S10 row declares — `modifications.parameter_overrides` keyed by argument name at the request gate, `modifications.redactions` on the result payload's own path at the result gate (R1.6). A point S10 gives no synthesis rule cannot express a `transform` and throws, reaching the host as an honoured `deny` | call | → N25, → N26 | → N4, → N13 |
-| N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
+| N25 | P3 | guardian | `persistIfcLabels()` — AGT `result_labels` into the `IfcLabels` field ACS provenance carries | call | → S5 | — |
 | N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `negotiated_version`, `methods_evaluated`, `selected_transport`, `timeout_config`, `on_decision_failure`. **`methods_evaluated` is the load-bearing one and V4 is what made it so**: it is exactly the set of methods this Guardian dispatches — both `steps/*` gates since V4 added the result one — and it is *checked against the dispatch* rather than trusted, because both directions are wrong and neither is cosmetic. A method declared here that no branch answers claims enforcement that does not exist; a method omitted tells a conformant client, in `handshake.json`'s own words, to treat that gate as ALLOW-by-default. `test/handshake-declares-what-it-evaluates.test.ts` derives the truth from a live Guardian. There is no `profiles_accepted` — this responder never shipped one | call | → N26 | → N5, → N14 |
@@ -299,7 +299,7 @@ All resolved — see `spike-agt-integration.md`.
 | S16 | P2 | `audit sink` | Same shape as S14 |
 | S3 | P3 | `sessionContext` | Hash-chained entries per `session_id` |
 | S4 | P3 | `intent` | Immutable Intent baseline per session |
-| S5 | P3 | `provenance` | `origin` / `derived_from` lineage, carrying AGT `result_labels` between steps |
+| S5 | P3 | `provenance` | `origin` / `derived_from` lineage, plus an `IfcLabels` field carrying AGT's labels between steps |
 | S6 | P3 | `envelope log` | JSONL of every request and response as parsed, unmodified, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
 | S7 | P3.1 | `manifest.yaml` | Binds the `rego` policy to `data.agt.defaults.verdict`; declares intervention points, tools, approval |
 | S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored |
@@ -354,16 +354,16 @@ flowchart TB
     subgraph P3["P3: ACS Guardian service"]
         N20["N20: POST /acs JSON-RPC"]
         N21["N21: validateEnvelope()"]
-        N22["N22: appendSessionEntry()"]
-        N23["N23: assembleSnapshot() / assembleResultSnapshot()"]
+        N22["N22: appendContextEntry()"]
+        N23["N23: assemblePreToolCallSnapshot() / assemblePostToolCallSnapshot()"]
         N24["N24: mapVerdict()"]
-        N25["N25: persistResultLabels()"]
+        N25["N25: persistIfcLabels()"]
         N26["N26: createEnvelopeLogSink()"]
         N27["N27: denyOnInvalidEnvelope()"]
         N28["N28: buildServerHello()"]
         S3["S3: sessionContext chain"]
         S4["S4: intent"]
-        S5["S5: provenance + result_labels"]
+        S5["S5: provenance + IfcLabels"]
         S6["S6: envelope log"]
 
         subgraph P31["P3.1: AGT bridge"]

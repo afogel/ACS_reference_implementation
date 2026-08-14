@@ -19,7 +19,7 @@ Every slice ends in something demo-able.
 | V3 | All five dispositions, and both failure postures | C3, C4 | "One bundle produces allow, deny, ask, a rewritten tool call, and a policy-fired allow that is AGT's `warn`. Kill the Guardian under `proceed` and the step proceeds with an audit event; under `deny` it blocks. Posture negotiated at handshake." |
 | V4 | Output redaction on Claude Code | C3 | "AGT's own package documents that Claude Code cannot *reliably* redact tool output. Here it is, redacted, by AGT's stock `redact` policy — in the tool's own output shape, which is the condition that makes it reliable." |
 | V5 | Second host, zero AGT changes | C3 | "Same Guardian, same bundle, same policy. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT — the one deployment-side edit is a manifest `tools:` entry, because OpenCode names its shell tool `bash` where Claude Code names it `Bash`." ⚠️ *was "same manifest" — see §V5* |
-| V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried by ACS provenance." |
+| V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried in the `IfcLabels` field of the ACS provenance record." |
 | V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
 | V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
 
@@ -349,16 +349,16 @@ Plan: `docs/superpowers/plans/2026-08-12-v5-second-host.md`.
 
 ## V6: Session state and provenance carriage
 
-**Demo:** The SessionContext chain grows per step. AGT emits `result_labels` at one step and receives them back as `input.ifc.source_labels` at the next, carried by ACS provenance.
+**Demo:** The SessionContext chain grows per step. AGT emits `result_labels` at one step and receives them back as `input.ifc.source_labels` at the next, carried in the `IfcLabels` field of the ACS provenance record.
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
 | U22 | P4 | inspector | session chain view: SessionContext entries and lineage | render | — | — |
-| N22 | P3 | guardian | `appendSessionEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
-| N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
+| N22 | P3 | guardian | `appendContextEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
+| N25 | P3 | guardian | `persistIfcLabels()` — AGT `result_labels` into the `IfcLabels` field ACS provenance carries | call | → S5 | — |
 | S3 | P3 | store | `sessionContext`, hash-chained per `session_id` | — | — | → N23 |
 | S4 | P3 | store | `intent`, immutable baseline per session | — | — | → N23 |
-| S5 | P3 | store | `provenance` — `origin` / `derived_from`, carrying `result_labels` | — | — | → N23 |
+| S5 | P3 | store | `provenance` — `origin` / `derived_from`, plus an `IfcLabels` field carrying AGT's labels | — | — | → N23 |
 
 **This is R8.1 made concrete.** AGT's `verdict.schema.json` says the core "stores and propagates nothing" and requires the host to persist labels and re-supply them. This slice is the Guardian doing exactly that job — the one AGT's spec asks a host to do and declines to standardize. Nothing here criticizes AGT; it fills a role AGT explicitly delegates.
 
