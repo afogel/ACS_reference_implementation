@@ -58,7 +58,7 @@ one fixes a name and the role that name must fill, and nothing more.
    reader it yields `loadSessionContext` / `appendSessionEntry`, two different nouns for
    one store.
 
-5. **Session state is injected into both `assemblePreToolCallSnapshot` and
+5. **Session state must be injected into both `assemblePreToolCallSnapshot` and
    `assemblePostToolCallSnapshot`, once per assembler.** Both ship today in
    `packages/guardian/src/assemble-snapshot.ts`, envelope-only, and that file's own
    header names V6 as where S3/S4/S5 arrive. N23 does not collapse into a single function

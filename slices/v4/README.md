@@ -92,8 +92,8 @@ relaxed: array-index descent in `N7`'s `modifications.ts` (`/outputs/0/value` *i
 path for a result payload, and V3 rejected array descent outright), a payload schema for
 `steps/toolCallResult` in `validateEnvelope` — which moves a boundary, since a malformed result
 envelope now gets N27's honoured `envelope_invalid` **deny** where it used to fall through to a
-bare JSON-RPC error the host reads as *no decision arrived* — `assembleResultSnapshot` as a
-**sibling** of `assembleSnapshot` rather than a branch inside it, and a widened fourth invariant
+bare JSON-RPC error the host reads as *no decision arrived* — `assemblePostToolCallSnapshot` as a
+**sibling** of `assemblePreToolCallSnapshot` rather than a branch inside it, and a widened fourth invariant
 gate: `packages/host-adapter/src` may not name `updatedToolOutput` either.
 
 **Corrected from V3, and the correction is stronger than the note it replaces.**
