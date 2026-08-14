@@ -116,8 +116,11 @@ type HookmapHookEntryCommon = {
    *     never registered, or whose arguments that fixed target does not
    *     resolve against, is refused there by the shape mismatch alone, never
    *     by an authored rule. Measured against this repo's own shipped
-   *     configuration: every tool but the one name it registers denies,
-   *     unconditionally, before a rule is ever consulted. Asking a
+   *     configuration: every tool but the names it registers denies,
+   *     unconditionally, before a rule is ever consulted -- and it registers
+   *     three (`run_shell`, AGT's own stock example name; `Bash`, host #1's;
+   *     `bash`, host #2's), not the one an earlier version of this sentence
+   *     claimed. Asking a
    *     deployment configured that way is not wrong, but the answer it gives
    *     is a configuration mismatch reported as if it were governance.
    *     `tools` here lets a host shim decline to ask at all for a tool its

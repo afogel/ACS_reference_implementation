@@ -1527,12 +1527,35 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * squarely this file's job since §V5 review round 4 made the adapter take the
  * scoped tool as an argument instead of deriving one. What `governStep` now
  * scopes on is the value THIS function has just vouched for, handed to it as
- * `scopedTool` (`runExchange`, below) -- so a malformed `tool` that got past
- * here would be a malformed needle for `Array.prototype.includes` at BOTH
- * call sites, silently `false` at both, and the adapter's own guard would not
- * catch it either: it refuses an ABSENT or empty told tool, which a
- * non-string is not. This is the boundary that has the value in its host's
- * own type, so this is where the shape is checked.
+ * `scopedTool` (`runExchange`, below).
+ *
+ * WHAT A MALFORMED `tool` WOULD MEET DOWNSTREAM IF IT GOT PAST HERE -- stated
+ * from measurement, because an earlier version of this paragraph asserted the
+ * opposite in both halves and was wrong in both (§V5 review round 4,
+ * whole-branch review, Important 3). It claimed a non-string would be a
+ * silently-`false` needle at BOTH call sites and that the adapter's guard
+ * "would not catch it either, since it refuses an ABSENT or empty told tool,
+ * which a non-string is not". MEASURED, `scopedTool` of `42`, `null` and
+ * `{}`:
+ *
+ *   - AT A GATE DECLARING `tools`: all three THROW out of `governStep`, on
+ *     that guard's own `typeof scopedTool !== "string"` half -- 0 Guardian
+ *     calls, 0 audit events. The guard does catch a non-string; it is written
+ *     as "not a non-empty string", not as "absent or empty".
+ *   - AT A GATE DECLARING NO `tools`: `governsTool` answers `true` for all
+ *     three -- not `false` -- because an entry with no list governs every
+ *     tool and the needle is never compared to anything. So the step is
+ *     GOVERNED (`stage: "honoured"`, Guardian asked once), and `buildEnvelope`
+ *     goes on to read the tool name from the PAYLOAD, where this shim put the
+ *     same malformed value.
+ *
+ * So "silently false at both call sites" describes no configuration that
+ * exists. WHY THIS FUNCTION IS STILL RIGHT is the second bullet rather than
+ * the first: at an unscoped gate nothing downstream refuses a malformed
+ * `tool`, and what reaches the Guardian is whatever this shim assembled. This
+ * is the boundary that has the value in its host's own type, so this is where
+ * the shape is checked -- before either call site, so neither has to be
+ * correct about a value that should never have got this far.
  *
  * WHAT AN UNREADABLE `tool_name` PATH DOES IS NO LONGER PART OF THIS, and
  * that is the simplification the round-4 change bought: nothing scopes off

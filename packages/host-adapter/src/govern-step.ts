@@ -62,9 +62,12 @@
  *     gets, if it happened to write a `tool_name` path this module could read
  *     the right answer out of". WHAT that shim gets is its own
  *     applier's business, and measurably not the same on both hosts already
- *     -- on host #1's request gate an empty render is a blocking stop, not a
- *     silent skip. See the `output` field of the `"ungoverned"` member below
- *     for the measurement and for what makes it unreachable.
+ *     -- on one shipped applier's request gate an empty render is a blocking
+ *     stop, not a silent skip. The measurement is a twelve-row table in
+ *     `test/invariants.test.ts` (the gate named "host #1's hookmap declares no
+ *     `tools` at a gate where an empty render is not an answer"), and it lives
+ *     there ONLY: the `"ungoverned"` member below used to carry a second copy,
+ *     which went stale while this one was being corrected.
  *   - There are exactly three ways out: a `GovernedStep` for a step this gate
  *     governs, a `GovernedStep` for one it does not (`stage: "ungoverned"`, no
  *     decision, nothing asked and nothing audited), or a throw. A throw means
@@ -176,24 +179,49 @@ export type GovernStepInput = {
    * fault that costs an unaudited skip, and it is not decidable here: the two
    * vocabularies differing is exactly what a legitimate host with qualified
    * tool names looks like, and refusing on disagreement would re-introduce the
-   * second source this round removed AND refuse those hosts. WHERE IT IS
-   * DECIDABLE is a host's own load gate, which knows both halves -- host #2's
-   * `assertEntryMatchesGate` (acs-plugin.ts) pins `tool_name: $.tool`, the very
-   * field its shim feeds, so its hookmap's vocabulary and its shim's are the
-   * same string by construction. A third host wanting the same guarantee wants
-   * the same kind of gate.
+   * second source this round removed AND refuse those hosts.
    *
-   * WHAT IS NOT BUILT, stated rather than claimed impossible (§V5 review round
-   * 4, fix round 2): this module COULD export a reusable load-time helper,
+   * NOTHING SHIPPED CLOSES IT TODAY, AND AN EARLIER VERSION OF THIS COMMENT
+   * SAID OTHERWISE (§V5 review round 4, whole-branch review, Important 2). It
+   * claimed host #2's `assertEntryMatchesGate` made "its hookmap's vocabulary
+   * and its shim's the same string by construction". FALSE, and measured
+   * false: that gate pins `tool_name: $.tool` and every other path its shim
+   * hardcodes, but `tools` is precisely what its `fixedPaths` does NOT pin --
+   * acs-plugin.ts's own `GateEntryShape` doc comment says so in plain words.
+   * The shipped hookmap with its request gate's `tools: [bash]` recased to
+   * `[Bash]`, one token, LOADS CLEAN through `loadHookmap` AND
+   * `assertHostAcceptsEveryDecision`, the plugin registers both hooks, and a
+   * real `bash` call carrying `rm -rf /` is then skipped: no throw, arguments
+   * untouched, 0 audit entries.
+   *
+   * PRE-EXISTING, NOT THIS ROUND'S DOING -- the outcome is identical before
+   * and after, because host #2's shim skipped on that same mismatch at its own
+   * early `governsTool` call already. What this round added was the false
+   * claim that a load gate closed it. Recorded as a known residual with its
+   * measurement and a destination, in
+   * `docs/shaping/acs-reference-impl-slices.md`, beside the other faults this
+   * branch decided to record rather than repair.
+   *
+   * THE CANDIDATE CLOSE IS NOT BUILT AND IS NOT A DRIVE-BY: cross-check each
+   * `tools` entry against the deployment's own tool registry
+   * (`policy/manifest.yaml`) at load. That is a real fix and it is also how a
+   * load gate becomes worse than the hazard it closes -- on host #2 an
+   * over-refusal at load means OpenCode logs the plugin failure and runs the
+   * whole session with NO plugin registered, i.e. completely ungoverned. A
+   * registry check that is wrong in the refusing direction therefore trades a
+   * silently-skipped gate for a silently-ungoverned session. It needs its own
+   * slice, its own measurements, and a decision about what a hookmap may
+   * legitimately name that a manifest does not.
+   *
+   * WHAT THIS MODULE COULD OFFER AND DOES NOT: a reusable load-time helper
    * parameterised by the path a shim's own payload assembly puts its dispatch
-   * field at, so a third host got that third of host #2's gate without writing
-   * it. It is not built because there is one caller for it today, and because
-   * only that third generalises -- the rest of `assertEntryMatchesGate` pins
+   * field at, so a third host got the `tool_name` third of host #2's gate
+   * without writing it. Not built -- one caller today, and only that third
+   * generalises, since the rest of `assertEntryMatchesGate` pins
    * `outputs.from`/`outputs.within` and each gate's payload SHAPE against what
-   * that shim hardcodes, which is not expressible as a path parameter. So the
-   * honest statement is that nothing here can DECIDE the question at runtime
-   * (a caller's vocabulary is not knowable here), not that the adapter could
-   * offer a third host no help at load time.
+   * that shim hardcodes, which is not expressible as a path parameter. Note it
+   * would not close the residual above either: the residual is about `tools`,
+   * which no path parameter describes.
    *
    * WHAT A CALLER BUYS BY TELLING is the other half of that trade, and it is
    * the larger one: the gate scopes on the name the host actually dispatched,
@@ -290,35 +318,31 @@ export type GovernedStep =
        * it -- but WHAT AN EMPTY RENDER MEANS IS THE HOST'S, NOT THIS
        * MODULE'S, and an earlier version of this comment claimed otherwise
        * ("a host applies this the same way it applies any other render that
-       * names no key"). MEASURED, §V5 review round 3, Task 2, fix round 1,
-       * against host #1's own shim with `tools: [Bash]` added to its hookmap:
+       * names no key"). It is not a skip everywhere: one shipped applier
+       * treats an absent decision wrapper at its request gate as a thing it
+       * must not write, and turns that into a blocking stop.
        *
-       *   - `PostToolUse` (`emptyOutputIsHonest: true`, acs-hook.ts),
-       *     invoked for `Read`: exit 0, `{"hookSpecificOutput":
-       *     {"hookEventName":"PostToolUse"}}`, no audit entry. A clean no-op,
-       *     which is what "inherits the skip" promises.
-       *   - `PreToolUse` (`emptyOutputIsHonest: false`), invoked for `Read`:
-       *     EXIT 2, no audit entry, stderr `acs-hook: the rendered output for
-       *     hook "PreToolUse" has no "hookSpecificOutput" object for Claude
-       *     Code to read a decision from, so there is no output this host
-       *     could honestly write`. That shim treats an absent wrapper at its
-       *     request gate as a thing it must not write, and `main().catch`
-       *     turns the throw into a blocking stop.
+       * THE MEASUREMENT LIVES IN ONE PLACE AND THIS IS NOT IT (§V5 review
+       * round 4, whole-branch review, Important 1). It is
+       * `test/invariants.test.ts`, on the gate named "host #1's hookmap
+       * declares no `tools` at a gate where an empty render is not an answer"
+       * -- a twelve-row table, both gates x both tools x three hookmap
+       * configurations, re-measured against the current tree. This comment
+       * used to carry its own copy from §V5 review round 3, and that copy went
+       * stale when the `scopedTool` refusal (`GovernStepInput.scopedTool`)
+       * started preempting every render: it still claimed a clean `exit 0`
+       * no-op at the result gate, and scoped the blocking stop to UNLISTED
+       * tools, where the table measures exit 2 at the gate that declares the
+       * list for the listed tool as much as the unlisted one. Two copies of
+       * one measurement is how that happened, so there is now one, and this
+       * cites it. Do not restate it here.
        *
-       * So on host #1's request gate the inherited behaviour is not a skip:
-       * it is a blocking stop for every unlisted tool. FAIL-CLOSED, NOT
-       * FAIL-OPEN -- the tool call does not run ungoverned, and no audit entry
-       * claims it did -- so this is a defect in what this comment used to
-       * claim and a watch-for, not a security regression. It is also
-       * unreachable today, and unreachable BY CONSTRUCTION rather than by
-       * accident since this fix round: host #1's hookmap declares no `tools`
-       * key, and `test/invariants.test.ts`'s "host #1's hookmap declares no
-       * `tools` at a gate where an empty render is not an answer" gate fails
-       * if one is ever added at a gate whose `emptyOutputIsHonest` is false.
-       *
-       * A host that wants a skip to be silent at such a gate has to say so in
-       * its own applier -- that is host semantics, and R3.2 is exactly why
-       * this module cannot say it here.
+       * WHAT IS TRUE HERE REGARDLESS OF THAT TABLE, and the reason this member
+       * documents anything at all: an empty render is fail-closed on every
+       * applier measured -- no tool call runs ungoverned and no audit entry
+       * claims one did -- and a host that wants such a skip to be SILENT has
+       * to say so in its own applier. That is host semantics, and R3.2 is
+       * exactly why this module cannot say it here.
        */
       output: Record<string, never>;
       /**

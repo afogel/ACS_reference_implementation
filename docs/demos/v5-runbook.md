@@ -777,19 +777,29 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   `stage: "ungoverned"`, 0 Guardian calls, 0 audit events; told `"Bash"`, `stage: "honoured"`, 1
   call. **Not decidable in the adapter** — two vocabularies differing is exactly what a legitimate
   host with qualified tool names looks like, and refusing on disagreement would re-introduce the
-  second source this change removed *and* refuse those hosts. It is decidable in a host's own load
-  gate, which knows both halves: host #2's `assertEntryMatchesGate` pins `tool_name: $.tool`, the
-  very field its shim feeds, so its hookmap's vocabulary and its shim's are the same string by
-  construction. **A third host wanting that guarantee wants the same kind of gate.** The adapter
-  *could* export a reusable load-time helper for the `tool_name` third of that gate, parameterised
-  by the path a shim puts its dispatch field at — **not built**, because there is one caller for it
-  today and because only that third generalises: the rest of `assertEntryMatchesGate` pins
-  `outputs.from`/`outputs.within` and each gate's payload shape against what that shim hardcodes,
-  which is not expressible as a path parameter. So the claim is that nothing can *decide* this at
-  runtime, where a caller's vocabulary is not knowable — not that a third host could be offered no
-  help at load time. Neither shipped host reaches the residual, so this is recorded rather than
-  fixed — and unlike the six above it is not one module's sweep, because the check that closes it
-  can only be written where a host's own dispatch vocabulary is known.
+  second source this change removed *and* refuse those hosts. **And nothing shipped closes it at
+  load time either** — a claim to the contrary stood here until the whole-branch review, and it was
+  measured false. `assertEntryMatchesGate` pins `tool_name: $.tool` and every other path host #2's
+  shim hardcodes, but `tools` is exactly what its `fixedPaths` does *not* pin (`acs-plugin.ts`'s own
+  `GateEntryShape` comment says so in plain words). Measured: the shipped hookmap with the request
+  gate's `tools: [bash]` recased to `[Bash]` — one token — **loads clean** through `loadHookmap`
+  *and* `assertHostAcceptsEveryDecision`, the plugin registers both hooks, and a real `bash` call
+  carrying `rm -rf /` is then skipped, with no throw, arguments untouched, and **0 audit entries**.
+  **Pre-existing, not round 4's doing:** the outcome is identical before and after, because host
+  #2's shim skipped on that same mismatch at its own early `governsTool` call already — what round
+  4 added was the false claim that a gate closed it. **The candidate close is not built and is not
+  a drive-by:** cross-checking each `tools` entry against `policy/manifest.yaml`'s registry at load
+  is a real fix and also how a load gate becomes worse than the hazard it closes — on this host an
+  over-refusal at load means OpenCode logs the failure and runs the *entire session* with no plugin
+  registered, completely ungoverned, so a registry check wrong in the refusing direction trades a
+  silently-skipped gate for a silently-ungoverned session. It needs its own slice, and a decision
+  about what a hookmap may legitimately name that a manifest does not. The adapter *could* also
+  export a reusable load-time helper for the `tool_name` third of that gate, parameterised by the
+  path a shim puts its dispatch field at — **not built** (one caller today; only that third
+  generalises, since the rest pins `outputs.from`/`outputs.within` and each gate's payload shape
+  against what the shim hardcodes), and note it would not close this residual either, because the
+  residual is about `tools`, which no path parameter describes. Recorded with the other known
+  residuals in `docs/shaping/acs-reference-impl-slices.md`.
 - **The Inspector's tail tests gate on wall-clock sleeps, and one transient failure surfaced during
   this slice — pre-existing, and V2's rail to repair, not this slice's.** 58 assertions across 22
   bare `await Bun.sleep(…)` waits of 30–80 ms, in a suite that concurrently spawns real subprocesses

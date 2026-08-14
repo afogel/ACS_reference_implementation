@@ -720,9 +720,10 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
    * HOST #1's OWN CASE, and the reason this is a separate test rather than an
    * assumption: hosts/claude-code/claude-code.hookmap.yaml declares no `tools`
    * key at either of its gates, because its settings.json matcher (`^Bash$`)
-   * already scopes both. A skip that treated an absent list as "no tools" --
-   * the obvious way to write this wrong -- would silently stop governing
-   * every step on the host this slice promises `+0/-0`.
+   * already scopes both. What this row measures is that pair reaching
+   * `governStep` and coming back GOVERNED -- not that `governsTool` reads an
+   * absent list correctly, which it never gets asked here (see the told
+   * companion test below, which is where that half is pinned).
    *
    * UNTOLD, AND THAT IS HALF THE POINT SINCE §V5 review round 4. Host #1's
    * call passes no `scopedTool`, because there is no list for it to be scoped
@@ -740,6 +741,39 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
       // Deliberately a name nothing anywhere lists: the claim is "every
       // tool", not "the ones some other fixture happens to name".
       payload: { ...payload, tool_name: "a-tool-no-hookmap-in-this-repo-names" },
+    });
+
+    expect(governed.stage).toBe("honoured");
+    expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
+  });
+
+  /**
+   * THE TOLD HALF OF THE SAME CLAIM, and it exists because the untold test
+   * above does NOT measure what its own comment says (§V5 review round 4,
+   * whole-branch review, Minor). That comment warns against "a skip that
+   * treated an absent list as 'no tools'" -- but with nothing told, the skip
+   * short-circuits on `scopedTool !== undefined` and `governsTool` is never
+   * reached, so mutating it to exactly that wrong form (`tools !== undefined
+   * && tools.includes(tool)`) leaves the test above GREEN. Measured: that
+   * mutation fails three tests in this file, none of them the one warning
+   * about it.
+   *
+   * Told, with no list declared, `governsTool` IS consulted and has to answer
+   * "governs" for a name no hookmap anywhere lists. That is the assertion the
+   * warning was always describing, and it dies under that mutation.
+   */
+  it("governs a told tool when the entry declares no tools list — the predicate is reached and answers true", async () => {
+    const { sink, events } = recordingSink();
+    const { guardian, asked } = unaskedGuardian();
+
+    const UNLISTED = "a-tool-no-hookmap-in-this-repo-names";
+    // The predicate directly, so the mutation is caught even if the skip's own
+    // short-circuit is ever restructured again.
+    expect(governsTool(hookmap, "OnStep", UNLISTED)).toBe(true);
+
+    const governed = await governRaw(guardian, sink, undefined, {
+      payload: { ...payload, tool_name: UNLISTED },
+      scopedTool: UNLISTED,
     });
 
     expect(governed.stage).toBe("honoured");

@@ -38,10 +38,21 @@ export {
   governStep,
   // The `tools` rule itself, exported because BOTH sides of it are real: a
   // shim asks it before it validates a session id or negotiates a session
-  // config, so an out-of-scope tool costs neither; `governStep` asks it again
-  // so a shim that never asked still skips. One implementation, two call
-  // sites -- see governsTool's own doc comment for why that is not one call
-  // site too many.
+  // config, so an out-of-scope tool costs neither; `governStep` asks it again,
+  // about the tool the shim TELLS it (`GovernStepInput.scopedTool`), so the
+  // two are one question about one value. One implementation, two call sites
+  // -- see governsTool's own doc comment for why that is not one call site
+  // too many.
+  //
+  // "SO A SHIM THAT NEVER ASKED STILL SKIPS" IS RETIRED, and it was the first
+  // thing a third-host author read (§V5 review round 4, whole-branch review,
+  // Important 4). A shim that never asks AND never tells does not skip at a
+  // gate declaring `tools`: `governStep` refuses that call outright, because
+  // it has no way to know which tool the step is. Measured on host #1, the
+  // shim that does neither -- a `tools` list added to either of its gates is
+  // exit 2 on every call at that gate, not a skip. What a forgetful shim still
+  // gets is the skip for a tool it TOLD and the list does not name; what it
+  // gets for telling nothing is a loud stop.
   governsTool,
   type DecisionStage,
   type GovernStepInput,
