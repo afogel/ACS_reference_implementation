@@ -762,6 +762,28 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   are two different functions, but both live in `build-envelope.ts` — not six edits across six files,
   so it is recorded rather than fixed here, the same reasoning V4 gave for parking its own landing
   check rather than doing it twice by gate.
+- **A third host's `tools` list is scoped on the tool that host says it dispatched, and nothing
+  corroborates it — recorded here because it is the one residual of review round 4's `tell, don't
+  ask` change that a third host meets before it meets anything else.** `governStep` no longer
+  derives a tool name from the payload; `GovernStepInput.scopedTool` carries the tool the caller
+  already scoped on, and a gate whose entry declares a `tools` list *refuses* a caller that names
+  none (a throw raised outside every `try` a posture is consulted from — a posture-answered refusal
+  would be an ungoverned step under `proceed`, measured). What that buys is that no `tool_name`
+  path, however written, can make a governed step be skipped in silence; the round-3 divergence it
+  replaces was measured delivering `rm -rf /` with no Guardian request and no audit entry. What it
+  costs is that a hookmap listing a name its own host would never say — `tools: ["Bash"]` against a
+  shim dispatching `bash` — skips every call at that gate, silently and unaudited, where the derived
+  name used to govern it. Measured both ways: told `"bash"` against `tools: ["Bash"]` is
+  `stage: "ungoverned"`, 0 Guardian calls, 0 audit events; told `"Bash"`, `stage: "honoured"`, 1
+  call. **Not decidable in the adapter** — two vocabularies differing is exactly what a legitimate
+  host with qualified tool names looks like, and refusing on disagreement would re-introduce the
+  second source this change removed *and* refuse those hosts. It is decidable in a host's own load
+  gate, which knows both halves: host #2's `assertEntryMatchesGate` pins `tool_name: $.tool`, the
+  very field its shim feeds, so its hookmap's vocabulary and its shim's are the same string by
+  construction. **A third host wanting that guarantee wants the same kind of gate**, and there is
+  nothing the adapter can put in its place. Neither shipped host reaches the residual, so this is
+  recorded rather than fixed — and unlike the six above it is not one module's sweep, because the
+  check that closes it can only be written where a host's own dispatch vocabulary is known.
 - **The Inspector's tail tests gate on wall-clock sleeps, and one transient failure surfaced during
   this slice — pre-existing, and V2's rail to repair, not this slice's.** 58 assertions across 22
   bare `await Bun.sleep(…)` waits of 30–80 ms, in a suite that concurrently spawns real subprocesses

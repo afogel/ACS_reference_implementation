@@ -55,7 +55,12 @@
  *     for) is answered by the negotiated posture, which is this slice's
  *     recurring fail-open shape. The shim's own check stays where it is, for
  *     what it saves rather than for what it decides; this one is what a shim
- *     that never wrote one still gets. WHAT that shim gets is its own
+ *     that never wrote one still gets ONCE IT TELLS THIS FUNCTION WHICH TOOL
+ *     IT IS (`GovernStepInput.scopedTool`, §V5 review round 4) -- and a shim
+ *     that reaches a `tools`-declaring gate without telling is refused rather
+ *     than guessed at, which is what keeps "still gets" from meaning "still
+ *     gets, if it happened to write a `tool_name` path this module could read
+ *     the right answer out of". WHAT that shim gets is its own
  *     applier's business, and measurably not the same on both hosts already
  *     -- on host #1's request gate an empty render is a blocking stop, not a
  *     silent skip. See the `output` field of the `"ungoverned"` member below
@@ -147,6 +152,46 @@ export type GovernStepInput = {
    * load-time `assertEntryMatchesGate` refuses that particular hookmap today,
    * but the refusal lived in one shim while the two-ask PATTERN lived here,
    * so a third host copying the pattern re-opened it.
+   *
+   * TELLING MAKES THE CALLER AUTHORITATIVE, AND THAT IS THE CONTRACT RATHER
+   * THAN AN IMPLEMENTATION DETAIL -- state it before writing a third shim.
+   * This module has no independent way to know what a host calls its tools:
+   * a name reaches it either from the caller or through a hookmap path a
+   * hookmap author typed, and only the caller's is a fact about the running
+   * host. So a `tools` list is a list IN THE CALLER'S OWN VOCABULARY, checked
+   * against the caller's own word, and nothing here corroborates it.
+   *
+   * WHAT THAT COSTS, MEASURED (§V5 review round 4, fix round 1, Important 1),
+   * because "authoritative" has a residual and it should not be discovered at
+   * runtime. A gate declaring `tools: ["Bash"]`, a payload whose `tool_name`
+   * resolves to `"Bash"`, and a caller telling `"bash"`:
+   *
+   *   - told `"bash"`: `stage: "ungoverned"`, Guardian asked 0 times, 0 audit
+   *     events. SKIPPED, silently. Under the derived-name scheme this same
+   *     step was governed, because the payload's own name was in the list.
+   *   - told `"Bash"`: `stage: "honoured"`, Guardian asked 1 time, 0 audit
+   *     events.
+   *
+   * So a hookmap listing a name its own host would never say is a deployment
+   * fault that costs an unaudited skip, and it is not decidable here: the two
+   * vocabularies differing is exactly what a legitimate host with qualified
+   * tool names looks like, and refusing on disagreement would re-introduce the
+   * second source this round removed AND refuse those hosts. WHERE IT IS
+   * DECIDABLE is a host's own load gate, which knows both halves -- host #2's
+   * `assertEntryMatchesGate` (acs-plugin.ts) pins `tool_name: $.tool`, the very
+   * field its shim feeds, so its hookmap's vocabulary and its shim's are the
+   * same string by construction. A third host wanting the same guarantee wants
+   * the same kind of gate; there is nothing this module can put in its place.
+   *
+   * WHAT A CALLER BUYS BY TELLING is the other half of that trade, and it is
+   * the larger one: the gate scopes on the name the host actually dispatched,
+   * so no hookmap path -- however it is written, however it resolves, whatever
+   * the payload happens to carry -- can make a step this gate governs be
+   * skipped in silence. The residual above is loud in a deployment's own
+   * testing (the tool is simply not governed, for every call) and needs a
+   * hookmap author to write a name their host does not use; the fault it
+   * replaces was silent, needed only a `tool_name` path pointing at another
+   * field, and was measured delivering `rm -rf /`.
    *
    * OPTIONAL, AND THAT IS NOT A SOFTENING. Host #1 declares no `tools` at
    * either of its gates -- its settings.json matcher (`^Bash$`) already scopes
@@ -320,7 +365,12 @@ export type GovernedStep =
  * below, and each host shim's, which additionally returns before it validates
  * a session id or negotiates a session config, so an out-of-scope tool costs
  * no handshake either. Two call sites, one rule; the shim's saves work, this
- * module's is what a shim that never wrote one still gets.
+ * module's is what a shim that never wrote one still gets -- provided it tells
+ * `governStep` which tool it is (`GovernStepInput.scopedTool`), and it is
+ * refused rather than guessed at if it reaches a `tools`-declaring gate
+ * without telling. "Still gets" is therefore a promise about a shim that
+ * forgot the EARLY RETURN, not about one that forgot to say what the step is:
+ * the second is a broken caller, and this module stops it.
  *
  * ONE RULE, AND NOW ONE ARGUMENT (§V5 review round 4, thread 3778055539).
  * That is worth saying because it was NOT true until this round, and the way
@@ -488,6 +538,14 @@ export async function governStep({
   // Both host shims run this same check themselves, one call earlier, and
   // that is not redundancy to remove -- see `governsTool`'s own doc comment
   // for what each of the two call sites is for.
+  //
+  // THE CALLER'S WORD IS FINAL HERE, INCLUDING WHEN IT IS WRONG. A told name
+  // this list does not contain is skipped even where the payload's own
+  // `tool_name` would have resolved to one it does -- measured, silently and
+  // unaudited. That is the cost of the vocabulary being the caller's, it is
+  // not decidable in this module, and `GovernStepInput.scopedTool`'s own doc
+  // comment carries the measurement, why corroboration is the worse answer,
+  // and which load gate closes it for a host that wants it closed.
   if (scopedTool !== undefined && !governsTool(hookmap, hookEventName, scopedTool)) {
     return { output: {}, decision: null, stage: "ungoverned" };
   }

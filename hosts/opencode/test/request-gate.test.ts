@@ -612,7 +612,28 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     // for this step. The silent, unaudited `stage: "ungoverned"` this test
     // used to pin is gone.
     expect(governed.stage).toBe("honoured");
-    expect(governed.decision).not.toBeNull();
+
+    // AND WHAT THE DECISION IS, not merely that one arrived (§V5 review round
+    // 4, fix round 1, Important 3). Several comments in this tree say the
+    // residual here is OVER-BLOCKING rather than a bypass, and the only thing
+    // making that true is what the shipped policy/manifest.yaml answers for a
+    // tool it never registered. Left as "a decision arrived", a later
+    // permissive default would turn this envelope into an `allow`, this test
+    // would stay green, and every one of those claims would silently become
+    // false.
+    //
+    // THE REASON CODE IS THE HALF THAT SAYS WHY IT IS OVER-BLOCKING AND NOT
+    // GOVERNANCE: `runtime_error:tool_unknown`, from `agt_stock`. The name on
+    // the wire is the COMMAND, so this deny is the tool registry refusing a
+    // tool it does not know -- this deployment's own `rm -rf /` rule was never
+    // consulted, because the envelope never said `bash`. A plain
+    // `toBe("deny")` would also pass if the authored rule had answered, which
+    // is the outcome this hookmap does NOT produce and must not be read as
+    // producing.
+    expect({
+      decision: governed.decision?.decision,
+      reasonCodes: (governed.decision as { reason_codes?: string[] } | null)?.reason_codes,
+    }).toEqual({ decision: "deny", reasonCodes: ["runtime_error:tool_unknown"] });
   });
 
   // §V5 review round 3, Task 5, FIX ROUND 4, IMPORTANT 7A -- a DECLARED

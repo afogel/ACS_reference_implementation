@@ -433,9 +433,44 @@ describe("architectural invariants", () => {
    * edit, and the reason it has not happened is that nobody has made that
    * edit, which is not a reason. This gate is the reason instead.
    *
-   * Scoped to gates whose `emptyOutputIsHonest` is FALSE, not to the whole
-   * hookmap: `tools` at PostToolUse would be legitimate, would work, and
-   * refusing it would be this gate inventing a rule the shim does not have.
+   * SCOPED TO GATES WHOSE `emptyOutputIsHonest` IS FALSE, AND THAT SCOPE IS
+   * NOW NARROWER THAN THE TRUTH -- deliberately, and this is the part to read
+   * before adding a `tools` line anywhere in host #1's hookmap. This comment
+   * used to say `tools` at PostToolUse "would be legitimate, would work", and
+   * §V5 review round 4 made that false in both halves.
+   *
+   * HOST #1 CANNOT DECLARE `tools` AT ANY GATE, and the reason is a freeze
+   * rather than a design choice. `governStep` now scopes on the tool its
+   * CALLER tells it, and REFUSES a gate whose entry declares a `tools` list
+   * when the caller named none (`GovernStepInput.scopedTool`,
+   * packages/host-adapter/src/govern-step.ts). acs-hook.ts does not tell --
+   * it has never needed to, since its own settings.json matcher (`^Bash$`)
+   * scopes both gates -- and it CANNOT start telling, because
+   * `scripts/verify-zero-diff.sh` pins `hosts/claude-code/[^/]+\.(ts|yaml)$`
+   * at `+0/-0` for this slice. So while that freeze holds, a `tools` list in
+   * this hookmap is a throw on EVERY call at that gate, for the listed tool
+   * as much as for an unlisted one.
+   *
+   * MEASURED, with `tools: [Bash]` added to this hookmap's PostToolUse entry
+   * and the real shim invoked for `Bash` -- the tool the list names:
+   *
+   *     EXIT 2, stderr:
+   *     governStep: hookmap entry for hook "PostToolUse" declares a "tools"
+   *     list, so this gate governs some tools and not others -- and this call
+   *     named no scoped tool (scopedTool is undefined). [...]
+   *
+   * Not the silent skip this comment used to promise, and not the "unlisted
+   * tools only" blast radius either. Still fail-closed -- nothing runs
+   * ungoverned -- and still a broken deployment.
+   *
+   * THIS GATE IS NOT WIDENED TO MATCH, on purpose. It refuses a narrower thing
+   * (`tools` where an empty render is not an answer) for a reason that
+   * outlives the freeze: that fault is about the SHIM's applier and would
+   * still be a fault the day acs-hook.ts starts telling. The freeze
+   * consequence above would evaporate that same day, and a gate written for it
+   * would then be refusing something legitimate. Written down here, where
+   * whoever adds the line will read it, rather than enforced by a check that
+   * expires.
    *
    * LIVES HERE BECAUSE IT IS ABOUT TWO ARTIFACTS AT ONCE, which is what this
    * file is for. The claim it makes needs host #1's hookmap AND the adapter's
@@ -488,16 +523,21 @@ describe("architectural invariants", () => {
     for (const { hookEventName, tools } of declared) {
       if (tools !== "(none declared)") {
         throw new Error(
-          `${HOOKMAP}'s "hooks.${hookEventName}" declares "tools": ${JSON.stringify(tools)}, and ` +
-            `${SHIM} declares "emptyOutputIsHonest: false" for that hook. governStep returns an EMPTY rendered ` +
-            `output for a tool a gate's "tools" list does not name (packages/host-adapter/src/govern-step.ts, ` +
-            `the "ungoverned" member of GovernedStep -- see its "output" field for the measurement). At a gate ` +
-            `whose empty render is not an answer, that shim's asClaudeCodeOutput throws rather than writing one, ` +
-            `and main().catch exits 2 -- so every call to an unlisted tool becomes a BLOCKING STOP with no audit ` +
-            `entry, not the silent skip the list was added for. Fail-closed, so nothing runs ungoverned, but it ` +
-            `is not what a "tools" list means anywhere else. Scope this gate by its host's own matcher ` +
-            `(settings.json, "^Bash$") as it already is, or teach that shim that an empty render at this hook is ` +
-            `a skip, before declaring "tools" here.`,
+          `${HOOKMAP}'s "hooks.${hookEventName}" declares "tools": ${JSON.stringify(tools)}. TWO SEPARATE ` +
+            `FAULTS, and the first one fires first. (1) governStep REFUSES a gate whose entry declares a ` +
+            `"tools" list when its caller named no scoped tool, and ${SHIM} passes none -- so this is a throw ` +
+            `on EVERY call at this gate, for the listed tool as much as for an unlisted one, exit 2 with no ` +
+            `audit entry. Measured with "tools: [Bash]" at PostToolUse, invoked for Bash. That shim cannot be ` +
+            `taught to tell while scripts/verify-zero-diff.sh pins it at +0/-0, so host #1 cannot declare ` +
+            `"tools" at any gate today. See GovernStepInput.scopedTool ` +
+            `(packages/host-adapter/src/govern-step.ts). (2) Even once it does tell, this hook is one where ` +
+            `${SHIM} declares "emptyOutputIsHonest: false": governStep returns an EMPTY rendered output for a ` +
+            `tool a gate's list does not name (the "ungoverned" member of GovernedStep -- see its "output" ` +
+            `field for the measurement), that shim's asClaudeCodeOutput throws rather than writing one, and ` +
+            `main().catch exits 2 -- so every call to an UNLISTED tool becomes a blocking stop, not the silent ` +
+            `skip a list is added for. Both are fail-closed, so nothing runs ungoverned, and neither is what a ` +
+            `"tools" list means anywhere else. Scope this gate by its host's own matcher (settings.json, ` +
+            `"^Bash$") as it already is.`,
         );
       }
     }
