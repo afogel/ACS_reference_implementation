@@ -284,7 +284,7 @@ All resolved — see `spike-agt-integration.md`.
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
 | N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas — a row is emittable only when a *wire consumer* could emit it | call | — | → N52 |
 | N45 | P5 | conformance | `fetchUpstreamSurfaces()` — AGT wire schemas and enums at `main` | call | → S12 | — |
-| N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N53 |
+| N46 | P5 | conformance | `diffSurfaces(pinned, upstream)` — a `PinnedSurfaces` (S11) against an `UpstreamSurfaces` (S12), both passed in rather than read here | call | — | → N53 |
 | N47 | P5 | conformance | `renderCoverageMatrix()` — the 8 × 5 cells N41–N44 measure, and nothing else. The retired name is **gated**, not merely retired: `test/invariants.test.ts` strips comments first, then asserts no source file's remaining *code* contains `renderMatrix` — `render.ts`'s own doc comment names it in prose (recording exactly this history) and does not trip the gate, because a comment is not code | call | → U30 | — |
 | N52 | P5 | conformance | `renderTraceRows()` — N49's trace-pillar rows. A trace row is an attribute against its wire source, not a point × verdict cell, so it is not a column of the matrix | call | → U33 | — |
 | N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff. **V8 builds it and V8 renders it**: its only input is V8's `diffSurfaces()`, so V7 can neither build nor test it, and §V8 of the slices doc carries the row | call | → U31 | — |
