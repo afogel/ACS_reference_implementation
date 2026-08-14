@@ -534,7 +534,7 @@ R5.3 lands here: the matrix *is* the profile declaration — including the Trace
 | N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff | call | → U31 | — |
 | S12 | P5 | store | upstream AGT surfaces | — | — | → N46 |
 
-**⚠️ N53 is new scope for this slice, added by V7's `renderMatrix()` split (§V7).** Until that split, U31 was rendered by V7's N47 — a function this slice inherited rather than built. It builds one now: `renderUpstreamDiff()` is V8's because its only input is this slice's own N46, so V7 can neither build it nor test it. **This slice's affordances are therefore U31, N45, N46, N53, S12**, and `slices/v8/README.md`'s affordance line carries the same five.
+**⚠️ N53 is new scope for this slice, added by V7's `renderMatrix()` split (§V7).** Until that split, U31 was rendered by V7's N47 — a function this slice inherited rather than built. It builds one now: `renderUpstreamDiff()` is V8's because its only input is this slice's own N46, so V7 can neither build it nor test it. **This slice's affordances are therefore U31, N45, N46, N53, S12**, and `slices/v8/README.md`'s affordance line must carry the same five — it was written before the split and lists four.
 
 Surfaces watched, and nothing else (R2.4): `manifest.schema.json`, `policy-input.schema.json`, `verdict.schema.json`, `snapshot.schema.json`, the intervention-point enum, the verdict enum, `reserved-reasons.json`, and the stock bundle's `data.agt.defaults.config` keys.
 
