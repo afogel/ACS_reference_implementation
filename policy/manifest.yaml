@@ -41,13 +41,14 @@ intervention_points:
   # AGT's JSONPath supports directly (verified). `tool_name_from` is
   # load-bearing here and not decoration: without a `tool_call.name` in the
   # snapshot AGT fails closed with runtime_error:path_missing before any
-  # rule runs, so `assembleResultSnapshot` synthesizes it from the payload's
-  # `tool.name`.
+  # rule runs, so `assemblePostToolCallSnapshot` synthesizes it from the
+  # payload's `tool.name`.
   #
   # That is N23's result-gate sibling in
-  # packages/guardian/src/assemble-snapshot.ts, NOT `assembleSnapshot` beside
-  # it: the two are separate functions over separate envelope types, and only
-  # the result one can read a `tool.name` out of a result payload. This comment
+  # packages/guardian/src/assemble-snapshot.ts, NOT
+  # `assemblePreToolCallSnapshot` beside it: the two are separate functions
+  # over separate envelope types, and only the result one can read a
+  # `tool.name` out of a result payload. This comment
   # named `assembleSnapshot` while the sibling was still unnamed (V4 Task 1),
   # and a reader following that pointer landed in the pre-tool assembler, where
   # there is no `tool_result` in sight, and could only conclude the synthesis
@@ -77,7 +78,7 @@ intervention_points:
     # redaction test: it evaluates through this manifest and asserts the pointer
     # mapping.yaml supplies comes back on the wire, which makes it the only
     # test whose assertion spans both halves. Moving this leaf also fails
-    # test/redaction.test.ts's bundle pin and two assembleResultSnapshot tests
+    # test/redaction.test.ts's bundle pin and two assemblePostToolCallSnapshot tests
     # (measured), but those three assert AGT's raw verdict and cannot tell
     # whether the ACS pointer still names the leaf AGT rewrote.
     policy_target: "$.tool_result.outputs[0].value"

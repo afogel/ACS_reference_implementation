@@ -1046,8 +1046,9 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     //     as well -- they pin that pointer against the real mapping file.
     //   - Move this manifest's policy_target and every mapVerdict unit test
     //     still passes: they never read the manifest. Three other tests do fail
-    //     (test/redaction.test.ts's bundle pin and two assembleResultSnapshot
-    //     tests), but all three assert AGT's raw verdict, so none of them can
+    //     (test/redaction.test.ts's bundle pin and two
+    //     assemblePostToolCallSnapshot tests), but all three assert AGT's raw
+    //     verdict, so none of them can
     //     tell whether the ACS pointer still names the leaf AGT rewrote.
     // So this is the one test that can catch a disagreement which leaves each
     // file individually plausible, because every layer between them is real

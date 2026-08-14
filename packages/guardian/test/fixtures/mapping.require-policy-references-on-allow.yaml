@@ -12,7 +12,7 @@
 #
 # Used by packages/guardian/test/server.test.ts (fix wave finding 1) to
 # prove the Guardian's evaluation-failure catch turns a genuine
-# assembleSnapshot/bridge.evaluate/mapVerdict throw into a well-formed
+# assemblePreToolCallSnapshot/bridge.evaluate/mapVerdict throw into a well-formed
 # JSON-RPC error in the ACS-reserved range, not an unhandled exception that
 # Bun.serve would otherwise turn into a text/html 500.
 acs_version: "0.1.0"
