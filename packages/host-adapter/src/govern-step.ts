@@ -370,12 +370,21 @@ export type GovernedStep =
        * branch for the case at all. That is host semantics, and R3.2 is
        * exactly why this module cannot say it here.
        *
-       * HOW IT WAS MEASURED, AND WHY NO TEST IN THIS TREE PINS ANY ROW: no
-       * shipped path can produce an empty render at any of the four. Host #1
-       * never tells this function a tool, so a `tools` list at its gates is
-       * this function's own refusal and never a skip; host #2 tells, and its
-       * own shim returns before this function for a tool its list does not
-       * name. The four rows above were taken by forcing the render -- a
+       * HOW IT WAS MEASURED, AND WHAT IS PINNED: one row's applier half is,
+       * three are not, and NO test drives an empty render through this
+       * function to any applier. `hosts/opencode/test/apply-opencode-output.test.ts`
+       * hands `applyOpenCodeOutput` the same `{}` this function would render
+       * and asserts the host #2 request-gate row directly -- "does nothing and
+       * logs nothing for a render with no keys at all" asserts the untouched
+       * live args and a silent console, and two prototype-pollution tests in
+       * that file pass `{}` for their own reason and assert the same
+       * untouched args. The other three rows -- host #1 at either gate, host
+       * #2 at the result gate -- are asserted nowhere. What no test does at
+       * all is produce the render: no shipped path can. Host #1 never tells
+       * this function a tool, so a `tools` list at its gates is this
+       * function's own refusal and never a skip; host #2 tells, and its own
+       * shim returns before this function for a tool its list does not name.
+       * The four rows above were taken by forcing the render -- a
        * temporary env-gated early return in `governStep`, applied from a file
        * backup and restored (sha256 identical either side) -- with each applier
        * reached exactly as its host reaches it: host #1 as a real subprocess on

@@ -1559,7 +1559,7 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  *     copies loads clean through `AcsPlugin` (so through `loadHookmap` AND
  *     `assertHostAcceptsEveryDecision`) and registers both hooks, because
  *     `tools` is what `assertEntryMatchesGate`'s `fixedPaths` does not pin
- *     (`GateEntryShape` below says so in plain words) --
+ *     (`GateEntryShape` above says so in plain words) --
  *     `governsTool` answers `true` for all four, because an entry with no list
  *     governs every tool and the needle is never compared to anything. What
  *     happens after that is `buildEnvelope`'s, not the list's, and it is NOT
