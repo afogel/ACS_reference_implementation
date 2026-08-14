@@ -60,14 +60,19 @@
  *     that reaches a `tools`-declaring gate without telling is refused rather
  *     than guessed at, which is what keeps "still gets" from meaning "still
  *     gets, if it happened to write a `tool_name` path this module could read
- *     the right answer out of". WHAT that shim gets is its own
- *     applier's business, and measurably not the same on both hosts already
- *     -- on one shipped applier's request gate an empty render is a blocking
- *     stop, not a silent skip. The measurement is a twelve-row table in
- *     `test/invariants.test.ts` (the gate named "host #1's hookmap declares no
- *     `tools` at a gate where an empty render is not an answer"), and it lives
- *     there ONLY: the `"ungoverned"` member below used to carry a second copy,
- *     which went stale while this one was being corrected.
+ *     the right answer out of". WHAT that shim gets is its own applier's
+ *     business, and measurably not the same at the four shipped applier/gate
+ *     combinations: at three of them an empty render is a silent no-op and at
+ *     the fourth it is a blocking stop. That measurement is the four-row table
+ *     on `GovernedStep`'s `"ungoverned"` member below, and it lives there
+ *     ONLY. This bullet used to cite `test/invariants.test.ts`'s twelve-row
+ *     table as the measurement, and that table measures something else: what a
+ *     `tools` list costs HOST #1 (exit 2 at the gate that declares it, for the
+ *     listed tool as much as an unlisted one), every exit-2 row being this
+ *     function's own scoping refusal rather than any applier's answer -- it
+ *     records the applier fault as UNREACHABLE through a `tools` list, so it
+ *     could not have been evidence about appliers at all (§V5 review round 4,
+ *     reconstruction repair).
  *   - There are exactly three ways out: a `GovernedStep` for a step this gate
  *     governs, a `GovernedStep` for one it does not (`stage: "ungoverned"`, no
  *     decision, nothing asked and nothing audited), or a throw. A throw means
@@ -316,33 +321,75 @@ export type GovernedStep =
        * nothing for this module to render. It is a `GovernedStep` rather than
        * a fourth kind of answer so that a shim needs no new branch to receive
        * it -- but WHAT AN EMPTY RENDER MEANS IS THE HOST'S, NOT THIS
-       * MODULE'S, and an earlier version of this comment claimed otherwise
-       * ("a host applies this the same way it applies any other render that
-       * names no key"). It is not a skip everywhere: one shipped applier
-       * treats an absent decision wrapper at its request gate as a thing it
-       * must not write, and turns that into a blocking stop.
+       * MODULE'S, and two earlier versions of this comment claimed otherwise,
+       * in opposite directions: first that "a host applies this the same way
+       * it applies any other render that names no key", then that "an empty
+       * render is fail-closed on every applier measured -- no tool call runs
+       * ungoverned". Both are false. The second is the more dangerous, because
+       * it is a SAFETY promise on the shared adapter, and a third-host author
+       * writing a no-op applier is entitled to read one off it.
        *
-       * THE MEASUREMENT LIVES IN ONE PLACE AND THIS IS NOT IT (§V5 review
-       * round 4, whole-branch review, Important 1). It is
-       * `test/invariants.test.ts`, on the gate named "host #1's hookmap
-       * declares no `tools` at a gate where an empty render is not an answer"
-       * -- a twelve-row table, both gates x both tools x three hookmap
-       * configurations, re-measured against the current tree. This comment
-       * used to carry its own copy from §V5 review round 3, and that copy went
-       * stale when the `scopedTool` refusal (`GovernStepInput.scopedTool`)
-       * started preempting every render: it still claimed a clean `exit 0`
-       * no-op at the result gate, and scoped the blocking stop to UNLISTED
-       * tools, where the table measures exit 2 at the gate that declares the
-       * list for the listed tool as much as the unlisted one. Two copies of
-       * one measurement is how that happened, so there is now one, and this
-       * cites it. Do not restate it here.
+       * THE FOUR SHIPPED APPLIER/GATE COMBINATIONS, MEASURED, EACH HANDED
+       * `{}` (§V5 review round 4, reconstruction repair). One is a blocking
+       * stop. Three are silent no-ops:
        *
-       * WHAT IS TRUE HERE REGARDLESS OF THAT TABLE, and the reason this member
-       * documents anything at all: an empty render is fail-closed on every
-       * applier measured -- no tool call runs ungoverned and no audit entry
-       * claims one did -- and a host that wants such a skip to be SILENT has
-       * to say so in its own applier. That is host semantics, and R3.2 is
+       *     applier / gate           what an empty render does
+       *     -----------------------  ------------------------------------------
+       *     host #1 / request gate   exit 2, nothing written to stdout: this
+       *                              render carries no wrapper for that host to
+       *                              read a decision from, its applier throws
+       *                              rather than write half an output, and
+       *                              `main().catch` exits 2. The step is stopped.
+       *     host #1 / result gate    exit 0, output written, tool result
+       *                              delivered as the tool produced it. That
+       *                              gate's applier supplies the wrapper itself,
+       *                              because an absent one is the honest answer
+       *                              for a clean result there.
+       *     host #2 / request gate   no throw, nothing applied: the live
+       *                              arguments object still carried `rm -rf /`
+       *                              afterwards, and the tool call runs.
+       *     host #2 / result gate    no throw, nothing applied: the live result
+       *                              object and its mirror still carried the
+       *                              secret afterwards, and it is delivered.
+       *
+       * 0 audit entries in all four -- necessarily, since this member is
+       * returned before anything is audited, and confirmed by the harness (no
+       * audit file was created at all).
+       *
+       * SO AN EMPTY RENDER GUARANTEES NOTHING BY ITSELF, which is the whole
+       * point of this member being documented rather than assumed. It does not
+       * mean the step was stopped, and it does not mean anything recorded that
+       * the step was not governed. On three of the four the tool call proceeds
+       * (or its output is delivered) with no decision, no audit entry, and
+       * nothing anywhere saying so; on the fourth it is a blocking stop, and
+       * even there the stop is a side effect of that host's rule about half an
+       * output rather than a decision anyone made about skips. Whether a skip
+       * is silent or loud is decided in the applier and nowhere else -- host
+       * #1 decided it per gate and on purpose (its two gates are the two
+       * different answers), and host #2's applier decides it by having no
+       * branch for the case at all. That is host semantics, and R3.2 is
        * exactly why this module cannot say it here.
+       *
+       * HOW IT WAS MEASURED, AND WHY NO TEST IN THIS TREE PINS ANY ROW: no
+       * shipped path can produce an empty render at any of the four. Host #1
+       * never tells this function a tool, so a `tools` list at its gates is
+       * this function's own refusal and never a skip; host #2 tells, and its
+       * own shim returns before this function for a tool its list does not
+       * name. The four rows above were taken by forcing the render -- a
+       * temporary env-gated early return in `governStep`, applied from a file
+       * backup and restored (sha256 identical either side) -- with each applier
+       * reached exactly as its host reaches it: host #1 as a real subprocess on
+       * its own shipped hookmap, host #2 through its plugin factory's own two
+       * hooks. Anything that makes an empty render reachable is the change that
+       * should also pin these rows.
+       *
+       * `test/invariants.test.ts`'s twelve-row table IS NOT THIS MEASUREMENT,
+       * and this comment used to say it was. That table is about what a `tools`
+       * list costs host #1: every one of its exit-2 rows is this function's own
+       * scoping refusal (`GovernStepInput.scopedTool`), fired before any render
+       * exists, and the table states in its own words that the applier fault is
+       * unreachable through a `tools` list on that host. It measures the
+       * refusal, not the applier.
        */
       output: Record<string, never>;
       /**

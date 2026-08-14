@@ -792,8 +792,11 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   is a real fix and also how a load gate becomes worse than the hazard it closes — on this host an
   over-refusal at load means OpenCode logs the failure and runs the *entire session* with no plugin
   registered, completely ungoverned, so a registry check wrong in the refusing direction trades a
-  silently-skipped gate for a silently-ungoverned session. It needs its own slice, and a decision
-  about what a hookmap may legitimately name that a manifest does not. The adapter *could* also
+  silently-skipped gate for a silently-ungoverned session. **Destination: V8**, whose mechanism is a
+  scheduled harness that diffs two declared surfaces and turns a cell red naming the field — the
+  reporting direction this measurement argues for, rather than a refusing one; it still needs a
+  decision about what a hookmap may legitimately name that a manifest does not. The slices doc
+  carries the placement and its caveat. The adapter *could* also
   export a reusable load-time helper for the `tool_name` third of that gate, parameterised by the
   path a shim puts its dispatch field at — **not built** (one caller today; only that third
   generalises, since the rest pins `outputs.from`/`outputs.within` and each gate's payload shape

@@ -1529,48 +1529,84 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * scopes on is the value THIS function has just vouched for, handed to it as
  * `scopedTool` (`runExchange`, below).
  *
- * WHAT A MALFORMED `tool` WOULD MEET DOWNSTREAM IF IT GOT PAST HERE -- stated
- * from measurement, because an earlier version of this paragraph asserted the
- * opposite in both halves and was wrong in both (§V5 review round 4,
- * whole-branch review, Important 3). It claimed a non-string would be a
- * silently-`false` needle at BOTH call sites and that the adapter's guard
- * "would not catch it either, since it refuses an ABSENT or empty told tool,
- * which a non-string is not". MEASURED, `scopedTool` of `42`, `null` and
- * `{}`:
+ * WHAT A MALFORMED `tool` WOULD MEET DOWNSTREAM IF IT GOT PAST HERE. Stated
+ * from measurement, and RE-MEASURED for this version because the last one had
+ * the right shape and the wrong numbers -- it gave the unscoped row as
+ * `stage: "honoured"`, Guardian asked once, which is one of the four values'
+ * result attached to the other three (§V5 review round 4, reconstruction
+ * repair; the version before THAT was wrong in both halves, claiming a
+ * non-string would be a silently-`false` needle at both call sites and that
+ * the adapter's guard would not catch it). FOUR values -- `42`, `null`, `{}`
+ * and `""` -- driven through `governStep` against this host's own hookmap at
+ * both gates, counting Guardian stub, recording audit sink:
  *
- *   - AT A GATE DECLARING `tools`: all three THROW out of `governStep`, on
- *     that guard's own `typeof scopedTool !== "string"` half -- 0 Guardian
- *     calls, 0 audit events. The guard does catch a non-string; it is written
- *     as "not a non-empty string", not as "absent or empty".
- *   - AT A GATE DECLARING NO `tools`: `governsTool` answers `true` for all
- *     three -- not `false` -- because an entry with no list governs every
- *     tool and the needle is never compared to anything. So the step is
- *     GOVERNED (`stage: "honoured"`, Guardian asked once), and `buildEnvelope`
- *     goes on to read the tool name from the PAYLOAD, where this shim put the
- *     same malformed value.
+ *   - AT THIS HOST'S SHIPPED GATES, WHICH BOTH DECLARE `tools: [bash]`: all
+ *     four THROW out of `governStep`, 0 Guardian calls and 0 audit events, at
+ *     both gates -- the first three on that guard's `typeof scopedTool !==
+ *     "string"` half, `""` on its `.length === 0` half. The guard does catch a
+ *     non-string; it is written as "not a non-empty string", not as "absent or
+ *     empty". That is `governStep` asked DIRECTLY, though, and with this
+ *     function deleted a malformed `tool` would not reach it at a scoped gate
+ *     at all: measured against this shipped hookmap, `governsTool` answers
+ *     `false` for all four at both gates (and `true` for `"bash"`), so the
+ *     call immediately below this one in `runExchange` returns first --
+ *     silently and unaudited, the absorption the paragraph above describes. At
+ *     a scoped gate the adapter's guard is therefore a backstop for a caller
+ *     that skipped this shim's own early return, not the thing that would
+ *     catch a malformed value here.
+ *   - AT AN UNSCOPED GATE -- this same hookmap with one gate's `tools: [bash]`
+ *     line deleted, which nothing refuses (`GateEntryShape` below: `tools` is
+ *     what `assertEntryMatchesGate`'s `fixedPaths` does not pin) --
+ *     `governsTool` answers `true` for all four, because an entry with no list
+ *     governs every tool and the needle is never compared to anything. What
+ *     happens after that is `buildEnvelope`'s, not the list's, and it is NOT
+ *     the same for all four:
  *
- * So "silently false at both call sites" describes no configuration that
- * exists. WHY THIS FUNCTION IS STILL RIGHT is the second bullet rather than
- * the first: at an unscoped gate nothing downstream refuses a malformed
- * `tool`, and what reaches the Guardian is whatever this shim assembled. This
- * is the boundary that has the value in its host's own type, so this is where
- * the shape is checked -- before either call site, so neither has to be
- * correct about a value that should never have got this far.
+ *         told `tool`   stage         Guardian calls   audit events
+ *         -----------   -----------   --------------   ------------
+ *         42            "request"     0                1
+ *         null          "request"     0                1
+ *         {}            "request"     0                1
+ *         ""            "honoured"    1                0
  *
- * WHAT AN UNREADABLE `tool_name` PATH DOES IS NO LONGER PART OF THIS, and
- * that is the simplification the round-4 change bought: nothing scopes off
- * the payload any more, so no payload shape can produce a silent skip.
- * Re-measured through `governStep` with the tool told and `tools` declared:
- * an ABSENT or NON-STRING `tool_name` is a `buildEnvelope` throw,
- * posture-answered and AUDITED (`stage: "request"`, Guardian asked 0 times, 1
- * audit event -- the path this paragraph's own measurement above describes);
- * an EMPTY-STRING one does not throw at all, because `buildEnvelope` checks
- * the type and not the length, so the envelope is built carrying
- * `tool: {"name": ""}` and the step is really asked about (`stage:
- * "honoured"`, Guardian asked 1 time, 0 audit events; this repo's own shipped
- * policy configuration answers it `deny`). Governed or audited; never silent.
- * `GovernStepInput.scopedTool`'s doc comment (govern-step.ts) carries the
- * table.
+ *     Identical at both gates. The first three are `buildEnvelope` throwing
+ *     (`hookmap path "$.tool" ... did not resolve to a string` -- `$.tool` is
+ *     this entry's own `tool_name` path AND the field `runExchange` below puts
+ *     `input.tool` in, so the malformed `tool` is the malformed `tool_name`),
+ *     answered by the negotiated posture and AUDITED whichever way it
+ *     resolves: measured `proceeded`/`host_configuration` under `proceed` and
+ *     `blocked`/`host_configuration` under `deny`.
+ *
+ * THE EMPTY STRING IS THE ROW THIS FUNCTION IS FOR, and the one the previous
+ * version of this paragraph left out. `buildEnvelope` checks that path's value
+ * for TYPE and not for length, so `""` throws nothing: the envelope is built
+ * carrying `tool: {"name": ""}` -- captured on the wire, both gates -- and the
+ * step is really asked about, unaudited. Against this repo's own shipped
+ * policy configuration a live Guardian answers that envelope `deny` with
+ * `reason_codes: ["runtime_error:tool_unknown"]`: the REGISTRY refusing a name
+ * this deployment never registered, with this deployment's own `rm -rf /` rule
+ * never consulted. The identical call telling `"bash"` answers `deny` with
+ * `["destructive_shell_command_blocked"]` -- the authored rule. So an empty
+ * `tool` buys a governed step judged under a name the deployment does not
+ * have, and a deployment whose policy answers an unregistered tool
+ * permissively gets the command through with 0 audit entries. Nothing
+ * downstream refuses it: not `governsTool` (no list to be outside of), not
+ * `governStep`'s guard (reached only where a list is declared), not
+ * `buildEnvelope` (type, not length). This function does, at the boundary that
+ * has the value in its host's own type -- before either call site, so neither
+ * has to be correct about a value that should never have got this far.
+ *
+ * WHAT AN UNREADABLE `tool_name` PATH DOES IS THE SAME MEASUREMENT ON THIS
+ * HOST, not a second one, and writing it out twice is how one copy came to
+ * carry the other's numbers. Both gates here declare `tool_name: $.tool` and
+ * `runExchange` puts `input.tool` there, so the two are one value seen from
+ * two ends and the table above is both. For the other host -- one whose
+ * `tool_name` path is NOT the field its shim dispatches on -- see
+ * `GovernStepInput.scopedTool`'s doc comment (govern-step.ts), which measures
+ * a well-formed told tool against an unreadable path. What the round-4 change
+ * bought is that nothing scopes off the payload any more, so no payload shape
+ * can produce a silent SKIP; what it does not buy is a refusal of the empty
+ * name, which is the row above.
  *
  * Generic over `hookEventName`, exactly like `assertUsableSessionId` -- and,
  * like it, called from ONE place since §V5 review round 3, Task 6 (`runExchange`,
