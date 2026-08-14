@@ -151,11 +151,11 @@ Same mapping, no network. Envelopes are constructed and schema-validated but pas
 
 ## C: Contract-first — the mapping is the deliverable
 
-The runtime exists, but the artifact Microsoft reads is a machine-checked mapping table plus a green conformance matrix. The demo is evidence for it, not the product.
+The runtime exists, but the artifact Microsoft reads is a machine-checked mapping table plus a conformance matrix with every cell resolved. The demo is evidence for it, not the product. ⚠️ *This sentence said "a green conformance matrix" — the same claim §V7 of the slices doc retracted, and for its reason: a matrix that must be all green to count is a matrix under pressure to redefine the claim.*
 
 | Part | Mechanism | Flag |
 |------|-----------|:----:|
-| **C1** | Normative ACS ↔ MS-ACS mapping as data: 8 intervention points, 5 verdicts, the 5 policy-input members, action identity, error taxonomy | |
+| **C1** | Normative ACS ↔ MS-ACS mapping as data: 8 intervention points, 5 AGT verdicts, the 5 policy-input members, action identity, error taxonomy | |
 | **C2** | Conformance harness: a round-trip case per point and per verdict proving no loss. A red cell is a spec defect, not a bug | |
 | **C3** | Host adapters driven by a per-host hook-mapping file rather than handwritten dispatch | |
 | **C4** | Guardian service, session layer, and AGT bridge, as A2–A4 | |
@@ -240,7 +240,7 @@ All resolved — see `spike-agt-integration.md`.
 | U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
 | U22 | P4 | inspector | session chain view: SessionContext entries and lineage | render | — | — |
 | U23 | P4 | inspector | posture badge: negotiated `on_decision_failure`, plus a running count of audited fail-open proceeds | render | — | — |
-| U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 verdicts | render | — | — |
+| U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 AGT verdicts | render | — | — |
 | U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
 | U31 | P5 | conformance | drift detail: changed point, verdict, or schema field | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
@@ -279,10 +279,12 @@ All resolved — see `spike-agt-integration.md`.
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
-| N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas — a cell is green only when a *wire consumer* could emit it | call | — | → N47 |
+| N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas — a cell is green only when a *wire consumer* could emit it | call | — | → N52 |
 | N45 | P5 | conformance | `fetchUpstreamSurfaces()` — AGT wire schemas and enums at `main` | call | → S12 | — |
-| N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N47 |
-| N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U31 | — |
+| N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N53 |
+| N47 | P5 | conformance | `renderCoverageMatrix()` — the 8 × 5 cells N41–N44 measure, and nothing else | call | → U30 | — |
+| N52 | P5 | conformance | `renderTraceRows()` — N49's trace-pillar rows. A trace row is an attribute against its wire source, not a point × verdict cell, so it is not a column of the matrix | call | → U33 | — |
+| N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff. V8's affordance: it has no input until V8's `diffSurfaces()` exists | call | → U31 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
 | N51 | P4 | inspector | `tailAuditLog()` — host-side fail-open audit events and negotiated posture | observe | → U23 | — |
@@ -397,7 +399,9 @@ flowchart TB
         N49["N49: trace-pillar check"]
         N45["N45: fetchUpstreamSurfaces()"]
         N46["N46: diffSurfaces()"]
-        N47["N47: renderMatrix()"]
+        N47["N47: renderCoverageMatrix()"]
+        N52["N52: renderTraceRows()"]
+        N53["N53: renderUpstreamDiff()"]
         N48["N48: renderMappingTable()"]
         S12["S12: upstream AGT surfaces"]
     end
@@ -492,14 +496,14 @@ flowchart TB
     N43 -.-> N47
     N44 -.-> N47
     N40 --> N49
-    N49 -.-> N47
+    N49 -.-> N52
     N45 --> S12
     S11 -.-> N46
     S12 -.-> N46
-    N46 -.-> N47
+    N46 -.-> N53
     N47 --> U30
-    N47 --> U31
-    N47 --> U33
+    N53 --> U31
+    N52 --> U33
     S10 -.-> N48
     N48 --> U32
 
@@ -508,7 +512,7 @@ flowchart TB
     classDef store fill:#e6e6fa,stroke:#9370db,color:#000
 
     class U1,U2,U3,U10,U11,U12,U20,U21,U22,U23,U30,U31,U32,U33 ui
-    class N1,N2,N3,N4,N5,N6,N7,N10,N11,N12,N13,N14,N15,N16,N20,N21,N22,N23,N24,N25,N26,N27,N28,N30,N31,N40,N41,N42,N43,N44,N45,N46,N47,N48,N49,N50,N51 nonui
+    class N1,N2,N3,N4,N5,N6,N7,N10,N11,N12,N13,N14,N15,N16,N20,N21,N22,N23,N24,N25,N26,N27,N28,N30,N31,N40,N41,N42,N43,N44,N45,N46,N47,N48,N49,N50,N51,N52,N53 nonui
     class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16 store
 ```
 
@@ -525,7 +529,7 @@ flowchart TB
 | R1.7 — wire posture is negotiated, not hard-coded | N5/N14 negotiate it into S13/S15; N6/N15 apply it and audit every fail-open proceed to S14/S16. ⚠️ **The converse does not yet hold** — V4 measured an audit entry reading `outcome: "proceeded"` for a step the shim then **blocked** (exit 2), because the posture writes before a later seam refuses. "Every proceed is audited" is satisfied; "every audited proceed happened" is not. See §V4's watch-for; the repair is the audit sink's contract, not V4's |
 | R1.8 — mandatory fail-closed cases | N7/N16 |
 | R1.9 — a refusal denies regardless of posture | N6 reads the failure before it reads the posture: `classifyDeliveryFailure` names the refusal, and it resolves to `deny` without consulting S13's `on_decision_failure`. Closes the four codes N27 cannot address a decision to, from the host's own side |
-| R2.5/R2.6 — drift is a named failure | N45, N46 → U31 |
+| R2.5/R2.6 — drift is a named failure | N45, N46 → N53 → U31 |
 
 ---
 
@@ -542,7 +546,7 @@ flowchart TB
 | ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
 | ~~D8~~ | Which `on_decision_failure` the reference ships as its default | ✅ **Decided: `proceed`, the spec default** | R1.7 and `handshake.json`'s own `default` both fix it, and V1 already shipped it in `handshakeResponder()`. The original reasoning stands: a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly, which is why V3 pairs the default with S14 and the fail-open proceed count. V3 makes the value deployment-declared (`ACS_ON_DECISION_FAILURE`) so one binary demos both halves, and a value that is neither posture **throws** rather than falling back — guessing a posture from a typo is the silent bypass V3 exists to remove |
 | D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |
-| ~~D10~~ | R5.3 — does this implementation claim the ACS **Trace** pillar? | ✅ **Decided: no, and V7 measures the non-claim** (N49 → U33). V7 does not build an exporter; per the evidence note below it could only live in the Guardian, which would be a slice of its own | `specification/v0.1.0/trace/otel-mapping.json` is normative: a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it maps `steps/toolCallRequest` → `gen_ai.tool.call` by name. `trace/ocsf-mapping.json` is its sibling. V2's envelope log (S6) is a raw JSONL log, deliberately not an OTel or OCSF export, so today we claim neither pillar. R5.3 requires declaring that either way. Settled: the matrix records Trace as an explicit non-claim, and **two of its required span attributes have no wire source at all — evidence note directly below** |
+| ~~D10~~ | R5.3 — does this implementation claim the ACS **Trace** pillar? | ✅ **Decided: no, and V7 measures the non-claim** (N49 → N52 → U33). V7 does not build an exporter; per the evidence note below it could only live in the Guardian, which would be a slice of its own | `specification/v0.1.0/trace/otel-mapping.json` is normative: a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it maps `steps/toolCallRequest` → `gen_ai.tool.call` by name. `trace/ocsf-mapping.json` is its sibling. V2's envelope log (S6) is a raw JSONL log, deliberately not an OTel or OCSF export, so today we claim neither pillar. R5.3 requires declaring that either way. Settled: the matrix records Trace as an explicit non-claim, and **two of its required span attributes have no wire source at all — evidence note directly below** |
 
 **⚠️ D10 evidence — the Trace pillar is not emittable from the v0.1.0 wire alone.** Read after V2 shipped, against the pinned schemas:
 

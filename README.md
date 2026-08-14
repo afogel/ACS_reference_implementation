@@ -55,7 +55,7 @@ What V5 does **not** deliver: `modifications.modified_content` still has no buil
 
 | Claim | Slice |
 |---|---|
-| A machine-checked mapping of all eight intervention points and five verdicts, with a round-trip conformance case per cell — every cell resolved, green where ACS v0.1.0 expresses AGT and red with a named reason where it does not. Four are already known red: the two model-call points have no v0.1.0 hook, and two attributes the Trace pillar marks required have no source on the wire | V7 |
+| A machine-checked coverage matrix over all eight intervention points and five AGT verdicts, with a round-trip conformance case per cell — every cell resolved, green where ACS v0.1.0 expresses AGT and red with a named reason where it does not. Four are already known red: the two model-call points have no v0.1.0 hook, and two attributes the Trace pillar marks required have no source on the wire | V7 |
 | Which ACS profiles and pillars this implementation claims, and which it does not — the matrix is the declaration. Trace is a measured non-claim, not a silence | V7 |
 | A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
 
