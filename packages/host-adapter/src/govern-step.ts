@@ -455,10 +455,12 @@ export async function governStep({
   // Measured: a throw that lands in the stage-"request" catch is answered by
   // the negotiated `on_decision_failure`, and under `proceed` -- the ACS
   // default and what this deployment ships -- that is an ungoverned step,
-  // proceeded and audited as a fail-open. This throw reaches the caller, which
-  // is host #1's exit 2 and host #2's own loud stop. Same class, same
-  // placement, and for the same reason as the hook-entry guard immediately
-  // above.
+  // proceeded and audited as a fail-open. Raised here it reaches the caller
+  // instead: host #1's `main().catch` turns it into exit 2, and on host #2 it
+  // leaves the hook the same way `assertUsableTool`'s and
+  // `assertUsableSessionId`'s throws do, since nothing between them catches.
+  // Same class, same placement, and for the same reason as the hook-entry
+  // guard immediately above.
   //
   // A PRESENT-BUT-EMPTY `scopedTool` IS REFUSED HERE TOO, and that is not
   // defensive typing: `governsTool(hookmap, hook, "")` answers `false` against
