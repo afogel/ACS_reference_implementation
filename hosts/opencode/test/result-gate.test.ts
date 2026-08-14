@@ -27,7 +27,7 @@ import { startGuardian, type StartedGuardian } from "guardian";
 import {
   buildEnvelope,
   createGuardianClient,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
   loadHookmap,
@@ -476,7 +476,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
         sessionId: toSessionUuid(options.sessionID),
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
     const governed = await governStep({
       hookEventName: "tool.execute.after",

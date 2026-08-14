@@ -22,7 +22,7 @@ import {
   buildEnvelope,
   createGuardianClient,
   governsTool,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
   loadHookmap,
@@ -350,7 +350,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     const client = createGuardianClient(guardian.url);
     const session = await resolveSessionConfig(
       { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
     const governed = await governStep({
       hookEventName: "tool.execute.before",
@@ -404,7 +404,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     const client = createGuardianClient(guardian.url);
     const session = await resolveSessionConfig(
       { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
     const governed = await governStep({
       hookEventName: "tool.execute.before",
@@ -505,7 +505,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     const client = createGuardianClient(guardian.url);
     const session = await resolveSessionConfig(
       { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
     const governed = await governStep({
       hookEventName: "tool.execute.before",
@@ -575,7 +575,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     const client = createGuardianClient(guardian.url);
     const session = await resolveSessionConfig(
       { guardian: client, agentId: hookmap.host, sessionId: toSessionUuid(sessionID), timeoutMs: DEFAULT_TIMEOUT_MS },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
 
     const payload = { tool: TOOL, session_id: sessionID, callID: "c1", args };

@@ -142,7 +142,7 @@
  *     step 2 adds a SECOND check, path-safety (`assertSafeSessionId`,
  *     session-config.ts), because that host's session config store is
  *     file-backed and the raw session id becomes part of a filesystem path.
- *     This host has no counterpart to step 2: `createSessionConfigStore`
+ *     This host has no counterpart to step 2: `createMemorySessionConfigStore`
  *     (S15, this file's own header) is in memory, keyed by nothing -- the
  *     session id it is handed never becomes a filename, an argument to any
  *     filesystem call, or any string this process writes anywhere. There is
@@ -339,7 +339,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import {
   createAuditSink,
   createGuardianClient,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
   // The `tools` rule, as the adapter states it (§V5 review round 3, Task 2)
@@ -1778,7 +1778,7 @@ export const AcsPlugin: Plugin = async () => {
     // second hook of a session skips the handshake round trip. One interface,
     // two implementations, and the adapter never learns which host is
     // running.
-    store: createSessionConfigStore(),
+    store: createMemorySessionConfigStore(),
   };
 
   return {

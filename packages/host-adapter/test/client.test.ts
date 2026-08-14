@@ -20,7 +20,7 @@ import {
   SessionConfigNotStoredError,
 } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
-import { createSessionConfigStore } from "../src/session-config.ts";
+import { createMemorySessionConfigStore } from "../src/session-config.ts";
 
 const hookmap: Hookmap = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
 
@@ -475,7 +475,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
 
 describe("negotiateSessionConfig", () => {
   it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     expect(store.get()).toBeUndefined();
 
     const sessionConfig = await negotiateSessionConfig(
@@ -506,7 +506,7 @@ describe("negotiateSessionConfig", () => {
     });
 
     try {
-      const store = createSessionConfigStore();
+      const store = createMemorySessionConfigStore();
 
       await expect(
         negotiateSessionConfig(
@@ -534,7 +534,7 @@ describe("negotiateSessionConfig", () => {
 // Silently.
 describe("handshake — a ServerHello that is not a usable session config", () => {
   /** A stub answering `handshake/hello` with whatever `result` it is given. */
-  async function handshakeAgainst(result: unknown, store = createSessionConfigStore()) {
+  async function handshakeAgainst(result: unknown, store = createMemorySessionConfigStore()) {
     const server = Bun.serve({
       port: 0,
       async fetch(req) {
@@ -615,7 +615,7 @@ describe("handshake — the negotiated timeout (§6.4)", () => {
       },
     });
     try {
-      const store = createSessionConfigStore();
+      const store = createMemorySessionConfigStore();
       const url = `http://localhost:${server.port}/acs`;
       await expect(
         negotiateSessionConfig(
@@ -668,7 +668,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
     }
   }
 
-  function resolveVia(url: string, store: ReturnType<typeof createSessionConfigStore>) {
+  function resolveVia(url: string, store: ReturnType<typeof createMemorySessionConfigStore>) {
     return resolveSessionConfig(
       { guardian: createGuardianClient(url), agentId: "claude-code", sessionId: crypto.randomUUID() },
       store,
@@ -676,13 +676,13 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   }
 
   it("negotiates when the store is empty, and reports no failure", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await against(HELLO, (url) => resolveVia(url, store));
     expect(resolved).toEqual({ config: HELLO, failure: undefined });
   });
 
   it("does not negotiate at all when the store already holds a config", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     store.set(HELLO);
     // An unreachable Guardian, so a handshake attempt would surface as a
     // failure rather than passing silently.
@@ -712,7 +712,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   // to this step either, and `config` must stay undefined so the ACS default
   // governs.
   it("reports an unusable ServerHello with no config to apply", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await against({ on_decision_failure: "maybe" }, (url) => resolveVia(url, store));
     expect(resolved.config).toBeUndefined();
     expect(resolved.failure).toBeInstanceOf(ServerHelloInvalidError);
@@ -721,7 +721,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   });
 
   it("answers rather than throwing when the Guardian was never reachable", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await resolveVia("http://127.0.0.1:1/acs", store);
     expect(resolved.config).toBeUndefined();
     expect(resolved.failure).toBeInstanceOf(Error);

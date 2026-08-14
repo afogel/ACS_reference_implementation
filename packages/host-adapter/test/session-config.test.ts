@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   createFileSessionConfigStore,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   InvalidSessionIdError,
   sessionConfigPath,
   type SessionConfig,
@@ -169,9 +169,9 @@ describe("createFileSessionConfigStore — session_id is untrusted input", () =>
   });
 });
 
-describe("createSessionConfigStore — the in-memory store", () => {
+describe("createMemorySessionConfigStore — the in-memory store", () => {
   it("still satisfies the same interface", () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     expect(store.get()).toBeUndefined();
     store.set(HELLO);
     expect(store.get()).toEqual(HELLO);

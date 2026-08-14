@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { buildServerHello, loadMapping, startGuardian, type StartedGuardian } from "guardian";
 import {
   createGuardianClient,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   loadHookmap,
   negotiateSessionConfig,
 } from "host-adapter";
@@ -214,7 +214,7 @@ async function capturedClientHello(): Promise<string[]> {
         sessionId: crypto.randomUUID(),
         timeoutMs: 5000,
       },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
   } finally {
     recorder.stop(true);

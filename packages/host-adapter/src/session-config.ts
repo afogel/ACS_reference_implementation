@@ -41,7 +41,7 @@ export type SessionConfigStore = {
 };
 
 /** Creates a fresh, empty session config store. */
-export function createSessionConfigStore(): SessionConfigStore {
+export function createMemorySessionConfigStore(): SessionConfigStore {
   let current: SessionConfig | undefined;
   return {
     get(): SessionConfig | undefined {

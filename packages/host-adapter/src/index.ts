@@ -57,7 +57,7 @@ export {
   type ResolvedSessionConfig,
 } from "./handshake.ts";
 export {
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   createFileSessionConfigStore,
   isSessionConfig,
   InvalidSessionIdError,

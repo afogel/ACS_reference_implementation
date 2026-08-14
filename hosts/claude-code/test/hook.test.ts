@@ -12,7 +12,7 @@ import { startGuardian, type StartedGuardian } from "guardian";
 import {
   buildEnvelope,
   createGuardianClient,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
   loadHookmap,
@@ -238,7 +238,7 @@ describe("host #1 tells governStep no scoped tool, and that is a complete call a
         sessionId: toSessionUuid(SESSION_ID),
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
-      createSessionConfigStore(),
+      createMemorySessionConfigStore(),
     );
 
     // Exactly acs-hook.ts's own call: every field it passes, and no
