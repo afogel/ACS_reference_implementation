@@ -367,7 +367,7 @@ import {
 // it from THIS module was a hazard rather than a convenience, and
 // test/invariants.test.ts's new gate for what now keeps this file's export
 // surface to exactly one symbol.
-import { applyOpenCodeOutput } from "./apply-host-output.ts";
+import { applyOpenCodeOutput, type LiveHookObjects } from "./apply-host-output.ts";
 
 // Matches packages/guardian/src/main.ts's own default port, and
 // hosts/claude-code/acs-hook.ts's identical constant -- the runbook and both
@@ -1559,21 +1559,6 @@ type Deployment = {
 };
 
 /**
- * The live half `applyOpenCodeOutput` is handed -- DERIVED from that
- * function's own parameter rather than re-declared here, because the type it
- * names (`LiveHookObjects`, apply-host-output.ts) is module-private there and
- * a second hand-written copy of a discriminated union is a copy that can
- * drift from the applier that dispatches on it.
- *
- * The tag is constructed at the two hook methods below, never inferred here
- * from which field is present -- that inference is exactly what §V5 review
- * round 3, Task 4 removed from the applier (see `LiveHookObjects`' own doc
- * comment for the prototype-chain read it closed), so this carries the tag
- * through rather than reconstructing it.
- */
-type LiveHalf = Parameters<typeof applyOpenCodeOutput>[1];
-
-/**
  * What ONE gate's own payload assembly produces: the single object
  * `opencode.hookmap.yaml`'s `$.` paths resolve against, and the live object
  * that gate's rendered decision is applied to.
@@ -1585,7 +1570,7 @@ type LiveHalf = Parameters<typeof applyOpenCodeOutput>[1];
  */
 type AssembledStep = {
   readonly payload: Record<string, unknown>;
-  readonly live: LiveHalf;
+  readonly live: LiveHookObjects;
 };
 
 /**

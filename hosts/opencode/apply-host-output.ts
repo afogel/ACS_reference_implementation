@@ -223,7 +223,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
  * `Object.getOwnPropertyNames` basis and pass 3's `Object.hasOwn(output, ...)`
  * basis exactly.
  */
-type LiveHookObjects =
+export type LiveHookObjects =
   | { gate: "request"; args: Record<string, unknown> }
   | { gate: "result"; result: Record<string, unknown> };
 
