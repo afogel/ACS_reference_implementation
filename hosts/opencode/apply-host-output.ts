@@ -26,7 +26,7 @@
  * working factory produces `error="Plugin export is not a function"`, and the factory is **never
  * called at all** -- one exported constant silently disables governance for the whole session.
  * And a genuinely broken hookmap (one missing `refuse.denied`, say -- one of the faults
- * `assertHostHonoursEveryDecision` exists to catch) makes `AcsPlugin` itself throw and refuse
+ * `assertHostAcceptsEveryDecision` (acs-plugin.ts) exists to catch) makes `AcsPlugin` itself throw and refuse
  * to register, and OpenCode's loader catches that throw and logs it, producing the byte-identical
  * `level=ERROR message="failed to load plugin" path=...` line, with
  * only the `error=` payload differing -- so an operator watching logs cannot tell "a second,
@@ -51,7 +51,7 @@
  * round closed) because a security invariant that any host applier might need belongs in the
  * package both hosts run, not in host #2's own source; `isPlainObject` here is a three-line
  * structural-typing helper with no such invariant to drift, and `acs-plugin.ts` needs its own copy
- * of IT regardless (`assertHostHonoursEveryDecision` uses it, and that function stays where
+ * of IT regardless (`assertHostAcceptsEveryDecision` uses it, and that function stays where
  * it is -- it is called from `AcsPlugin`'s own factory body, at plugin registration time, not from
  * `applyOpenCodeOutput`), so keeping two small, identical three-line functions is simpler and more
  * honest than an import whose only purpose is to avoid six lines of duplication.
@@ -398,7 +398,7 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     never applied to anything -- it is read and thrown, before any
  *     assignment. `refuse.reason` is a `from:` field and therefore
  *     conditional; this host's load-time gate
- *     (`assertHostHonoursEveryDecision`, in `acs-plugin.ts`) is what
+ *     (`assertHostAcceptsEveryDecision`, in `acs-plugin.ts`) is what
  *     guarantees `refuse` itself is never entirely absent for a real
  *     request-gate `deny`/`ask`/`defer` -- see its own doc comment.
  *   - `reason` -- DECLARED-INERT ON THIS HOST, and opencode.hookmap.yaml's
@@ -433,7 +433,7 @@ function mergeInPlace(target: Record<string, unknown>, source: Record<string, un
  *     "result"` (same, for `result`). See above for why this is the whole
  *     container, not a leaf. This is the RESULT gate's deny channel, the
  *     counterpart to `refuse` at the request gate, and the same load-time gate
- *     (`assertHostHonoursEveryDecision`) is what guarantees a result-gate
+ *     (`assertHostAcceptsEveryDecision`, in `acs-plugin.ts`) is what guarantees a result-gate
  *     `deny`/`modify` either declares `result: { from: applied_output }` --
  *     that key, that source, a declaration that can actually render, and a
  *     hook that declares an `outputs` block for it to be filled from -- or

@@ -6,7 +6,7 @@
  * suite exercises: that the factory itself, not only `applyOpenCodeOutput` in
  * isolation (apply-host-output.test.ts) or the shipped hookmap's static
  * shape (hookmap.test.ts), refuses to register a hookmap
- * `assertHostHonoursEveryDecision` would otherwise let govern nothing.
+ * `assertHostAcceptsEveryDecision` would otherwise let govern nothing.
  *
  * TWO GATES' WORTH, since §V5 review round 3, Task 5. The request-gate half
  * (§V5 review, fix round 1, Critical 1; closed as a pin gap in fix round 2)

@@ -61,7 +61,7 @@
  * hookmap, the Guardian client, the audit sink, the negotiated session
  * config store -- `applyOpenCodeOutput`, the one function novel to this host,
  * and one load-time correctness gate this host's own applier needs
- * (`assertHostHonoursEveryDecision`, below -- see its own doc comment; it
+ * (`assertHostAcceptsEveryDecision`, below -- see its own doc comment; it
  * shipped as `assertRefusalRendersUnconditionally`, covering the request gate
  * alone, and §V5 review round 3, Task 5 generalised it to both gates).
  * TASK 5 WIRED THE REQUEST GATE, `"tool.execute.before"`: it assembles the
@@ -165,8 +165,8 @@
  *     OpenCode's own session record regardless of how early the throw fires.
  *     That is exactly why the shipped hookmap's result-gate `deny`/`modify`
  *     withhold by REPLACING `result` (`applyOpenCodeOutput`'s merge, in
- *     apply-host-output.ts) rather than by throwing -- and why
- *     `assertHostHonoursEveryDecision`'s message for that gate says which of
+ *     apply-host-output.ts) rather than by throwing -- and why this file's own
+ *     `assertHostAcceptsEveryDecision`'s message for that gate says which of
  *     the two an author is choosing rather than treating them as equivalent.
  *     A sessionID check that refuses at the result gate is still the right call
  *     -- an ungoverned step is worse than a stop that does not scrub the disk
@@ -186,7 +186,7 @@
  *     note exists to prevent -- see acs-hook.ts's own step 4 and step 5 for
  *     both call sites side by side.
  *   - TRUST, RATHER THAN RE-CHECK, THAT A DECISION THAT MUST REFUSE, WITHHOLD
- *     OR REWRITE HAS SOMEWHERE TO DO IT. `assertHostHonoursEveryDecision`
+ *     OR REWRITE HAS SOMEWHERE TO DO IT. `assertHostAcceptsEveryDecision`
  *     (below), called from `AcsPlugin` beside `loadHookmap`, refuses this
  *     hookmap at LOAD TIME unless every one of these holds (deliberately not
  *     counted -- this list has grown twice and a quoted count went stale each
@@ -257,7 +257,7 @@
  *     first gate still accepted -- a `result` sourced from the wrong field,
  *     an `ask`/`defer` DECLARED at the result gate with no sink, and the
  *     request gate's own `modify` -- each measured before it was closed. See
- *     `assertHostHonoursEveryDecision`'s own doc comment.
+ *     `assertHostAcceptsEveryDecision`'s own doc comment (below, this file).
  *   - HONOUR `tools`, BEFORE ANY OF THE ABOVE except validating `tool`
  *     itself. A gate whose hookmap entry declares a `tools` list must
  *     return, without building a payload, without validating `sessionID`,
@@ -909,7 +909,7 @@ function assertDecisionsCanAct(
  * `exit_status` pointed at a tool whose result carries those fields -- and
  * `tools` is precisely what `fixedPaths` above does NOT pin. MEASURED, on the
  * shipped hookmap minus this gate's `tools: [bash]` (which registers clean:
- * `loadHookmap` and this file's own `assertHostHonoursEveryDecision` both
+ * `loadHookmap` and this file's own `assertHostAcceptsEveryDecision` both
  * accept it, so `AcsPlugin` returns both hooks), against a `read`-shaped
  * result whose `metadata` carries no `exit`: `buildEnvelope` throws,
  * `governStep`'s stage-"request" catch answers with the delivery posture --
@@ -1429,7 +1429,7 @@ function expectationFor(hookEventName: string, path: string): HookExpectation {
  * refuses where it could have replaced passes, with the trade-off spelled out
  * in the error message an author sees on the way to choosing.
  */
-function assertHostHonoursEveryDecision(hookmap: Hookmap, path: string): void {
+function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
     expectationFor(hookEventName, path).assertEntry(entry, path, hookEventName);
   }
@@ -1703,7 +1703,7 @@ async function handle(
  *
  * A throw here -- an unreadable or invalid hookmap (`loadHookmap` shape-checks
  * everything statically decidable from the hookmap file alone, and
- * `assertHostHonoursEveryDecision` adds this host's own such check, for both
+ * `assertHostAcceptsEveryDecision` adds this host's own such check, for both
  * of its gates) --
  * names the same "broken deployment, not a policy question" fault
  * `BlockingConfigurationError`/exit 2 stops host #1's session for. THIS HOST
@@ -1732,7 +1732,7 @@ export const AcsPlugin: Plugin = async () => {
   // import time and ignore anything a test set afterwards.
   const hookmapPath = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./opencode.hookmap.yaml", import.meta.url));
   const hookmap = loadHookmap(hookmapPath);
-  assertHostHonoursEveryDecision(hookmap, hookmapPath);
+  assertHostAcceptsEveryDecision(hookmap, hookmapPath);
 
   // Built once, here, and handed to `handle` on every call -- the four this
   // deployment runs on, in one object so the exchange both gates share can

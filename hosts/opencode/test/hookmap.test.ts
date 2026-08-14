@@ -65,7 +65,7 @@ describe("opencode.hookmap.yaml", () => {
     expect(resultDeny).not.toContain("refuse.reason");
   });
 
-  it("exercises assertHostHonoursEveryDecision's SINK branch, not its refusal branch -- non-vacuously (§V5 review round 3, Task 5, fix round 2)", () => {
+  it("exercises acs-plugin.ts's assertHostAcceptsEveryDecision SINK branch, not its refusal branch -- non-vacuously (§V5 review round 3, Task 5, fix round 2)", () => {
     // The gate accepts a decision that can either LAND what it arrived
     // carrying or UNCONDITIONALLY REFUSE (acs-plugin.ts's `satisfiesGate`).
     // That means "the shipped hookmap passes the gate" is no longer, by

@@ -148,7 +148,7 @@ hooks:
       # `{"decision":"deny","reasoning":{"code":"R7"}}` both rendered `{}` --
       # this host's applier saw no keys, applied nothing, threw nothing, and
       # the tool ran, indistinguishable from a clean allow. `acs-plugin.ts`'s
-      # own load-time gate (`assertHostHonoursEveryDecision`) now refuses to
+      # own load-time gate (`assertHostAcceptsEveryDecision`) now refuses to
       # register a hookmap missing this marker on any of the three; it is
       # declared on all three here so this file passes that gate rather than
       # relying on it to catch an omission. That gate covers the RESULT gate
@@ -175,7 +175,7 @@ hooks:
           refuse.reason: { from: reasoning, type: string }
       # `args: { from: applied_input }` is REQUIRED, not conventional (§V5
       # review round 3, Task 5, fix round 1, Important 2):
-      # `assertHostHonoursEveryDecision` refuses a request-gate `modify` that
+      # `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` refuses a request-gate `modify` that
       # declares anything else -- the exact key (a path under it merges one
       # level too deep, landing the whole rewrite bag in a single argument) and
       # the exact source (a `from:` naming a field the decision does not carry
@@ -252,7 +252,7 @@ hooks:
       #
       # THE WHOLE LINE IS NOW REFUSED AT LOAD IF IT IS WRONG, RATHER THAN ONLY
       # DOCUMENTED HERE (§V5 review round 3, Task 5, Critical, and its own fix
-      # round 1). `acs-plugin.ts`'s `assertHostHonoursEveryDecision` requires
+      # round 1). `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` requires
       # `result: { from: applied_output }` EXACTLY -- that key, that source --
       # on every decision this gate declares that withholds anything: `deny`,
       # and `modify`. (`ask`/`defer` are held to a REFUSAL here instead if a

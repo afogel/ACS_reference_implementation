@@ -406,7 +406,7 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
 });
 
 /**
- * THE FAULT `assertHostHonoursEveryDecision` (acs-plugin.ts) EXISTS TO REFUSE,
+ * THE FAULT `assertHostAcceptsEveryDecision` (acs-plugin.ts) EXISTS TO REFUSE,
  * MEASURED RATHER THAN ASSUMED (§V5 review round 3, Task 5, Critical).
  *
  * These three tests are deliberately NOT written through `AcsPlugin`, and that
