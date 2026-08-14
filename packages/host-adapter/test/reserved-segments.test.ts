@@ -61,7 +61,7 @@ describe("findReservedKey", () => {
 
   it("does not throw -- callers word and type their own refusal", () => {
     // Detection only, never a throw: modifications.ts needs
-    // ModificationsInvalidError, apply-host-output.ts needs its own
+    // ModificationsInvalidError, apply-opencode-output.ts needs its own
     // mergeInPlace-specific wording, and neither is this module's contract
     // to keep -- see this file's own header (findReservedKey's doc comment).
     const value = JSON.parse('{"__proto__":{}}') as Record<string, unknown>;

@@ -25,7 +25,7 @@ crossed the wire and the persisted session record.
 OpenCode's plugin API is a different *shape* of host than Claude Code's subprocess-per-hook shim:
 one long-lived plugin object, loaded once, whose hooks return `void` and are handed **live,
 mutable objects** rather than reading stdin and writing stdout. So the same `governStep` →
-`renderDecision` pipeline is **applied** here (`applyOpenCodeOutput`, in `apply-host-output.ts`,
+`renderDecision` pipeline is **applied** here (`applyOpenCodeOutput`, in `apply-opencode-output.ts`,
 this host's own novel piece) instead of printed — mutating `{args}` at the request gate or `{title,
 output, metadata, attachments}` at the result gate, or throwing.
 

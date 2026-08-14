@@ -303,7 +303,7 @@ describe("architectural invariants", () => {
     expect(scanned.map(({ file }) => file).sort()).toEqual([
       "claude-code/acs-hook.ts",
       "opencode/acs-plugin.ts",
-      "opencode/apply-host-output.ts",
+      "opencode/apply-opencode-output.ts",
     ]);
 
     for (const { file, code } of scanned) {
@@ -372,7 +372,7 @@ describe("architectural invariants", () => {
    * (named `applyHostOutput` at the time this gate was added, renamed in
    * §V5 review round 3, Task 4 -- the mechanism this gate pins is unchanged
    * by that rename), for no reason but its own unit test's convenience
-   * (`hosts/opencode/test/apply-host-output.test.ts` imported it directly,
+   * (`hosts/opencode/test/apply-opencode-output.test.ts` imported it directly,
    * to test it against plain objects rather than a live OpenCode session).
    * Measured: OpenCode's plugin loader hands EVERY exported function of a
    * plugin module its own registration context -- a live `client`,
@@ -391,9 +391,9 @@ describe("architectural invariants", () => {
    * which is byte-identical in shape whether the fault is harmless or total
    * -- would say so.
    *
-   * `applyOpenCodeOutput` now lives in its own module (`apply-host-output.ts`,
+   * `applyOpenCodeOutput` now lives in its own module (`apply-opencode-output.ts`,
    * imported into `acs-plugin.ts`, tested directly by
-   * `apply-host-output.test.ts`) specifically so `acs-plugin.ts` has exactly
+   * `apply-opencode-output.test.ts`) specifically so `acs-plugin.ts` has exactly
    * one export for OpenCode's loader to find. This gate is what keeps that
    * true going forward, mechanically: a second export added here -- for a
    * new helper, a re-exported type, anything -- fails this test rather than
@@ -764,7 +764,7 @@ describe("the export-count gate itself", () => {
 
   it("does not count an import naming a symbol also used as an export's type", () => {
     expect(
-      exportedNames('import { applyOpenCodeOutput } from "./apply-host-output.ts";\n\nexport const AcsPlugin = 1;\n'),
+      exportedNames('import { applyOpenCodeOutput } from "./apply-opencode-output.ts";\n\nexport const AcsPlugin = 1;\n'),
     ).toEqual(["AcsPlugin"]);
   });
 

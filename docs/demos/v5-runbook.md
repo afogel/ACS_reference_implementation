@@ -540,8 +540,8 @@ wrong word for what a reader should take from that line:**
 
 **The fix is structural, closes point 1 completely, and is captured below closing it.**
 `applyOpenCodeOutput`, and every private helper it alone needs, moved out of `acs-plugin.ts` into its own
-module, `hosts/opencode/apply-host-output.ts` (imported back into `acs-plugin.ts`, tested directly by
-`hosts/opencode/test/apply-host-output.test.ts`) — so `acs-plugin.ts` exports exactly one symbol,
+module, `hosts/opencode/apply-opencode-output.ts` (imported back into `acs-plugin.ts`, tested directly by
+`hosts/opencode/test/apply-opencode-output.test.ts`) — so `acs-plugin.ts` exports exactly one symbol,
 `AcsPlugin`, and OpenCode's loader has no second export to find. `test/invariants.test.ts` pins that
 mechanically now, and the pin was mutation-tested: temporarily re-adding a second export to
 `acs-plugin.ts` and re-running the suite fails exactly that one new test, naming the spurious export;
@@ -592,7 +592,11 @@ timestamp=2026-08-13T04:43:20.332Z level=ERROR run=cb6f0a9f message="failed to l
 (This capture predates §V5 review round 3, Task 4's rename — reproduced verbatim from the run that
 produced it, unedited, per this file's own rule for dated captures. The live message this same
 hookmap fault produces today names `applyOpenCodeOutput`, not `applyHostOutput`; a reader reproducing
-this exact run against the current tree will see the new name, not a mismatch to debug.)
+this exact run against the current tree will see the new name, not a mismatch to debug. The
+parenthetical file citation in that same captured line, `(apply-host-output.ts)`, is stale the same
+way: §V5 review round 4, Task 2 renamed that file to `apply-opencode-output.ts` after this capture
+was taken, for the same reason Task 4 renamed the function — a reader reproducing this run today will
+see the new file name in the live message, not the one quoted above.)
 
 Same `level=ERROR`, same `message`, same `path` — and this time the `error=` payload names a real,
 load-time-decidable hookmap fault rather than a stray export. What happened next, from the same run's

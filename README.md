@@ -194,7 +194,7 @@ default — with one difference: it has no `ACS_SESSION_DIR`, because this host 
 plugin object rather than a fresh subprocess per hook, so the negotiated ServerHello (S13) survives
 in memory for the life of the session instead of being filed to disk (S15). It also reads a fourth
 variable host #1 has no counterpart for: `ACS_DEBUG` (unset by default, read in
-`hosts/opencode/apply-host-output.ts`, the module `applyOpenCodeOutput` (named `applyHostOutput`
+`hosts/opencode/apply-opencode-output.ts`, the module `applyOpenCodeOutput` (named `applyHostOutput`
 before it was renamed to name this host, §V5 review round 3, Task 4) moved into in the V5 review's
 Task 8 fix round), which surfaces `reason.text` on stderr when set to anything but `""` or `"0"` —
 this host's `reason.text` is declared-inert (nothing OpenCode reads text back from), so this is a

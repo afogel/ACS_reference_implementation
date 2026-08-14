@@ -115,7 +115,7 @@ export {
 export { validateDecision, type ValidateDecisionContext } from "./validate-decision.ts";
 // The one shared surface for JavaScript's prototype-machinery names, and
 // the value-tree walker that checks a rendered value against them at any
-// depth -- exported so a host applier (hosts/opencode/apply-host-output.ts
+// depth -- exported so a host applier (hosts/opencode/apply-opencode-output.ts
 // today; any later host tomorrow) imports these rather than keeping its own
 // module-private copy. `isReservedSegment` is a predicate, not the
 // underlying Set -- see reserved-segments.ts's own header for why the Set

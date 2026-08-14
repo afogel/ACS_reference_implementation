@@ -1,5 +1,5 @@
 /**
- * apply-host-output.ts -- `applyOpenCodeOutput`, split out of `acs-plugin.ts` into its own module
+ * apply-opencode-output.ts -- `applyOpenCodeOutput`, split out of `acs-plugin.ts` into its own module
  * (§V5 review, Task 8, fix round 1, Important 1).
  *
  * NAMED FOR THE HOST IT APPLIES TO, NOT GENERICALLY (§V5 review round 3, Task 4). This function
@@ -10,11 +10,11 @@
  * forbids that outright, host-specific field names have no business in the package both hosts
  * share -- and every error this file throws used to say `acs-plugin:`, naming a DIFFERENT file's
  * own prefix rather than this one's. Both are fixed here: the function is `applyOpenCodeOutput`,
- * and every thrown message below says `apply-host-output:`.
+ * and every thrown message below says `apply-opencode-output:`.
  *
  * WHY A SEPARATE FILE, AND WHY THIS IS NOT COSMETIC. `applyOpenCodeOutput` used to be exported
  * alongside `AcsPlugin` from `acs-plugin.ts`, for exactly one reason: so
- * `hosts/opencode/test/apply-host-output.test.ts` could import and test it directly, in
+ * `hosts/opencode/test/apply-opencode-output.test.ts` could import and test it directly, in
  * isolation from a live Guardian. That export was measured to be a hazard, not a convenience.
  * OpenCode's plugin loader hands its own registration context -- a live `client`, `directory`,
  * `worktree`, and `$` (its shell executor) -- to EVERY exported function of a plugin module, not
@@ -141,7 +141,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
   const hit = findReservedKey(value, label);
   if (hit !== undefined) {
     throw new Error(
-      `apply-host-output: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(hit.key)} at ` +
+      `apply-opencode-output: cannot apply rendered "${label}" -- it owns the reserved key ${JSON.stringify(hit.key)} at ` +
         `"${hit.path}", which addresses prototype machinery rather than a field this applier can merge. A ` +
         `recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
         `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
@@ -217,7 +217,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
  * with `Object.prototype.args` polluted AND a cast `live` that owns no
  * `args` field despite claiming `gate: "request"`, in "refuses a cast `live`
  * whose gate lies about owning args, even with Object.prototype.args
- * polluted" (apply-host-output.test.ts). So: `gate` narrows the type and
+ * polluted" (apply-opencode-output.test.ts). So: `gate` narrows the type and
  * documents intent; `Object.hasOwn(live, ...)` is the one of the two that is
  * actually load-bearing against a malformed `live`, matching pass 1's
  * `Object.getOwnPropertyNames` basis and pass 3's `Object.hasOwn(output, ...)`
@@ -481,7 +481,7 @@ export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): 
     if (key === "args" && live.gate === "request" && Object.hasOwn(live, "args")) {
       if (!isPlainObject(output.args)) {
         throw new Error(
-          `apply-host-output: cannot apply rendered "args" -- expected an object, got ${JSON.stringify(output.args)}. ` +
+          `apply-opencode-output: cannot apply rendered "args" -- expected an object, got ${JSON.stringify(output.args)}. ` +
             `A hookmap field sourcing "args" from a decision field that is not itself an object (e.g. "reasoning" ` +
             `where "applied_input" belongs) would otherwise merge its characters onto index keys instead of ` +
             `throwing, and the actual rewrite would never land.`,
@@ -496,14 +496,14 @@ export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): 
     if (key === "result" && live.gate === "result" && Object.hasOwn(live, "result")) {
       if (!isPlainObject(output.result)) {
         throw new Error(
-          `apply-host-output: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
+          `apply-opencode-output: cannot apply rendered "result" -- expected an object, got ${JSON.stringify(output.result)}`,
         );
       }
       assertNoReservedSegments(output.result, "result");
       continue;
     }
     throw new Error(
-      `apply-host-output: cannot apply rendered key ${JSON.stringify(key)} at this gate -- opencode.hookmap.yaml ` +
+      `apply-opencode-output: cannot apply rendered key ${JSON.stringify(key)} at this gate -- opencode.hookmap.yaml ` +
         `declares an output field this applier has no live object to land it in`,
     );
   }
@@ -526,7 +526,7 @@ export function applyOpenCodeOutput(output: HostOutput, live: LiveHookObjects): 
   const reason = output.reason as { text?: unknown } | undefined;
   if (reason !== undefined && isDebugEnabled()) {
     console.error(
-      `apply-host-output: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
+      `apply-opencode-output: reason.text is declared-inert on this host (opencode.hookmap.yaml) and was not delivered ` +
         `to OpenCode -- reasoning: ${JSON.stringify(reason.text)}`,
     );
   }

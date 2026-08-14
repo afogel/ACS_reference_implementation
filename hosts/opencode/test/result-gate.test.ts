@@ -5,7 +5,7 @@
  * hosts/claude-code/test/post-tool-use.test.ts sets for host #1's own result
  * gate. `applyOpenCodeOutput` in isolation, the shipped hookmap's static shape,
  * and `AcsPlugin`'s own load-time gate already have their own suites
- * (apply-host-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
+ * (apply-opencode-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
  * the first one that calls THIS hook the way OpenCode itself would.
  *
  * THE MIRROR IS THE POINT. `opencode.hookmap.yaml`'s result gate declares
@@ -40,7 +40,7 @@ import {
   type Hookmap,
 } from "host-adapter";
 import { AcsPlugin } from "../acs-plugin.ts";
-import { applyOpenCodeOutput } from "../apply-host-output.ts";
+import { applyOpenCodeOutput } from "../apply-opencode-output.ts";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 

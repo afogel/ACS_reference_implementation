@@ -70,7 +70,7 @@
  * arguments per hook, not one blob, so THAT assembly is a shim job, the
  * same way reading stdin is host #1's), calls `resolveSessionConfig` then
  * `governStep`, and applies what comes back through `applyOpenCodeOutput`
- * (`apply-host-output.ts`, imported below -- see ITS OWN header for why it
+ * (`apply-opencode-output.ts`, imported below -- see ITS OWN header for why it
  * is not defined in this file). TASK 6 WIRED `"tool.execute.after"` (the
  * result gate): the same shape, one seam later, for `{result}` (the live
  * `{title, output, metadata, attachments}` object) beside `{args}`, plus
@@ -91,7 +91,7 @@
  * them -- host #1 already had the merged shape, one `main()` reading
  * `hook_event_name` off the payload it was handed.
  *
- * THE ADAPTER-SIDE HALF OF `apply-host-output.ts`'s OWN PROTOTYPE-CHAIN
+ * THE ADAPTER-SIDE HALF OF `apply-opencode-output.ts`'s OWN PROTOTYPE-CHAIN
  * GUARD (`assertNoReservedSegments`, in that file, wrapping the imported
  * `findReservedKey`) lives at its source: `reserved-segments.ts`
  * (`packages/host-adapter/src/`), the one shared definition of the three
@@ -152,7 +152,7 @@
  *     NAME THE MECHANISM (§V5 review, fix round 1, Minor 3): this host has no
  *     exit code to set. The only "blocking stop" it has is a THROW out of the
  *     hook function itself -- the same mechanism `applyOpenCodeOutput`'s own
- *     `refuse` path uses (apply-host-output.ts) -- because OpenCode's hooks
+ *     `refuse` path uses (apply-opencode-output.ts) -- because OpenCode's hooks
  *     return `void` and have no other channel to report a failure through.
  *
  *     AND AT THE RESULT GATE SPECIFICALLY, that throw -- this one, or
@@ -165,7 +165,7 @@
  *     OpenCode's own session record regardless of how early the throw fires.
  *     That is exactly why the shipped hookmap's result-gate `deny`/`modify`
  *     withhold by REPLACING `result` (`applyOpenCodeOutput`'s merge, in
- *     apply-host-output.ts) rather than by throwing -- and why this file's own
+ *     apply-opencode-output.ts) rather than by throwing -- and why this file's own
  *     `assertHostAcceptsEveryDecision`'s message for that gate says which of
  *     the two an author is choosing rather than treating them as equivalent.
  *     A sessionID check that refuses at the result gate is still the right call
@@ -360,14 +360,14 @@ import {
   type SessionConfigStore,
 } from "host-adapter";
 // applyOpenCodeOutput (named for this host, §V5 review round 3, Task 4 --
-// it was `applyHostOutput` before that task; see apply-host-output.ts's own
+// it was `applyHostOutput` before that task; see apply-opencode-output.ts's own
 // header, top, for why a generic name was the wrong one), and every private
-// helper it alone needs, moved to apply-host-output.ts (§V5 review, Task 8,
+// helper it alone needs, moved to apply-opencode-output.ts (§V5 review, Task 8,
 // fix round 1, Important 1) -- see that file's own header for why exporting
 // it from THIS module was a hazard rather than a convenience, and
 // test/invariants.test.ts's new gate for what now keeps this file's export
 // surface to exactly one symbol.
-import { applyOpenCodeOutput, type LiveHookObjects } from "./apply-host-output.ts";
+import { applyOpenCodeOutput, type LiveHookObjects } from "./apply-opencode-output.ts";
 
 // Matches packages/guardian/src/main.ts's own default port, and
 // hosts/claude-code/acs-hook.ts's identical constant -- the runbook and both
@@ -1096,7 +1096,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    * Checks by STRUCTURE, not by trusting the shipped field name -- but the
    * structure that matters is WHICH KEY the unconditional field sits under,
    * not merely that some field somewhere in the block carries `{value: ...}`.
-   * `applyOpenCodeOutput` (apply-host-output.ts) refuses on exactly one output
+   * `applyOpenCodeOutput` (apply-opencode-output.ts) refuses on exactly one output
    * key: `refuse` -- read in pass 2a and thrown. `reason` is declared-inert
    * (pass 2b never throws), and `args`/`result` are MERGES that leave a
    * governed decision looking like a successful, unremarkable rewrite: an
@@ -1137,7 +1137,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
         (decisionName) =>
           new Error(
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
-              `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-host-output.ts) refuses only on ` +
+              `"value:" output field under "refuse" -- applyOpenCodeOutput (apply-opencode-output.ts) refuses only on ` +
               `the "refuse" key; an unconditional field declared under any other key (e.g. "reason.text" or ` +
               `"args...") renders a non-empty output block without making this a refusal, and "refuse.reason" ` +
               `alone is a "from:" field that renders NOTHING when the arriving decision does not carry that ` +
@@ -1151,7 +1151,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" ` +
               `${sinkFaultPhrase(output, "args", sourceField)} -- at this ` +
               `host's request gate "args" is the ONLY key a rewrite can land in, because applyOpenCodeOutput ` +
-              `(apply-host-output.ts) merges it onto the live args object OpenCode handed the hook and nothing ` +
+              `(apply-opencode-output.ts) merges it onto the live args object OpenCode handed the hook and nothing ` +
               `else it renders reaches that object at all ("reason" is declared-inert, "refuse" throws, "result" ` +
               `has no live half at this gate). THE EXACT KEY: a path under it ("args.command") renders a nested ` +
               `object the applier merges one level too deep, so the whole rewrite bag lands in a single argument. ` +
@@ -1237,7 +1237,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
             `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" ` +
               `${sinkFaultPhrase(output, "result", sourceField)} -- at ` +
               `this host's result gate "result" is the ONLY key that withholds anything, because ` +
-              `applyOpenCodeOutput (apply-host-output.ts) merges it onto the live object OpenCode handed the hook ` +
+              `applyOpenCodeOutput (apply-opencode-output.ts) merges it onto the live object OpenCode handed the hook ` +
               `and nothing else it renders reaches that object at all ("reason" is declared-inert, "args" has no ` +
               `live half at this gate). withResultOutput (result-output.ts) guarantees the arriving decision ` +
               `CARRIES a withholding on "applied_output" for THIS decision; it cannot make this hookmap declare ` +
@@ -1452,7 +1452,7 @@ function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
  * THE MECHANISM IS A THROW, not an exit code (this file's header, same
  * bullet): OpenCode's hooks return `void` and have no other channel to
  * report a failure through -- the same mechanism `applyOpenCodeOutput`'s own
- * `refuse` path (apply-host-output.ts) uses to stop a tool call.
+ * `refuse` path (apply-opencode-output.ts) uses to stop a tool call.
  *
  * ONE CALL SITE NOW, NOT ONE PER GATE (§V5 review round 3, Task 6). This was
  * always one function rather than one per gate -- the same reason
@@ -1755,7 +1755,7 @@ export const AcsPlugin: Plugin = async () => {
      * payload's `args` and the applier's live half are both read from there:
      * they are the same object, so a rendered rewrite lands on the arguments
      * OpenCode is actually about to run (`applyOpenCodeOutput`'s in-place
-     * merge, apply-host-output.ts).
+     * merge, apply-opencode-output.ts).
      */
     "tool.execute.before": async (input, output) =>
       runExchange(deployment, "tool.execute.before", input, (tool, sessionID) => ({
@@ -1836,7 +1836,7 @@ export const AcsPlugin: Plugin = async () => {
      * mirror included (`outputs.mirrors`, opencode.hookmap.yaml's own result
      * gate) -- so `applyOpenCodeOutput`'s merge (called by `runExchange`, on the
      * live half this hook constructs below; its own `mergeInPlace`, in
-     * apply-host-output.ts) lands `output` and
+     * apply-opencode-output.ts) lands `output` and
      * `metadata.output` together, and leaves `title`/`attachments`/
      * `metadata.exit`/`metadata.truncated` -- everything a render does not
      * name -- exactly as OpenCode handed them in.
@@ -1865,7 +1865,7 @@ export const AcsPlugin: Plugin = async () => {
         // has no index signature, and the applier takes what it may merge as a
         // `Record<string, unknown>`. `live` stays a typed object literal
         // owning its own `gate` -- which is the fact `LiveHookObjects`' own
-        // doc comment (apply-host-output.ts) rests part of its reasoning on.
+        // doc comment (apply-opencode-output.ts) rests part of its reasoning on.
         live: { gate: "result", result: output as unknown as Record<string, unknown> },
       })),
   };

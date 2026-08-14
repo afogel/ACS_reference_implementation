@@ -5,7 +5,7 @@
  * not against a hand-copied shape. Everything below the plugin factory
  * itself -- `applyOpenCodeOutput` in isolation, the shipped hookmap's static
  * shape, `AcsPlugin`'s own load-time gate -- already has its own suite
- * (apply-host-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
+ * (apply-opencode-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
  * the first one that calls the hook OpenCode itself would call.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Test-only import: stands up a real Guardian, same precedent as
 // hosts/claude-code/test/hook.test.ts:11 and hosts/opencode/test/
-// apply-host-output.test.ts's own `renderDecision`-through-the-real-adapter
+// apply-opencode-output.test.ts's own `renderDecision`-through-the-real-adapter
 // test.
 import { startGuardian, type StartedGuardian } from "guardian";
 import {
@@ -33,7 +33,7 @@ import {
   type Hookmap,
 } from "host-adapter";
 import { AcsPlugin } from "../acs-plugin.ts";
-import { applyOpenCodeOutput } from "../apply-host-output.ts";
+import { applyOpenCodeOutput } from "../apply-opencode-output.ts";
 
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
@@ -111,7 +111,7 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     }
     expect(thrown).toBeInstanceOf(Error);
     // Nothing half-applied: the live object this call was handed is
-    // untouched, the same all-or-nothing guarantee apply-host-output.test.ts
+    // untouched, the same all-or-nothing guarantee apply-opencode-output.test.ts
     // pins in isolation, now proven through governStep and a real deny.
     expect(output.args.command).toBe(command);
 

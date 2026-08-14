@@ -1,6 +1,6 @@
 /**
  * applyOpenCodeOutput's own tests, in isolation from OpenCode -- plain objects in,
- * mutation or a throw out. See apply-host-output.ts's own header for why this
+ * mutation or a throw out. See apply-opencode-output.ts's own header for why this
  * function exists at all, and why it lives in its own module rather than in
  * acs-plugin.ts beside the plugin factory (§V5 review, Task 8, fix round 1,
  * Important 1): this host's hooks return `void`, so applying the rendered
@@ -12,7 +12,7 @@
  * NAMED `applyOpenCodeOutput`, not `applyHostOutput`, throughout this file
  * (§V5 review round 3, Task 4) -- in THIS file the rename itself is a
  * mechanical search-and-replace of the imported symbol; see
- * apply-host-output.ts's own header for why the old name was a defect. The
+ * apply-opencode-output.ts's own header for why the old name was a defect. The
  * genuinely new or reshaped tests below (the split request/result-gate
  * assignment tests, the "naming the key" strengthening, and the live-side
  * polluted-`Object.prototype` test) are about that same task's OTHER half --
@@ -28,7 +28,7 @@ import {
   renderDecision,
   validateDecision,
 } from "host-adapter";
-import { applyOpenCodeOutput } from "../apply-host-output.ts";
+import { applyOpenCodeOutput } from "../apply-opencode-output.ts";
 
 const HOOKMAP = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 

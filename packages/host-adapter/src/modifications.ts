@@ -136,7 +136,7 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * `isReservedSegment` (imported, `reserved-segments.ts`) replaces what used
  * to be one of several module-private copies of the same three names --
  * `hookmap-path.ts` and `render-decision.ts` each kept their own too, and
- * `hosts/opencode/apply-host-output.ts` kept a further one, a HOST'S own
+ * `hosts/opencode/apply-opencode-output.ts` kept a further one, a HOST'S own
  * source carrying a shared package's security invariant because the package
  * had no shared definition to export (§V5 review round 3, Task 3,
  * "duplication vs wrong abstraction"). It is now the one predicate every
@@ -145,7 +145,7 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * exported itself (fix round 1, Minor 1).
  *
  * THIS MODULE'S OWN CHECK STAYS LOCAL, THOUGH -- unlike the name list, the
- * check below is not shared with `apply-host-output.ts`'s, because the two
+ * check below is not shared with `apply-opencode-output.ts`'s, because the two
  * check different things. `assertNoReservedSegments` here takes NAMES
  * already in hand -- a redaction path already split into segments, or one
  * override object's own top-level keys -- and asks "is this name reserved",
@@ -183,7 +183,7 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * That was always true of this module. It stopped being the whole story the
  * moment a SECOND host existed whose own applier reads a rendered value back
  * through the JavaScript prototype chain rather than only ever assigning it
- * shallowly: `hosts/opencode/apply-host-output.ts`'s `mergeInPlace` recurses
+ * shallowly: `hosts/opencode/apply-opencode-output.ts`'s `mergeInPlace` recurses
  * into any field present on both sides as a plain object, and reading
  * `target["__proto__"]` on a plain object with no OWN `__proto__` resolves
  * through the chain to `Object.prototype` itself -- so the recursive call
@@ -192,8 +192,8 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  *
  * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `reserved-segments.ts`'s
  * exported `findReservedKey`, called from every host applier that recurses
- * into a rendered value the way `apply-host-output.ts`'s `mergeInPlace`
- * does (`apply-host-output.ts`'s own `applyOpenCodeOutput`, pass 1, over the
+ * into a rendered value the way `apply-opencode-output.ts`'s `mergeInPlace`
+ * does (`apply-opencode-output.ts`'s own `applyOpenCodeOutput`, pass 1, over the
  * rendered `args`/`result` value as a whole tree, before its recursive merge
  * ever runs on it -- see that file's own doc comment). Not
  * `hosts/opencode/`'s own source, any longer: a shared package pointing at

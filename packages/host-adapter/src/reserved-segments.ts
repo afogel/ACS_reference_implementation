@@ -7,7 +7,7 @@
  * BEFORE THIS FILE, EACH OF THESE KEPT ITS OWN COPY OF THE NAME LIST, because
  * the package kept every one of them module-private: `hookmap-path.ts`,
  * `render-decision.ts`, and `modifications.ts` each defined the identical
- * literal `Set` privately, and `hosts/opencode/apply-host-output.ts` kept a
+ * literal `Set` privately, and `hosts/opencode/apply-opencode-output.ts` kept a
  * further one of its own -- a HOST'S own source carrying an adapter-wide
  * security invariant because the package had no shared definition to import
  * (§V5 review round 3, Task 3, "duplication vs wrong abstraction"). Worse,
@@ -42,13 +42,13 @@
  *     anywhere inside it, at any depth, once that value is about to be
  *     trusted rather than merely addressed by one named path. `findReservedKey`
  *     below is that walker -- moved here from being
- *     `hosts/opencode/apply-host-output.ts`'s own file-local copy, the one
+ *     `hosts/opencode/apply-opencode-output.ts`'s own file-local copy, the one
  *     duplicate among the group above that was ever a full recursive walk
  *     rather than a name check. It does not throw: unlike the
  *     three-name list, a refusal's WORDING and ERROR CLASS are a fact about
  *     the caller, not about the walk. `modifications.ts` throws
  *     `ModificationsInvalidError` for every violation it finds (its own
- *     documented contract); `apply-host-output.ts` throws a bare `Error`
+ *     documented contract); `apply-opencode-output.ts` throws a bare `Error`
  *     worded around ITS OWN measured hazard (a recursive in-place merge that
  *     reads a rendered value back through the prototype chain -- see that
  *     file's own doc comment for the attack this closes). Neither vocabulary

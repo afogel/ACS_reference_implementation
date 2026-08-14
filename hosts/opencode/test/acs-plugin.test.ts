@@ -4,7 +4,7 @@
  * states why `ACS_HOOKMAP_PATH` is read inside the factory rather than at
  * module scope, exactly so this works). Scoped to what nothing else in this
  * suite exercises: that the factory itself, not only `applyOpenCodeOutput` in
- * isolation (apply-host-output.test.ts) or the shipped hookmap's static
+ * isolation (apply-opencode-output.test.ts) or the shipped hookmap's static
  * shape (hookmap.test.ts), refuses to register a hookmap
  * `assertHostAcceptsEveryDecision` would otherwise let govern nothing.
  *
@@ -93,7 +93,7 @@ describe("AcsPlugin's load-time gate", () => {
   // inside the gate built to close the fourteenth". Before this fix, the gate
   // accepted any deny/ask/defer entry with at least one `{value: ...}` field
   // ANYWHERE in its output block, not only under `refuse` -- the one key
-  // `applyOpenCodeOutput` (apply-host-output.ts) actually throws on. Both
+  // `applyOpenCodeOutput` (apply-opencode-output.ts) actually throws on. Both
   // reproductions below were measured LIVE, before this fix, against the
   // real `AcsPlugin`, `applyOpenCodeOutput`, `loadHookmap`, and a stub Guardian
   // returning a genuine `{"decision":"deny"}`: the hookmap loaded cleanly,
