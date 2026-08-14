@@ -184,7 +184,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 
 **Notes:**
 - R1 fails A and B: both assert complete expressibility, neither proves it. Only C2 turns "completely expressed" into a per-case result someone can check. On the claim the whole pitch rests on, asserted is not enough. Adding R1.7 and R1.8 does not move these verdicts — all three shapes *can* implement the posture split; only C demonstrates it case by case, now via the extended N44.
-- 🟡 R2 fails A and B on drift (R2.5, R2.6): without a conformance harness there is nothing to re-run against upstream, so an AGT change is discovered by a human noticing, or not at all. C6 makes drift a named failing case. MS-ACS is `0.3.1-beta` and warns of breaking changes between minor versions, so this is a live risk, not a theoretical one.
+- 🟡 R2 fails A and B on drift (R2.5, R2.6): without a conformance harness there is nothing to re-run against upstream, so an AGT change is discovered by a human noticing, or not at all. C6 makes upstream divergence a named failing case. MS-ACS is `0.3.1-beta` and warns of breaking changes between minor versions, so this is a live risk, not a theoretical one.
 - R5 fails B: envelopes that are never serialized are not inspectable on the wire, which is what R5.1 asks for.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.
@@ -532,7 +532,7 @@ flowchart TB
 | R1.7 — wire posture is negotiated, not hard-coded | N5/N14 negotiate it into S13/S15; N6/N15 apply it and audit every fail-open proceed to S14/S16. ⚠️ **The converse does not yet hold** — V4 measured an audit entry reading `outcome: "proceeded"` for a step the shim then **blocked** (exit 2), because the posture writes before a later seam refuses. "Every proceed is audited" is satisfied; "every audited proceed happened" is not. See §V4's watch-for; the repair is the audit sink's contract, not V4's |
 | R1.8 — mandatory fail-closed cases | N7/N16 |
 | R1.9 — a refusal denies regardless of posture | N6 reads the failure before it reads the posture: `classifyDeliveryFailure` names the refusal, and it resolves to `deny` without consulting S13's `on_decision_failure`. Closes the four codes N27 cannot address a decision to, from the host's own side |
-| R2.5/R2.6 — drift is a named failure | N45, N46 → N53 → U31 |
+| R2.5/R2.6 — upstream divergence is a named failure | N45, N46 → N53 → U31 |
 
 ---
 
