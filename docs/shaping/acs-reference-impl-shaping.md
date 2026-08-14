@@ -274,7 +274,7 @@ All resolved — see `spike-agt-integration.md`.
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `negotiated_version`, `methods_evaluated`, `selected_transport`, `timeout_config`, `on_decision_failure`. **`methods_evaluated` is the load-bearing one and V4 is what made it so**: it is exactly the set of methods this Guardian dispatches — both `steps/*` gates since V4 added the result one — and it is *checked against the dispatch* rather than trusted, because both directions are wrong and neither is cosmetic. A method declared here that no branch answers claims enforcement that does not exist; a method omitted tells a conformant client, in `handshake.json`'s own words, to treat that gate as ALLOW-by-default. `test/handshake-declares-what-it-evaluates.test.ts` derives the truth from a live Guardian. There is no `profiles_accepted` — this responder never shipped one | call | → N26 | → N5, → N14 |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
 | N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
-| N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
+| N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44, → N49 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
@@ -284,7 +284,7 @@ All resolved — see `spike-agt-integration.md`.
 | N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N53 |
 | N47 | P5 | conformance | `renderCoverageMatrix()` — the 8 × 5 cells N41–N44 measure, and nothing else | call | → U30 | — |
 | N52 | P5 | conformance | `renderTraceRows()` — N49's trace-pillar rows. A trace row is an attribute against its wire source, not a point × verdict cell, so it is not a column of the matrix | call | → U33 | — |
-| N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff. V8's affordance: it has no input until V8's `diffSurfaces()` exists | call | → U31 | — |
+| N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff. **V8 builds it and V8 renders it**: its only input is V8's `diffSurfaces()`, so V7 can neither build nor test it, and §V8 of the slices doc carries the row | call | → U31 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
 | N51 | P4 | inspector | `tailAuditLog()` — host-side fail-open audit events and negotiated posture | observe | → U23 | — |

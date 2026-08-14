@@ -4,7 +4,7 @@
 
 **Master doc:** [`docs/shaping/acs-reference-impl-slices.md`](../../docs/shaping/acs-reference-impl-slices.md) §V7 — authoritative for this slice's scope.
 
-**Affordances:** U30, U32, U33, N40-N44, N47, N48, N49, N52 — defined in [Detail C](../../docs/shaping/acs-reference-impl-shaping.md#detail-c-affordances).
+**Affordances:** U30, U32, U33, N40-N44, N47, N48, N49, N52, S10 — defined in [Detail C](../../docs/shaping/acs-reference-impl-shaping.md#detail-c-affordances). This slice declares no store of its own; S10 (`mapping.yaml`) is the shared one it reads, and commitment 2 below is about what it is called.
 
 ## Names frozen before implementation
 

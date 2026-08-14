@@ -485,7 +485,7 @@ Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriag
 | U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 AGT verdicts | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
 | U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
-| N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
+| N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44, → N49 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
@@ -494,8 +494,9 @@ Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriag
 | N47 | P5 | conformance | `renderCoverageMatrix()` — the 8 × 5 cells N41–N44 measure, and nothing else | call | → U30 | — |
 | N52 | P5 | conformance | `renderTraceRows()` — N49's trace-pillar rows | call | → U33 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
+| S10 | shared | store | `mapping.yaml` — the file the runtime already reads (V1, S10), read here by the harness that measures and publishes it | — | — | → N41, → N42, → N48 |
 
-**⚠️ `renderMatrix()` split before anything was written to inherit it.** N47 was one function wired to U30, U31 **and** U33 — three renderings of three different measurements. A coverage cell is an intervention point against an AGT verdict; a trace-pillar row is a required OTel attribute against its wire source; an upstream diff is a changed field in a surface `agt.lock` pins. They share a verb and nothing else, and a single `renderMatrix` is the name that would have let the second and third arrive as columns of the first. N47 is now `renderCoverageMatrix()` → U30, **N52** is `renderTraceRows()` → U33, and `renderUpstreamDiff()` → U31 is **N53, which is V8's** — it has no input until V8's `diffSurfaces()` (N46) exists, which is why it sits in §V8's table rather than this one. The three names are frozen in `slices/v7/README.md`; the columns of the 8 × 5 are AGT's five verdicts, never ACS's five dispositions.
+**⚠️ `renderMatrix()` split before anything was written to inherit it.** N47 was one function wired to U30, U31 **and** U33 — three renderings of three different measurements. A coverage cell is an intervention point against an AGT verdict; a trace-pillar row is a required OTel attribute against its wire source; an upstream diff is a changed field in a surface `agt.lock` pins. They share a verb and nothing else, and a single `renderMatrix` is the name that would have let the second and third arrive as columns of the first. N47 is now `renderCoverageMatrix()` → U30, **N52** is `renderTraceRows()` → U33, and `renderUpstreamDiff()` → U31 is **N53, which is V8's** — it has no input until V8's `diffSurfaces()` (N46) exists, which is why it sits in §V8's table rather than this one. **So the split reaches V8 and adds to its scope**: until now U31 was rendered by a function V7 built, and V8 inherited it: after the split `renderUpstreamDiff()` is V8's to build, and V8's affordance list gains N53 — `slices/v8/README.md` included. §V8 records that at its own table, so it does not have to be found by diffing this one. The three names are frozen in `slices/v7/README.md`; the columns of the 8 × 5 are AGT's five verdicts, never ACS's five dispositions.
 
 **⚠️ Gap discovered in V1 — the Guardian's outbound envelopes are validated by nothing.** Inbound requests get Ajv against all 43 v0.1.0 schemas (N21), but responses are hand-built objects checked by no schema. The conformance harness would therefore measure a wire format that was never itself contract-checked — which quietly weakens exactly the claim C2 exists to prove. Add response validation before the matrix is published. Related: V1 found that `response-envelope.json`'s `result` unconditionally `$ref`s `AcsResult`, which requires `decision` — a ServerHello has no such field, so a handshake response cannot satisfy it. That looks like a genuine v0.1.0 spec gap (no discriminated union for non-decision methods) and is worth an upstream ACS issue, not just a red cell.
 
@@ -509,7 +510,7 @@ Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriag
 | `acs.evaluator` on the `acs.decision` span event | **none** — `AcsResult` has no such field | 🔴 no wire source |
 | `acs.confidence`, `acs.evaluator_version`, `acs.model_id` (required "when present in the decision envelope") | **none** — no such fields in `AcsResult` | 🔴 can never be present |
 
-`N49` is what turns that table into measured cells rather than this prose, and `U33` renders it. The finding worth publishing is not the missing fields but their consequence: **a downstream consumer of the ACS wire cannot emit a conformant trace** — only the Guardian can, from process-local knowledge the contract does not carry. That cuts directly against R5.1/R5.2 and against V2's design, where S6 is readable by anything and the Inspector proves it by importing nothing. An OTel exporter reading S6 hits the same wall.
+`N49` is what turns that table into measured cells rather than this prose, `N52` renders those rows, and `U33` is where they land. The finding worth publishing is not the missing fields but their consequence: **a downstream consumer of the ACS wire cannot emit a conformant trace** — only the Guardian can, from process-local knowledge the contract does not carry. That cuts directly against R5.1/R5.2 and against V2's design, where S6 is readable by anything and the Inspector proves it by importing nothing. An OTel exporter reading S6 hits the same wall.
 
 **Scope boundary:** V7 *measures* the Trace pillar. It does not build an exporter. If an exporter is ever wanted it has to live in the Guardian for the reason above, and that is a slice of its own, not V7 scope.
 
@@ -532,6 +533,8 @@ R5.3 lands here: the matrix *is* the profile declaration — including the Trace
 | N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N53 |
 | N53 | P5 | conformance | `renderUpstreamDiff()` — N46's surface diff | call | → U31 | — |
 | S12 | P5 | store | upstream AGT surfaces | — | — | → N46 |
+
+**⚠️ N53 is new scope for this slice, added by V7's `renderMatrix()` split (§V7).** Until that split, U31 was rendered by V7's N47 — a function this slice inherited rather than built. It builds one now: `renderUpstreamDiff()` is V8's because its only input is this slice's own N46, so V7 can neither build it nor test it. **This slice's affordances are therefore U31, N45, N46, N53, S12**, and `slices/v8/README.md`'s affordance line carries the same five.
 
 Surfaces watched, and nothing else (R2.4): `manifest.schema.json`, `policy-input.schema.json`, `verdict.schema.json`, `snapshot.schema.json`, the intervention-point enum, the verdict enum, `reserved-reasons.json`, and the stock bundle's `data.agt.defaults.config` keys.
 
