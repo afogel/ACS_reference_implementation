@@ -2,10 +2,10 @@
  * THE ORDER OF THE ONE EXCHANGE BOTH GATES RUN (§V5 review round 3, Task 6).
  *
  * `"tool.execute.before"` and `"tool.execute.after"` used to carry a copy each
- * of the same seven moves; they are one function now (`handle`, acs-plugin.ts),
+ * of the same seven moves; they are one function now (`runExchange`, acs-plugin.ts),
  * and the two hook methods are edges that name their event and assemble their
  * own payload. Merging them removed the risk that the two copies drift out of
- * step. It introduced a different one: a single later edit to `handle` now
+ * step. It introduced a different one: a single later edit to `runExchange` now
  * reorders BOTH gates at once, silently, and every step of that order is there
  * for a measured reason.
  *
@@ -39,7 +39,7 @@
  * Per-gate coverage of the individual faults already exists (request-gate.test.ts
  * and result-gate.test.ts each pin their own `tool`/`sessionID`/`tools`
  * behaviour). What is new here is the ORDER between them, asked identically at
- * both gates -- which is what a shared `handle` makes a single property rather
+ * both gates -- which is what a shared `runExchange` makes a single property rather
  * than two.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
@@ -148,7 +148,7 @@ for (const gate of GATES) {
         expect(thrown).toBeInstanceOf(Error);
         expect((thrown as Error).message).toContain("no usable tool name");
         expect((thrown as Error).message).not.toContain("no usable sessionID");
-        // The event name is carried from the hook method through `handle` into
+        // The event name is carried from the hook method through `runExchange` into
         // the message -- so a gate handing the shared function the wrong
         // literal is visible here too.
         expect((thrown as Error).message).toContain(`"${gate.hook}"`);

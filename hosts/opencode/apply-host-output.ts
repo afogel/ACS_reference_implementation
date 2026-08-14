@@ -196,7 +196,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
  * OWNING a `gate` property, and both live objects that ever reach this
  * function are honest, literal-constructed object literals ONLY because
  * `acs-plugin.ts`'s two hook methods each construct one, fully typed with no
- * cast on `live`, and hand it to that file's shared `handle`, which makes the
+ * cast on `live`, and hand it to that file's shared `runExchange`, which makes the
  * single call below with whichever it was given (§V5 review round 3, Task 6
  * merged the two hook bodies; before that each hook called this function
  * itself). A fact about today's two constructors, not a property of the

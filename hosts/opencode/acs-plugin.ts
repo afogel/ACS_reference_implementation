@@ -84,7 +84,7 @@
  * two sentences up, which is why it is dated -- MERGED THE TWO BODIES
  * (thread 3773262484). Both hooks made the same seven moves in the same
  * order, written out twice; they are one module-private function now
- * (`handle`, at the bottom of this file, beside the factory that calls it),
+ * (`runExchange`, at the bottom of this file, beside the factory that calls it),
  * and each hook method is the edge that names its own event, assembles its
  * own payload, and constructs its own live half. OpenCode's `Plugin` type
  * needs two method names; it never needed two copies of the exchange behind
@@ -118,7 +118,7 @@
  * own bullet, last, for why it is now load-bearing rather than a nicety).
  *
  * DONE ONCE FOR BOTH GATES SINCE §V5 REVIEW ROUND 3, TASK 6, not once per
- * gate: `handle` (bottom of this file) is the single function both hook
+ * gate: `runExchange` (bottom of this file) is the single function both hook
  * methods call, so all four happen in one place rather than in two hook
  * bodies that had to be kept in step by hand. Still not something this file
  * can do at LOAD time, which is what this heading has always been about --
@@ -339,7 +339,7 @@ import {
   governStep,
   // The `tools` rule, as the adapter states it (§V5 review round 3, Task 2)
   // -- this file used to carry its own copy, `isGovernedTool`. Called from
-  // `handle` (below), exactly where each hook body used to call that copy
+  // `runExchange` (below), exactly where each hook body used to call that copy
   // before Task 6 merged the two, and for what the earlier call buys rather
   // than for what it decides: `governStep` asks the same function itself, so
   // a shim that forgot would still skip, but only this call site is early
@@ -349,9 +349,9 @@ import {
   resolveSessionConfig,
   toSessionUuid,
   // `AuditSink`/`GuardianClient`/`SessionConfigStore` -- the three
-  // collaborators `AcsPlugin`'s factory builds once and hands `handle` on
+  // collaborators `AcsPlugin`'s factory builds once and hands `runExchange` on
   // every call (`Deployment`, below). Named by the adapter's own published
-  // types rather than by `ReturnType<typeof create...>`: what `handle` depends
+  // types rather than by `ReturnType<typeof create...>`: what `runExchange` depends
   // on is the INTERFACES, which is the whole reason the in-memory and
   // file-backed session config stores are interchangeable at all (S15).
   type AuditSink,
@@ -820,7 +820,7 @@ function assertDecisionsCanAct(
  * 3, Task 5, fix rounds 3 and 4).
  *
  * `AcsPlugin`'s two hook methods assemble the payload themselves and construct
- * a hardcoded live half for the applier (handed to `handle`, below, which makes
+ * a hardcoded live half for the applier (handed to `runExchange`, below, which makes
  * the one `applyOpenCodeOutput` call). That makes two things facts about the
  * SHIM rather than choices left to a hookmap -- and a hookmap disagreeing with
  * either produces a gate-SATISFYING entry that governs nothing:
@@ -1079,7 +1079,7 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
  * two hooks, and each constructs a hardcoded tag -- `"tool.execute.before"`
  * builds `{ gate: "request", args }` and `"tool.execute.after"` builds
  * `{ gate: "result", result }` (both at the bottom of this file; since §V5
- * review round 3, Task 6 each hands its own to `handle`, which makes the one
+ * review round 3, Task 6 each hands its own to `runExchange`, which makes the one
  * `applyOpenCodeOutput` call with whichever it was given). So "which key
  * withholds here" is a fact about the HOOK METHOD, which is per hook name,
  * regardless of what payload shape the hookmap entry declares. A hookmap
@@ -1459,7 +1459,7 @@ function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
  * `assertUsableTool`, below, is, and the reason the `tools` rule both gates
  * apply is now one function in the adapter (`governsTool`, govern-step.ts)
  * rather than a copy per host -- but it was CALLED from each hook body, once
- * each. Both gates reach it through `handle` (below) now, which is where the
+ * each. Both gates reach it through `runExchange` (below) now, which is where the
  * whole exchange they share lives. The `hookEventName` parameter stays for the
  * reason it was added: the message names the gate that actually fired.
  */
@@ -1518,7 +1518,7 @@ function assertUsableSessionId(sessionID: unknown, hookEventName: string): asser
  * check is load-bearing anyway.
  *
  * Generic over `hookEventName`, exactly like `assertUsableSessionId` -- and,
- * like it, called from ONE place since §V5 review round 3, Task 6 (`handle`,
+ * like it, called from ONE place since §V5 review round 3, Task 6 (`runExchange`,
  * below, runs the exchange both gates share). The parameter is what puts the
  * firing gate's own name in the message.
  */
@@ -1535,7 +1535,7 @@ function assertUsableTool(tool: unknown, hookEventName: string): asserts tool is
 
 /**
  * The long-lived collaborators `AcsPlugin`'s factory builds ONCE and every
- * hook call then shares for the rest of the session -- passed to `handle`
+ * hook call then shares for the rest of the session -- passed to `runExchange`
  * (below) as an argument rather than closed over, so the one exchange both
  * gates run is a module-level function whose dependencies are named in its
  * signature.
@@ -1635,7 +1635,7 @@ type AssembledStep = {
  * prevent -- see acs-hook.ts's own step 4 and step 5 for host #1's two calls
  * side by side, and this file's header for the full statement.
  */
-async function handle(
+async function runExchange(
   deployment: Deployment,
   hookEventName: string,
   input: { tool: string; sessionID: string; callID: string },
@@ -1734,7 +1734,7 @@ export const AcsPlugin: Plugin = async () => {
   const hookmap = loadHookmap(hookmapPath);
   assertHostAcceptsEveryDecision(hookmap, hookmapPath);
 
-  // Built once, here, and handed to `handle` on every call -- the four this
+  // Built once, here, and handed to `runExchange` on every call -- the four this
   // deployment runs on, in one object so the exchange both gates share can
   // take them as one argument.
   const deployment: Deployment = {
@@ -1754,7 +1754,7 @@ export const AcsPlugin: Plugin = async () => {
     // BOTH HOOKS ARE EDGES ON ONE EXCHANGE (§V5 review round 3, Task 6): the
     // seven moves they share -- validate `tool`, honour `tools`, validate
     // `sessionID`, assemble the payload, negotiate the session, govern the
-    // step, apply what comes back -- are `handle` (above), which is also
+    // step, apply what comes back -- are `runExchange` (above), which is also
     // where the order they must happen in is stated and defended. What is
     // left here is the half the two gates genuinely differ on: which event
     // name this is, and where OpenCode puts the live objects it hands this
@@ -1773,7 +1773,7 @@ export const AcsPlugin: Plugin = async () => {
      * merge, apply-host-output.ts).
      */
     "tool.execute.before": async (input, output) =>
-      handle(deployment, "tool.execute.before", input, (tool, sessionID) => ({
+      runExchange(deployment, "tool.execute.before", input, (tool, sessionID) => ({
         payload: { tool, session_id: sessionID, callID: input.callID, args: output.args },
         live: { gate: "request", args: output.args },
       })),
@@ -1784,7 +1784,7 @@ export const AcsPlugin: Plugin = async () => {
      * though the hook below were still to be written). The seven moves it
      * makes -- validate `tool`, honour `tools`, validate `sessionID`,
      * assemble one payload object, negotiate the session, govern the step,
-     * apply what comes back -- are `handle`'s (above), NOT written out here:
+     * apply what comes back -- are `runExchange`'s (above), NOT written out here:
      * they were a second copy of `"tool.execute.before"`'s until §V5 review
      * round 3's own Task 6 merged the two. What remains this hook's is the
      * seam that differs -- `{result}` in place of `{args}`, one step later.
@@ -1814,7 +1814,7 @@ export const AcsPlugin: Plugin = async () => {
      * `{output: "cat: missing-file.txt: No such file or directory\n", exit:
      * 1, truncated: false}`), and an INVALID tool call reports itself as
      * `tool: "invalid"`, not `bash`, so the `tools` check (`governsTool`, in
-     * `handle`) skips it before any payload naming `metadata.exit` is ever
+     * `runExchange`) skips it before any payload naming `metadata.exit` is ever
      * built. Unreachable through the shipped config -- this gate's own
      * `tools: [bash]` scope -- not unreachable outright, the same
      * qualification `governsTool`'s own
@@ -1849,7 +1849,7 @@ export const AcsPlugin: Plugin = async () => {
      * opaque). `governed.output.result`, when a `deny`/`modify` renders one,
      * is `applied_output` -- the WHOLE patched clone of that same object,
      * mirror included (`outputs.mirrors`, opencode.hookmap.yaml's own result
-     * gate) -- so `applyOpenCodeOutput`'s merge (called by `handle`, on the
+     * gate) -- so `applyOpenCodeOutput`'s merge (called by `runExchange`, on the
      * live half this hook constructs below; its own `mergeInPlace`, in
      * apply-host-output.ts) lands `output` and
      * `metadata.output` together, and leaves `title`/`attachments`/
@@ -1863,7 +1863,7 @@ export const AcsPlugin: Plugin = async () => {
      * throw out of `tool.execute.after` and rebuilds `metadata` from its own
      * pre-hook copy, so a secret scrubbed by a throw does not stay scrubbed
      * on disk. That is why this entry's `deny`/`modify` decisions render
-     * `result` (a REPLACING merge, applied through `handle`) instead of
+     * `result` (a REPLACING merge, applied through `runExchange`) instead of
      * `refuse` (a throw) -- the `refuse` key never appears in either decision
      * here.
      * `assertUsableTool`/`assertUsableSessionId` still refuse a broken
@@ -1873,7 +1873,7 @@ export const AcsPlugin: Plugin = async () => {
      * withhold by replacing.
      */
     "tool.execute.after": async (input, output) =>
-      handle(deployment, "tool.execute.after", input, (tool, sessionID) => ({
+      runExchange(deployment, "tool.execute.after", input, (tool, sessionID) => ({
         payload: { tool, session_id: sessionID, callID: input.callID, args: input.args, result: output },
         // The cast is on the FIELD, never on `live` itself: OpenCode's
         // published 1.18.15 type for this object (`{title, output, metadata}`)
