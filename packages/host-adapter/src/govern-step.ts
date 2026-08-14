@@ -181,7 +181,19 @@ export type GovernStepInput = {
    * `assertEntryMatchesGate` (acs-plugin.ts) pins `tool_name: $.tool`, the very
    * field its shim feeds, so its hookmap's vocabulary and its shim's are the
    * same string by construction. A third host wanting the same guarantee wants
-   * the same kind of gate; there is nothing this module can put in its place.
+   * the same kind of gate.
+   *
+   * WHAT IS NOT BUILT, stated rather than claimed impossible (§V5 review round
+   * 4, fix round 2): this module COULD export a reusable load-time helper,
+   * parameterised by the path a shim's own payload assembly puts its dispatch
+   * field at, so a third host got that third of host #2's gate without writing
+   * it. It is not built because there is one caller for it today, and because
+   * only that third generalises -- the rest of `assertEntryMatchesGate` pins
+   * `outputs.from`/`outputs.within` and each gate's payload SHAPE against what
+   * that shim hardcodes, which is not expressible as a path parameter. So the
+   * honest statement is that nothing here can DECIDE the question at runtime
+   * (a caller's vocabulary is not knowable here), not that the adapter could
+   * offer a third host no help at load time.
    *
    * WHAT A CALLER BUYS BY TELLING is the other half of that trade, and it is
    * the larger one: the gate scopes on the name the host actually dispatched,

@@ -409,59 +409,81 @@ describe("architectural invariants", () => {
    * §V5 review round 3, Task 2, fix round 1, Critical 1 -- the gate that turns
    * "unreachable by accident" into "unreachable by construction".
    *
-   * Task 2 made `governStep` honour a hookmap entry's `tools` list itself, so
-   * a step this gate does not govern comes back carrying an EMPTY rendered
-   * output. That is a clean no-op on host #2's applier and at host #1's
-   * PostToolUse. It is NOT a no-op at host #1's PreToolUse. Measured, with
-   * `tools: [Bash]` added to hosts/claude-code/claude-code.hookmap.yaml's
-   * request gate and the real shim invoked for `Read`:
+   * WHY THIS GATE EXISTS (round 3). Task 2 made `governStep` honour a hookmap
+   * entry's `tools` list itself, so a step a gate does not govern comes back
+   * carrying an EMPTY rendered output -- a clean no-op on host #2's applier,
+   * and NOT a no-op at host #1's PreToolUse, where `emptyOutputIsHonest` is
+   * `false` because an absent `hookSpecificOutput` wrapper is an absence
+   * rather than an answer. That shim's `asClaudeCodeOutput` throws on one and
+   * `main().catch` exits 2, so an unlisted tool became a blocking stop.
    *
-   *     EXIT 2, audit log not created, stderr:
-   *     acs-hook: the rendered output for hook "PreToolUse" has no
-   *     "hookSpecificOutput" object for Claude Code to read a decision from,
-   *     so there is no output this host could honestly write
+   * THE ROUND-3 CAPTURES THAT USED TO SIT HERE ARE GONE, NOT MOVED, AND THE
+   * REASON MATTERS MORE THAN THE NUMBERS (§V5 review round 4, fix round 2).
+   * They recorded `tools: [Bash]` at PreToolUse invoked for `Read` as exit 2
+   * with that applier's own stderr, and the same list at PostToolUse invoked
+   * for `Read` as `exit 0, {"hookSpecificOutput":{"hookEventName":
+   * "PostToolUse"}}, no audit entry -- the skip that was intended`. Both were
+   * true when measured. Round 4 gave `governStep` a refusal that fires BEFORE
+   * any render, so neither is reproducible, and the second one now reads as
+   * the opposite of what happens.
    *
-   * The same hookmap scoped at PostToolUse instead, invoked for `Read`: exit
-   * 0, `{"hookSpecificOutput":{"hookEventName":"PostToolUse"}}`, no audit
-   * entry -- the skip that was intended. The difference is that shim's own
-   * `emptyOutputIsHonest` flag, which is `false` at PreToolUse precisely
-   * because an absent wrapper there is an absence rather than an answer.
+   * RE-MEASURED, this tree, real shim as a subprocess against a live Guardian.
+   * Three hookmap configurations x both gates x both tools. Every payload
+   * carries the SAME `tool_response` shape, so only the tool NAME varies
+   * within a gate and no exit code can be blamed on an unbuildable envelope:
    *
-   * FAIL-CLOSED, NOT FAIL-OPEN: the tool call does not run ungoverned, and no
-   * audit entry claims it did. So this is a watch-for rather than a
-   * regression -- but it is reachable by nothing more than a one-line hookmap
-   * edit, and the reason it has not happened is that nobody has made that
-   * edit, which is not a reason. This gate is the reason instead.
+   *     hookmap config                  invoked            exit
+   *     ------------------------------  -----------------  ----
+   *     baseline (no `tools` anywhere)   PreToolUse/Bash    0
+   *     baseline                         PreToolUse/Read    0
+   *     baseline                         PostToolUse/Bash   0
+   *     baseline                         PostToolUse/Read   0
+   *     `tools: [Bash]` at PostToolUse   PreToolUse/Bash    0   <- control
+   *     `tools: [Bash]` at PostToolUse   PreToolUse/Read    0   <- control
+   *     `tools: [Bash]` at PostToolUse   PostToolUse/Bash   2
+   *     `tools: [Bash]` at PostToolUse   PostToolUse/Read   2
+   *     `tools: [Bash]` at PreToolUse    PreToolUse/Bash    2
+   *     `tools: [Bash]` at PreToolUse    PreToolUse/Read    2
+   *     `tools: [Bash]` at PreToolUse    PostToolUse/Bash   0   <- control
+   *     `tools: [Bash]` at PreToolUse    PostToolUse/Read   0   <- control
+   *
+   * Every exit-2 row carries the same stderr, and it is `governStep`'s, not
+   * the applier's:
+   *
+   *     governStep: hookmap entry for hook "<gate>" declares a "tools" list,
+   *     so this gate governs some tools and not others -- and this call named
+   *     no scoped tool (scopedTool is undefined). [...]
+   *
+   * READ THREE THINGS OFF THAT TABLE. (1) `tools` at PostToolUse is exit 2,
+   * where the old capture said exit 0 -- for `Read`, which the list does not
+   * name, AND for `Bash`, which it does. (2) The blast radius is the GATE that
+   * declares the list, not the tool: the control rows show the other gate
+   * untouched in both directions, so nothing but that one line causes it.
+   * (3) The applier fault the round-3 captures recorded is now UNREACHABLE
+   * through a `tools` list on this host, because the refusal preempts every
+   * render -- which is why the message above names `scopedTool` and not
+   * `hookSpecificOutput`.
+   *
+   * FAIL-CLOSED, NOT FAIL-OPEN, in every exit-2 row: the tool call does not
+   * run ungoverned, and no audit entry claims it did. A broken deployment, not
+   * a bypass.
+   *
+   * WHAT THE TABLE MEANS FOR THIS HOOKMAP: HOST #1 CANNOT DECLARE `tools` AT
+   * ANY GATE, and the reason is a freeze rather than a design choice.
+   * `governStep` scopes on the tool its CALLER tells it, and REFUSES a gate
+   * whose entry declares a `tools` list when the caller named none
+   * (`GovernStepInput.scopedTool`, packages/host-adapter/src/govern-step.ts).
+   * acs-hook.ts does not tell -- it has never needed to, since its own
+   * settings.json matcher (`^Bash$`) scopes both gates -- and it CANNOT start
+   * telling, because `scripts/verify-zero-diff.sh` pins
+   * `hosts/claude-code/[^/]+\.(ts|yaml)$` at `+0/-0` for this slice. So while
+   * that freeze holds, a `tools` list in this hookmap is a throw on every call
+   * at the gate that declares it. That is the whole of the exit-2 rows above,
+   * and it is not the silent skip this comment used to promise.
    *
    * SCOPED TO GATES WHOSE `emptyOutputIsHonest` IS FALSE, AND THAT SCOPE IS
    * NOW NARROWER THAN THE TRUTH -- deliberately, and this is the part to read
-   * before adding a `tools` line anywhere in host #1's hookmap. This comment
-   * used to say `tools` at PostToolUse "would be legitimate, would work", and
-   * §V5 review round 4 made that false in both halves.
-   *
-   * HOST #1 CANNOT DECLARE `tools` AT ANY GATE, and the reason is a freeze
-   * rather than a design choice. `governStep` now scopes on the tool its
-   * CALLER tells it, and REFUSES a gate whose entry declares a `tools` list
-   * when the caller named none (`GovernStepInput.scopedTool`,
-   * packages/host-adapter/src/govern-step.ts). acs-hook.ts does not tell --
-   * it has never needed to, since its own settings.json matcher (`^Bash$`)
-   * scopes both gates -- and it CANNOT start telling, because
-   * `scripts/verify-zero-diff.sh` pins `hosts/claude-code/[^/]+\.(ts|yaml)$`
-   * at `+0/-0` for this slice. So while that freeze holds, a `tools` list in
-   * this hookmap is a throw on EVERY call at that gate, for the listed tool
-   * as much as for an unlisted one.
-   *
-   * MEASURED, with `tools: [Bash]` added to this hookmap's PostToolUse entry
-   * and the real shim invoked for `Bash` -- the tool the list names:
-   *
-   *     EXIT 2, stderr:
-   *     governStep: hookmap entry for hook "PostToolUse" declares a "tools"
-   *     list, so this gate governs some tools and not others -- and this call
-   *     named no scoped tool (scopedTool is undefined). [...]
-   *
-   * Not the silent skip this comment used to promise, and not the "unlisted
-   * tools only" blast radius either. Still fail-closed -- nothing runs
-   * ungoverned -- and still a broken deployment.
+   * before adding a `tools` line anywhere in this hookmap.
    *
    * THIS GATE IS NOT WIDENED TO MATCH, on purpose. It refuses a narrower thing
    * (`tools` where an empty render is not an answer) for a reason that

@@ -780,10 +780,16 @@ Each of these is measured and recorded at the row it governs in `docs/shaping/ac
   second source this change removed *and* refuse those hosts. It is decidable in a host's own load
   gate, which knows both halves: host #2's `assertEntryMatchesGate` pins `tool_name: $.tool`, the
   very field its shim feeds, so its hookmap's vocabulary and its shim's are the same string by
-  construction. **A third host wanting that guarantee wants the same kind of gate**, and there is
-  nothing the adapter can put in its place. Neither shipped host reaches the residual, so this is
-  recorded rather than fixed — and unlike the six above it is not one module's sweep, because the
-  check that closes it can only be written where a host's own dispatch vocabulary is known.
+  construction. **A third host wanting that guarantee wants the same kind of gate.** The adapter
+  *could* export a reusable load-time helper for the `tool_name` third of that gate, parameterised
+  by the path a shim puts its dispatch field at — **not built**, because there is one caller for it
+  today and because only that third generalises: the rest of `assertEntryMatchesGate` pins
+  `outputs.from`/`outputs.within` and each gate's payload shape against what that shim hardcodes,
+  which is not expressible as a path parameter. So the claim is that nothing can *decide* this at
+  runtime, where a caller's vocabulary is not knowable — not that a third host could be offered no
+  help at load time. Neither shipped host reaches the residual, so this is recorded rather than
+  fixed — and unlike the six above it is not one module's sweep, because the check that closes it
+  can only be written where a host's own dispatch vocabulary is known.
 - **The Inspector's tail tests gate on wall-clock sleeps, and one transient failure surfaced during
   this slice — pre-existing, and V2's rail to repair, not this slice's.** 58 assertions across 22
   bare `await Bun.sleep(…)` waits of 30–80 ms, in a suite that concurrently spawns real subprocesses
