@@ -366,6 +366,94 @@ Plan: `docs/superpowers/plans/2026-08-12-v5-second-host.md`.
 
 Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
 
+**Shipped.** `slices/v6/README.md` maps each affordance to the file it lives in and records
+each place where a shipped name differs from a frozen sentence.
+`docs/demos/v6-runbook.md` is the run: the chain growing across two steps in real JSONL, a
+label emitted by AGT at one step arriving at the next, and the captures every finding below
+rests on.
+
+**⚠️ The wire carries no label, so a session's first one is deployment-supplied — the same
+shape as risk row 11 and D10, and a V7 matrix cell.** `spec/acs/specification/v0.1.0/provenance.json`
+defines `provenance_id`, `origin`, `source_id` and `derived_from`, and no member a
+sensitivity label could be read from. That object is what `hooks/tool-call-request.json`
+`$ref`s from every argument, so even a deployment running the full ACS-Provenance profile —
+provenance required on every argument, `provenance_producer: deterministic` — has nothing
+on the wire to read a first IFC label out of. AGT does not supply one either: it propagates
+what it is given and originates nothing (`propagated_labels(labels)` returns `[]` for an
+empty input), which is the delegation R8.1 is about. So V6's Guardian seeds each session at
+`["public"]`, the lattice floor, and says so. **This resolves exactly as V3's drift score
+does: green for the Guardian, red for a wire consumer** — a downstream ACS consumer cannot
+reconstruct or originate a session's IFC labels, because the contract does not carry them.
+Note about **ACS v0.1.0's** coverage, never about AGT. V7's matrix carries the cell.
+
+**⚠️ Found by turning the gate on, and it is what makes the seed mandatory rather than a
+preference — AGT's stock IFC gate is fail-closed on absent labels.** `flow_allowed_with_lattice`
+(`policy/lib/agt_ifc.rego`) requires `count(labels) > 0` *before* it consults the lattice,
+so a snapshot carrying no labels never reaches the dominance check: `verdict_propagating`
+takes its violation branch and the flow is **denied**, `ifc_clearance_violation`, however
+permissive the configured clearance is. AGT's own tests say the same in two halves
+(`policy/lib/agt_ifc_test.rego`): `test_missing_and_empty_labels_deny_fail_closed` pins that
+an empty array is not an allowed flow, and `test_source_labels_defaults_to_empty` pins that
+a missing member reads as that same empty array. Measured against the shipped bundle: a
+benign `ls -la` denies with no `input` member and denies identically with
+`source_labels: []`. So a session with no seed is a session that can do nothing at all —
+and combined with the wire finding above, that is the sharpest available statement of the
+gap: **a conforming ACS v0.1.0 deployment cannot obtain a first label from the wire, and
+AGT denies every session that has none.**
+
+**⚠️ Found in the same measurement — IFC deny outranks every other gate, so a label-free
+snapshot is blamed on IFC rather than on the rule that would otherwise have answered.**
+`policy/lib/agt_default.rego`'s own header states the order: *"IFC deny > confidence deny >
+budget deny > content_hash deny > egress deny > pattern deny > drift warn > allow"*.
+Measured, same bundle, same config, one variable: `rm -rf /` carrying `["public"]` denies
+`destructive_shell_command_blocked`; the same command carrying no labels denies
+`ifc_clearance_violation`. Still denied, differently blamed — and the second reason sends a
+reader looking for a clearance problem instead of at the command. This is also why the
+fixtures that build snapshots **by hand** and assert a non-IFC reason had to start carrying
+a label (`packages/agt-bridge/test/bridge.test.ts`, `test/redaction.test.ts`): without one,
+the assertion is measuring IFC. Snapshots the Guardian assembles were never exposed to
+this, because it supplies the session's labels itself.
+
+**⚠️ A consequence measured while doing that — a clean allow in this deployment now carries
+`result_labels`.** With no deny, transform, escalate or warn firing, `agt_default.rego`'s
+severity chain falls through to its own **last** `else` clause — `ifc_verdict`'s allow,
+carrying what IFC propagated — rather than to the bare `default verdict := {"decision":
+"allow"}`. Measured at the result gate: a benign output that used to return
+`{decision: "allow"}` returns `{decision: "allow", result_labels: ["public"]}`
+(`test/redaction.test.ts`). Harmless to the ACS decision — `mapVerdict` never reads
+`result_labels`; `server.ts` hands it straight to `persistIfcLabels` — and load-bearing for
+the round trip, since it is what gives N25 something to persist at both gates rather than
+only at the request one.
+
+**⚠️ And the cost, which belongs in the record rather than absorbed silently — turning the
+gate on makes `input.ifc.source_labels` a required member of every snapshot in the
+deployment**, including for callers with no session concept at all.
+`packages/agt-bridge/test/bridge.test.ts` predates every part of this slice, builds
+snapshots by hand, and knows nothing about sessions; it now spreads a `publicLabel` into
+them and says why in its own comment. Measured by deleting that spread from one test:
+`ls -la` and `git status` come back `deny`. Every snapshot builder in a deployment inherits
+this, not only the ones that have a session to draw a label from.
+
+**⚠️ Risk row 13's `seq` duplicate was not a dependency of this slice — the expectation was
+checked and did not hold.** Row 13 says a per-session monotonic sequence "would need the
+duplicate closed first", naming V6. It did not, and the reason is structural rather than
+careful: S14's `seq` is derived by a fresh host subprocess re-reading the log per hook, so
+two concurrent hooks can derive the same number, while S3's is assigned inside one
+synchronous `append` in the Guardian's single process — and, more to the point, **S3's
+order is carried by `prev_hash`, not by the counter.** Two entries claiming the same `seq`
+would still have to agree on a hash covering the entry before them; `seq` is an index for
+readers, and the Inspector's chain-break check compares hashes rather than sequence
+numbers. Recorded because leaving the row unamended would have the next reader believe V6
+took a dependency it did not.
+
+**⚠️ S4 ships as a store affordance with no writer on the request path, and the wire field
+it would read is right there.** `setIntent` keeps the first intent a session declares and
+drops later ones — the immutability rule is implemented and tested — but nothing in
+`packages/guardian/src/server.ts` calls it, so no session in this slice ever records one.
+`hooks/tool-call-request.json` carries an optional `intent` object (`description`, `goal`),
+so unlike the labels above this is **not** a wire gap: the field exists and is simply not
+wired. Recorded as scope, not as a finding about ACS or AGT.
+
 ---
 
 ## V7: Conformance matrix
@@ -466,7 +554,7 @@ Not repaired in V5 because every one predates this slice, none is reachable thro
 | 11 | ⚠️ AGT's stock `warn` gate has no ACS v0.1.0 wire source | V3, V7 | Accepted and recorded rather than worked around. The only stock rule emitting `warn` is the drift gate, which reads `input.annotations.drift_score`; annotations reach the policy input from a manifest-declared annotator, never from the snapshot (verified across five placements). The ACS v0.1.0 tool-call-request payload carries no field a score could be derived from, so the Guardian must originate it — which is what AGT's design asks a host to do. V3 makes `warn` live through `policy/manifest.drift.yaml` and says plainly in the runbook that the score is deployment-supplied, not wire-derived. V7's matrix records the cell with that reason |
 | 12 | ⚠️ V3's fixture bundles could drift from the pinned bundle and quietly void R2.2/R2.3 | V3 | Covering five verdict classes needs five config documents, and config lives in the bundle directory (the shipped SDK exposes no data-push API). The test helper that builds each fixture bundle asserts every copied `.rego` is byte-identical to `policy/lib`'s, and V3's last task runs `bun run verify:pin` — so a fixture that forked the bundle fails rather than passing quietly |
 
-| 13 | ⚠️ S14's `seq` is derived by reading the log, so two hooks running concurrently can emit the same number | V3, V6 | Accepted and recorded. The sink runs in a fresh subprocess per hook, so `seq` is derived from the entries already in the file at open time — which makes it per-session monotonic where a per-instance counter made every entry `#1`. Nothing synchronises the read, so parallel hooks can duplicate a number; harmless while a host fires hooks one at a time, wrong the day one does not. It also re-reads the whole log on first write, on the decision path, against a file with no rotation. **V6 matters here:** a per-session monotonic sequence is the natural index for its hash-chained session history, and it would need the duplicate closed first |
+| 13 | ⚠️ S14's `seq` is derived by reading the log, so two hooks running concurrently can emit the same number | V3, V6 | Accepted and recorded. The sink runs in a fresh subprocess per hook, so `seq` is derived from the entries already in the file at open time — which makes it per-session monotonic where a per-instance counter made every entry `#1`. Nothing synchronises the read, so parallel hooks can duplicate a number; harmless while a host fires hooks one at a time, wrong the day one does not. It also re-reads the whole log on first write, on the decision path, against a file with no rotation. ~~**V6 matters here:** a per-session monotonic sequence is the natural index for its hash-chained session history, and it would need the duplicate closed first~~ ⚠️ **Checked in V6, and the expectation did not hold — V6 took no dependency on this row.** S3's `seq` is assigned inside one synchronous `append` in the Guardian's single process, not derived by re-reading a log, and its chain's ORDER is carried by `prev_hash` rather than by the counter — so nothing in V6 needed this duplicate closed. The row's own hazard is unchanged and still S14's; only its claim on V6 is retracted. See §V6 |
 | 14 | ~~⚠️ When the negotiated ServerHello cannot be *persisted*, the posture it declared is still not applied to the current hook~~ | V3 | ✅ **Closed.** Visibility shipped first (the failure lands in the audit entry as `session_failure` rather than being swallowed by a bare `catch {}`), and the deferred half is now closed too: `handshake()` throws `SessionConfigNotStoredError` carrying the ServerHello it could not store, and the shim applies that value to the step that negotiated it (`store.get() ?? negotiated`). Persisting is an optimisation for later hooks — the shipped host runs each hook in a fresh subprocess — while the value in hand is authoritative for this one, so a deployment declaring `deny` no longer fails *open* on the very step whose posture it just negotiated. `session_failure` still travels into the entry, so the persistence failure stays visible; pinned by `hosts/claude-code/test/posture.test.ts`'s "applies a ServerHello it could not persist to the step that negotiated it" |
 
 | 15 | ⚠️ A tool-output replacement that does not match the tool's own output schema is **silently discarded**, and Claude Code delivers the original — secret and all | V4 | The slice's central hazard, and a fail-open of the same family as the nine already closed. Measured, with Claude Code's own text: *"returned updatedToolOutput that does not match Bash's output shape; using original output"*. Handled structurally rather than by care: the adapter patches a **clone of the object the host handed it**, at a path S1 names, so every sibling field survives by construction; where it cannot express the edit in the host's shape it fails **closed** (a withholding deny), never "applied" with nothing applied — including where the edit lands in the ACS payload and leaves the one leaf this gate carries untouched, which is the same defect reached by a rewrite that changed nothing rather than by one the host declines. **One scoped exception, measured and recorded** in §V4's watch-for: the check asks whether that leaf changed, so a `modifications` bundling a leaf edit with a non-leaf one is reported applied while the non-leaf half is dropped. Nothing leaks — the leaf edit landed — so it is a false record rather than an unredacted delivery. Pinned by a test asserting every sibling field, and mutation-tested |
