@@ -358,7 +358,7 @@ Plan: `docs/superpowers/plans/2026-08-12-v5-second-host.md`.
 | U22 | P4 | inspector | session chain view: SessionContext entries and lineage | render | — | — |
 | N22 | P3 | guardian | `appendContextEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
 | N25 | P3 | guardian | `persistIfcLabels()` — AGT `result_labels` into the `IfcLabels` field ACS provenance carries | call | → S5 | — |
-| S3 | P3 | store | `sessionContext`, hash-chained per `session_id` | — | — | → N23 |
+| S3 | P3 | store | `sessionContext`, hash-chained per `session_id` | — | — | → N23, → U22 |
 | S4 | P3 | store | `intent`, immutable baseline per session | — | — | → N23 |
 | S5 | P3 | store | `provenance` — `origin` / `derived_from`, plus an `IfcLabels` field carrying AGT's labels | — | — | → N23 |
 
@@ -460,6 +460,15 @@ drops later ones — the immutability rule is implemented and tested — but not
 `hooks/tool-call-request.json` carries an optional `intent` object (`description`, `goal`),
 so unlike the labels above this is **not** a wire gap: the field exists and is simply not
 wired. Recorded as scope, not as a finding about ACS or AGT.
+
+**⚠️ U22's reader has no affordance ID, so Detail C draws S3 → U22 with no N-node between
+them.** Every other view in the diagram reaches its store through a named reader — U20 and
+U21 through N50 (`tailEnvelopeLog`), U23 through N51 (`tailAuditLog`) — and U22 was drawn
+as a third child of N50, which it never calls: it reads a different file through a
+different function, `tailSessionContextLog`. The false edge is removed rather than replaced
+with a minted number, because minting one is a shaping decision and this note is where it
+is asked for. The same is true of `supplySourceLabels()` and `loadSessionContext()`, which
+ship named and unnumbered.
 
 Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriage.md`.
 

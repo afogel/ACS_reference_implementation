@@ -66,7 +66,7 @@ absent case to the empty one.
 **This is what makes the deployment-supplied seed mandatory rather than a design
 preference**: with the gate on and nothing seeding a first label, a fresh session can do
 nothing at all. V6's answer is `["public"]`, the lattice floor, written by
-`emptySessionContext` (`packages/guardian/src/session-context.ts`).
+`emptySessionState` (`packages/guardian/src/session-context.ts`).
 
 And it is the sharpest available statement of the wire gap: a conforming ACS v0.1.0
 deployment **cannot obtain a first label from the wire**. `provenance.json`'s properties
@@ -527,9 +527,9 @@ Ctrl-C to stop.
 
 last_observed_posture=(none observed)  fail-open proceeds=0
 
-#1  Bash  hash=a578a54aafc7  session=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
+#1  Bash  hash=a578a54aafc7  session_id=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
 
-#2  Bash  hash=43fc8603e517  session=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
+#2  Bash  hash=43fc8603e517  session_id=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
 ```
 
 (One elision in that block and nothing else edited: a tail runs until it is stopped, so
@@ -559,9 +559,9 @@ Same Inspector, same flags, pointed at the copy — the banner and posture badge
 identical to the run before it apart from the path, and only the two rows are shown here:
 
 ```
-#1  Bash  hash=a578a54aafc7  session=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
+#1  Bash  hash=a578a54aafc7  session_id=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
 
-✖ CHAIN BREAK  #2  Bash  hash=43fc8603e517  session=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
+✖ CHAIN BREAK  #2  Bash  hash=43fc8603e517  session_id=8186ca06-9db3-41b0-ba1a-ddcc044f3fd3
 ```
 
 Row 1 is unchanged and unmarked — it is the first entry this reader has seen for that

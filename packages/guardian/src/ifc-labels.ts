@@ -37,6 +37,14 @@ import type { IfcLabels, SessionContextStore } from "./session-context-store.ts"
  * different answer: the gate ran and propagated nothing, so the session's
  * labels are cleared. Conflating the two would make a session that once
  * touched secret data look secret forever.
+ *
+ * THE DISTINCTION IS THIS FUNCTION'S WHOLE JOB, and it is why N25 exists as
+ * something more than a forwarding call: `undefined` vs `[]` is a fact about a
+ * VERDICT, so reading it belongs here, next to the verdict. What happens once
+ * it is read is the store's business, and the store is told (PR #15 review).
+ * This used to load the session, spread its provenance record and write the
+ * whole thing back, which put N25 in a position to replace `origin` while
+ * meaning to set labels.
  */
 export function persistIfcLabels(
   store: SessionContextStore,
@@ -44,15 +52,15 @@ export function persistIfcLabels(
   labels: IfcLabels | undefined,
 ): void {
   if (labels === undefined) return;
-  const context = store.load(sessionId);
-  store.putProvenance(sessionId, { ...context.provenance, ifc_labels: [...labels] });
+  store.replaceIfcLabels(sessionId, labels);
 }
 
 /**
- * Read them back for the next snapshot. Returns a fresh array: the value
- * goes into a snapshot that crosses the bridge into the policy runtime, and
- * a caller holding the store's own array could edit S5 by editing a snapshot.
+ * Read them back for the next snapshot. `IfcLabels` is `readonly`, so the
+ * snapshot assembler that receives this cannot write through it into S5; the
+ * store copies on the way out as well, which is what holds when a caller casts
+ * the readonly away.
  */
-export function supplySourceLabels(store: SessionContextStore, sessionId: string): string[] {
-  return [...store.load(sessionId).provenance.ifc_labels];
+export function supplySourceLabels(store: SessionContextStore, sessionId: string): IfcLabels {
+  return store.sourceLabels(sessionId);
 }

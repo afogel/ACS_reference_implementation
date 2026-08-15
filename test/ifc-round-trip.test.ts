@@ -71,7 +71,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
   });
 
   // A fresh session starts at the lattice floor, not at `[]` --
-  // `emptySessionContext` seeds `ifc_labels: ["public"]`
+  // `emptySessionState` seeds `ifc_labels: ["public"]`
   // (packages/guardian/src/session-context.ts) because AGT's own gate denies
   // a zero-label flow outright (the next test measures exactly that), so an
   // unseeded session could do nothing at all.

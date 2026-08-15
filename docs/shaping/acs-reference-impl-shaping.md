@@ -284,7 +284,7 @@ All resolved — see `spike-agt-integration.md`.
 | N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N47 |
 | N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U31 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
-| N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21, → U22 | — |
+| N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
 | N51 | P4 | inspector | `tailAuditLog()` — host-side fail-open audit events and negotiated posture | observe | → U23 | — |
 
 ### Data Stores
@@ -476,7 +476,7 @@ flowchart TB
     S6 -.-> N50
     N50 --> U20
     N50 --> U21
-    N50 --> U22
+    S3 -.-> U22
     S14 -.-> N51
     S16 -.-> N51
     N51 --> U23

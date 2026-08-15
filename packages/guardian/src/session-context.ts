@@ -2,6 +2,14 @@
  * S3/S4/S5: the Guardian's per-session state, and the hash chain that orders
  * it.
  *
+ * THREE AFFORDANCES, THREE TYPES, AND ONE AGGREGATE OVER THEM. `SessionContext`
+ * is S3 and only S3 -- a session's entries and the digests that link them.
+ * `Intent` is S4, `SessionProvenance` is S5, and `SessionState` is what the
+ * store holds for one session: the three together. The chain's name used to sit
+ * on that aggregate, so S3 read as the thing that also carried an intent and a
+ * provenance record, and `loadSessionContext` returned something wider than its
+ * own name (PR #15 review).
+ *
  * DECLARED HERE, NOT IN `@acs/host-adapter`, and that is R6.2/A3 rather than
  * a filing preference: the adapter is what a HOST links against, and a host
  * neither writes this chain nor is trusted to. `@acs/host-adapter` already
@@ -25,12 +33,17 @@
 import { createHash } from "node:crypto";
 
 /**
- * AGT's IFC tags, as a store rather than as ACS `Provenance`.
+ * AGT's IFC tags: the type of the `ifc_labels` field below, and nothing wider.
  *
- * `Provenance` is the object `spec/acs/specification/v0.1.0/provenance.json`
- * defines -- `provenance_id`, `origin`, `source_id`, `derived_from` -- and it
- * carries no label member. V6 does not widen it into a label bag; the labels
- * ride a NAMED FIELD on the record below (slices/v6/README.md, commitment 2).
+ * NOT A STORE, and the name is not one either. This Guardian has no separate
+ * IFC label store: the labels are a field on a session's provenance record,
+ * held alongside that session's chain and intent by the one thing here called
+ * a store, `SessionContextStore` (slices/v6/README.md, commitment 2).
+ *
+ * ACS `Provenance` -- `spec/acs/specification/v0.1.0/provenance.json`, which
+ * defines `provenance_id`, `origin`, `source_id`, `derived_from` -- carries no
+ * label member. V6 does not widen it into a label bag; the labels ride a NAMED
+ * FIELD on the record below.
  */
 export type IfcLabels = readonly string[];
 
@@ -49,8 +62,20 @@ export type ProvenanceOrigin =
   | "a2a_inbound"
   | "external";
 
-/** ACS `Provenance` as v0.1.0 defines it, plus the one field carrying AGT's labels. */
-export type Provenance = {
+/**
+ * S5: the provenance record the Guardian synthesizes PER SESSION -- ACS
+ * `Provenance` as v0.1.0 defines it, plus the one field carrying AGT's labels.
+ *
+ * `Session`-prefixed because this codebase has two provenance records and they
+ * never meet (PR #15 review). The other one is on the WIRE: the optional
+ * `provenance` member of each `{value, provenance}` argument and output an ACS
+ * payload carries, typed `unknown` on the way in and stripped before any
+ * snapshot is assembled (C5). This record is synthesized here, one per session,
+ * seeded at the lattice floor, and never reads that member. Under one bare
+ * `Provenance` a reader of provenance.json and a reader of this type had every
+ * reason to think they were looking at the same record.
+ */
+export type SessionProvenance = {
   provenance_id: string;
   origin: ProvenanceOrigin;
   source_id?: string;
@@ -76,11 +101,21 @@ export type SessionContextEntry = {
   tool_name: string;
 };
 
+/** S3: one session's hash chain, and nothing else the session happens to own. */
 export type SessionContext = {
   session_id: string;
-  intent: Intent | undefined;
   entries: readonly SessionContextEntry[];
-  provenance: Provenance;
+};
+
+/**
+ * S3 + S4 + S5: everything `SessionContextStore` holds for one session, named
+ * for the aggregate it is rather than for the one of its three members that
+ * gives the store its name.
+ */
+export type SessionState = {
+  context: SessionContext;
+  intent: Intent | undefined;
+  provenance: SessionProvenance;
 };
 
 /** The `prev_hash` of a session's first entry. */
@@ -105,12 +140,11 @@ export function hashEntry(input: Omit<SessionContextEntry, "hash">): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-/** A session with no history yet: no intent, no entries, and its labels at the lattice floor. */
-export function emptySessionContext(sessionId: string): SessionContext {
+/** A session with no history yet: no entries, no intent, and its labels at the lattice floor. */
+export function emptySessionState(sessionId: string): SessionState {
   return {
-    session_id: sessionId,
+    context: { session_id: sessionId, entries: [] },
     intent: undefined,
-    entries: [],
     // `origin` names where data entered the system, and this record is one the
     // Guardian synthesizes to hold a session's labels -- so "system", with the
     // Guardian named in `source_id`, which is the member the spec gives for

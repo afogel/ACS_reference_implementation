@@ -10,7 +10,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tailSessionContextLog, type SessionContextLogEntry } from "../src/tail-session-context.ts";
-import { createSessionChainState, renderSessionChain, renderSessionChainRow } from "../src/render.ts";
+import {
+  checkSessionChainLink,
+  createSessionChainState,
+  renderSessionChain,
+  renderSessionChainRow,
+} from "../src/render.ts";
 
 const POLL_MS = 10;
 const GENESIS_HASH = "0".repeat(64);
@@ -239,7 +244,7 @@ describe("renderSessionChain (U22)", () => {
     // because the two sessions interleave. A check that compared this
     // entry's prev_hash to the PREVIOUS ARRAY ELEMENT'S hash (naive
     // adjacent-row comparison -- the exact bug the per-session state in
-    // renderSessionChainRow exists to prevent) would compare "hash-a1"
+    // checkSessionChainLink exists to prevent) would compare "hash-a1"
     // against sessionBFirst.hash ("hash-b1"), see a mismatch, and report a
     // false break. The per-session state instead compares it against
     // sessionAFirst.hash, which it correctly matches.
@@ -265,8 +270,8 @@ describe("renderSessionChain (U22)", () => {
     const withNewline = sessionEntry({ hash: "hash-1", tool_name: "run_shell\nrm -rf /" });
     const next = sessionEntry({ seq: 2, prev_hash: "hash-1", hash: "hash-2", request_id: "req-2" });
 
-    const firstRow = renderSessionChainRow(withNewline, state);
-    const secondRow = renderSessionChainRow(next, state);
+    const firstRow = renderSessionChainRow(withNewline, checkSessionChainLink(withNewline, state));
+    const secondRow = renderSessionChainRow(next, checkSessionChainLink(next, state));
 
     // The embedded newline reaches the row whole -- renderSessionChainRow
     // never splits or rejoins rendered text, so nothing here can misalign
@@ -275,5 +280,30 @@ describe("renderSessionChain (U22)", () => {
     // And it did not corrupt the state carried into the next call: the
     // second row still reads its own predecessor's hash correctly.
     expect(secondRow).not.toContain("CHAIN BREAK");
+  });
+
+  // The reason the check and the renderer are two functions (PR #15 review).
+  // While they were one, this second call read the state the first call had
+  // written -- the entry's own hash -- found its prev_hash no longer matching,
+  // and reported a chain break that the log did not contain.
+  it("renders the same entry twice identically, because rendering is not the check", () => {
+    const state = createSessionChainState();
+    const entry = sessionEntry({ hash: "hash-1" });
+    const link = checkSessionChainLink(entry, state);
+
+    expect(renderSessionChainRow(entry, link)).toBe(renderSessionChainRow(entry, link));
+    expect(renderSessionChainRow(entry, link)).not.toContain("CHAIN BREAK");
+  });
+
+  // The mirror of the test above: what the check DOES carry between calls.
+  // Re-checking an entry the state has already seen is a genuine repeat, and
+  // the second answer says so -- the first `hash` recorded is the one the next
+  // `prev_hash` must match, and an entry never links to itself.
+  it("reports a break when one entry is checked twice, because the check is the thing that remembers", () => {
+    const state = createSessionChainState();
+    const entry = sessionEntry({ hash: "hash-1" });
+
+    expect(checkSessionChainLink(entry, state).broken).toBe(false);
+    expect(checkSessionChainLink(entry, state).broken).toBe(true);
   });
 });

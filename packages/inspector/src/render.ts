@@ -2,9 +2,17 @@
  * This module renders four things: the envelope stream, the decision badge,
  * the posture badge, and the audit-entry line.
  *
- * Every function here is pure: no clock, no env, no process. The CLI decides
- * whether the terminal wants ANSI and passes `color`; tests assert exact
- * plain strings. Nothing here knows what produced a decision -- the decision
+ * EVERY RENDERER HERE IS PURE, and one function is not a renderer. No clock,
+ * no env, no process anywhere in this file; the CLI decides whether the
+ * terminal wants ANSI and passes `color`; tests assert exact plain strings.
+ * The exception is named rather than absorbed: `checkSessionChainLink` records
+ * each entry's `hash` into the `SessionChainState` its caller owns, because a
+ * chain check is a fold over a stream and has to remember what it last saw. It
+ * is split OUT of `renderSessionChainRow` for exactly that reason (PR #15
+ * review) -- while the two were one function, rendering a row was a write, and
+ * rendering the same row twice reported a chain break the second time.
+ *
+ * Nothing here knows what produced a decision -- the decision
  * badge reads ACS's own `decision`, `reason_codes`, and `policy_references`
  * fields and nothing else. The posture badge and the audit-entry line read
  * only the fields the audit log's AuditEntry declares.
@@ -382,22 +390,33 @@ export function createSessionChainState(): SessionChainState {
   return { lastHashSeenBySession: new Map() };
 }
 
+/** What the check decided about one entry's link to its predecessor. */
+export type SessionChainLink = { broken: boolean };
+
 /**
- * U22's row, and the only place that decides whether one is broken.
- * `renderSessionChain` calls this once per entry, in array order, against
- * state it owns for the duration of that one call; `main.ts`'s live view
- * calls it directly, once per entry as it is tailed, against state it keeps
- * for the life of the process -- so the two never compute "is this row
- * broken" two different ways.
+ * The chain check: the only place that decides whether a link is broken, and
+ * the only function in this module that writes anything (PR #15 review).
+ * `renderSessionChain` calls it once per entry, in array order, against state
+ * it owns for the duration of that one call; `main.ts`'s live view calls it
+ * once per entry as it is tailed, against state it keeps for the life of the
+ * process -- so the two never compute "is this link broken" two different
+ * ways.
  *
- * A row is marked broken when its `prev_hash` does not match the `hash` of
+ * SEPARATE FROM THE RENDERER because it RECORDS as well as answers: it writes
+ * this entry's `hash` into `state` as the one the next entry for this session
+ * must link to. Fused into `renderSessionChainRow`, that made rendering a
+ * mutation -- and rendering the same entry twice reported a chain break on the
+ * second call, because by then `state` held that entry's own `hash` and its
+ * `prev_hash` no longer matched.
+ *
+ * A link is broken when the entry's `prev_hash` does not match the `hash` of
  * the entry seen immediately before it FOR THE SAME `session_id` -- read out
  * of `state`, not out of whatever entry came immediately before this one in
  * some caller's array, because that entry can belong to a different session
  * entirely (see tail-session-context.ts's module doc, "ONE FILE, MANY
  * SESSIONS"). An entry that is the first one this `state` has seen for its
- * session is never marked broken: there is nothing recorded yet to compare
- * its `prev_hash` against.
+ * session is never broken: there is nothing recorded yet to compare its
+ * `prev_hash` against.
  *
  * The whole reason this view exists is that the chain is checkable, not
  * merely printable -- a row that read as unbroken regardless of whether it
@@ -406,8 +425,8 @@ export function createSessionChainState(): SessionChainState {
  *
  * WHAT THIS CHECK IS NOT, said here because this is the slice's only integrity
  * affordance and a reader is entitled to know its edge. It compares LINKS --
- * this row's `prev_hash` against the last `hash` seen for the session -- and
- * never recomputes `hashEntry` over the row in front of it, so an entry's
+ * this entry's `prev_hash` against the last `hash` seen for the session -- and
+ * never recomputes `hashEntry` over the entry in front of it, so an entry's
  * contents are never checked against its own digest. Three edits therefore
  * read as unbroken, each one measured against this function: a self-consistent
  * rewrite (change a step field and leave `hash`/`prev_hash` alone -- the stored
@@ -421,35 +440,56 @@ export function createSessionChainState(): SessionChainState {
  * that do not bother to re-link; it does not detect an adversary with write
  * access to the log.
  */
-export function renderSessionChainRow(
+export function checkSessionChainLink(
   entry: SessionContextLogEntry,
   state: SessionChainState,
-  options: RenderOptions = {},
-): string {
-  const color = options.color ?? false;
+): SessionChainLink {
   const priorHash = state.lastHashSeenBySession.get(entry.session_id);
   const broken = priorHash !== undefined && priorHash !== entry.prev_hash;
   state.lastHashSeenBySession.set(entry.session_id, entry.hash);
+  return { broken };
+}
 
+/**
+ * U22's row: a pure rendering of an already-decided link. Call it twice with
+ * the same arguments and it returns the same string twice, which is what lets
+ * a caller re-render without re-checking.
+ *
+ * `session_id=` names the field it prints, and is deliberately not the bare
+ * `session=` it used to be. S14's `audit_session=` a few functions up is
+ * qualified because that value is the host's own raw session identifier and is
+ * NOT comparable to anything on the ACS wire; this one is
+ * `metadata.session_id`, the envelope's own. Two differently-scoped session
+ * identifiers stream past the same eye when `main.ts` tails both logs at once,
+ * and one of them printed as plain `session` would read as the canonical one.
+ */
+export function renderSessionChainRow(
+  entry: SessionContextLogEntry,
+  link: SessionChainLink,
+  options: RenderOptions = {},
+): string {
+  const color = options.color ?? false;
   const row =
     `#${entry.seq}  ${entry.tool_name}  hash=${entry.hash.slice(0, SHORT_HASH_LENGTH)}  ` +
-    `session=${entry.session_id}`;
-  return broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row;
+    `session_id=${entry.session_id}`;
+  return link.broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row;
 }
 
 /**
  * U22. One row per S3 entry, in the order given -- the same order
  * `tailSessionContextLog` yields them in, which is file order rather than
  * any global ordering by `seq` (see that module's doc: one log interleaves
- * every session the Guardian has seen). Each row is `renderSessionChainRow`,
- * called against one `SessionChainState` shared across the whole walk, so a
- * chain break is checked the same way here as it is by a caller rendering
- * one entry at a time.
+ * every session the Guardian has seen). Each entry is checked by
+ * `checkSessionChainLink` against one `SessionChainState` shared across the
+ * whole walk and then rendered, so a chain break is decided the same way here
+ * as it is by a caller handling one entry at a time.
  */
 export function renderSessionChain(entries: SessionContextLogEntry[], options: RenderOptions = {}): string {
   if (entries.length === 0) {
     return "(no session chain entries)";
   }
   const state = createSessionChainState();
-  return entries.map((entry) => renderSessionChainRow(entry, state, options)).join("\n");
+  return entries
+    .map((entry) => renderSessionChainRow(entry, checkSessionChainLink(entry, state), options))
+    .join("\n");
 }

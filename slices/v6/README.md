@@ -73,23 +73,32 @@ this is the map.
 
 **U22 — the session chain view, and it checks the chain rather than only printing it.**
 `packages/inspector/src/tail-session-context.ts` streams S3's JSONL as it grows, with the
-same contract `tail-audit-log.ts` already had. `renderSessionChainRow`
-(`packages/inspector/src/render.ts`) prints one row per entry and marks it
-`✖ CHAIN BREAK` when its `prev_hash` does not match the last `hash` seen **for the same
-`session_id`** — read out of a `SessionChainState`, never out of whatever line happened
-to come before it, because one log carries every session the Guardian saw, in append
-order, so two interleaved sessions would otherwise read as a break on every switch.
+same contract `tail-audit-log.ts` already had. The check and the printing are **two
+functions** (`packages/inspector/src/render.ts`): `checkSessionChainLink` decides whether
+an entry links to its predecessor and records that entry's `hash` for the next one;
+`renderSessionChainRow` renders the row that decision produced and writes nothing, so
+rendering twice yields the same string twice. A link is broken when `prev_hash` does not
+match the last `hash` seen **for the same `session_id`** — read out of a
+`SessionChainState`, never out of whatever line happened to come before it, because one
+log carries every session the Guardian saw, in append order, so two interleaved sessions
+would otherwise read as a break on every switch.
 **What the check is not:** it compares **links** and never recomputes `hashEntry` over the
 entry in front of it, so it is not tamper-evidence. Three edits read as unbroken, each one
-measured against `renderSessionChainRow`: a self-consistent rewrite (edit a step field,
+measured against `checkSessionChainLink`: a self-consistent rewrite (edit a step field,
 leave `hash` and `prev_hash` alone), a trailing truncation, and a deleted **first** entry —
 that last one because an entry with no predecessor in view is never marked, and nothing
 requires a session's first row to carry `GENESIS_HASH` or `seq` 1. What it does catch,
 also measured, is a link that stopped matching: a clobbered `prev_hash`, or a dropped
 **middle** entry. So it detects corruption and naive edits, not an adversary with write
 access to the log.
+The row prints `session_id=`, not the bare `session=` it first shipped with: S14's row a
+few lines above it prints `audit_session=`, qualified precisely because that value is the
+host's own raw identifier and is not comparable to anything on the wire, and both stream
+past one eye when `main.ts` tails both logs.
 `packages/inspector/src/main.ts` tails it beside S6 and S14, under
-`--session-context-log` / `ACS_SESSION_CONTEXT_LOG`. The Inspector imports nothing from
+`--session-context-log` / `ACS_SESSION_CONTEXT_LOG`, and the tailer and both chain
+functions are exported from `packages/inspector/src/index.ts` beside the other two
+tailers. The Inspector imports nothing from
 `guardian` (R5.1) and re-declares `SessionContextLogEntry` itself;
 `test/session-context-roundtrip.test.ts` is what keeps the two declarations one contract,
 in both directions — a runtime `toEqual` against the entry the store actually returned,
@@ -107,19 +116,27 @@ stored.
 `packages/guardian/src/ifc-labels.ts`. `evaluateStep` calls `supplySourceLabels` before
 assembling and `persistIfcLabels` after `mapVerdict`. An **absent** `result_labels` (the
 IFC gate did not run, or a higher-severity gate answered instead) leaves the session's
-labels alone; an explicitly **empty** one clears them. Both directions copy the array, so
-neither a snapshot nor a caller's own array is a way to edit S5.
+labels alone; an explicitly **empty** one clears them. That distinction is a fact about a
+verdict, so it is read here, next to the verdict; what to do about it is the store's, and
+the store is **told** — `SessionContextStore.replaceIfcLabels` and `.sourceLabels`, both
+naming the field, so no caller has to load a session and write a whole provenance record
+back to change one member. Both directions copy the array, so neither a snapshot nor a
+caller's own array is a way to edit S5.
 
-**N23 — session state reaches both assemblers, once each.**
+**N23 — the session's labels reach both assemblers, once each.**
 `packages/guardian/src/assemble-snapshot.ts`. `assemblePreToolCallSnapshot` and
-`assemblePostToolCallSnapshot` each take an `AgtSessionState` **value** — not the store —
-and each emits `input.ifc.source_labels`. Nested under `input`, because
+`assemblePostToolCallSnapshot` each take the session's `IfcLabels` **value** — not the
+store — and each emits `input.ifc.source_labels`. Nested under `input`, because
 `policy/lib/agt_ifc.rego` resolves `input.snapshot.input.ifc.source_labels`; the shorter
 `ifc` at the snapshot root reads as `[]`, which that module's own
 `test_does_not_read_upstream_ifc_path` pins and which `test/ifc-round-trip.test.ts`
 re-measures against the shipped bundle.
 
-**S3 — the chain.** `packages/guardian/src/session-context.ts` declares
+**S3 — the chain, and only the chain.** `packages/guardian/src/session-context.ts`
+declares `SessionContext` as a session id and its entries — S4 and S5 sit beside it on
+`SessionState`, the aggregate the store holds, rather than inside the type named for the
+chain. `loadSessionContext` returns the former; `store.load` returns the latter. The same
+file declares
 `SessionContextEntry`, `GENESIS_HASH` (64 zeros, the `prev_hash` of a session's first
 entry), and `hashEntry`, whose digest covers the predecessor's hash, the session id, the
 `seq`, the timestamp, and the three step fields, in a key order fixed by a literal rather
@@ -138,13 +155,15 @@ and its immutability rule ship and are tested
 (`packages/guardian/test/session-context.test.ts`); the wiring from the wire field does
 not.
 
-**S5 — `Provenance`, carrying the labels on a named field.** `Provenance` is
+**S5 — `SessionProvenance`, carrying the labels on a named field.** `SessionProvenance` is
 `spec/acs/specification/v0.1.0/provenance.json`'s object — `provenance_id`, `origin`,
 `source_id`, `derived_from` — plus `ifc_labels`, typed `IfcLabels`. `origin` is typed as
 the spec's seven-value enum rather than `string`. One record per session, synthesized by
 the Guardian (`acs:session:<session_id>`, `origin: "system"`, `source_id: "acs.guardian"`),
-seeded at `["public"]`. It is **not** the per-argument `Provenance` an ACS payload can
-carry: `assemblePreToolCallSnapshot` unwraps each argument's `{value, provenance}` to
+seeded at `["public"]`. The `Session` prefix is load-bearing: it is **not** the
+per-argument provenance an ACS payload can carry, and under a bare `Provenance` the two
+were one word for two records that never meet. `assemblePreToolCallSnapshot` unwraps each
+argument's `{value, provenance}` to
 `value` alone (C5), so no wire-supplied provenance reaches S5, and none carries a label
 anyway — see `docs/shaping/acs-reference-impl-slices.md` §V6.
 
@@ -157,28 +176,46 @@ also changed on this branch, in **comments only**, to follow the assembler renam
 
 ## Where the shipped name differs from the sentence above
 
-The commitments held. Three divergences are worth naming, each one a place where what
+The commitments held. Two divergences are worth naming, each one a place where what
 shipped is not literally the name its sentence uses, and the honest record is to say so
 rather than to edit the sentence.
 
 - **Commitment 2 — there is no separate IFC label store, and `IfcLabels` names the labels
   rather than a store.** `IfcLabels` is `readonly string[]`
   (`packages/guardian/src/session-context.ts`): the type of the labels, and of the
-  `ifc_labels` field they ride on `Provenance`. The store is `SessionContextStore`, which
-  holds the whole `SessionContext` including that record. What the commitment was for is
-  intact — `Provenance` was not renamed, widened into a label bag, or described as the
-  store, and the labels ride a named field on it.
+  `ifc_labels` field they ride on `SessionProvenance`. The store is `SessionContextStore`,
+  which holds a session's chain, intent and provenance record together as `SessionState`.
+  What the commitment was for is intact — the ACS record was not widened into a label bag
+  and the labels ride a named field on it.
 - **Commitments 2 and 3 — the field is `ifc_labels`; `IfcLabels` is its type.** The
   sentences say "the `IfcLabels` field", and §V6's demo sentence and affordance table say
   it too. Grepping for a field of that name finds nothing; the declaration is
   `ifc_labels: IfcLabels`.
-- **Commitment 1 — the bare identifier `session` does appear, and where it does its type
-  is neither of the two the sentence governs.** `SessionContext` and `SessionConfig` are
-  never shortened anywhere. `assemble-snapshot.ts` declares a third type,
-  `AgtSessionState` — the resolved value an assembler injects, not the context it came
-  from — and names that parameter `session`, in `ifcMember` and in both assemblers;
-  `server.ts` repeats it in the assembler's function type. Nothing typed `SessionContext`
-  is ever bound to a name shorter than the type.
+
+**A third divergence was reported here and has since been closed rather than kept.** The
+bare identifier `session` did appear: `assemble-snapshot.ts` declared a one-field type
+`AgtSessionState` (`{ sourceLabels }`) and bound it to a parameter called `session` in
+`ifcMember`, in both assemblers, and in `server.ts`'s assembler function type. The PR #15
+review's reading is the one that holds — a bag announcing session state and holding
+labels, under a name commitment 1 reserves for neither object it governs, on the same step
+where V3 already bound `GovernStepInput.session` to `ResolvedSessionConfig`. Both
+assemblers now take `sourceLabels: IfcLabels`, and no parameter anywhere in the Guardian
+is named `session`.
+
+## What the PR #15 review changed
+
+That review found seven naming and shape defects in what this slice first shipped. Each is
+fixed above rather than recorded as a divergence, because each was a defect and not a
+trade-off: `AgtSessionState` dropped (as described just above); `IfcLabels`' own doc
+comment still calling itself a store, which this README's divergence 1 had already denied;
+`Provenance` renamed `SessionProvenance`, since two records of that name never meet;
+N25 loading a session and writing a whole provenance record back, replaced by two verbs the
+store owns; `SessionContext` renamed to `SessionState` where it means the aggregate, so S3's
+name is S3's alone; `renderSessionChainRow` split into a check that records and a renderer
+that is pure, because fused they made re-rendering one entry report a chain break; and
+U22's bare `session=` label, which collided with S14's deliberately-qualified
+`audit_session=` on the same tail. The seventh's second half is why the Inspector barrel now
+exports the third tailer.
 
 ## What this slice measured, and what it did not
 

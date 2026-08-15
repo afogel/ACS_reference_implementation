@@ -68,7 +68,6 @@ import {
   assemblePreToolCallSnapshot,
   type AgtPostToolCallSnapshot,
   type AgtPreToolCallSnapshot,
-  type AgtSessionState,
 } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
@@ -82,7 +81,12 @@ import {
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
-import { appendContextEntry, createMemorySessionContextStore, type SessionContextStore } from "./session-context-store.ts";
+import {
+  appendContextEntry,
+  createMemorySessionContextStore,
+  type IfcLabels,
+  type SessionContextStore,
+} from "./session-context-store.ts";
 import { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";
 
 /**
@@ -682,7 +686,7 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
  * request gate, and a second copy of it is a second thing to keep true.
  *
  * Generic in the envelope, and the assembler is a function OF that envelope --
- * `E` and `(envelope: E, session: AgtSessionState) => GuardianSnapshot` rather
+ * `E` and `(envelope: E, sourceLabels: IfcLabels) => GuardianSnapshot` rather
  * than an `AcsRequestEnvelope` and an independent thunk. `E` infers from the
  * narrowed variable each gate passes, both assemblers are assignable as they
  * stand, and the one miswiring this function could otherwise permit becomes
@@ -721,7 +725,7 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
 async function evaluateStep<E extends SteppedEnvelope>(
   raw: unknown,
   envelope: E,
-  assemble: (envelope: E, session: AgtSessionState) => GuardianSnapshot,
+  assemble: (envelope: E, sourceLabels: IfcLabels) => GuardianSnapshot,
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   sessionContextStore: SessionContextStore,
@@ -737,9 +741,10 @@ async function evaluateStep<E extends SteppedEnvelope>(
       tool_name: envelope.params.payload.tool.name,
     });
 
-    const snapshot = assemble(envelope, {
-      sourceLabels: supplySourceLabels(sessionContextStore, envelope.params.metadata.session_id),
-    });
+    const snapshot = assemble(
+      envelope,
+      supplySourceLabels(sessionContextStore, envelope.params.metadata.session_id),
+    );
     const point = resolveInterventionPoint(envelope.method, mapping);
     const verdict = await bridge.evaluate(point, snapshot);
     const decision = mapVerdict(verdict, mapping, point);

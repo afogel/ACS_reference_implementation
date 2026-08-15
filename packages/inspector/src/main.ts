@@ -27,6 +27,7 @@ import { tailAuditLog, type AuditEntry } from "./tail-audit-log.ts";
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";
 import { tailSessionContextLog, type SessionContextLogEntry } from "./tail-session-context.ts";
 import {
+  checkSessionChainLink,
   createSessionChainState,
   renderAuditEntry,
   renderEnvelopeLogEntry,
@@ -125,7 +126,7 @@ async function pumpAuditLog(): Promise<void> {
 }
 
 // Carried across every call, for the life of the process -- U22's
-// chain-break check (renderSessionChainRow, render.ts) needs to know the
+// chain-break check (checkSessionChainLink, render.ts) needs to know the
 // last hash seen for a row's own session, which can be several entries back
 // once other sessions' rows have interleaved (see tail-session-context.ts's
 // module doc). Kept here rather than re-derived from an accumulated array of
@@ -138,7 +139,11 @@ async function pumpAuditLog(): Promise<void> {
 const sessionChainState = createSessionChainState();
 
 function noteSessionContextEntry(entry: SessionContextLogEntry): void {
-  console.log(renderSessionChainRow(entry, sessionChainState, { color }));
+  // Checked once, rendered once, in that order: the check is the write and the
+  // render is pure, so an entry that reached here twice would be a chain break
+  // reported twice rather than a break invented by re-rendering.
+  const link = checkSessionChainLink(entry, sessionChainState);
+  console.log(renderSessionChainRow(entry, link, { color }));
   console.log("");
 }
 

@@ -52,8 +52,9 @@ export {
   type SessionContext,
   type SessionContextEntry,
   type SessionContextStore,
+  type SessionState,
   type IfcLabels,
   type Intent,
-  type Provenance,
+  type SessionProvenance,
 } from "./session-context-store.ts";
 export { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";

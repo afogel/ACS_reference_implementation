@@ -5,7 +5,7 @@ import { persistIfcLabels, supplySourceLabels } from "../src/ifc-labels.ts";
 describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates", () => {
   // Renamed from "supplies an empty list for a session that has none": a
   // fresh session now reports the lattice floor, not `[]` --
-  // `emptySessionContext` seeds `ifc_labels: ["public"]`
+  // `emptySessionState` seeds `ifc_labels: ["public"]`
   // (packages/guardian/src/session-context.ts), because AGT's own IFC gate
   // denies a zero-label flow outright.
   it("supplies the seeded floor for a session that has none", () => {
@@ -48,10 +48,15 @@ describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates
     expect(supplySourceLabels(store, "sess-b")).toEqual(["public"]);
   });
 
-  it("hands back a copy, so a caller cannot edit the store through it", () => {
+  // The return type is `IfcLabels`, which is `readonly`, so the honest version
+  // of this line -- `supplySourceLabels(...).push("public")` -- no longer
+  // compiles. That is the first guard and the better one. The cast is how this
+  // test still measures the second: a runtime copy, which is what holds when a
+  // caller casts the readonly away or calls from JavaScript.
+  it("hands back a copy, so a caller who casts the readonly away still cannot edit the store", () => {
     const store = createMemorySessionContextStore();
     persistIfcLabels(store, "sess-a", ["secret"]);
-    supplySourceLabels(store, "sess-a").push("public");
+    (supplySourceLabels(store, "sess-a") as string[]).push("public");
     expect(supplySourceLabels(store, "sess-a")).toEqual(["secret"]);
   });
 

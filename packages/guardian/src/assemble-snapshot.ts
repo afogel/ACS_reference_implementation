@@ -42,6 +42,15 @@ import type { ToolCallRequestEnvelope, ToolCallResultEnvelope } from "./validate
 export type { ToolCallRequestEnvelope, ToolCallResultEnvelope };
 
 /**
+ * The labels themselves, from the module that declares what they are. An
+ * `import type`, which is erased at compile time: this module still links
+ * against nothing in `session-context.ts` and still knows nothing about where
+ * session state is kept. What it gains is the one name the labels already have
+ * everywhere else, instead of a fourth spelling declared locally.
+ */
+import type { IfcLabels } from "./session-context.ts";
+
+/**
  * AGT's `envelope.budgets` counters -- the ONE member the two snapshots below
  * share, so the one thing they name with a shared type. Sharing the member's
  * type is not sharing the snapshots': each still declares its own members, and
@@ -65,11 +74,22 @@ function zeroedBudgets(): AgtSnapshotBudgets {
 }
 
 /**
- * The AGT `pre_tool_call` snapshot.
-export type AgtSessionState = { sourceLabels: readonly string[] };
-function ifcMember(session: AgtSessionState): { ifc: { source_labels: string[] } } {
-  return { ifc: { source_labels: [...session.sourceLabels] } };
+ * Where AGT reads the source labels, and why the shorter path is wrong.
+ * `policy/lib/agt_ifc.rego` resolves `input.snapshot.input.ifc.source_labels`;
+ * `policy/lib/agt_ifc_test.rego` pins that the upstream library's
+ * `input.snapshot.ifc.source_labels` reads as `[]` against an AGT host's
+ * snapshot. Nested, therefore, and never hoisted to the snapshot root.
+ *
+ * The copy is what keeps a snapshot from being a writable window onto the
+ * label store. The store copies on the way out too; both hold, because the two
+ * arrays this copy separates belong to different owners.
+ */
+function ifcMember(sourceLabels: IfcLabels): { ifc: { source_labels: string[] } } {
+  return { ifc: { source_labels: [...sourceLabels] } };
 }
+
+/**
+ * The AGT `pre_tool_call` snapshot.
  *
  * Named for the intervention point it is the snapshot FOR, because that is what
  * fixes its shape -- AGT-SNAPSHOT-1.0.md §2.5 gives each point its own. A
@@ -152,7 +172,7 @@ export type AgtPostToolCallSnapshot = {
 
 export function assemblePreToolCallSnapshot(
   envelope: ToolCallRequestEnvelope,
-  session: AgtSessionState,
+  sourceLabels: IfcLabels,
 ): AgtPreToolCallSnapshot {
   const { payload, request_id } = envelope.params;
 
@@ -173,13 +193,13 @@ export function assemblePreToolCallSnapshot(
       args,
       id: request_id,
     },
-    input: ifcMember(session),
+    input: ifcMember(sourceLabels),
   };
 }
 
 export function assemblePostToolCallSnapshot(
   envelope: ToolCallResultEnvelope,
-  session: AgtSessionState,
+  sourceLabels: IfcLabels,
 ): AgtPostToolCallSnapshot {
   const { payload } = envelope.params;
 
@@ -191,6 +211,6 @@ export function assemblePostToolCallSnapshot(
     // AGT reads the raw value at $.tool_result.outputs[0].value, and the ACS
     // {value, provenance} wrapper does not survive into the snapshot.
     tool_result: { outputs: payload.outputs.map((output) => ({ value: output.value })) },
-    input: ifcMember(session),
+    input: ifcMember(sourceLabels),
   };
 }

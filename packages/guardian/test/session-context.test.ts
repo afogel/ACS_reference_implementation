@@ -47,25 +47,42 @@ describe("SessionContext — the hash chain (S3)", () => {
   it("loads an unknown session as an empty chain rather than throwing", () => {
     const store = createMemorySessionContextStore();
     const context = loadSessionContext(store, "never-seen");
+    expect(context.session_id).toBe("never-seen");
     expect(context.entries).toEqual([]);
-    expect(context.intent).toBeUndefined();
-    // The lattice floor, not `[]`: `emptySessionContext` seeds a fresh
-    // session at `["public"]`, because AGT's own IFC gate denies a
-    // zero-label flow outright.
-    expect(context.provenance.ifc_labels).toEqual(["public"]);
   });
 
-  it("replaces the provenance record put on it, ifc_labels and all", () => {
+  // `loadSessionContext` returns S3 alone, so S4 and S5 are read off the
+  // aggregate the store holds. Two names, two widths, neither pretending to
+  // be the other (PR #15 review).
+  it("gives an unknown session an empty intent and the seeded labels", () => {
+    const store = createMemorySessionContextStore();
+    const state = store.load("never-seen");
+    expect(state.intent).toBeUndefined();
+    // The lattice floor, not `[]`: `emptySessionState` seeds a fresh session
+    // at `["public"]`, because AGT's own IFC gate denies a zero-label flow
+    // outright.
+    expect(state.provenance.ifc_labels).toEqual(["public"]);
+  });
+});
+
+describe("S5 — the store is told its labels, and told nothing else", () => {
+  it("replaces the labels", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
-    store.putProvenance("sess-a", {
-      provenance_id: "acs:external:doc-1",
-      origin: "tool_output",
-      ifc_labels: ["pii", "confidential"],
-    });
-    const context = loadSessionContext(store, "sess-a");
-    expect(context.provenance.provenance_id).toBe("acs:external:doc-1");
-    expect(context.provenance.origin).toBe("tool_output");
-    expect(context.provenance.ifc_labels).toEqual(["pii", "confidential"]);
+    store.replaceIfcLabels("sess-a", ["pii", "confidential"]);
+    expect(store.sourceLabels("sess-a")).toEqual(["pii", "confidential"]);
+  });
+
+  // The reason `putProvenance` is gone. A caller that could hand over a whole
+  // provenance record could rewrite `origin` and `source_id` while meaning to
+  // set labels -- and N25, whose only business is labels, had to spread the
+  // record to use it. This verb cannot express that mistake.
+  it("leaves every other member of the provenance record alone", () => {
+    const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
+    store.replaceIfcLabels("sess-a", ["secret"]);
+    const provenance = store.load("sess-a").provenance;
+    expect(provenance.provenance_id).toBe("acs:session:sess-a");
+    expect(provenance.origin).toBe("system");
+    expect(provenance.source_id).toBe("acs.guardian");
   });
 });
 
@@ -73,14 +90,14 @@ describe("Intent (S4) — immutable baseline per session", () => {
   it("records the first intent it is given", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.setIntent("sess-a", "ship the redaction slice");
-    expect(loadSessionContext(store, "sess-a").intent?.text).toBe("ship the redaction slice");
+    expect(store.load("sess-a").intent?.text).toBe("ship the redaction slice");
   });
 
   it("ignores every later intent, because the baseline is immutable", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.setIntent("sess-a", "the baseline");
     store.setIntent("sess-a", "something else entirely");
-    expect(loadSessionContext(store, "sess-a").intent?.text).toBe("the baseline");
+    expect(store.load("sess-a").intent?.text).toBe("the baseline");
   });
 });
 
