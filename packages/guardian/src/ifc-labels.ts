@@ -14,7 +14,11 @@
  *
  * WHERE THE FIRST LABEL COMES FROM IS NOT HERE, and that is a property of
  * ACS v0.1.0 rather than of this module. AGT propagates labels it is given
- * and originates none -- `policy/lib/ifc.rego`'s `propagated_labels` returns
+ * and originates none -- `policy/lib/agt_ifc.rego` is the IFC module this
+ * deployment's bundle actually evaluates (`policy/lib/agt_default.rego`
+ * imports `data.agt.ifc`, never the upstream `agent_control_specification.
+ * lib.ifc` that sibling `policy/lib/ifc.rego` packages, which the AGT host
+ * SDKs do not populate), and its own `propagated_labels(labels)` returns
  * `[]` for an empty input rather than inventing one. And
  * `spec/acs/specification/v0.1.0/provenance.json` defines `provenance_id`,
  * `origin`, `source_id` and `derived_from`, and no member a sensitivity

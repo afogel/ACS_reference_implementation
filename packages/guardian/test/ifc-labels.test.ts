@@ -47,4 +47,12 @@ describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates
     supplySourceLabels(store, "sess-a").push("public");
     expect(supplySourceLabels(store, "sess-a")).toEqual(["secret"]);
   });
+
+  it("takes a copy on write too, so mutating the caller's array afterward leaves the store alone", () => {
+    const store = createMemorySessionContextStore();
+    const labels = ["secret"];
+    persistIfcLabels(store, "sess-a", labels);
+    labels.push("public");
+    expect(supplySourceLabels(store, "sess-a")).toEqual(["secret"]);
+  });
 });
