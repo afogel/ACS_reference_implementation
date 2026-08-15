@@ -268,10 +268,15 @@ export type StartGuardianOptions = {
    * bypassing `createBridge(manifestPath, ...)` entirely -- and, with it,
    * `manifestPath` and `annotator`: both are silently unused whenever
    * `bridge` is supplied, since `createBridge` is never called. Exists so a
-   * test can see exactly which snapshot reached evaluation and control the
-   * verdict that comes back -- policy/manifest.yaml's stock IFC gate is not
-   * turned on until a later task, so no real verdict it produces carries
-   * `result_labels` yet. Not meant for production use. */
+   * test can see exactly which snapshot reached evaluation and choose the
+   * `result_labels` that come back. The real bridge supplies neither. It does
+   * produce `result_labels` -- `policy/lib/data.json` sets
+   * `config.ifc.sink_clearance`, and test/redaction.test.ts measures a real
+   * bridge answering `{decision: "allow", result_labels: ["public"]}` -- but
+   * AGT propagates the labels it is handed and originates none, so a test
+   * driving it could only ever show `public -> public`, and it hands back a
+   * verdict rather than the snapshot it was given. Not meant for production
+   * use. */
   bridge?: PolicyBridge<GuardianSnapshot>;
   /**
    * Where S3's chain is appended for U22 to tail. Defaults to no file: the

@@ -40,9 +40,9 @@ const NEGOTIATED_VERSION = "0.1.0";
 
 /**
  * The methods this Guardian actually dispatches -- exactly the two gated
- * branches in server.ts (`isToolCallRequest` -> `assembleSnapshot`,
- * `isToolCallResult` -> `assembleResultSnapshot`). Anything else falls to
- * `method_not_dispatched`.
+ * branches in server.ts (`isToolCallRequest` -> `assemblePreToolCallSnapshot`,
+ * `isToolCallResult` -> `assemblePostToolCallSnapshot`). Anything else falls
+ * to `method_not_dispatched`.
  *
  * This list has to agree exactly with what server.ts dispatches, in both
  * directions, and handshake.json's text for this field is not advisory:

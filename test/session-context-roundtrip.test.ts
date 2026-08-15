@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   appendContextEntry,
   createMemorySessionContextStore,
-  type SessionContextEntry as AdapterSessionContextEntry,
+  type SessionContextEntry as GuardianSessionContextEntry,
 } from "guardian";
 // Not a bare "inspector" specifier: that string is a Node/Bun built-in
 // module name (`node:inspector`), which core-module resolution picks over
@@ -114,10 +114,10 @@ type SameKeys<Writer, Reader> = [keyof Writer] extends [keyof Reader]
     : { writerIsMissing: Exclude<keyof Reader, keyof Writer> }
   : { readerIsMissing: Exclude<keyof Writer, keyof Reader> };
 
-const _entryFieldsMatch: SameKeys<Required<AdapterSessionContextEntry>, Required<InspectorSessionContextLogEntry>> =
+const _entryFieldsMatch: SameKeys<Required<GuardianSessionContextEntry>, Required<InspectorSessionContextLogEntry>> =
   true;
 const _inspectorAcceptsWhatTheStoreWrites: Required<InspectorSessionContextLogEntry> =
-  {} as Required<AdapterSessionContextEntry>;
+  {} as Required<GuardianSessionContextEntry>;
 void _entryFieldsMatch;
 void _inspectorAcceptsWhatTheStoreWrites;
 

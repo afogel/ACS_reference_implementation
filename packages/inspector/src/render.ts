@@ -403,6 +403,23 @@ export function createSessionChainState(): SessionChainState {
  * merely printable -- a row that read as unbroken regardless of whether it
  * actually linked to its predecessor would be evidence that looks like
  * evidence and is not.
+ *
+ * WHAT THIS CHECK IS NOT, said here because this is the slice's only integrity
+ * affordance and a reader is entitled to know its edge. It compares LINKS --
+ * this row's `prev_hash` against the last `hash` seen for the session -- and
+ * never recomputes `hashEntry` over the row in front of it, so an entry's
+ * contents are never checked against its own digest. Three edits therefore
+ * read as unbroken, each one measured against this function: a self-consistent
+ * rewrite (change a step field and leave `hash`/`prev_hash` alone -- the stored
+ * digest stops matching the entry, and nothing recomputes it), a trailing
+ * truncation (every surviving link still matches), and a deleted FIRST entry
+ * (the next entry becomes the first this `state` has seen, and a first entry is
+ * never marked, because nothing here requires it to carry `GENESIS_HASH` or
+ * `seq` 1 -- the gap is visible in the printed `seq` but is not flagged). What
+ * IS caught is a link that stopped matching: a clobbered `prev_hash`, or a
+ * dropped MIDDLE entry, both measured. So this detects corruption and edits
+ * that do not bother to re-link; it does not detect an adversary with write
+ * access to the log.
  */
 export function renderSessionChainRow(
   entry: SessionContextLogEntry,

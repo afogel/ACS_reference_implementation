@@ -114,11 +114,16 @@ const baseOptions = { port: 0, manifestPath: "policy/manifest.yaml" } as const;
 /**
  * V6: a stub PolicyBridge that records every snapshot handed to `evaluate`
  * and always answers with `verdict`, regardless of `point`. Exists because
- * the real bridge cannot exercise the round trip yet -- policy/manifest.yaml's
- * stock IFC gate is not turned on until Task 4, so no real verdict from it
- * carries `result_labels` at all -- so the session-state tests that need a
- * controlled `result_labels` (and to see what an assembler put in the
- * snapshot) supply this instead of `createBridge(manifestPath)`.
+ * the session-state tests need a `result_labels` they chose and a look at the
+ * snapshot that reached evaluation, and the real bridge yields neither. It
+ * does emit `result_labels` -- `policy/lib/data.json` sets
+ * `config.ifc.sink_clearance`, and test/redaction.test.ts measures a real
+ * bridge answering `{decision: "allow", result_labels: ["public"]}` -- but
+ * AGT propagates the labels it is handed and originates none, so a test
+ * driving it could only ever show `public -> public`, which is exactly the
+ * pair a session seeded at the lattice floor already reads as. So the tests
+ * that need a controlled `result_labels` (and to see what an assembler put in
+ * the snapshot) supply this instead of `createBridge(manifestPath)`.
  */
 function recordingBridge(seen: unknown[], verdict: AgtVerdict): PolicyBridge {
   return {
@@ -1185,9 +1190,12 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
 
 // N21 -> N22 -> N23, end to end: the chain grows on arrival, a denied step
 // still lands in it, and the labels one verdict returns reach the next
-// step's snapshot. The stock IFC gate is not turned on yet (Task 4), so
-// `recordingBridge` stands in wherever a controlled `result_labels` or a
-// captured snapshot is the point of the test.
+// step's snapshot. `recordingBridge` stands in wherever a controlled
+// `result_labels` or a captured snapshot is the point of the test: the stock
+// IFC gate is on and real verdicts do carry `result_labels`, but AGT
+// propagates the labels it is handed and originates none, so a real bridge
+// could only return `["public"]` to a session already seeded at `["public"]`
+// -- a carried label and an untouched one would be the same assertion.
 //
 // session_id and request_id are generated UUIDs throughout, not the "sess-a"
 // / "req-1" literals a draft of this suite used: request-envelope.json pins
@@ -1294,17 +1302,21 @@ describe("session state end to end (V6)", () => {
     }
   });
 
-  // Important finding, fix round 1: the projection write used to be raw
+  // The projection write used to be raw
   // appendFileSync/mkdirSync with no guard, so a filesystem failure on the
   // (optional, Inspector-only) session-context log threw INSIDE
   // evaluateStep's try -- landing in the same catch AGT's own evaluation
   // failures use, and coming back as an honoured deny with
   // reason_codes: ["evaluation_failed"]. Every governed step would have been
   // denied by a broken projection file, blamed on policy evaluation.
-  // `sessionContextLog` names a path one path component of which is a plain
-  // FILE, not a directory, so `mkdirSync(dirname(path), {recursive: true})`
-  // throws ENOTDIR deterministically on every platform this suite runs on --
-  // confirmed by hand before writing this test.
+  // `sessionContextLog` names a path whose parent component is a plain FILE,
+  // not a directory, so `mkdirSync(dirname(path), {recursive: true})` is
+  // asked to create a directory where an existing plain file already sits and
+  // throws EEXIST. Measured, not assumed: the run captured in
+  // docs/demos/v6-runbook.md prints this test's own disable notice as
+  // `EEXIST: file already exists, mkdir '<the blocker file>'`. (ENOTDIR is
+  // the errno for a path BENEATH a plain file, which this is not: `dirname`
+  // is the blocker itself.)
   it("does not let a failing session-context log turn a governed tool call into a denied one", async () => {
     const blocker = join(GUARDIAN_PKG, `tmp-session-log-blocker-${crypto.randomUUID()}.txt`);
     writeFileSync(blocker, "not a directory");

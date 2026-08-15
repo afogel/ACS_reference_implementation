@@ -461,6 +461,8 @@ drops later ones — the immutability rule is implemented and tested — but not
 so unlike the labels above this is **not** a wire gap: the field exists and is simply not
 wired. Recorded as scope, not as a finding about ACS or AGT.
 
+Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriage.md`.
+
 ---
 
 ## V7: Conformance matrix

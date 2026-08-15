@@ -79,6 +79,15 @@ same contract `tail-audit-log.ts` already had. `renderSessionChainRow`
 `session_id`** — read out of a `SessionChainState`, never out of whatever line happened
 to come before it, because one log carries every session the Guardian saw, in append
 order, so two interleaved sessions would otherwise read as a break on every switch.
+**What the check is not:** it compares **links** and never recomputes `hashEntry` over the
+entry in front of it, so it is not tamper-evidence. Three edits read as unbroken, each one
+measured against `renderSessionChainRow`: a self-consistent rewrite (edit a step field,
+leave `hash` and `prev_hash` alone), a trailing truncation, and a deleted **first** entry —
+that last one because an entry with no predecessor in view is never marked, and nothing
+requires a session's first row to carry `GENESIS_HASH` or `seq` 1. What it does catch,
+also measured, is a link that stopped matching: a clobbered `prev_hash`, or a dropped
+**middle** entry. So it detects corruption and naive edits, not an adversary with write
+access to the log.
 `packages/inspector/src/main.ts` tails it beside S6 and S14, under
 `--session-context-log` / `ACS_SESSION_CONTEXT_LOG`. The Inspector imports nothing from
 `guardian` (R5.1) and re-declares `SessionContextLogEntry` itself;
@@ -179,3 +188,13 @@ three the gate produced are filed at
 round trip is measured in pieces.** No single test drives a real Guardian over two steps
 against the real bundle *and* asserts the labels, and today such a test could only show
 `public → public`, because AGT propagates the labels it is given and originates none.
+
+**Nothing bounds what this slice accumulates.** `createMemorySessionContextStore`'s
+`sessions` map is never evicted, each session's `entries` array only grows, and the JSONL
+projection has no rotation — so a long-lived Guardian, which is the deployment a
+per-session state model implies, grows without bound in memory and on disk. S6 and S14
+already have the same property. Recorded as a property of a reference implementation, not
+fixed here.
+
+The implementation plan this slice followed, task by task, is
+[`docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriage.md`](../../docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriage.md).

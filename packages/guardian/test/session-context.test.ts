@@ -36,7 +36,7 @@ describe("SessionContext — the hash chain (S3)", () => {
     expect(loadSessionContext(store, "sess-a").entries).toHaveLength(1);
   });
 
-  it("makes the hash cover the step, so a forged entry does not verify", () => {
+  it("gives two entries at the same position different hashes when only tool_name differs", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     const honest = appendContextEntry(store, "sess-a", step(1));
     const other = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
