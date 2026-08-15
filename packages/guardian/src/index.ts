@@ -26,7 +26,7 @@
  * that boundary, and `test/envelope-log-sink-roundtrip.test.ts` keeps the
  * two declarations honest with each other.
  */
-export { startGuardian, type StartGuardianOptions, type StartedGuardian } from "./server.ts";
+export { startGuardian, type StartGuardianOptions, type StartedGuardian, type GuardianSnapshot } from "./server.ts";
 export { buildServerHello, type ServerHello } from "./handshake.ts";
 export {
   validateEnvelope,
@@ -44,3 +44,16 @@ export {
   type AgtPostToolCallSnapshot,
 } from "./assemble-snapshot.ts";
 export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";
+export {
+  loadSessionContext,
+  appendContextEntry,
+  createMemorySessionContextStore,
+  GENESIS_HASH,
+  type SessionContext,
+  type SessionContextEntry,
+  type SessionContextStore,
+  type IfcLabels,
+  type Intent,
+  type Provenance,
+} from "./session-context-store.ts";
+export { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";

@@ -1,10 +1,17 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { startGuardian } from "../src/index.ts";
+import type { AgtVerdict, PolicyBridge } from "agt-bridge";
+import {
+  startGuardian,
+  createMemorySessionContextStore,
+  loadSessionContext,
+  supplySourceLabels,
+} from "../src/index.ts";
 import { toRepoRelativeMessage } from "../src/server.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
@@ -28,9 +35,9 @@ function validateServerHello(candidate: unknown): void {
 function makeEnvelope(
   method: string,
   payload: Record<string, unknown>,
-  overrides: { id?: number; requestId?: string } = {},
+  overrides: { id?: number; requestId?: string; sessionId?: string } = {},
 ): Record<string, unknown> {
-  const { id = 1, requestId = crypto.randomUUID() } = overrides;
+  const { id = 1, requestId = crypto.randomUUID(), sessionId = crypto.randomUUID() } = overrides;
   return {
     jsonrpc: "2.0",
     method,
@@ -39,18 +46,30 @@ function makeEnvelope(
       acs_version: "0.1.0",
       request_id: requestId,
       timestamp: new Date().toISOString(),
-      metadata: { agent_id: "agent-1", session_id: crypto.randomUUID() },
+      metadata: { agent_id: "agent-1", session_id: sessionId },
       payload,
     },
   };
 }
 
-function toolCallEnvelope(command: string, overrides: { id?: number; requestId?: string } = {}) {
+function toolCallEnvelope(command: string, overrides: { id?: number; requestId?: string; sessionId?: string } = {}) {
   return makeEnvelope(
     "steps/toolCallRequest",
     { tool: { name: "run_shell" }, arguments: { command: { value: command } } },
     overrides,
   );
+}
+
+/**
+ * The request-gate envelope builder the session-state tests use. Takes an
+ * overrides object rather than positional arguments, since those tests vary
+ * session_id most. A thin wrapper over toolCallEnvelope with the same shape
+ * and the same benign default command, adding no envelope-building logic of
+ * its own.
+ */
+function toolCallRequest(overrides: { session_id?: string; request_id?: string; command?: string } = {}): Record<string, unknown> {
+  const { session_id, request_id, command = "ls -la" } = overrides;
+  return toolCallEnvelope(command, { requestId: request_id, sessionId: session_id });
 }
 
 /** The result gate's envelope, per hooks/tool-call-result.json -- `tool`,
@@ -81,11 +100,40 @@ async function postAcs(url: string, body: unknown): Promise<JsonRpcResponse> {
   return (await res.json()) as JsonRpcResponse;
 }
 
+/** V6: postAcs against a started guardian rather than a bare URL -- the
+ * session-state tests below post several steps per guardian and read
+ * `guardian.url` off the same value each time. */
+async function postStep(guardian: { url: string }, envelope: unknown): Promise<JsonRpcResponse> {
+  return postAcs(guardian.url, envelope);
+}
+
+/** V6: the options every session-state test starts from, spread with its
+ * own overrides. Extracted from what beforeAll already passed inline. */
+const baseOptions = { port: 0, manifestPath: "policy/manifest.yaml" } as const;
+
+/**
+ * V6: a stub PolicyBridge that records every snapshot handed to `evaluate`
+ * and always answers with `verdict`, regardless of `point`. Exists because
+ * the real bridge cannot exercise the round trip yet -- policy/manifest.yaml's
+ * stock IFC gate is not turned on until Task 4, so no real verdict from it
+ * carries `result_labels` at all -- so the session-state tests that need a
+ * controlled `result_labels` (and to see what an assembler put in the
+ * snapshot) supply this instead of `createBridge(manifestPath)`.
+ */
+function recordingBridge(seen: unknown[], verdict: AgtVerdict): PolicyBridge {
+  return {
+    async evaluate(_point, snapshot) {
+      seen.push(snapshot);
+      return verdict;
+    },
+  };
+}
+
 let url: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+  const guardian = await startGuardian(baseOptions);
   url = guardian.url;
   close = guardian.close;
 });
@@ -1132,5 +1180,140 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     expect(response.id).toBe(7);
     expect(response.error?.code).toBe(-32011);
     expect(response.error?.data).toEqual({ method: "steps/sessionStart" });
+  });
+});
+
+// N21 -> N22 -> N23, end to end: the chain grows on arrival, a denied step
+// still lands in it, and the labels one verdict returns reach the next
+// step's snapshot. The stock IFC gate is not turned on yet (Task 4), so
+// `recordingBridge` stands in wherever a controlled `result_labels` or a
+// captured snapshot is the point of the test.
+//
+// session_id and request_id are generated UUIDs throughout, not the "sess-a"
+// / "req-1" literals a draft of this suite used: request-envelope.json pins
+// `format: "uuid"` on both (Metadata.session_id, AcsParams.request_id), so a
+// literal like "sess-a" fails schema validation before evaluateStep is ever
+// reached -- envelope_invalid, not the behaviour these tests exist to pin.
+// Measured directly: posting a literal session_id/request_id through a real
+// startGuardian answers `{decision: "deny", reason_codes: ["envelope_invalid"]}`
+// and leaves the chain empty.
+describe("session state end to end (V6)", () => {
+  it("grows the chain by one entry per governed step, on one session", async () => {
+    const store = createMemorySessionContextStore();
+    const guardian = await startGuardian({ ...baseOptions, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    const requestId1 = crypto.randomUUID();
+    const requestId2 = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId1 }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId2 }));
+      const chain = loadSessionContext(store, sessionId).entries;
+      expect(chain.map((e) => e.seq)).toEqual([1, 2]);
+      expect(chain[1]!.prev_hash).toBe(chain[0]!.hash);
+      expect(chain.map((e) => e.request_id)).toEqual([requestId1, requestId2]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("appends the step even when the decision denies it", async () => {
+    const store = createMemorySessionContextStore();
+    const guardian = await startGuardian({ ...baseOptions, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    try {
+      const response = await postStep(guardian, toolCallRequest({ session_id: sessionId, command: "rm -rf /" }));
+      expect(response.result?.decision).toBe("deny");
+      expect(loadSessionContext(store, sessionId).entries).toHaveLength(1);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("hands the snapshot the labels the previous step's verdict returned", async () => {
+    const store = createMemorySessionContextStore();
+    const seen: unknown[] = [];
+    const bridge = recordingBridge(seen, { decision: "allow", result_labels: ["confidential"] });
+    const guardian = await startGuardian({ ...baseOptions, bridge, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionId }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId }));
+    } finally {
+      await guardian.close();
+    }
+    const first = seen[0] as { input: { ifc: { source_labels: string[] } } };
+    const second = seen[1] as { input: { ifc: { source_labels: string[] } } };
+    expect(first.input.ifc.source_labels).toEqual([]);
+    expect(second.input.ifc.source_labels).toEqual(["confidential"]);
+  });
+
+  it("keeps two sessions' labels and chains apart", async () => {
+    const store = createMemorySessionContextStore();
+    const seen: unknown[] = [];
+    const bridge = recordingBridge(seen, { decision: "allow", result_labels: ["secret"] });
+    const guardian = await startGuardian({ ...baseOptions, bridge, sessionContextStore: store });
+    const sessionA = crypto.randomUUID();
+    const sessionB = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionA }));
+      // Two-sided: session A got what the verdict returned, session B (never
+      // posted to) got neither the labels nor a chain entry. Asserting only
+      // B's emptiness would still pass if persistIfcLabels were deleted
+      // entirely -- there would be nothing anywhere to tell A and B apart.
+      expect(supplySourceLabels(store, sessionA)).toEqual(["secret"]);
+      expect(loadSessionContext(store, sessionA).entries).toHaveLength(1);
+      expect(supplySourceLabels(store, sessionB)).toEqual([]);
+      expect(loadSessionContext(store, sessionB).entries).toEqual([]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("writes one JSONL line per entry when given a log path", async () => {
+    const path = join(tmpdir(), `acs-session-${crypto.randomUUID()}.jsonl`);
+    const guardian = await startGuardian({ ...baseOptions, sessionContextLog: path });
+    const sessionId = crypto.randomUUID();
+    const requestId1 = crypto.randomUUID();
+    const requestId2 = crypto.randomUUID();
+    try {
+      // Two steps, not one: a sink that (wrongly) wrote only the first entry
+      // ever appended would still pass a single-post version of this test.
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId1 }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId2 }));
+      const lines = readFileSync(path, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(2);
+      expect(JSON.parse(lines[0]!)).toMatchObject({ session_id: sessionId, seq: 1, request_id: requestId1 });
+      expect(JSON.parse(lines[1]!)).toMatchObject({ session_id: sessionId, seq: 2, request_id: requestId2 });
+    } finally {
+      await guardian.close();
+      rmSync(path, { force: true });
+    }
+  });
+
+  // Important finding, fix round 1: the projection write used to be raw
+  // appendFileSync/mkdirSync with no guard, so a filesystem failure on the
+  // (optional, Inspector-only) session-context log threw INSIDE
+  // evaluateStep's try -- landing in the same catch AGT's own evaluation
+  // failures use, and coming back as an honoured deny with
+  // reason_codes: ["evaluation_failed"]. Every governed step would have been
+  // denied by a broken projection file, blamed on policy evaluation.
+  // `sessionContextLog` names a path one path component of which is a plain
+  // FILE, not a directory, so `mkdirSync(dirname(path), {recursive: true})`
+  // throws ENOTDIR deterministically on every platform this suite runs on --
+  // confirmed by hand before writing this test.
+  it("does not let a failing session-context log turn a governed tool call into a denied one", async () => {
+    const blocker = join(GUARDIAN_PKG, `tmp-session-log-blocker-${crypto.randomUUID()}.txt`);
+    writeFileSync(blocker, "not a directory");
+    const badLogPath = join(blocker, "session-context.jsonl");
+    const guardian = await startGuardian({ ...baseOptions, sessionContextLog: badLogPath });
+    try {
+      const response = await postStep(guardian, toolCallRequest());
+      expect(response.error).toBeUndefined();
+      expect(response.result?.decision).toBe("allow");
+      expect(response.result?.reason_codes).not.toEqual(["evaluation_failed"]);
+    } finally {
+      await guardian.close();
+      unlinkSync(blocker);
+    }
   });
 });

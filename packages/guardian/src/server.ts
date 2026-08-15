@@ -59,6 +59,8 @@
  * -- a Guardian in its own container, say -- opts in explicitly through the
  * `hostname` option (main.ts reads ACS_GUARDIAN_HOST for it).
  */
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBridge, type Annotator, type PolicyBridge } from "agt-bridge";
 import {
@@ -66,6 +68,7 @@ import {
   assemblePreToolCallSnapshot,
   type AgtPostToolCallSnapshot,
   type AgtPreToolCallSnapshot,
+  type AgtSessionState,
 } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
@@ -79,6 +82,8 @@ import {
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
+import { appendContextEntry, createMemorySessionContextStore, type SessionContextStore } from "./session-context-store.ts";
+import { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point -- one
@@ -90,7 +95,7 @@ import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } f
  * is what this holder sends, so the `bridge.evaluate` calls below are checked
  * against the assemblers' own output types instead of against any object at all.
  */
-type GuardianSnapshot = AgtPreToolCallSnapshot | AgtPostToolCallSnapshot;
+export type GuardianSnapshot = AgtPreToolCallSnapshot | AgtPostToolCallSnapshot;
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
@@ -259,8 +264,83 @@ export type StartGuardianOptions = {
    * option existed -- see `policy/manifest.drift.yaml` and its own header
    * for the one manifest that does declare one. */
   annotator?: Annotator;
+  /** Overrides the bridge this Guardian evaluates snapshots against,
+   * bypassing `createBridge(manifestPath, ...)` entirely -- and, with it,
+   * `manifestPath` and `annotator`: both are silently unused whenever
+   * `bridge` is supplied, since `createBridge` is never called. Exists so a
+   * test can see exactly which snapshot reached evaluation and control the
+   * verdict that comes back -- policy/manifest.yaml's stock IFC gate is not
+   * turned on until a later task, so no real verdict it produces carries
+   * `result_labels` yet. Not meant for production use. */
+  bridge?: PolicyBridge<GuardianSnapshot>;
+  /**
+   * Where S3's chain is appended for U22 to tail. Defaults to no file: the
+   * store is authoritative, and the JSONL is a projection for the Inspector,
+   * the same relationship S6 has to the envelopes it records. Ignored when
+   * `sessionContextStore` is also supplied -- the override store owns its
+   * own persistence, and this Guardian does not retrofit a projection onto
+   * a store it did not construct; see that option's own doc comment.
+   */
+  sessionContextLog?: string;
+  /**
+   * The store itself, for tests and for a deployment that wants to own it.
+   * Omitted means a fresh in-memory one per Guardian. Takes precedence over
+   * `sessionContextLog` when both are supplied.
+   */
+  sessionContextStore?: SessionContextStore;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
+
+/**
+ * A total-by-construction `appendLine` for S3's optional JSONL projection --
+ * shaped like `createEnvelopeLogSink`'s own write path (envelope-log-sink.ts:
+ * mkdirSync guarded once at construction, every write wrapped, disabled and
+ * reported once rather than thrown after the first failure), but not a call
+ * INTO that function. `EnvelopeLogSink.write(direction, envelope, method)`
+ * builds its own `EnvelopeLogEntry` (seq, recorded_at, direction, method,
+ * rpc_id, envelope) around whatever it is handed; `SessionContextStore`'s
+ * `appendLine` contract is one already-serialized JSON line with no
+ * wrapping object at all (`session-context-store.ts`: "Called once per
+ * appended entry with its JSON line, no trailing newline"). Routing S3's
+ * lines through `createEnvelopeLogSink` would nest every session-context
+ * entry inside an unrelated `EnvelopeLogEntry` -- `direction: "request"` on
+ * a chain entry is meaningless, and the JSONL Step 6 pins
+ * (`{session_id, seq, request_id, ...}` at the line's own top level) would
+ * break. The failure behaviour is duplicated because the invariant it
+ * upholds is the same one envelope-log-sink.ts states for S6: a projection
+ * write must never be able to turn a governed tool call into a denied one.
+ */
+function createSessionContextLogAppender(path: string): (line: string) => void {
+  let disabled = false;
+
+  const fail = (error: unknown): void => {
+    disabled = true;
+    try {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`session context log disabled after failure (${path}): ${message}`);
+    } catch {
+      // Silently swallow any error from console.error, matching
+      // envelope-log-sink.ts's own guard -- total means total.
+    }
+  };
+
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+  } catch (error) {
+    fail(error);
+  }
+
+  return (line: string): void => {
+    if (disabled) {
+      return;
+    }
+    try {
+      appendFileSync(path, `${line}\n`);
+    } catch (error) {
+      fail(error);
+    }
+  };
+}
 
 export async function startGuardian({
   port,
@@ -270,11 +350,26 @@ export async function startGuardian({
   envelopeLogPath,
   onDecisionFailure,
   annotator,
+  bridge: bridgeOverride,
+  sessionContextLog,
+  sessionContextStore: sessionContextStoreOverride,
 }: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
-  const bridge = createBridge(manifestPath, annotator ? { annotator } : undefined);
+  const bridge = bridgeOverride ?? createBridge(manifestPath, annotator ? { annotator } : undefined);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
+  // S3's store is always the in-memory one, or the caller's own override --
+  // sessionContextLog never becomes an alternative backing store, only a
+  // JSONL PROJECTION of whichever store is in use, the same relationship
+  // envelopeLogPath has to S6. The `??` below means the projection is wired
+  // up (and its directory created) only in the branch that actually
+  // constructs the default store -- an override in sessionContextStore
+  // short-circuits past both, per that option's own doc comment.
+  const sessionContextStore =
+    sessionContextStoreOverride ??
+    createMemorySessionContextStore(
+      sessionContextLog ? { appendLine: createSessionContextLogAppender(sessionContextLog) } : {},
+    );
 
   const server = Bun.serve({
     hostname: hostname ?? LOOPBACK_ONLY,
@@ -284,7 +379,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure, sessionContextStore);
       return Response.json(response);
     },
   });
@@ -334,7 +429,8 @@ async function handleAcsRequest(
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   envelopeLog: EnvelopeLogSink,
-  onDecisionFailure?: "proceed" | "deny",
+  onDecisionFailure: "proceed" | "deny" | undefined,
+  sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const body = await readCappedBody(req);
   if (body.withinLimit === false) {
@@ -375,7 +471,7 @@ async function handleAcsRequest(
 
   let response: JsonRpcSuccess | JsonRpcFailure;
   try {
-    response = await dispatch(raw, bridge, mapping, onDecisionFailure);
+    response = await dispatch(raw, bridge, mapping, onDecisionFailure, sessionContextStore);
   } catch (error) {
     // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`:
     // this route is `dispatch` rethrowing entirely past denyOnInvalidEnvelope
@@ -487,7 +583,8 @@ async function dispatch(
   raw: unknown,
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
-  onDecisionFailure?: "proceed" | "deny",
+  onDecisionFailure: "proceed" | "deny" | undefined,
+  sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
@@ -543,12 +640,12 @@ async function dispatch(
   //     shape. Anything neither predicate answers falls past both, to
   //     METHOD_NOT_DISPATCHED_CODE below.
   if (isToolCallRequest(envelope)) {
-    return await evaluateStep(raw, envelope, assemblePreToolCallSnapshot, bridge, mapping);
+    return await evaluateStep(raw, envelope, assemblePreToolCallSnapshot, bridge, mapping, sessionContextStore);
   }
 
   // The result gate, beside the request gate rather than merged into it.
   if (isToolCallResult(envelope)) {
-    return await evaluateStep(raw, envelope, assemblePostToolCallSnapshot, bridge, mapping);
+    return await evaluateStep(raw, envelope, assemblePostToolCallSnapshot, bridge, mapping, sessionContextStore);
   }
 
   // A well-formed envelope (it passed validateEnvelope: the method matched
@@ -561,6 +658,18 @@ async function dispatch(
 }
 
 /**
+ * evaluateStep's own bound: `AcsRequestEnvelope` narrowed just enough to read
+ * the one payload member `ToolCallRequestPayload` and `ToolCallResultPayload`
+ * both carry, `payload.tool.name` -- so N22's chain entry (below) can be built
+ * generically over whichever gate called this function, without widening back
+ * to a union of the two payload shapes. `ToolCallRequestEnvelope` and
+ * `ToolCallResultEnvelope` are each narrower than this and satisfy it, so
+ * inference at each call site still lands on the specific envelope type, not
+ * on this bound itself.
+ */
+type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name: string } } } };
+
+/**
  * The half of an assembling branch that is the same whichever gate reached it:
  * assemble, resolve the point, evaluate, map the verdict, answer. One copy,
  * shared by both gates -- not because it is shorter, but because the failure
@@ -568,11 +677,11 @@ async function dispatch(
  * request gate, and a second copy of it is a second thing to keep true.
  *
  * Generic in the envelope, and the assembler is a function OF that envelope --
- * `E` and `(envelope: E) => GuardianSnapshot` rather than an
- * `AcsRequestEnvelope` and an independent thunk. `E` infers from the narrowed
- * variable each gate passes, both assemblers are assignable as they stand, and
- * the one miswiring this function could otherwise permit becomes
- * unrepresentable: `evaluateStep(raw, envelopeA, () => assemblePreToolCallSnapshot(envelopeB), ...)`
+ * `E` and `(envelope: E, session: AgtSessionState) => GuardianSnapshot` rather
+ * than an `AcsRequestEnvelope` and an independent thunk. `E` infers from the
+ * narrowed variable each gate passes, both assemblers are assignable as they
+ * stand, and the one miswiring this function could otherwise permit becomes
+ * unrepresentable: `evaluateStep(raw, envelopeA, (_e, s) => assemblePreToolCallSnapshot(envelopeB, s), ...)`
  * would have resolved the point from A's method and echoed A's ids while
  * evaluating B's snapshot -- the wrong policy against the wrong shape, which
  * this file's own comments call worse than a reported failure. In the inline
@@ -581,11 +690,21 @@ async function dispatch(
  * is shared, not left to the call sites to get right.
  *
  * The generic keeps each assembler's parameter type narrow while this function
- * stays method-agnostic: nothing here reads a snapshot member, so nothing here
- * needs to know which shape it got, and no union of the two snapshot types is
- * needed to say so -- `GuardianSnapshot` is the union of the two messages this
- * Guardian can send, and this function reads no member of either. The assembler is called INSIDE
- * the try, so a throw from it lands in the same catch as a throw from AGT.
+ * stays method-agnostic about the SNAPSHOT: nothing here reads a snapshot
+ * member, so nothing here needs to know which shape it got, and no union of
+ * the two snapshot types is needed to say so -- `GuardianSnapshot` is the
+ * union of the two messages this Guardian can send, and this function reads
+ * no member of either. It does read envelope members now, for the chain
+ * entry: `params.metadata.session_id` and `params.request_id`, both already
+ * generic over plain `AcsRequestEnvelope` (method-independent, so no
+ * narrower bound was needed for them), and one PAYLOAD member,
+ * `payload.tool.name` -- the one member `SteppedEnvelope` above exists for,
+ * since `payload` is generically `Record<string, unknown>` otherwise. All
+ * three reads are shared identically by both payload shapes, so none
+ * carries the wrong-shape risk the paragraph above is about. The assembler
+ * is called INSIDE the try, so a throw from it -- or from appending to the
+ * chain, or from persisting labels -- lands in the same catch as a throw
+ * from AGT.
  *
  * The intervention point comes from mapping.yaml's own `intervention_points`
  * table, not from a literal here: a declaration the runtime does not consult
@@ -594,18 +713,36 @@ async function dispatch(
  * and calling the result a decision is the one outcome worse than a reported
  * failure.
  */
-async function evaluateStep<E extends AcsRequestEnvelope>(
+async function evaluateStep<E extends SteppedEnvelope>(
   raw: unknown,
   envelope: E,
-  assemble: (envelope: E) => GuardianSnapshot,
+  assemble: (envelope: E, session: AgtSessionState) => GuardianSnapshot,
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
+  sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   try {
-    const snapshot = assemble(envelope);
+    // N21 -> N22 -> N23, replacing V1's direct N21 -> N23 (slices doc, §V6). The
+    // entry is appended on ARRIVAL, before any verdict exists: a step that is
+    // later denied is still a step this session took, and a chain that recorded
+    // only permitted steps would be a chain an incident review cannot use.
+    appendContextEntry(sessionContextStore, envelope.params.metadata.session_id, {
+      method: envelope.method,
+      request_id: envelope.params.request_id,
+      tool_name: envelope.params.payload.tool.name,
+    });
+
+    const snapshot = assemble(envelope, {
+      sourceLabels: supplySourceLabels(sessionContextStore, envelope.params.metadata.session_id),
+    });
     const point = resolveInterventionPoint(envelope.method, mapping);
     const verdict = await bridge.evaluate(point, snapshot);
     const decision = mapVerdict(verdict, mapping, point);
+
+    // N25 -> S5. `verdict.result_labels` is `undefined` when the IFC gate did not
+    // run at all and `[]` when it ran and propagated nothing; `persistIfcLabels`
+    // keeps those apart deliberately -- see its own doc comment.
+    persistIfcLabels(sessionContextStore, envelope.params.metadata.session_id, verdict.result_labels);
 
     return successResponse(envelope.id, finalResult(envelope.params, decision));
   } catch (error) {

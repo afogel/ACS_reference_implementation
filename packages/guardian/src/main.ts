@@ -24,11 +24,13 @@ import { startGuardian } from "./server.ts";
 const DEFAULT_PORT = 8787;
 const DEFAULT_MANIFEST_PATH = "policy/manifest.yaml";
 const DEFAULT_ENVELOPE_LOG = ".acs/envelopes.jsonl";
+const DEFAULT_SESSION_CONTEXT_LOG = ".acs/session-context.jsonl";
 
 const port = Number(process.env.ACS_GUARDIAN_PORT ?? DEFAULT_PORT);
 const hostname = process.env.ACS_GUARDIAN_HOST;
 const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
 const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
+const sessionContextLog = process.env.ACS_SESSION_CONTEXT_LOG ?? DEFAULT_SESSION_CONTEXT_LOG;
 
 // Read and validate the posture BEFORE starting the server. Not the audit
 // sink's path: that file is the host's, written by the hook, not by
@@ -42,7 +44,8 @@ const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 // healthy start immediately followed by one.
 const posture = buildServerHello().on_decision_failure;
 
-const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
+const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath, sessionContextLog });
 console.log(`Guardian listening at ${guardian.url}`);
 console.log(`Envelope log: ${envelopeLogPath}`);
+console.log(`Session context log: ${sessionContextLog}`);
 console.log(`Failure posture: ${posture}   (override with ACS_ON_DECISION_FAILURE=deny)`);

@@ -66,6 +66,10 @@ function zeroedBudgets(): AgtSnapshotBudgets {
 
 /**
  * The AGT `pre_tool_call` snapshot.
+export type AgtSessionState = { sourceLabels: readonly string[] };
+function ifcMember(session: AgtSessionState): { ifc: { source_labels: string[] } } {
+  return { ifc: { source_labels: [...session.sourceLabels] } };
+}
  *
  * Named for the intervention point it is the snapshot FOR, because that is what
  * fixes its shape -- AGT-SNAPSHOT-1.0.md §2.5 gives each point its own. A
@@ -75,6 +79,11 @@ function zeroedBudgets(): AgtSnapshotBudgets {
  * `args` stays `Record<string, unknown>` on purpose: those are the tool's own
  * arguments, unwrapped from ACS's `{value, provenance}` shape, and their keys
  * are the tool's business rather than this project's.
+ *
+ * `input.ifc.source_labels` carries this session's IFC labels (V6), nested
+ * under `input` because `policy/lib/agt_ifc.rego` reads
+ * `input.snapshot.input.ifc.source_labels` -- never `ifc` at the snapshot
+ * root, which its own test pins as reading `[]`.
  */
 export type AgtPreToolCallSnapshot = {
   envelope: { budgets: AgtSnapshotBudgets };
@@ -83,6 +92,7 @@ export type AgtPreToolCallSnapshot = {
     args: Record<string, unknown>;
     id: string;
   };
+  input: { ifc: { source_labels: string[] } };
 };
 
 /**
@@ -137,9 +147,13 @@ export type AgtPostToolCallSnapshot = {
   envelope: { budgets: AgtSnapshotBudgets };
   tool_call: { name: string };
   tool_result: { outputs: { value: unknown }[] };
+  input: { ifc: { source_labels: string[] } };
 };
 
-export function assemblePreToolCallSnapshot(envelope: ToolCallRequestEnvelope): AgtPreToolCallSnapshot {
+export function assemblePreToolCallSnapshot(
+  envelope: ToolCallRequestEnvelope,
+  session: AgtSessionState,
+): AgtPreToolCallSnapshot {
   const { payload, request_id } = envelope.params;
 
   // Unwrap every argument. AGT reads raw values -- args.command has to be a
@@ -159,10 +173,14 @@ export function assemblePreToolCallSnapshot(envelope: ToolCallRequestEnvelope): 
       args,
       id: request_id,
     },
+    input: ifcMember(session),
   };
 }
 
-export function assemblePostToolCallSnapshot(envelope: ToolCallResultEnvelope): AgtPostToolCallSnapshot {
+export function assemblePostToolCallSnapshot(
+  envelope: ToolCallResultEnvelope,
+  session: AgtSessionState,
+): AgtPostToolCallSnapshot {
   const { payload } = envelope.params;
 
   return {
@@ -173,5 +191,6 @@ export function assemblePostToolCallSnapshot(envelope: ToolCallResultEnvelope): 
     // AGT reads the raw value at $.tool_result.outputs[0].value, and the ACS
     // {value, provenance} wrapper does not survive into the snapshot.
     tool_result: { outputs: payload.outputs.map((output) => ({ value: output.value })) },
+    input: ifcMember(session),
   };
 }
