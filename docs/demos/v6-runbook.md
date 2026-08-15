@@ -76,6 +76,16 @@ argument. A deployment running the full ACS-Provenance profile, with provenance 
 on every argument, still has nothing to read a first label out of. The label has to come
 from the deployment, exactly as V3's drift score does.
 
+**The one member that looks like an exception is not one.** `provenance.json`'s own
+`description` reserves an OPTIONAL `trust` enum "for vendor implementations that elect to
+carry classification on the wire", and says such implementations **extend this schema
+rather than rely on v0.1 to validate the field**. So `trust` is a reserved vendor
+extension, not a v0.1.0 field: it is absent from `properties`, nothing in v0.1.0 validates
+it, and a deployment reading a label out of it would be reading a field the contract does
+not define. That is the same conclusion by a different route — the wire has no label a
+conforming consumer can rely on — and it is worth naming rather than leaving for a reader
+who opens the schema to find on their own.
+
 **2. IFC deny outranks every other gate**, per `policy/lib/agt_default.rego`'s own header:
 
 > consults each one in priority order: IFC deny > confidence deny > budget deny >
@@ -108,8 +118,9 @@ it rather than asserting it.
 3. **Without a deployment writing one, `public → public` is the only round trip a session
    can ever show**, and the capture below that reaches `confidential` had that label handed
    to it by the deployment. AGT propagates labels it is given and originates none —
-   `propagated_labels(labels)` is `[max_sensitivity(labels)]` — so a session seeded at the
-   floor stays at the floor for as long as nothing else writes to it.
+   `propagated_labels(labels)` is `[max_sensitivity(labels)]` **when `count(labels) > 0`,
+   and `[]` otherwise** — so a session seeded at the floor stays at the floor for as long as
+   nothing else writes to it, and a session seeded with nothing gets nothing back.
 4. **The chain-break check is per session, and one log holds every session.** The
    Inspector compares an entry's `prev_hash` to the last hash seen *for that
    `session_id`*, not to the line above it.
@@ -340,8 +351,8 @@ pre_tool_call  source_labels=["confidential"]  ->  decision=deny  reason=destruc
 `result_labels: ["public"]`, `persistIfcLabels` wrote it into S5, and step 2's snapshot
 carried `source_labels: ["public"]` — a real emit, a real persist, a real re-supply, and
 the value never changes, because it cannot. `propagated_labels(labels)` is
-`[max_sensitivity(labels)]`, so what comes back is always the join of what went in, and
-what went in was the seed. **Read on its own, step 1 → step 2 is equally consistent with
+`[max_sensitivity(labels)]` when `count(labels) > 0` and `[]` otherwise, so what comes back
+is always the join of what went in — and what went in was the seed. **Read on its own, step 1 → step 2 is equally consistent with
 the labels not being carried at all**, which is exactly why the rest of this capture
 exists.
 
@@ -482,10 +493,20 @@ Ran 9 tests across 1 file. [1155.00ms]
 ```
 
 The label was put back immediately and that file re-run clean (9 pass, 0 fail); `git diff`
-on it is empty, so the tracked file is byte-identical to what is committed. What
-the failure shows is the shape of the cost: **`ls -la` and `git status`, denied**, in a
-package that has no way to know a session exists. Every snapshot builder in the
-deployment inherits that, not only the ones this slice touched.
+on it is empty, so the tracked file is byte-identical to what is committed.
+
+**Read that capture carefully, because it shows one denial and not two.** The mutated test
+is a loop over `["ls -la", "git status"]` with one assertion per iteration. `ls -la` was
+evaluated and came back `deny`; the assertion on it threw, which left the loop, so
+**`git status` was never evaluated in that run at all**. The `expect() calls` line is where
+that is legible rather than inferred: the clean run reports `17`, this one reports `16`, and
+the missing one is precisely the second iteration. `git status` denies too — the gate probe
+above shows an unlabelled benign command denying, by mechanism — but this capture is not
+what shows it, and a run's own numbers should be readable against its own claim.
+
+So what the failure shows is the shape of the cost: **a benign `ls -la`, denied**, in a
+package that has no way to know a session exists. Every snapshot builder in the deployment
+inherits that, not only the ones this slice touched.
 
 ## U22 reads the chain, and tells a broken one from a whole one
 

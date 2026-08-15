@@ -378,7 +378,11 @@ defines `provenance_id`, `origin`, `source_id` and `derived_from`, and no member
 sensitivity label could be read from. That object is what `hooks/tool-call-request.json`
 `$ref`s from every argument, so even a deployment running the full ACS-Provenance profile —
 provenance required on every argument, `provenance_producer: deterministic` — has nothing
-on the wire to read a first IFC label out of. AGT does not supply one either: it propagates
+on the wire to read a first IFC label out of. The near-miss is worth naming so nobody has to
+rediscover it: that schema's own `description` reserves an OPTIONAL `trust` enum for
+vendor implementations, which "extend this schema rather than rely on v0.1 to validate the
+field" — so `trust` is absent from `properties`, is validated by nothing in v0.1.0, and is
+a vendor extension rather than a field a conforming consumer could read a label from. AGT does not supply one either: it propagates
 what it is given and originates nothing (`propagated_labels(labels)` returns `[]` for an
 empty input), which is the delegation R8.1 is about. So V6's Guardian seeds each session at
 `["public"]`, the lattice floor, and says so. **This resolves exactly as V3's drift score
@@ -430,9 +434,12 @@ gate on makes `input.ifc.source_labels` a required member of every snapshot in t
 deployment**, including for callers with no session concept at all.
 `packages/agt-bridge/test/bridge.test.ts` predates every part of this slice, builds
 snapshots by hand, and knows nothing about sessions; it now spreads a `publicLabel` into
-them and says why in its own comment. Measured by deleting that spread from one test:
-`ls -la` and `git status` come back `deny`. Every snapshot builder in a deployment inherits
-this, not only the ones that have a session to draw a label from.
+them and says why in its own comment. Measured by deleting that spread from one test: a
+benign `ls -la` comes back `deny`. The `git status` behind it in the same loop was never
+reached — the first assertion threw, which is visible in that run's own `16 expect() calls`
+against the clean run's `17` — so it is denied by the same mechanism the gate probe shows
+rather than by anything that capture measured. Every snapshot builder in a deployment
+inherits this, not only the ones that have a session to draw a label from.
 
 **⚠️ Risk row 13's `seq` duplicate was not a dependency of this slice — the expectation was
 checked and did not hold.** Row 13 says a per-session monotonic sequence "would need the
