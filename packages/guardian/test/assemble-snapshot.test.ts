@@ -300,8 +300,18 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   // mapping.yaml names for this method, and the stock redact rule fires. It
   // also proves the synthesized tool_call.name is doing its job -- without it
   // AGT answers deny/runtime_error:path_missing instead of a transform.
+  //
+  // NOT `NO_SESSION_STATE` (Task 4, fix round 3): this is the one test in
+  // this file that actually reaches AGT's live IFC config through the real
+  // bridge, so it needs the label the Guardian's own session seed would
+  // have supplied. IFC deny outranks every other gate in
+  // `agt_default.rego`'s severity ranking (its own header: "IFC deny >
+  // confidence deny > budget deny > content_hash deny > egress deny >
+  // pattern deny > drift warn > allow"), so a zero-label snapshot here would
+  // deny with `ifc_clearance_violation` before the redact rule this test is
+  // actually about ever runs.
   it("feeds a secret-bearing output through the real AGT bridge and gets the redaction transform", async () => {
-    const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope(), NO_SESSION_STATE);
+    const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope(), { sourceLabels: ["public"] });
     const bridge = createBridge("policy/manifest.yaml");
 
     const verdict = await bridge.evaluate("post_tool_call", snapshot);

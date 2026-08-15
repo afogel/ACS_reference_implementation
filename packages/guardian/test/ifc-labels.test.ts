@@ -3,9 +3,14 @@ import { createMemorySessionContextStore } from "../src/session-context-store.ts
 import { persistIfcLabels, supplySourceLabels } from "../src/ifc-labels.ts";
 
 describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates", () => {
-  it("supplies an empty list for a session that has none", () => {
+  // Renamed from "supplies an empty list for a session that has none" (Task
+  // 4, fix round 2): a fresh session now reports the lattice floor, not `[]`
+  // -- `emptySessionContext` seeds `ifc_labels: ["public"]`
+  // (packages/guardian/src/session-context.ts), because AGT's own IFC gate
+  // denies a zero-label flow outright.
+  it("supplies the seeded floor for a session that has none", () => {
     const store = createMemorySessionContextStore();
-    expect(supplySourceLabels(store, "sess-a")).toEqual([]);
+    expect(supplySourceLabels(store, "sess-a")).toEqual(["public"]);
   });
 
   it("gives back at the next step what AGT emitted at this one", () => {
@@ -38,7 +43,9 @@ describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates
   it("keeps two sessions' labels apart", () => {
     const store = createMemorySessionContextStore();
     persistIfcLabels(store, "sess-a", ["secret"]);
-    expect(supplySourceLabels(store, "sess-b")).toEqual([]);
+    // The lattice floor, not `[]` (Task 4, fix round 2) -- sess-b has no
+    // history of its own, so it reads back the seed.
+    expect(supplySourceLabels(store, "sess-b")).toEqual(["public"]);
   });
 
   it("hands back a copy, so a caller cannot edit the store through it", () => {

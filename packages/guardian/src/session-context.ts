@@ -105,7 +105,7 @@ export function hashEntry(input: Omit<SessionContextEntry, "hash">): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
-/** A session with no history yet: no intent, no entries, no labels. */
+/** A session with no history yet: no intent, no entries, and its labels at the lattice floor. */
 export function emptySessionContext(sessionId: string): SessionContext {
   return {
     session_id: sessionId,
@@ -119,7 +119,15 @@ export function emptySessionContext(sessionId: string): SessionContext {
       provenance_id: `acs:session:${sessionId}`,
       origin: "system",
       source_id: "acs.guardian",
-      ifc_labels: [],
+      // The lattice floor, and the deployment-supplied first label this slice
+      // exists to demonstrate the need for. ACS v0.1.0 carries no label field
+      // (`spec/acs/specification/v0.1.0/provenance.json` defines
+      // provenance_id/origin/source_id/derived_from and nothing a sensitivity
+      // could be read from), and AGT's gate denies a zero-label flow outright
+      // rather than waving it through: `flow_allowed` in
+      // `policy/lib/agt_ifc.rego` requires `count(labels) > 0`. A session with
+      // no seed is therefore a session that can do nothing at all.
+      ifc_labels: ["public"],
     },
   };
 }

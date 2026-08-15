@@ -8,12 +8,28 @@ const snapshotFor = (command: string) => ({
   tool_call: { name: "run_shell", args: { command }, id: "t1" },
 });
 
+// The label the Guardian's own session seed would have supplied (Task 4, fix
+// round 3), spread into `snapshotFor`'s result only where a test evaluates
+// against `policy/manifest.yaml`'s live IFC config and checks more than
+// `.decision`. AGT's severity ranking checks IFC first -- ahead of
+// confidence, budgets, content_hash, egress, and pattern
+// (policy/lib/agt_default.rego's header: "IFC deny > confidence deny >
+// budget deny > content_hash deny > egress deny > pattern deny > drift warn
+// > allow") -- so an unlabelled snapshot no longer reaches the rule below
+// that ranking a test is actually about; it denies with
+// `ifc_clearance_violation` instead. Added at the two call sites that
+// measurably needed it, not inside `snapshotFor` itself: that helper's own
+// key set is asserted verbatim by "a caller that never touches createBridge
+// can satisfy the role too" below, and widening it there would have broken
+// an unrelated, currently-passing test for no reason connected to IFC.
+const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
+
 let bridge: PolicyBridge;
 beforeAll(() => { bridge = createBridge("policy/manifest.yaml"); });
 
 describe("agt-bridge", () => {
   it("denies a destructive shell command using the stock bundle", async () => {
-    const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
+    const verdict = await bridge.evaluate("pre_tool_call", { ...snapshotFor("rm -rf /"), ...publicLabel });
     expect(verdict.decision).toBe("deny");
     expect(verdict.reason).toBe("destructive_shell_command_blocked");
     expect(verdict.message).toContain("matched pattern");
@@ -26,7 +42,7 @@ describe("agt-bridge", () => {
 
   it("allows benign commands", async () => {
     for (const cmd of ["ls -la", "git status"]) {
-      expect((await bridge.evaluate("pre_tool_call", snapshotFor(cmd))).decision).toBe("allow");
+      expect((await bridge.evaluate("pre_tool_call", { ...snapshotFor(cmd), ...publicLabel })).decision).toBe("allow");
     }
   });
 

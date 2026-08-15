@@ -12,6 +12,9 @@
         "redact": {
           "patterns": ["ghp_[A-Za-z0-9]{6,}", "AKIA[0-9A-Z]{16}"],
           "replacement": "[REDACTED]"
+        },
+        "ifc": {
+          "sink_clearance": "confidential"
         }
       }
     }

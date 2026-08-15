@@ -9,6 +9,17 @@ import { createBridge } from "../packages/agt-bridge/src/index.ts";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
+// The label the Guardian's own session seed would have supplied (Task 4, fix
+// round 3). AGT's own severity ranking checks IFC first -- ahead of
+// confidence, budgets, content_hash, egress, and pattern
+// (policy/lib/agt_default.rego's header: "IFC deny > confidence deny >
+// budget deny > content_hash deny > egress deny > pattern deny > drift warn
+// > allow") -- so a hand-built snapshot with no labels at all no longer
+// exercises the rule each of these tests is actually about; it denies with
+// `ifc_clearance_violation` instead, before the redaction/pattern rule below
+// it ever runs. This is what every Guardian-assembled snapshot now carries
+// (packages/guardian/src/assemble-snapshot.ts), so it belongs here too.
+const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
 
 describe("the shipped bundle redacts at the result gate", () => {
   it("returns a transform carrying the fully substituted output", async () => {
@@ -17,6 +28,7 @@ describe("the shipped bundle redacts at the result gate", () => {
       envelope: budgets,
       tool_call: { name: "Bash" },
       tool_result: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] },
+      ...publicLabel,
     });
     expect(verdict).toEqual({
       decision: "transform",
@@ -45,8 +57,16 @@ describe("the shipped bundle redacts at the result gate", () => {
       envelope: budgets,
       tool_call: { name: "Bash" },
       tool_result: { outputs: [{ value: "hello world" }] },
+      ...publicLabel,
     });
-    expect(verdict).toEqual({ decision: "allow" });
+    // `result_labels: ["public"]` rides along now (measured, Task 4 fix round
+    // 3): no deny/transform/warn rule fires, so `agt_default.rego`'s severity
+    // chain falls through to its own last "else" clause -- ifc_verdict's
+    // allow, carrying whatever it propagated -- rather than the bare
+    // `default verdict := {"decision": "allow"}`. A real, load-bearing
+    // consequence of the gate being live and the snapshot carrying a label,
+    // not a redaction-rule change.
+    expect(verdict).toEqual({ decision: "allow", result_labels: ["public"] });
   });
 
   // The pre-tool gate must be untouched by adding a point below it in the
@@ -57,6 +77,7 @@ describe("the shipped bundle redacts at the result gate", () => {
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash", args: { command: "rm -rf / " } },
+      ...publicLabel,
     });
     expect(verdict.decision).toBe("deny");
     expect(verdict.reason).toBe("destructive_shell_command_blocked");

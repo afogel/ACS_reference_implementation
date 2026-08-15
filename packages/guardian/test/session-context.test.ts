@@ -49,7 +49,10 @@ describe("SessionContext — the hash chain (S3)", () => {
     const context = loadSessionContext(store, "never-seen");
     expect(context.entries).toEqual([]);
     expect(context.intent).toBeUndefined();
-    expect(context.provenance.ifc_labels).toEqual([]);
+    // The lattice floor, not `[]` (Task 4, fix round 2): `emptySessionContext`
+    // seeds a fresh session at `["public"]`, because AGT's own IFC gate denies
+    // a zero-label flow outright.
+    expect(context.provenance.ifc_labels).toEqual(["public"]);
   });
 
   it("replaces the provenance record put on it, ifc_labels and all", () => {
