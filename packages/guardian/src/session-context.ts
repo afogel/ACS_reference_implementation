@@ -34,10 +34,25 @@ import { createHash } from "node:crypto";
  */
 export type IfcLabels = readonly string[];
 
+/**
+ * `origin`'s seven values, as `spec/acs/specification/v0.1.0/provenance.json`
+ * enumerates them. A union rather than `string`, so a value outside the
+ * spec's enum is a compile error here rather than a schema failure wherever
+ * this record is eventually read.
+ */
+export type ProvenanceOrigin =
+  | "user_input"
+  | "system"
+  | "tool_output"
+  | "retrieved"
+  | "agent_generated"
+  | "a2a_inbound"
+  | "external";
+
 /** ACS `Provenance` as v0.1.0 defines it, plus the one field carrying AGT's labels. */
 export type Provenance = {
   provenance_id: string;
-  origin: string;
+  origin: ProvenanceOrigin;
   source_id?: string;
   derived_from?: readonly string[];
   /** AGT's labels. A field ON the provenance record, not a redefinition of it. */
@@ -96,6 +111,15 @@ export function emptySessionContext(sessionId: string): SessionContext {
     session_id: sessionId,
     intent: undefined,
     entries: [],
-    provenance: { provenance_id: `acs:session:${sessionId}`, origin: "acs.guardian", ifc_labels: [] },
+    // `origin` names where data entered the system, and this record is one the
+    // Guardian synthesizes to hold a session's labels -- so "system", with the
+    // Guardian named in `source_id`, which is the member the spec gives for
+    // "identifier within the origin".
+    provenance: {
+      provenance_id: `acs:session:${sessionId}`,
+      origin: "system",
+      source_id: "acs.guardian",
+      ifc_labels: [],
+    },
   };
 }

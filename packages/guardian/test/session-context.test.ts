@@ -51,6 +51,19 @@ describe("SessionContext — the hash chain (S3)", () => {
     expect(context.intent).toBeUndefined();
     expect(context.provenance.ifc_labels).toEqual([]);
   });
+
+  it("replaces the provenance record put on it, ifc_labels and all", () => {
+    const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
+    store.putProvenance("sess-a", {
+      provenance_id: "acs:external:doc-1",
+      origin: "tool_output",
+      ifc_labels: ["pii", "confidential"],
+    });
+    const context = loadSessionContext(store, "sess-a");
+    expect(context.provenance.provenance_id).toBe("acs:external:doc-1");
+    expect(context.provenance.origin).toBe("tool_output");
+    expect(context.provenance.ifc_labels).toEqual(["pii", "confidential"]);
+  });
 });
 
 describe("Intent (S4) — immutable baseline per session", () => {
