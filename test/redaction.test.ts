@@ -9,8 +9,8 @@ import { createBridge } from "../packages/agt-bridge/src/index.ts";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
-// The label the Guardian's own session seed would have supplied (Task 4, fix
-// round 3). AGT's own severity ranking checks IFC first -- ahead of
+// The label the Guardian's own session seed would have supplied. AGT's own
+// severity ranking checks IFC first -- ahead of
 // confidence, budgets, content_hash, egress, and pattern
 // (policy/lib/agt_default.rego's header: "IFC deny > confidence deny >
 // budget deny > content_hash deny > egress deny > pattern deny > drift warn
@@ -59,8 +59,8 @@ describe("the shipped bundle redacts at the result gate", () => {
       tool_result: { outputs: [{ value: "hello world" }] },
       ...publicLabel,
     });
-    // `result_labels: ["public"]` rides along now (measured, Task 4 fix round
-    // 3): no deny/transform/warn rule fires, so `agt_default.rego`'s severity
+    // `result_labels: ["public"]` rides along now (measured): no
+    // deny/transform/warn rule fires, so `agt_default.rego`'s severity
     // chain falls through to its own last "else" clause -- ifc_verdict's
     // allow, carrying whatever it propagated -- rather than the bare
     // `default verdict := {"decision": "allow"}`. A real, load-bearing

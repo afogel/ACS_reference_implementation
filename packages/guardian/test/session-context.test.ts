@@ -49,9 +49,9 @@ describe("SessionContext — the hash chain (S3)", () => {
     const context = loadSessionContext(store, "never-seen");
     expect(context.entries).toEqual([]);
     expect(context.intent).toBeUndefined();
-    // The lattice floor, not `[]` (Task 4, fix round 2): `emptySessionContext`
-    // seeds a fresh session at `["public"]`, because AGT's own IFC gate denies
-    // a zero-label flow outright.
+    // The lattice floor, not `[]`: `emptySessionContext` seeds a fresh
+    // session at `["public"]`, because AGT's own IFC gate denies a
+    // zero-label flow outright.
     expect(context.provenance.ifc_labels).toEqual(["public"]);
   });
 

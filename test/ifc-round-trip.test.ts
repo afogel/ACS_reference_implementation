@@ -70,8 +70,8 @@ describe("the IFC round trip, on the shipped bundle", () => {
     expect(verdict.result_labels).toEqual(["confidential"]);
   });
 
-  // A fresh session starts at the lattice floor (Task 4, fix round 2), not at
-  // `[]` -- `emptySessionContext` seeds `ifc_labels: ["public"]`
+  // A fresh session starts at the lattice floor, not at `[]` --
+  // `emptySessionContext` seeds `ifc_labels: ["public"]`
   // (packages/guardian/src/session-context.ts) because AGT's own gate denies
   // a zero-label flow outright (the next test measures exactly that), so an
   // unseeded session could do nothing at all.
@@ -100,19 +100,19 @@ describe("the IFC round trip, on the shipped bundle", () => {
     expect(verdict.reason).toBe("ifc_clearance_violation");
   });
 
-  // The precedence property Task 4's fix round 3 fixtures depend on, pinned
-  // rather than assumed. `agt_default.rego`'s own header states the
-  // combination order: "consults each one in priority order: IFC deny >
-  // confidence deny > budget deny > content_hash deny > egress deny >
+  // The precedence property the label-free fixtures elsewhere in this suite
+  // depend on, pinned rather than assumed. `agt_default.rego`'s own header
+  // states the combination order: "consults each one in priority order: IFC
+  // deny > confidence deny > budget deny > content_hash deny > egress deny >
   // pattern deny > drift warn > allow" -- IFC deny outranks every other
   // gate, so a labelled snapshot that ALSO trips the pattern rule must
   // still deny for the pattern's own reason, not for IFC's: IFC has to
   // allow the flow (the seeded "public" label is dominated by this
   // deployment's "confidential" clearance) before the pattern check ever
-  // runs. Without this test, giving the six fixtures elsewhere in this
-  // suite a `["public"]` label would be indistinguishable from silencing
-  // them -- this is what proves the gates still compose once a label is
-  // present, not just that adding one makes a denial go away.
+  // runs. Without this test, giving those fixtures a `["public"]` label
+  // would be indistinguishable from silencing them -- this is what proves
+  // the gates still compose once a label is present, not just that adding
+  // one makes a denial go away.
   it("still reaches the pattern gate once IFC allows the flow -- a labelled destructive command denies for the pattern's own reason", async () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {

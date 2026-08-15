@@ -1243,9 +1243,8 @@ describe("session state end to end (V6)", () => {
     }
     const first = seen[0] as { input: { ifc: { source_labels: string[] } } };
     const second = seen[1] as { input: { ifc: { source_labels: string[] } } };
-    // The lattice floor, not `[]` (Task 4, fix round 2) -- the first step's
-    // snapshot carries this session's seed, since nothing has persisted a
-    // verdict's labels yet.
+    // The lattice floor, not `[]` -- the first step's snapshot carries this
+    // session's seed, since nothing has persisted a verdict's labels yet.
     expect(first.input.ifc.source_labels).toEqual(["public"]);
     expect(second.input.ifc.source_labels).toEqual(["confidential"]);
   });
@@ -1265,8 +1264,8 @@ describe("session state end to end (V6)", () => {
       // entirely -- there would be nothing anywhere to tell A and B apart.
       expect(supplySourceLabels(store, sessionA)).toEqual(["secret"]);
       expect(loadSessionContext(store, sessionA).entries).toHaveLength(1);
-      // The lattice floor, not `[]` (Task 4, fix round 2) -- session B was
-      // never posted to, so it reads back its seed rather than an empty set.
+      // The lattice floor, not `[]` -- session B was never posted to, so it
+      // reads back its seed rather than an empty set.
       expect(supplySourceLabels(store, sessionB)).toEqual(["public"]);
       expect(loadSessionContext(store, sessionB).entries).toEqual([]);
     } finally {
