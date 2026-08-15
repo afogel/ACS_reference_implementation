@@ -25,15 +25,18 @@
  */
 import { tailAuditLog, type AuditEntry } from "./tail-audit-log.ts";
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";
+import { tailSessionContextLog, type SessionContextLogEntry } from "./tail-session-context.ts";
 import {
   renderAuditEntry,
   renderEnvelopeLogEntry,
   renderPostureBadge,
+  renderSessionChain,
   type PostureBadgeState,
 } from "./render.ts";
 
 const DEFAULT_ENVELOPE_LOG = ".acs/envelopes.jsonl";
 const DEFAULT_AUDIT_LOG = ".acs/audit.jsonl";
+const DEFAULT_SESSION_CONTEXT_LOG = ".acs/session-context.jsonl";
 
 function flagValue(argv: string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
@@ -51,11 +54,17 @@ const fromStart = argv.includes("--from-start");
 // thing.
 const envelopeLogFlag = flagValue(argv, "--envelope-log");
 const auditLogFlag = flagValue(argv, "--audit-log");
+const sessionContextLogFlag = flagValue(argv, "--session-context-log");
 
-for (const [flag, value] of [["--envelope-log", envelopeLogFlag] as const, ["--audit-log", auditLogFlag] as const]) {
+for (const [flag, value] of [
+  ["--envelope-log", envelopeLogFlag] as const,
+  ["--audit-log", auditLogFlag] as const,
+  ["--session-context-log", sessionContextLogFlag] as const,
+]) {
   if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
     console.error(
-      "usage: bun run inspector -- [--from-start] [--envelope-log <envelope log>] [--audit-log <audit log>]",
+      "usage: bun run inspector -- [--from-start] [--envelope-log <envelope log>] [--audit-log <audit log>] " +
+        "[--session-context-log <session context log>]",
     );
     process.exit(2);
   }
@@ -63,12 +72,17 @@ for (const [flag, value] of [["--envelope-log", envelopeLogFlag] as const, ["--a
 
 const path = envelopeLogFlag ?? process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 const auditPath = auditLogFlag ?? process.env.ACS_AUDIT_LOG ?? DEFAULT_AUDIT_LOG;
+const sessionContextPath =
+  sessionContextLogFlag ?? process.env.ACS_SESSION_CONTEXT_LOG ?? DEFAULT_SESSION_CONTEXT_LOG;
 const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());
 
-console.log(`Envelope Inspector — tailing ${path} and ${auditPath}${fromStart ? " (from the start)" : ""}`);
+console.log(
+  `Envelope Inspector — tailing ${path}, ${auditPath}, and ${sessionContextPath}` +
+    `${fromStart ? " (from the start)" : ""}`,
+);
 console.log("Ctrl-C to stop.\n");
 
 let badgeState: PostureBadgeState = { posture: null, proceeds: 0 };
@@ -109,4 +123,28 @@ async function pumpAuditLog(): Promise<void> {
   }
 }
 
-await Promise.all([pumpEnvelopeLog(), pumpAuditLog()]);
+// Every S3 entry seen so far, in the order tailSessionContextLog yielded
+// them -- kept around because renderSessionChain (U22) checks a row against
+// its session's own predecessor, which can be several entries back once
+// other sessions' rows have interleaved (see tail-session-context.ts's
+// module doc). Re-rendering the whole accumulated chain on each new entry
+// and printing only its own row -- the last line of that render -- is what
+// lets each printed row still carry a correct chain-break marker without
+// reprinting every row that came before it.
+let sessionChain: SessionContextLogEntry[] = [];
+
+function noteSessionContextEntry(entry: SessionContextLogEntry): void {
+  sessionChain = [...sessionChain, entry];
+  const rendered = renderSessionChain(sessionChain, { color });
+  const rows = rendered.split("\n");
+  console.log(rows[rows.length - 1]);
+  console.log("");
+}
+
+async function pumpSessionContextLog(): Promise<void> {
+  for await (const entry of tailSessionContextLog({ path: sessionContextPath, fromStart, signal: controller.signal })) {
+    noteSessionContextEntry(entry);
+  }
+}
+
+await Promise.all([pumpEnvelopeLog(), pumpAuditLog(), pumpSessionContextLog()]);

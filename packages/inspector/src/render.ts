@@ -25,6 +25,7 @@
  */
 import type { AuditEntry } from "./tail-audit-log.ts";
 import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
+import type { SessionContextLogEntry } from "./tail-session-context.ts";
 
 export type RenderOptions = { color?: boolean; indent?: number };
 
@@ -357,4 +358,51 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
       : [paint(`session_failure=${entry.session_failure.kind}: ${entry.session_failure.message}`, DIM, color)];
 
   return [header, failureLine, ...sessionLine].join("\n");
+}
+
+/** How many leading characters of a `SessionContextEntry` hash `renderSessionChain`
+ * prints on a row -- an abbreviation for a human's eye, not the value a chain
+ * check compares. The check below always compares the two full 64-character
+ * hex digests; only the printed text is shortened. */
+const SHORT_HASH_LENGTH = 12;
+
+/**
+ * U22. One row per S3 entry, in the order given -- the same order
+ * `tailSessionContextLog` yields them in, which is file order rather than
+ * any global ordering by `seq` (see that module's doc: one log interleaves
+ * every session the Guardian has seen).
+ *
+ * A row is marked broken when its `prev_hash` does not match the `hash` of
+ * the entry immediately before it FOR THE SAME `session_id` -- tracked here
+ * with a running per-session map, not by comparing to the previous array
+ * element, because the previous element can belong to a different session
+ * entirely (see tail-session-context.ts's module doc, "ONE FILE, MANY
+ * SESSIONS"). An entry that is the first one seen for its session in the
+ * given list is never marked broken: there is nothing in the list yet to
+ * compare its `prev_hash` against.
+ *
+ * The whole reason this view exists is that the chain is checkable, not
+ * merely printable -- a renderer that showed every row unmarked regardless
+ * of whether it actually linked to its predecessor would be a panel that
+ * looks like evidence and is not.
+ */
+export function renderSessionChain(entries: SessionContextLogEntry[], options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+  if (entries.length === 0) {
+    return "(no session chain entries)";
+  }
+
+  const lastHashSeenBySession = new Map<string, string>();
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const priorHash = lastHashSeenBySession.get(entry.session_id);
+    const broken = priorHash !== undefined && priorHash !== entry.prev_hash;
+    lastHashSeenBySession.set(entry.session_id, entry.hash);
+
+    const row =
+      `#${entry.seq}  ${entry.tool_name}  hash=${entry.hash.slice(0, SHORT_HASH_LENGTH)}  ` +
+      `session=${entry.session_id}`;
+    lines.push(broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row);
+  }
+  return lines.join("\n");
 }
