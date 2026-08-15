@@ -367,42 +367,72 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
 const SHORT_HASH_LENGTH = 12;
 
 /**
+ * The per-session state a chain-break check needs: the `hash` of the last
+ * entry seen so far for each `session_id`. `renderSessionChain` builds one
+ * of these itself and throws it away when the whole array has been walked;
+ * a caller that renders one entry at a time as they arrive -- U22's own
+ * live view in packages/inspector/src/main.ts -- keeps one of these across
+ * calls instead, so the check does not have to be re-run over the whole
+ * history on every new entry.
+ */
+export type SessionChainState = { lastHashSeenBySession: Map<string, string> };
+
+/** A fresh, empty `SessionChainState` -- no session has a last-seen hash yet. */
+export function createSessionChainState(): SessionChainState {
+  return { lastHashSeenBySession: new Map() };
+}
+
+/**
+ * U22's row, and the only place that decides whether one is broken.
+ * `renderSessionChain` calls this once per entry, in array order, against
+ * state it owns for the duration of that one call; `main.ts`'s live view
+ * calls it directly, once per entry as it is tailed, against state it keeps
+ * for the life of the process -- so the two never compute "is this row
+ * broken" two different ways.
+ *
+ * A row is marked broken when its `prev_hash` does not match the `hash` of
+ * the entry seen immediately before it FOR THE SAME `session_id` -- read out
+ * of `state`, not out of whatever entry came immediately before this one in
+ * some caller's array, because that entry can belong to a different session
+ * entirely (see tail-session-context.ts's module doc, "ONE FILE, MANY
+ * SESSIONS"). An entry that is the first one this `state` has seen for its
+ * session is never marked broken: there is nothing recorded yet to compare
+ * its `prev_hash` against.
+ *
+ * The whole reason this view exists is that the chain is checkable, not
+ * merely printable -- a row that read as unbroken regardless of whether it
+ * actually linked to its predecessor would be evidence that looks like
+ * evidence and is not.
+ */
+export function renderSessionChainRow(
+  entry: SessionContextLogEntry,
+  state: SessionChainState,
+  options: RenderOptions = {},
+): string {
+  const color = options.color ?? false;
+  const priorHash = state.lastHashSeenBySession.get(entry.session_id);
+  const broken = priorHash !== undefined && priorHash !== entry.prev_hash;
+  state.lastHashSeenBySession.set(entry.session_id, entry.hash);
+
+  const row =
+    `#${entry.seq}  ${entry.tool_name}  hash=${entry.hash.slice(0, SHORT_HASH_LENGTH)}  ` +
+    `session=${entry.session_id}`;
+  return broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row;
+}
+
+/**
  * U22. One row per S3 entry, in the order given -- the same order
  * `tailSessionContextLog` yields them in, which is file order rather than
  * any global ordering by `seq` (see that module's doc: one log interleaves
- * every session the Guardian has seen).
- *
- * A row is marked broken when its `prev_hash` does not match the `hash` of
- * the entry immediately before it FOR THE SAME `session_id` -- tracked here
- * with a running per-session map, not by comparing to the previous array
- * element, because the previous element can belong to a different session
- * entirely (see tail-session-context.ts's module doc, "ONE FILE, MANY
- * SESSIONS"). An entry that is the first one seen for its session in the
- * given list is never marked broken: there is nothing in the list yet to
- * compare its `prev_hash` against.
- *
- * The whole reason this view exists is that the chain is checkable, not
- * merely printable -- a renderer that showed every row unmarked regardless
- * of whether it actually linked to its predecessor would be a panel that
- * looks like evidence and is not.
+ * every session the Guardian has seen). Each row is `renderSessionChainRow`,
+ * called against one `SessionChainState` shared across the whole walk, so a
+ * chain break is checked the same way here as it is by a caller rendering
+ * one entry at a time.
  */
 export function renderSessionChain(entries: SessionContextLogEntry[], options: RenderOptions = {}): string {
-  const color = options.color ?? false;
   if (entries.length === 0) {
     return "(no session chain entries)";
   }
-
-  const lastHashSeenBySession = new Map<string, string>();
-  const lines: string[] = [];
-  for (const entry of entries) {
-    const priorHash = lastHashSeenBySession.get(entry.session_id);
-    const broken = priorHash !== undefined && priorHash !== entry.prev_hash;
-    lastHashSeenBySession.set(entry.session_id, entry.hash);
-
-    const row =
-      `#${entry.seq}  ${entry.tool_name}  hash=${entry.hash.slice(0, SHORT_HASH_LENGTH)}  ` +
-      `session=${entry.session_id}`;
-    lines.push(broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row);
-  }
-  return lines.join("\n");
+  const state = createSessionChainState();
+  return entries.map((entry) => renderSessionChainRow(entry, state, options)).join("\n");
 }

@@ -27,10 +27,11 @@ import { tailAuditLog, type AuditEntry } from "./tail-audit-log.ts";
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";
 import { tailSessionContextLog, type SessionContextLogEntry } from "./tail-session-context.ts";
 import {
+  createSessionChainState,
   renderAuditEntry,
   renderEnvelopeLogEntry,
   renderPostureBadge,
-  renderSessionChain,
+  renderSessionChainRow,
   type PostureBadgeState,
 } from "./render.ts";
 
@@ -123,21 +124,21 @@ async function pumpAuditLog(): Promise<void> {
   }
 }
 
-// Every S3 entry seen so far, in the order tailSessionContextLog yielded
-// them -- kept around because renderSessionChain (U22) checks a row against
-// its session's own predecessor, which can be several entries back once
-// other sessions' rows have interleaved (see tail-session-context.ts's
-// module doc). Re-rendering the whole accumulated chain on each new entry
-// and printing only its own row -- the last line of that render -- is what
-// lets each printed row still carry a correct chain-break marker without
-// reprinting every row that came before it.
-let sessionChain: SessionContextLogEntry[] = [];
+// Carried across every call, for the life of the process -- U22's
+// chain-break check (renderSessionChainRow, render.ts) needs to know the
+// last hash seen for a row's own session, which can be several entries back
+// once other sessions' rows have interleaved (see tail-session-context.ts's
+// module doc). Kept here rather than re-derived from an accumulated array of
+// every entry seen so far: that would mean re-walking the whole history on
+// every new entry, and would mean extracting the newest row by splitting
+// rendered text on "\n" -- which a `tool_name` or other logged field
+// containing a literal newline (valid in a JSON string) would misalign.
+// `renderSessionChainRow` returns one row as one value; nothing here ever
+// splits or rejoins rendered text.
+const sessionChainState = createSessionChainState();
 
 function noteSessionContextEntry(entry: SessionContextLogEntry): void {
-  sessionChain = [...sessionChain, entry];
-  const rendered = renderSessionChain(sessionChain, { color });
-  const rows = rendered.split("\n");
-  console.log(rows[rows.length - 1]);
+  console.log(renderSessionChainRow(entry, sessionChainState, { color }));
   console.log("");
 }
 

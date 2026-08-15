@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tailSessionContextLog, type SessionContextLogEntry } from "../src/tail-session-context.ts";
-import { renderSessionChain } from "../src/render.ts";
+import { createSessionChainState, renderSessionChain, renderSessionChainRow } from "../src/render.ts";
 
 const POLL_MS = 10;
 const GENESIS_HASH = "0".repeat(64);
@@ -28,6 +28,23 @@ function entryLine(seq: number, overrides: Partial<SessionContextLogEntry> = {})
     ...overrides,
   };
   return `${JSON.stringify(entry)}\n`;
+}
+
+/** Same fixture shape as `entryLine`, but the object itself -- for the
+ * `renderSessionChain`/`renderSessionChainRow` tests below, which render
+ * entries directly rather than tailing them from a file. */
+function sessionEntry(overrides: Partial<SessionContextLogEntry> = {}): SessionContextLogEntry {
+  return {
+    session_id: "sess-1",
+    seq: 1,
+    prev_hash: GENESIS_HASH,
+    hash: "hash-1",
+    recorded_at: "2026-08-10T12:00:00.000Z",
+    method: "steps/toolCallRequest",
+    request_id: "req-1",
+    tool_name: "run_shell",
+    ...overrides,
+  };
 }
 
 /** Collects `count` entries or rejects after `timeoutMs`, then aborts the
@@ -141,11 +158,16 @@ describe("tailSessionContextLog", () => {
       });
 
       const collecting = collect(tail, 1, controller);
-      appendFileSync(path, '{"not":"a session context entry"}\n' + entryLine(1));
+      // Three different malformed shapes -- each valid JSON, none a valid
+      // SessionContextLogEntry -- mirroring tail-audit-log.test.ts's own
+      // coverage of this branch: a partially-shaped object, a wrong-shape
+      // object, and a bare array. All three are skipped, and the entry
+      // appended after them still arrives.
+      appendFileSync(path, '{"session_id":"sess-1"}\n{"not":"a session context entry"}\n[]\n' + entryLine(1));
 
       const entries = await collecting;
       expect(entries.map((e) => e.seq)).toEqual([1]);
-      expect(malformed).toEqual(['{"not":"a session context entry"}']);
+      expect(malformed).toEqual(['{"session_id":"sess-1"}', '{"not":"a session context entry"}', "[]"]);
     });
   });
 });
@@ -203,8 +225,55 @@ describe("renderSessionChain (U22)", () => {
   });
 
   it("renders an empty chain as an explicit empty state, not a blank panel", () => {
-    const rendered = renderSessionChain([]);
-    expect(rendered.trim().length).toBeGreaterThan(0);
-    expect(rendered).not.toBe("");
+    // The exact text, not merely "non-blank" -- a placeholder string of any
+    // shape would satisfy a non-blank check without actually being the
+    // documented empty state.
+    expect(renderSessionChain([])).toBe("(no session chain entries)");
+  });
+
+  it("does not falsely mark a break when two sessions' rows interleave, though naive adjacent-row comparison would", () => {
+    const sessionAFirst = sessionEntry({ session_id: "sess-A", seq: 1, hash: "hash-a1", request_id: "req-a1" });
+    const sessionBFirst = sessionEntry({ session_id: "sess-B", seq: 1, hash: "hash-b1", request_id: "req-b1" });
+    // Correctly chains to sessionAFirst's hash -- but the row immediately
+    // BEFORE this one in file order is sessionBFirst, not sessionAFirst,
+    // because the two sessions interleave. A check that compared this
+    // entry's prev_hash to the PREVIOUS ARRAY ELEMENT'S hash (naive
+    // adjacent-row comparison -- the exact bug the per-session state in
+    // renderSessionChainRow exists to prevent) would compare "hash-a1"
+    // against sessionBFirst.hash ("hash-b1"), see a mismatch, and report a
+    // false break. The per-session state instead compares it against
+    // sessionAFirst.hash, which it correctly matches.
+    const sessionASecond = sessionEntry({
+      session_id: "sess-A",
+      seq: 2,
+      prev_hash: "hash-a1",
+      hash: "hash-a2",
+      request_id: "req-a2",
+    });
+
+    // File order: A1, B1, A2 -- session A's own two entries are not adjacent.
+    const rendered = renderSessionChain([sessionAFirst, sessionBFirst, sessionASecond]);
+    const lines = rendered.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).not.toContain("CHAIN BREAK");
+    expect(lines[1]).not.toContain("CHAIN BREAK");
+    expect(lines[2]).not.toContain("CHAIN BREAK");
+  });
+
+  it("does not garble a row whose tool_name contains a literal newline, since each row is its own value rather than text split out of a joined string", () => {
+    const state = createSessionChainState();
+    const withNewline = sessionEntry({ hash: "hash-1", tool_name: "run_shell\nrm -rf /" });
+    const next = sessionEntry({ seq: 2, prev_hash: "hash-1", hash: "hash-2", request_id: "req-2" });
+
+    const firstRow = renderSessionChainRow(withNewline, state);
+    const secondRow = renderSessionChainRow(next, state);
+
+    // The embedded newline reaches the row whole -- renderSessionChainRow
+    // never splits or rejoins rendered text, so nothing here can misalign
+    // it the way extracting a row by splitting joined output on "\n" would.
+    expect(firstRow).toContain("run_shell\nrm -rf /");
+    // And it did not corrupt the state carried into the next call: the
+    // second row still reads its own predecessor's hash correctly.
+    expect(secondRow).not.toContain("CHAIN BREAK");
   });
 });
