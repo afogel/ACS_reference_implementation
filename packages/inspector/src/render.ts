@@ -360,10 +360,10 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
   return [header, failureLine, ...sessionLine].join("\n");
 }
 
-/** How many leading characters of a `SessionContextEntry` hash `renderSessionChain`
- * prints on a row -- an abbreviation for a human's eye, not the value a chain
- * check compares. The check below always compares the two full 64-character
- * hex digests; only the printed text is shortened. */
+/** How many leading characters of a `SessionContextLogEntry` hash
+ * `renderSessionChain` prints on a row -- an abbreviation for a human's eye,
+ * not the value a chain check compares. The check below always compares the
+ * two full 64-character hex digests; only the printed text is shortened. */
 const SHORT_HASH_LENGTH = 12;
 
 /**
