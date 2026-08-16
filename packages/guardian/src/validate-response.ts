@@ -12,8 +12,15 @@
  * A ServerHello has no `decision`. So a correct handshake response cannot
  * satisfy the response envelope schema, and a two-answer validator would have
  * to call a correct response invalid or skip it in silence. `unexpressible`
- * says which, and carries the reason into the envelope log where the
- * Inspector renders it. V7's matrix carries the same cell.
+ * says which. server.ts reports it on the same stderr line shape as an
+ * invalid response -- naming the method and this reason -- so the answer is
+ * recorded rather than computed and dropped; it is NOT written into S6, the
+ * envelope log (`envelope-log-sink.ts`). That entry's shape
+ * (`EnvelopeLogEntry`) is another slice's decision to widen, and the
+ * Inspector already reads it -- carrying a validation result onto that wire,
+ * so the Inspector could render it directly instead of an operator reading
+ * stderr, is future work this module does not attempt. V7's matrix carries
+ * the same cell.
  *
  * REPORTS, NEVER THROWS, and never alters the response. This runs on the
  * decision path; a validator that could turn a governed tool call into an
@@ -78,10 +85,14 @@ function isServerHelloResponse(response: unknown): boolean {
 }
 
 export function validateResponse(response: unknown): ResponseValidation {
-  if (isServerHelloResponse(response)) {
-    return { valid: "unexpressible", reason: HANDSHAKE_UNEXPRESSIBLE };
-  }
+  // isServerHelloResponse is inside the try too -- "reports, never throws" is
+  // stated as this function's whole contract, not as a property of the parts
+  // that happen to call into Ajv, so nothing in this body is allowed to sit
+  // outside the one guard that makes the contract true.
   try {
+    if (isServerHelloResponse(response)) {
+      return { valid: "unexpressible", reason: HANDSHAKE_UNEXPRESSIBLE };
+    }
     const validate = getValidator(RESPONSE_ENVELOPE_SCHEMA_ID);
     if (validate(response)) {
       return { valid: true };
@@ -98,7 +109,19 @@ export function validateResponse(response: unknown): ResponseValidation {
     // every other total component on this decision path catches its own
     // failure rather than trusting a caller to: server.ts calls this
     // function with nothing above it left to catch a second throw.
+    //
+    // The message says the check did not run, not that the response is
+    // invalid -- `valid: false` is the only shape this union has for "not
+    // known to satisfy the schema", and server.ts's own report line composes
+    // this message after a fixed prefix (see its comment), so the words here
+    // have to stay true under that composition too: this response was never
+    // checked against response-envelope.json, which is a different fact
+    // from "checked and rejected."
     const message = error instanceof Error ? error.message : String(error);
-    return { valid: false, pointer: "", message: `validateResponse could not check the response: ${message}` };
+    return {
+      valid: false,
+      pointer: "",
+      message: `the response was never checked -- validateResponse's own schema registry failed to build: ${message}`,
+    };
   }
 }

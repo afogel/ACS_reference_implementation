@@ -499,13 +499,33 @@ async function handleAcsRequest(
   }
 
   const validation = validateResponse(response);
-  if (validation.valid === false) {
-    // Reported, not thrown, and the response is sent unchanged: see
-    // validate-response.ts. This is the outbound half of N21, and it must
-    // not be able to turn a governed step into an ungoverned one.
-    console.error(
-      `guardian sent a response that fails response-envelope.json at ${validation.pointer}: ${validation.message}`,
-    );
+  try {
+    // Reported, not thrown, and the response is sent unchanged either way:
+    // see validate-response.ts. This is the outbound half of N21, and it
+    // must not be able to turn a governed step into an ungoverned one.
+    //
+    // "not confirmed to satisfy", not "fails": `validation.message` is true
+    // under two different causes -- a real schema violation, or
+    // validateResponse's own registry failing to build (see its doc
+    // comment) -- and this line has to stay true under either, so it never
+    // asserts the stronger claim itself.
+    if (validation.valid === false) {
+      console.error(
+        `guardian sent a response not confirmed to satisfy response-envelope.json at ${validation.pointer}: ${validation.message}`,
+      );
+    } else if (validation.valid === "unexpressible") {
+      // Recorded, not silently dropped -- v0.1.0 has no schema this method's
+      // response could satisfy (see validate-response.ts), which is not the
+      // same fact as "not confirmed to satisfy" above and gets its own line
+      // rather than being folded into that one.
+      console.error(`guardian sent a response for method ${method} that v0.1.0 cannot express: ${validation.reason}`);
+    }
+  } catch {
+    // A reporting failure (an EPIPE on stderr, say) must not be able to
+    // throw out of handleAcsRequest with nothing above it to catch it --
+    // matching envelope-log-sink.ts / createSessionContextLogAppender's own
+    // guard: total means total, including the reporter that exists only to
+    // report a different total component's own finding.
   }
 
   envelopeLog.write("response", response, method);
