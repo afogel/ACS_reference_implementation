@@ -2,5 +2,6 @@ export { AGT_POINTS, AGT_VERDICTS, everyCell, type CellStatus, type CoverageCell
 export { checkFailureDomains } from "./failure-domains.ts";
 export { canonicalIdentity, checkEnforcedIdentity, identityCells, type IdentityFinding } from "./identity.ts";
 export { checkInterventionPoints } from "./intervention-points.ts";
-export { renderMappingTable } from "./render.ts";
+export { mergeCells } from "./merge-cells.ts";
+export { renderCoverageMatrix, renderMappingTable, type RenderOptions } from "./render.ts";
 export { checkVerdicts, invertVerdicts } from "./verdicts.ts";

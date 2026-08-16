@@ -23,6 +23,28 @@
  * renders the same input twice and expects the same string.
  */
 import type { Mapping } from "guardian";
+import type { CellStatus, CoverageCell } from "./cells.ts";
+
+/** Colour is opt-in, matching this repository's other renderer
+ * (`packages/inspector/src/render.ts`'s own `RenderOptions`): a caller
+ * passes `color: true` for a terminal, and every test in this package
+ * asserts the plain, uncoloured string. `indent` has no analogue here --
+ * none of this file's renderers pretty-print JSON -- so the type carries
+ * only what they use.
+ *
+ * SHARED ACROSS THIS FILE'S RENDERERS, deliberately placed here rather than
+ * beside `renderCoverageMatrix`: `renderMappingTable` above does not use it,
+ * but N52's `renderTraceRows` will, and the next implementer should find
+ * this in one place rather than pulled out of whichever renderer happened
+ * to need it first. */
+export type RenderOptions = { color?: boolean };
+
+const RESET = "[0m";
+const YELLOW = "[33m";
+
+function paint(text: string, color: string | null, enabled: boolean): string {
+  return enabled && color !== null ? `${color}${text}${RESET}` : text;
+}
 
 /** One row of `Mapping["intervention_points"]` -- read off the type rather
  * than redeclared, so this file cannot drift from what `guardian` actually
@@ -88,5 +110,151 @@ export function renderMappingTable(mapping: Mapping): string {
     "",
     "AGT verdict -> ACS decision (mapping.yaml: verdicts)",
     ...verdicts,
+  ].join("\n");
+}
+
+/** One glyph per `CellStatus` (`cells.ts`) -- no fourth member, no default,
+ * so every cell renders something and `Record` makes a missing entry a
+ * compile error rather than an unmarked cell. */
+const STATUS_SYMBOL: Record<CellStatus, string> = {
+  expressed: "✔",
+  guardian_only: "◐",
+  unexpressed: "✖",
+};
+
+/**
+ * Only `guardian_only` is painted, and only that one, when colour is on.
+ * `expressed` and `unexpressed` are deliberately left plain even with
+ * `color: true` -- `cells.ts`'s own `CellStatus` doc records why "green" was
+ * retracted as this matrix's success name (a matrix under pressure to stay
+ * green is a matrix under pressure to redefine its claim), and painting
+ * `expressed` green or `unexpressed` red here would reintroduce exactly that
+ * framing one layer up, in the renderer, even though the type itself never
+ * says either word. `guardian_only` gets the same qualifier colour U21 uses
+ * for "policy fired" (`packages/inspector/src/render.ts`) -- a cell that
+ * asks for a second look, not a verdict on it.
+ */
+function statusColor(status: CellStatus): string | null {
+  return status === "guardian_only" ? YELLOW : null;
+}
+
+function coordinateKey(point: string, verdict: string): string {
+  return `${point} ${verdict}`;
+}
+
+/**
+ * N47. Renders U30's `CoverageMatrix` -- the 40 cells N41-N44 measure and
+ * `mergeCells` resolves -- as one grid: an AGT intervention point (row)
+ * against an AGT verdict (column), every cell exactly one of `cells.ts`'s
+ * three statuses, never blank.
+ *
+ * `cells`' own `point`/`verdict` values are what the grid's rows and columns
+ * are drawn from -- not a second, separately imported copy of AGT's
+ * vocabulary. That is what keeps this file's only imports type-only (module
+ * header, "EVERY FUNCTION HERE IS PURE"): `CoverageCell` and `CellStatus`
+ * are erased at build, so nothing this function does can read a file, a
+ * clock or a store. `cells` is expected to be `mergeCells`'s own output (one
+ * entry per `everyCell()` coordinate); a coordinate the grid names but
+ * `cells` does not carry is a caller error, thrown rather than rendered
+ * blank -- and a coordinate `cells` carries TWICE is the same caller error
+ * the other way round, thrown rather than letting whichever cell sorts last
+ * silently win. That second case is what catches the natural misuse this
+ * function cannot tell apart from correct input by shape alone:
+ * `renderCoverageMatrix([...n41Cells, ...n42Cells])` in place of
+ * `renderCoverageMatrix(mergeCells(n41Cells, n42Cells))` -- both are a
+ * `CoverageCell[]`, but the first is four checks' raw output concatenated,
+ * never merged, and would publish whichever check happened to come last at
+ * each coordinate. If that check said `expressed`, the printed matrix would
+ * be greener than anything actually measured, silently.
+ *
+ * THE SUBJECT THIS RENDERS (Task 7 facts, section 2 -- a controller ruling,
+ * not a choice made here): a cell is a claim about ACS v0.1.0's expressive
+ * power against AGT's vocabulary, not a claim about which methods THIS
+ * Guardian evaluates. Those are different questions -- N44 resolves cells
+ * `expressed` at four points on the strength of a fail-closed
+ * envelope-validation deny, at methods `packages/guardian/src/handshake.ts`'s
+ * `METHODS_EVALUATED` never dispatches. So the printed table states its own
+ * subject, above the grid, in words a reader does not have to already know
+ * that fact to get right.
+ *
+ * No cell renders blank: every status has a symbol, and no reason is
+ * truncated into a cell -- each DISTINCT reason gets one numbered footnote,
+ * printed once beneath the grid, and every cell carrying it points at that
+ * number.
+ */
+export function renderCoverageMatrix(cells: CoverageCell[], options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+
+  const lookup = new Map<string, CoverageCell>();
+  for (const cell of cells) {
+    const key = coordinateKey(cell.point, cell.verdict);
+    if (lookup.has(key)) {
+      throw new Error(
+        `renderCoverageMatrix: two cells for (${JSON.stringify(cell.point)}, ${JSON.stringify(cell.verdict)}) -- ` +
+          `pass mergeCells(...)'s output, not several checks' cell arrays concatenated, or whichever cell sorts ` +
+          `last silently wins and this table can publish a status nothing merged`,
+      );
+    }
+    lookup.set(key, cell);
+  }
+
+  const points = [...new Set(cells.map((c) => c.point))].sort();
+  const verdicts = [...new Set(cells.map((c) => c.verdict))].sort();
+  const rowLabelWidth = Math.max(0, ...points.map((p) => p.length));
+  // Room for the longest verdict name plus a bracketed footnote number
+  // beside the symbol ("transform" + "[12]" and change).
+  const columnWidth = Math.max(0, ...verdicts.map((v) => v.length)) + 5;
+
+  const footnoteNumbers = new Map<string, number>();
+  function cellToken(cell: CoverageCell): string {
+    const symbol = STATUS_SYMBOL[cell.status];
+    if (cell.reason === undefined) {
+      return symbol;
+    }
+    const existing = footnoteNumbers.get(cell.reason);
+    const number = existing ?? footnoteNumbers.size + 1;
+    if (existing === undefined) {
+      footnoteNumbers.set(cell.reason, number);
+    }
+    return `${symbol}[${number}]`;
+  }
+
+  const gap = "  ";
+  const header = `${"".padEnd(rowLabelWidth)}${gap}${verdicts.map((v) => v.padEnd(columnWidth)).join("")}`;
+
+  const rows = points.map((point) => {
+    const rendered = verdicts.map((verdict) => {
+      const cell = lookup.get(coordinateKey(point, verdict));
+      if (cell === undefined) {
+        throw new Error(
+          `renderCoverageMatrix: no cell for (${JSON.stringify(point)}, ${JSON.stringify(verdict)}) -- every ` +
+            `coordinate this grid's own rows and columns name must be present in "cells"`,
+        );
+      }
+      const padded = cellToken(cell).padEnd(columnWidth);
+      return paint(padded, statusColor(cell.status), color);
+    });
+    return `${point.padEnd(rowLabelWidth)}${gap}${rendered.join("")}`;
+  });
+
+  // Numbered in the order `cellToken` assigned them -- the grid's own
+  // reading order, row by row -- not re-sorted, so footnote [1] is always
+  // the first reason a reader's eye reaches scanning top to bottom.
+  const footnotes = [...footnoteNumbers.entries()]
+    .sort(([, a], [, b]) => a - b)
+    .map(([reason, number]) => `[${number}] ${reason}`);
+
+  return [
+    "AGT intervention point (rows) x AGT verdicts (columns)",
+    "Each cell measures ACS v0.1.0's expressive power against AGT's vocabulary at that point x verdict -- it " +
+      "is NOT a claim about which methods this Guardian evaluates. Which methods this Guardian evaluates is a " +
+      "different question, answered by this Guardian's own ServerHello (its methods_evaluated field), never " +
+      "by this table.",
+    "",
+    header,
+    ...rows,
+    "",
+    `Legend: ${STATUS_SYMBOL.expressed} expressed   ${STATUS_SYMBOL.guardian_only} guardian_only   ${STATUS_SYMBOL.unexpressed} unexpressed`,
+    ...(footnotes.length > 0 ? ["", ...footnotes] : []),
   ].join("\n");
 }

@@ -43,9 +43,17 @@ export type CoverageCell = {
   measuredBy: string[];
 };
 
-/** Every (point, verdict) pair, in a stable order. The renderers and every
- * check iterate this, so no two of them can disagree about what the matrix's
- * shape is. */
+/** Every (point, verdict) pair, in a stable order. Every check (N41-N44) and
+ * `mergeCells` iterate this, so none of them can disagree about what the
+ * matrix's 40 coordinates are. `renderCoverageMatrix` does NOT: it derives
+ * its rows and columns from the `point`/`verdict` values on the `cells` it
+ * is handed, not from a second, separately imported copy of this list --
+ * that is what keeps `render.ts`'s only imports type-only (its own PURE
+ * header). So the renderer's shape is only as complete, and as free of
+ * duplicates, as its input: `mergeCells` is what guarantees the input is
+ * always all 40 of these coordinates and no more, and `renderCoverageMatrix`
+ * throws rather than silently narrowing or overwriting if it is handed
+ * something that is not. */
 export function everyCell(): { point: string; verdict: string }[] {
   return AGT_POINTS.flatMap((point) => AGT_VERDICTS.map((verdict) => ({ point, verdict })));
 }

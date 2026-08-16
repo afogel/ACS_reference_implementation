@@ -475,6 +475,43 @@ describe("architectural invariants", () => {
     }
     expect(declared).toEqual(dishonestGates.map((hookEventName) => ({ hookEventName, tools: "(none declared)" })));
   });
+
+  /**
+   * slices/v7/README.md, commitment 3: Detail C once wired a single
+   * `renderMatrix()` to what are now three renderers -- N47's coverage
+   * matrix, N52's trace rows, and V8's N53 upstream diff. `render.ts`'s own
+   * module header records why that name is retired: a coverage claim
+   * rendered by the same function as everything else beside it is a
+   * coverage claim whose subject is whatever was rendered. This gate is
+   * what keeps that retirement mechanical rather than a sentence someone can
+   * quietly stop reading.
+   *
+   * `readSourceFiles` strips comments and excludes `test/` before this runs,
+   * so the gate cannot fire on `render.ts`'s own header explaining the split
+   * (which names `renderMatrix` in prose), or on this comment -- a gate that
+   * matched documentation of the rule it enforces is the kind the next
+   * person deletes rather than fixes.
+   *
+   * Scanned the same way the package-scoped gates above are: each package's
+   * `src`, plus `hosts`. Asserted per file (`{dir, file, found}`) rather than
+   * as one boolean, so a failure names the offending file.
+   */
+  it("nothing in this repository is named renderMatrix -- the split that happened before anything inherited it", () => {
+    const dirs = [
+      "packages/agt-bridge/src",
+      "packages/conformance/src",
+      "packages/guardian/src",
+      "packages/host-adapter/src",
+      "packages/inspector/src",
+      "hosts",
+    ];
+    for (const dir of dirs) {
+      for (const { file, code } of readSourceFiles(dir)) {
+        const found = code.includes("renderMatrix");
+        expect({ dir, file, found }).toEqual({ dir, file, found: false });
+      }
+    }
+  });
 });
 
 /**
