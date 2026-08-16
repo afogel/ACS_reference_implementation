@@ -37,6 +37,7 @@ export {
   type ToolCallRequestEnvelope,
   type ToolCallResultEnvelope,
 } from "./validate-envelope.ts";
+export { validateResponse, type ResponseValidation } from "./validate-response.ts";
 export {
   assemblePreToolCallSnapshot,
   assemblePostToolCallSnapshot,

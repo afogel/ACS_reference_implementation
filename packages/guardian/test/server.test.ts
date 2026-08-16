@@ -613,13 +613,26 @@ export function validateEnvelope(_input) {
   throw error;
 }
 
-// Must track validate-envelope.ts's real export surface, not just the two
+// Must track validate-envelope.ts's real export surface, not just the three
 // symbols this double overrides: server.ts imports BOTH method predicates from
 // the same module -- one per assembling gate -- so a double that omits either
 // fails to import rather than exercising the pathological throw these tests
-// exist for. Both mirror the real narrowing exactly: unreachable here
-// (validateEnvelope always throws) but a double that lies about behaviour is
-// worse than one that does not compile.
+// exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
+// exactly: unreachable here (validateEnvelope always throws) but a double
+// that lies about behaviour is worse than one that does not compile.
+// getValidator joined the export surface with validate-response.ts (N21's
+// outbound twin): server.ts calls validateResponse on every response this
+// relocated Guardian builds, and validateResponse imports getValidator from
+// this same module path -- so a double omitting it fails to import before
+// dispatch's rethrow route is ever reached. Its stub always reports valid,
+// since these tests are about toRepoRelativeMessage's handling of a
+// pathological validateEnvelope throw, not about response-envelope.json.
+export function getValidator(_schemaId) {
+  const validate = () => true;
+  validate.errors = null;
+  return validate;
+}
+
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
 }
@@ -663,13 +676,26 @@ export function validateEnvelope(_input) {
   throw error;
 }
 
-// Must track validate-envelope.ts's real export surface, not just the two
+// Must track validate-envelope.ts's real export surface, not just the three
 // symbols this double overrides: server.ts imports BOTH method predicates from
 // the same module -- one per assembling gate -- so a double that omits either
 // fails to import rather than exercising the pathological throw these tests
-// exist for. Both mirror the real narrowing exactly: unreachable here
-// (validateEnvelope always throws) but a double that lies about behaviour is
-// worse than one that does not compile.
+// exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
+// exactly: unreachable here (validateEnvelope always throws) but a double
+// that lies about behaviour is worse than one that does not compile.
+// getValidator joined the export surface with validate-response.ts (N21's
+// outbound twin): server.ts calls validateResponse on every response this
+// relocated Guardian builds, and validateResponse imports getValidator from
+// this same module path -- so a double omitting it fails to import before
+// dispatch's rethrow route is ever reached. Its stub always reports valid,
+// since these tests are about toRepoRelativeMessage's handling of a
+// pathological validateEnvelope throw, not about response-envelope.json.
+export function getValidator(_schemaId) {
+  const validate = () => true;
+  validate.errors = null;
+  return validate;
+}
+
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
 }

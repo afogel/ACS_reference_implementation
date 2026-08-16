@@ -79,6 +79,7 @@ import {
   validateEnvelope,
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
+import { validateResponse } from "./validate-response.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 import {
@@ -496,6 +497,17 @@ async function handleAcsRequest(
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
+
+  const validation = validateResponse(response);
+  if (validation.valid === false) {
+    // Reported, not thrown, and the response is sent unchanged: see
+    // validate-response.ts. This is the outbound half of N21, and it must
+    // not be able to turn a governed step into an ungoverned one.
+    console.error(
+      `guardian sent a response that fails response-envelope.json at ${validation.pointer}: ${validation.message}`,
+    );
+  }
+
   envelopeLog.write("response", response, method);
   return response;
 }

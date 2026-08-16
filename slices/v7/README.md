@@ -104,4 +104,47 @@ fixes a name and the role that name must fill, and nothing more.
    `enforced_identity` member on anything envelope-shaped — would be the same collapse
    commitment 2 forbids, one field over. §V7 records what that resolves the R1.4 cell to.
 
+## Finding from Task 2 (N21's outbound twin): two ways a Guardian-built decision fails its own schema
+
+Task 2 (`packages/guardian/src/validate-response.ts`) checks every response this
+Guardian sends against `response-envelope.json`, the same way N21 already checks every
+inbound request. Wiring it into `handleAcsRequest` and running the existing test suite
+against it (`bun test`, unmodified otherwise) surfaced real Guardian-built responses that
+fail that check — logged, not thrown (see that module's own doc comment for why it must
+never throw), but real. Both are measured against `mapping.yaml` and
+`packages/guardian/src/map-verdict.ts` as they stand today; neither is Task 2's to fix —
+closing either is a `map-verdict.ts` / `mapping.yaml` design decision this slice's own
+scope boundary puts outside a response-validation task.
+
+1. **`reasoning` is missing whenever the firing policy rule sets no `verdict.message` —
+   measured today for `redact.rego`'s `modify`, not for `deny`.**
+   `field_synthesis.reasoning.source` (`mapping.yaml`) reads `verdict.message`, and
+   `AgtVerdict.message` (`packages/agt-bridge/src/index.ts`) is optional. `patterns.rego`
+   (deny) and `approval.rego` (escalate) both set it, so those two verdicts' responses carry
+   `reasoning`; `redact.rego` (transform → ACS `modify`) sets `reason` (feeding
+   `reason_codes`) and never `message`, so `mapVerdict` leaves `reasoning` unset for every
+   redaction this Guardian sends, and `response-envelope.json`'s `allOf` requires
+   `reasoning` on `modify` (also `deny`, `ask`, `defer`, unaffected here since those verdicts
+   do set it). This is not a new discovery — `hosts/claude-code/test/post-tool-use.test.ts`
+   already documents it in prose at its `"redacts a secret..."` and
+   `"says why it redacted..."` cases ("the pinned bundle's own redaction verdict comes back
+   carrying `reason_codes` and `policy_references` and NO `reasoning` string") — Task 2 is
+   the first thing to catch it as a schema failure rather than as a hand-written note.
+   Measured live: `test/dispositions.test.ts`'s `"transform arrives as modify..."` case and
+   several `hosts/opencode/test/request-gate.test.ts` / `result-gate.test.ts` redaction
+   cases log `/result must have required property 'reasoning'`.
+
+2. **`ask_details` has no field to be missing from — `AcsDecision` never declares one.**
+   `packages/guardian/src/map-verdict.ts`'s `AcsDecision` type carries `decision`,
+   `reasoning`, `reason_codes`, `policy_references` and `modifications`; it has no
+   `ask_details` or `defer_details` member, and `mapVerdict` sets neither for any verdict.
+   `response-envelope.json` requires `ask_details` whenever `decision: "ask"` — which
+   `mapping.yaml`'s `verdicts` table reaches from AGT's `escalate` — so every ACS `ask`
+   this Guardian has ever built fails the schema by construction, not incidentally.
+   Measured live: `test/dispositions.test.ts`'s `"escalate arrives as ask"` case logs
+   `/result must have required property 'ask_details'`. `defer_details` is the same gap
+   one verdict over, unreached today only because `mapping.yaml` maps no AGT verdict to
+   ACS `defer` at all (commitment 1 above) — the same construction would fail it the
+   moment anything did.
+
 Implementation goes here.

@@ -215,7 +215,7 @@ function listSchemaFiles(dir: string): string[] {
  * mode would otherwise reject them as unknown. Nothing else needed disabling.
  */
 function buildAjv() {
-  const ajv = new Ajv2020({ strict: true, allErrors: true });
+  const ajv = new Ajv2020({ strict: true, allErrors: true, strictRequired: false, allowUnionTypes: true });
   addFormats(ajv);
   for (const file of listSchemaFiles(SCHEMA_ROOT)) {
     const schema = JSON.parse(readFileSync(file, "utf8")) as { $id?: string };
@@ -228,7 +228,17 @@ function buildAjv() {
 
 let ajv: ReturnType<typeof buildAjv> | undefined;
 
-function getValidator(schemaId: string): ValidateFunction {
+/**
+ * Exported so validate-response.ts (N21's outbound twin) can look up
+ * response-envelope.json's validator through the SAME lazily-built Ajv
+ * instance this module builds for the inbound side, rather than
+ * constructing a second registry that loads the same 43 schema files from
+ * the same SCHEMA_ROOT a second time. Sharing the instance, not just the
+ * construction code, is what makes "the two validators cannot come to
+ * disagree about which spec they check against" true by construction
+ * instead of by two call sites happening to stay in sync.
+ */
+export function getValidator(schemaId: string): ValidateFunction {
   if (!ajv) {
     ajv = buildAjv();
   }
