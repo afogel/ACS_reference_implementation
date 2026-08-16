@@ -44,7 +44,13 @@ export {
   type AgtPreToolCallSnapshot,
   type AgtPostToolCallSnapshot,
 } from "./assemble-snapshot.ts";
-export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";
+export {
+  loadMapping,
+  mapVerdict,
+  resolveInterventionPoint,
+  type Mapping,
+  type AcsDecision,
+} from "./map-verdict.ts";
 export {
   loadSessionContext,
   appendContextEntry,
