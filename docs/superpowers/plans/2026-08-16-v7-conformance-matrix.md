@@ -677,7 +677,7 @@ export const AGT_VERDICTS: readonly string[] = Object.values(Decision).sort();
  *   expressed      ACS v0.1.0 expresses AGT here.
  *   guardian_only  the Guardian can do it from process-local knowledge and a
  *                  wire consumer cannot. Three independent findings have
- *                  landed on this one -- the `warn` column (§V3), D10's two
+ *                  landed on this one -- the `warn` column (§V3), D10's
  *                  Trace attributes, and R1.4's identity -- which is itself
  *                  the finding V7 publishes.
  *   unexpressed    it cannot, and `reason` says why.
@@ -1540,7 +1540,9 @@ Slice: #8 · N40"
 
 **What the declaration must and must not say.** R5.3 lands here *as a declaration with its evidence beside it, and the two are not one artifact* (§V7, and commitment 2). So `slices/v7/README.md` states which ACS profiles and pillars this implementation claims and which it does not, and each line points at the measurement that tests it. The matrix is not the declaration and no sentence says it is.
 
-The Trace pillar is declared **not claimed**, with the measured reason: a downstream consumer of the ACS wire cannot emit a conformant trace, because two required attributes have no wire source and one maps to an optional field. Only the Guardian can, from process-local knowledge the contract does not carry.
+The Trace pillar is declared **not claimed**, with the measured reason: a downstream consumer of the ACS wire cannot emit a conformant trace, because **six** of the attributes `trace/otel-mapping.json` marks required resolve to wire fields that are *present but optional* — a conformant envelope may omit every one of them. Only the Guardian can, from process-local knowledge the contract does not carry.
+
+> ⚠️ **Corrected during execution (N49's measurement).** This paragraph read *"two required attributes have no wire source and one maps to an optional field"*. That was wrong in both halves: none of the six is absent from the wire, and there are six rather than three. `AcsResult.metadata` declares `evaluator`, `evaluator_version`, `evaluation_duration_ms`, `model_id` and `confidence` expressly so Trace consumers can key on them — they are simply never required. See the ⚠️ on §V7's D10 table in `docs/shaping/acs-reference-impl-slices.md`, and the same correction in the shaping doc's D10 evidence note. The shape the findings share is **optionality, not absence**, which is a narrower claim and a more useful one: the v0.2 ask stops being "add these fields" and becomes "require the ones already there, and add the one that is not."
 
 The three `guardian_only` findings are stated as one finding, because that is what they are: **v0.1.0's response envelope carries a decision but not the evidence for it** — no evaluator, no confidence, no identity of the action the decision bound to. The (a)/(b) v0.2 fork from "Decisions taken" goes here, with the measurement behind it.
 

@@ -543,7 +543,11 @@ Plan: `docs/superpowers/plans/2026-08-14-v6-session-state-and-provenance-carriag
 > misname U33's fuller measurement as D10's, and the paragraph does not need one to make its
 > point.
 
-**Expect two cells to be honestly red — now four.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target (D4), and the two Trace attributes above are declared but never required (D10 — corrected during execution; see the ⚠️ on that table). Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` and for **requiring** `AcsResult.metadata.evaluator` in v0.2 rather than adding it, since it is already there.
+**Expected two cells to be honestly red. The published matrix resolves fourteen against a stated reason, and the Trace attributes are not among them.**
+
+> ⚠️ **Corrected after execution, against the matrix V7 actually published.** This sentence read *"Expect two cells to be honestly red — now four"*, and counted D10's Trace attributes as two of the four. Both halves are retired. **The count**: a point with no ACS v0.1.0 target is red at every one of AGT's five verdicts, so D4's two model-call points are **ten** `unexpressed` cells, not two; four more resolve `unexpressed` at `transform`, where that point's `intervention_points` row declares no `modifications` rule to express the rewrite; eight resolve `guardian_only`; eighteen `expressed`. **The category**: a Trace attribute is a U33 row and not a cell of the 8 × 5 at all — commitment 4 froze that distinction, and this sentence predates it. D10's finding is undiminished; it is simply rendered in its own table. Both numbers are readable off the capture in `docs/demos/v7-runbook.md`.
+
+Cells resolved against a stated reason are worth more than a green matrix that quietly redefines the claim — which is why `green` is no longer a status name here — and they are the forcing function for `steps/modelCall` and for **requiring** `AcsResult.metadata.evaluator` in v0.2 rather than adding it, since it is already there.
 
 R5.3 lands here as a declaration with its evidence beside it, and the two are not one artifact. This implementation declares which ACS profiles and pillars it claims and which it does not; the coverage matrix and the trace-pillar rows are what each line of that declaration is *measured against*. The Trace pillar is declared **not** claimed, with the measured reason attached.
 
