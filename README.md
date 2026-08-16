@@ -51,12 +51,17 @@ What V4 does **not** deliver, stated here because the demo is easy to over-read:
 
 What V5 does **not** deliver: `modifications.modified_content` still has no builder (`mapVerdict` emitting it is a Guardian change, out of this slice's scope even though OpenCode's opaque `output.output` finally gives it a target), `permission.ask` is mapped to a refusal rather than wired as a real three-valued decision, and `tool.execute.error` is not a hook this version of OpenCode dispatches at all. Full list in [`slices/v5/README.md`](slices/v5/README.md).
 
+**Delivered in V7** — the conformance matrix, and the profile/pillar declaration it backs.
+
+| Claim | How it is demonstrated |
+|---|---|
+| Every one of the 8 intervention points × 5 AGT verdicts resolves — `expressed` where ACS v0.1.0's wire can carry AGT's vocabulary at that point × verdict, `guardian_only` where only process-local Guardian knowledge can, `unexpressed` with a named reason where it cannot — measured against the pinned AGT SDK's own `InterventionPoint`/`Decision` consts, never against a list this repo keeps by hand | `bun run conformance` ([`scripts/run-conformance.sh`](scripts/run-conformance.sh)); real captured output in [`docs/demos/v7-runbook.md`](docs/demos/v7-runbook.md); [`packages/conformance/test/render-coverage-matrix.test.ts`](packages/conformance/test/render-coverage-matrix.test.ts) asserts every cell prints one of the three symbols and that the table's own header states its subject as ACS v0.1.0's expressive power, not this Guardian's coverage |
+| R5.3 — which ACS profiles and pillars this implementation claims, and which it does not, with the measurement behind each line rather than standing in for it. The Trace pillar is a measured non-claim: six required OTel attributes resolve to wire fields that are present but optional, not absent | [`slices/v7/README.md`](slices/v7/README.md)'s declaration, measured against [`docs/demos/v7-runbook.md`](docs/demos/v7-runbook.md)'s U33 block and [`packages/conformance/src/trace-pillar.ts`](packages/conformance/src/trace-pillar.ts) |
+
 **Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
 
 | Claim | Slice |
 |---|---|
-| A machine-checked ACS ↔ MS-ACS mapping table, plus a coverage matrix over all eight intervention points and five AGT verdicts with a round-trip conformance case per cell — every cell resolved, green where ACS v0.1.0 expresses AGT and red with a named reason where it does not. Four are already known red: the two model-call points have no v0.1.0 hook, and two attributes the Trace pillar marks required have no source on the wire | V7 |
-| Which ACS profiles and pillars this implementation claims, and which it does not — the declaration, with a measurement attached to each line of it rather than standing in for it. Trace is a measured non-claim, not a silence | V7 |
 | A scheduled harness run against AGT `main` catches upstream drift automatically | V8 |
 
 ## Layout
@@ -284,7 +289,9 @@ host-agnostic `outputs.mirrors` in the adapter, patching both together; and deny
 the result gate and rebuilds `metadata` from its own pre-hook copy, so only the request gate's
 refusal is a throw and the result gate's is a replacement.
 
-Slices V6–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
+V6 ("session state and provenance carriage") is implemented — see [`slices/v6/README.md`](slices/v6/README.md) and [`docs/demos/v6-runbook.md`](docs/demos/v6-runbook.md). This section does not yet carry a claims table for it.
+
+Slice V8 is shaped and sliced but not started; it is tracked as an issue on the project board, with a stacked pull request.
 
 ## License
 

@@ -38,6 +38,13 @@ fixes a name and the role that name must fill, and nothing more.
    intervention points, likewise the SDK's `InterventionPoint` const and exactly the eight
    keys of `mapping.yaml`'s `intervention_points`.
 
+   **Landed:** `packages/conformance/src/cells.ts` reads `AGT_POINTS` / `AGT_VERDICTS` off
+   the pinned SDK's own `Readonly` `InterventionPoint` / `Decision` consts
+   (`import { Decision, InterventionPoint } from "agent-control-specification"`), not off
+   `mapping.yaml`. The rendered matrix's header line names both axes — `"AGT intervention
+   point (rows) x AGT verdicts (columns)"` — in `docs/demos/v7-runbook.md`'s captured U30
+   block.
+
 2. **`Mapping`, `MappingTable` and `CoverageMatrix` name three different things, and the
    8 × 5 is never called a mapping.** `Mapping` is S10's data: what `mapping.yaml` declares
    in its `intervention_points`, `verdicts` and `field_synthesis` tables, read by the
@@ -49,6 +56,15 @@ fixes a name and the role that name must fill, and nothing more.
    matrix is a result the harness measured, and a name that covers both lets the
    declaration stand in for its own evidence.
 
+   **Landed:** three files, not one. `packages/conformance/src/cells.ts` declares
+   `CoverageCell`/`CoverageMatrix`'s data; `packages/conformance/src/render.ts` declares
+   `renderMappingTable()` (`MappingTable`, U32) and `renderCoverageMatrix()`
+   (`CoverageMatrix`, U30) as separate functions — `renderTraceRows`'s own header says it
+   "shares no rendering code with `renderCoverageMatrix`", since a trace row and a coverage
+   cell are two different shapes; `Mapping` itself is imported from
+   `guardian` — by `render.ts`, `verdicts.ts`, `failure-domains.ts` and
+   `intervention-points.ts` alike — and declared nowhere in this package.
+
 3. **N47 is `renderCoverageMatrix()`, and nothing in this repository is named
    `renderMatrix`.** Detail C wired one `renderMatrix()` to U30, U31 *and* U33. It is now
    three affordances, one per measurement: **N47 `renderCoverageMatrix()` → U30** (the
@@ -57,6 +73,12 @@ fixes a name and the role that name must fill, and nothing more.
    `diffSurfaces()` exists, so it sits in §V8's table rather than §V7's. Each is told one
    measurement and renders that one; none of them takes a discriminator saying which kind
    of table it is being asked for, which is the union this split exists to prevent.
+
+   **Landed:** gated by `test/invariants.test.ts`'s `"nothing in this repository is named
+   renderMatrix"` test, which scans `packages/agt-bridge/src`, `packages/conformance/src`,
+   `packages/guardian/src`, `packages/host-adapter/src`, `packages/inspector/src` and
+   `hosts` (comments stripped first, so it cannot fire on this note's own prose) and asserts
+   `code.includes("renderMatrix")` is `false` in every file.
 
 4. **A trace-pillar row is not a cell of the 8 × 5, and no name in this slice claims to
    emit a trace.** U33's rows pair a required OTel attribute with its v0.1.0 wire source;
@@ -69,6 +91,13 @@ fixes a name and the role that name must fill, and nothing more.
    N49 checks the attributes, N52 renders the rows — and nothing here is called
    `exportTrace`, `traceExporter` or `emitSpan`. A name in the emitting mood would be the
    first half of building the exporter §V7 says is a slice of its own.
+
+   **Landed:** two files, one verb each. `packages/conformance/src/trace-pillar.ts`
+   declares `checkTracePillar` (N49, the check) and states in its own header that nothing
+   in it is named `exportTrace`, `traceExporter` or `emitSpan`; `packages/conformance/src/render.ts`
+   declares `renderTraceRows` (N52, the render) separately from `renderCoverageMatrix`. Two
+   tables, two renderers — both visible as the `U30`/`U33` blocks in
+   `docs/demos/v7-runbook.md`.
 
 5. **The harness imports the Guardian and calls it, and the Inspector's import ban does not
    transfer.** `packages/inspector` imports nothing from `@acs/guardian`, `@acs/agt-bridge` or
@@ -94,6 +123,14 @@ fixes a name and the role that name must fill, and nothing more.
    and validates nothing, so the imported type is a convenience for the harness and never a
    check it may lean on.
 
+   **Landed:** `packages/conformance/src/main.ts` imports `loadMapping` and `startGuardian`
+   from `guardian` (line 49) and `createBridge` from `agt-bridge` (line 48); N41's round
+   trip goes through `checkInterventionPoints`, which imports `resolveInterventionPoint`
+   from `guardian` (`packages/conformance/src/intervention-points.ts:18`), and N42's through
+   `checkVerdicts`, which imports `mapVerdict` from `guardian`
+   (`packages/conformance/src/verdicts.ts:30`) — `main.ts` itself imports only
+   `checkInterventionPoints`/`checkVerdicts`, neither SDK-facing import directly.
+
 6. **N43 is a *recomputation* check, and nothing in this slice is named for a field ACS
    v0.1.0 does not have.** AGT's `InterventionPointResult` carries `inputIdentity`,
    `enforcedIdentity` and the `policyInput` they hash — the distinction A4 was amended to the
@@ -103,6 +140,16 @@ fixes a name and the role that name must fill, and nothing more.
    recomputation and says so; a name here that implied the wire carried an identity — an
    `enforced_identity` member on anything envelope-shaped — would be the same collapse
    commitment 2 forbids, one field over. §V7 records what that resolves the R1.4 cell to.
+
+   **Landed:** `packages/conformance/src/identity.ts` (N43, `checkEnforcedIdentity`), whose
+   own header states the identity is *measured* — the SHA-256 of the key-sorted,
+   whitespace-free JSON of the policy input, prefixed `sha256:` — not read from AGT's docs,
+   and reproduces exactly against the pinned SDK. Its header also records the nearest miss
+   this repository found: `context-entry.json`'s `request_hash`
+   (`context-entry.json:21-24`), "Lowercase-hex SHA-256 of the JCS-canonicalized (RFC 8785)
+   request envelope's params object" — not wire-transmitted (`context-entry.json:5`, "not
+   transmitted in full on the wire") and committed to the request as received, not to the
+   policy target after AGT's own transform.
 
 ## Finding from Task 2 (N21's outbound twin): two ways a Guardian-built decision fails its own schema
 
@@ -147,4 +194,122 @@ scope boundary puts outside a response-validation task.
    ACS `defer` at all (commitment 1 above) — the same construction would fail it the
    moment anything did.
 
-Implementation goes here.
+## What this implementation claims, and where each line is measured
+
+R5.3 asks for a declaration with its evidence beside it, and the two are not one artifact
+(commitment 2 above; §V7). `docs/demos/v7-runbook.md` is the evidence — one real, captured
+run of `bun run conformance`. This section is the declaration: which ACS profiles and
+pillars this implementation claims, and which it does not, with the measurement that backs
+each line named beside it. A line below reads "claimed" only where a named test, a named
+source file, or the runbook's own captured output backs it; everywhere else reads "not
+claimed", with the measured reason.
+
+### The seven ACS profiles
+
+`spec/acs/specification/v0.1.0/handshake.json` defines the profile enum twice, identically,
+on `ClientHello.properties.profiles_supported` and `ServerHello.properties.profiles_accepted`:
+`acs-core`, `acs-trace`, `acs-inspect`, `acs-inspect-dynamic`, `acs-provenance`, `acs-crypto`,
+`acs-audit`. `profiles_supported`'s own description: *"'acs-core' is the mandatory baseline
+and SHOULD always be included. Other profiles are optional and independently claimable."*
+
+| Profile | Claimed | Measured |
+|---|---|---|
+| `acs-core` | Qualified — not a bare claim | The Guardian serves `handshake/hello` and both `steps/toolCallRequest`/`steps/toolCallResult` (`packages/guardian/src/server.ts`; `test/handshake-declares-what-it-evaluates.test.ts`). But this slice's own Task 2 measured two ways a Guardian-built response fails `response-envelope.json` — see "Finding from Task 2" above. A bare "claimed" here is contradicted by this slice's own evidence |
+| `acs-trace` | Not claimed | Six required OTel attributes resolve to wire fields that are present but optional — the U33 block of `docs/demos/v7-runbook.md`; `packages/conformance/src/trace-pillar.ts` |
+| `acs-inspect` | Not claimed | Nothing implements `agbom/*`. The string occurs in exactly two source files, both incidentally: an AJV schema registration in `packages/guardian/src/validate-envelope.ts` and a scope-boundary comment in `packages/conformance/src/trace-pillar.ts`. No `agbom` method is dispatched anywhere in `packages/` or `hosts/` |
+| `acs-inspect-dynamic` | Not claimed | Same reason, plus `agbom/changed` specifically — nothing in this tree names it either |
+| `acs-provenance` | Not claimed | The ClientHello this repo's host adapter sends declares `provenance_producer: "none"` — a literal in the source, not an inference (`packages/host-adapter/src/handshake.ts:253`) |
+| `acs-crypto` | Not claimed | Nothing in this tree produces a signature. `signature` appears in Guardian source only as an optional **inbound** field's type on `AcsRequestParams` (`packages/guardian/src/validate-envelope.ts:70`) |
+| `acs-audit` | Not claimed | `AcsResult.chain_hash` is never set by anything in this tree. `chain_hash` occurs in Guardian source only as an inbound `session_state` field's type (`packages/guardian/src/validate-envelope.ts:49`) |
+
+"Not claimed, because this Guardian never sets `chain_hash`" is a complete and honest reason
+for declining `acs-audit`, and it stops there: nothing above extends into a claim about V6's
+`session-context.ts` or its own hash chain, which is a different mechanism and V6's
+measurement, not this slice's.
+
+**Neither wire field a profile declaration would travel on is populated, in either
+direction.** `ServerHello` declares twelve properties and requires four
+(`negotiated_version`, `methods_evaluated`, `selected_transport`, `timeout_config`); two of
+the eight optional ones are exactly the fields this declaration would use —
+`profiles_accepted` ("Conformance profiles accepted for this session") and `trace_emission`
+("Trace-pillar negotiation... Deployments claiming ACS-Trace MUST emit Trace events under at
+least one of OTel or OCSF for every supported ACS step"). `packages/guardian/src/handshake.ts`'s
+`ServerHello` type declares five members (`negotiated_version`, `methods_evaluated`,
+`selected_transport`, `timeout_config`, `on_decision_failure`) and `buildServerHello` returns
+exactly those five — neither `profiles_accepted` nor `trace_emission` is among them. On the
+client side, `packages/host-adapter/src/handshake.ts`'s ClientHello payload has four members
+(`acs_versions_supported`, `methods_implemented`, `transports_supported`,
+`provenance_producer`), and `profiles_supported` is not one of them either. Both fields are
+optional, so neither omission is a schema failure — but it means this declaration is prose in
+a README, and the wire has a field for it that this implementation leaves empty in both
+directions. That is not fixed here: populating `profiles_accepted` is a Guardian change
+outside this task's three files, and it needs the ClientHello side to mean anything before it
+would carry information. It is the same shape as V4's `methods_evaluated` finding — a
+declared field naming less than the wire actually does — which this repo treats as
+load-bearing rather than cosmetic.
+
+### The Trace pillar, and the three `guardian_only` findings it shares a shape with
+
+Not claimed. U33's own capture (`docs/demos/v7-runbook.md`) has six rows reading `✖`, every
+one for the same reason: the wire field the OTel mapping requires exists and is optional. One
+is `acs.capability` (`hooks/tool-call-request.json#capability`); the other five come from
+`response-envelope.json`'s `AcsResult` — four from `metadata` (`evaluator`, `confidence`,
+`evaluator_version`, `model_id`) and one, `reasoning`, directly. `AcsResult.required` is
+`["type", "acs_version", "request_id", "decision"]`; `metadata` declares no `required` list
+of its own. `metadata`'s own description states the purpose outright: *"ACS-defined
+evaluator and observability metadata... keeping the split clean lets Trace consumers key on
+a stable shape."* The fields exist, and they exist for this. What they are not is required.
+So the finding is: **a downstream consumer of the ACS wire cannot emit a conformant trace** —
+only the Guardian can, from process-local knowledge the contract does not carry.
+
+Three independent findings in this slice's own measurement share a related shape, and are
+stated here as one, per `docs/shaping/acs-reference-impl-slices.md:531`: the `warn` column
+(AGT's only stock warn gate reads `input.annotations.drift_score`, and no ACS v0.1.0 method
+payload carries a field that score could be derived from), the six Trace-pillar rows above,
+and R1.4's identity (commitment 6 above — `packages/conformance/src/identity.ts` measures
+what AGT's enforced identity actually binds to: the policy target it rewrote, not the
+document the host applies modifications to). Two of the three are **optionality** — the
+`warn` input and the Trace attributes are fields the wire could carry, and never has to; the
+third, R1.4's identity, is a flat **absence** — ACS v0.1.0 has no action-identity field to be
+optional in the first place (commitment 6 above). The one finding all three share
+regardless: **v0.1.0's response envelope carries a decision and never has to carry the
+evidence for it** — a downstream consumer can read what was decided, and can neither
+reproduce it nor bind it to what executed.
+
+The v0.2 fork this raises is published here, not resolved, per
+`docs/shaping/acs-reference-impl-slices.md:529`: adding `enforced_identity` to `AcsResult` is
+necessary and not sufficient, because the host applies ACS `modifications` to the **ACS**
+payload while AGT hashed its **policy input** — two documents, two vocabularies. v0.2 needs
+either **(a)** an identity computed over a canonicalization of the *ACS* action the host will
+execute, which AGT does not produce today, or **(b)** enough of the policy input on the
+decision envelope for the host to recompute, which re-exposes exactly the snapshot ACS keeps
+host-side. This slice does not pick a branch, and it files nothing upstream.
+
+### What `expressed` measures, and what it does not
+
+`packages/guardian/src/handshake.ts:88`'s `METHODS_EVALUATED` is the literal
+`["steps/toolCallRequest", "steps/toolCallResult"]` — the only two ACS methods this Guardian
+dispatches. `mapping.yaml` gives an `acs_method` to six of its eight intervention points (the
+U32 mapping table in `docs/demos/v7-runbook.md`), so four mapped methods (`agent_startup`,
+`agent_shutdown`, `input`, `output`) are never evaluated by this Guardian at all — even
+though the U30 coverage matrix in the same runbook resolves each of those four rows `✔`
+(expressed) at `allow`, `deny` and `escalate`, exactly as `pre_tool_call` and
+`post_tool_call` — the two points this Guardian actually dispatches — do.
+
+That is not a defect in the matrix. It measures **ACS v0.1.0's expressive power**, not this
+Guardian's coverage, and its own header line says so on its own face: *"Each cell measures
+ACS v0.1.0's expressive power against AGT's vocabulary at that point x verdict — it is NOT a
+claim about which methods this Guardian evaluates,"* a sentence
+`packages/conformance/test/render-coverage-matrix.test.ts` asserts the rendered table matches
+(`/expressive power/i`). What the matrix cannot do is stop a reader from taking `✔` at, say,
+`input`/`allow` as "this implementation governs the `input` point" — that reading is wrong,
+and this declaration is the artifact whose job is to say so directly: **this Guardian
+evaluates exactly `steps/toolCallRequest` and `steps/toolCallResult` — two of the six mapped
+methods — and none of the other four** (`steps/sessionStart`, `steps/sessionEnd`,
+`steps/userMessage`, `steps/agentResponse`), per `METHODS_EVALUATED` and pinned by
+`test/handshake-declares-what-it-evaluates.test.ts`, which drives a candidate envelope for
+every mapped method through a live Guardian and asserts equality, in both directions, between
+the methods it does not answer `method_not_dispatched` for and the ServerHello's
+`methods_evaluated`. `handshake.json` makes the consequence load-bearing: *"Methods listed by
+the client but absent here are NOT evaluated; the Guardian's enforcement does not cover them.
+Clients MAY still emit them for audit but MUST treat them as ALLOW-by-default."*

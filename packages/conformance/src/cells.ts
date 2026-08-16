@@ -22,7 +22,7 @@ export const AGT_VERDICTS: readonly string[] = Object.values(Decision).sort();
  *   expressed      ACS v0.1.0 expresses AGT here.
  *   guardian_only  the Guardian can do it from process-local knowledge and a
  *                  wire consumer cannot. Three independent findings have
- *                  landed on this one -- the `warn` column (§V3), D10's two
+ *                  landed on this one -- the `warn` column (§V3), D10's
  *                  Trace attributes, and R1.4's identity -- which is itself
  *                  the finding V7 publishes.
  *   unexpressed    it cannot, and `reason` says why.
