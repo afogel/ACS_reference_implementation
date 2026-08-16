@@ -21,6 +21,30 @@ export type AgtVerdict = {
 export type InterventionSnapshot = Record<string, unknown>;
 
 /**
+ * What AGT reports about its own evaluation, as distinct from what it decided.
+ * A verdict is an answer about this step; these are facts about how the answer
+ * was reached.
+ *
+ * `policyInput` is `unknown` on purpose. It is AGT's five-member policy input
+ * document, and this package will not name a shape it does not own -- the
+ * conformance harness validates it against AGT's own schema at the pinned ref,
+ * which is a stronger check than a hand-written mirror of it here and cannot
+ * drift from upstream without the check saying so.
+ *
+ * `transformedPolicyTarget` is deliberately absent even though the SDK returns
+ * it. The one caller recomputes the enforced identity from `policyInput` and
+ * `verdict.transform.value`; handing it AGT's own already-transformed target
+ * would give the check a way to agree with AGT without recomputing anything,
+ * which is the one thing a recomputation check must not have.
+ */
+export type AgtEvidence = {
+  verdict: AgtVerdict;
+  policyInput: unknown;
+  inputIdentity: string;
+  enforcedIdentity: string;
+};
+
+/**
  * The role the Guardian depends on: something you can tell to evaluate a
  * snapshot at an intervention point, which answers with a verdict.
  *
@@ -40,6 +64,7 @@ export type InterventionSnapshot = Record<string, unknown>;
  */
 export type PolicyBridge<S extends InterventionSnapshot = InterventionSnapshot> = {
   evaluate(point: string, snapshot: S): Promise<AgtVerdict>;
+  evaluateWithEvidence(point: string, snapshot: S): Promise<AgtEvidence>;
 };
 
 /**
@@ -99,9 +124,24 @@ export function createBridge(manifestPath: string, options?: CreateBridgeOptions
   const control = AgentControl.fromPath(manifestPath, annotatorDispatcher);
 
   return {
-    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {
+    async evaluateWithEvidence(point: string, snapshot: InterventionSnapshot): Promise<AgtEvidence> {
       const result = await control.evaluateInterventionPoint(point as never, snapshot as never);
-      return result.verdict as AgtVerdict;
+      return {
+        verdict: result.verdict as AgtVerdict,
+        policyInput: result.policyInput,
+        // Non-null asserted rather than defaulted: the SDK declares both
+        // optional, and a default would let a binding that stopped
+        // reporting them read as a successful measurement of an empty
+        // string. AGT's Node binding sets both on every result (this
+        // package's own test pins it, and A4 was amended to the Node SDK
+        // for exactly this reason), so their absence is an upstream change
+        // V8 should report, not a case to paper over here.
+        inputIdentity: result.inputIdentity!,
+        enforcedIdentity: result.enforcedIdentity!,
+      };
+    },
+    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {
+      return (await this.evaluateWithEvidence(point, snapshot)).verdict;
     },
   };
 }

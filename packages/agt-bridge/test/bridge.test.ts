@@ -96,6 +96,18 @@ describe("agt-bridge", () => {
       async evaluate(point, snapshot) {
         return { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` };
       },
+      // A stand-in for a role with two messages implements both. The identities
+      // are fixed strings rather than real hashes: this double exists to show the
+      // Guardian depends on a role and not on `createBridge`, and the Guardian
+      // never reads them.
+      async evaluateWithEvidence(point, snapshot) {
+        return {
+          verdict: { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` },
+          policyInput: {},
+          inputIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          enforcedIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        };
+      },
     };
 
     const verdict = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));
@@ -105,6 +117,36 @@ describe("agt-bridge", () => {
 
 // The bridge's annotator wiring, tested directly against createBridge rather
 // than through the Guardian (test/dispositions.test.ts covers the wire-level
+describe("evaluateWithEvidence -- the wide message, for measurement rather than for deciding", () => {
+  it("carries the policy input AGT hashed, and both identities", async () => {
+    const evidence = await bridge.evaluateWithEvidence("pre_tool_call", { ...snapshotFor("ls -la"), ...publicLabel });
+    expect(evidence.verdict.decision).toBe("allow");
+    expect(evidence.inputIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(evidence.enforcedIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(Object.keys(evidence.policyInput as object).sort()).toEqual([
+      "annotations",
+      "intervention_point",
+      "policy_target",
+      "snapshot",
+      "tool",
+    ]);
+  });
+  it("answers `evaluate` with the same verdict object the wide call carries, because one implements the other", async () => {
+    const narrow = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
+    const wide = await bridge.evaluateWithEvidence("pre_tool_call", snapshotFor("ls -la"));
+    expect(narrow).toEqual(wide.verdict);
+  });
+  it("separates the identities when a transform actually rewrites the target", async () => {
+    const evidence = await bridge.evaluateWithEvidence("post_tool_call", {
+      envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
+      tool_call: { name: "Bash" },
+      tool_result: { outputs: [{ value: "TOKEN=ghp_ONLYINOUTPUT999\n" }] },
+      input: { ifc: { source_labels: ["public"] } },
+    });
+    expect(evidence.verdict.decision).toBe("transform");
+    expect(evidence.inputIdentity).not.toBe(evidence.enforcedIdentity);
+  });
+});
 // round trip for all five verdicts, including this one) -- these two cases
 // belong here because they are about the bridge's own contract for its
 // `annotator` option, not about how a verdict maps onto an ACS decision.

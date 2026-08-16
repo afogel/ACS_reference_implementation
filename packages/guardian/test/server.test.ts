@@ -131,6 +131,18 @@ function recordingBridge(seen: unknown[], verdict: AgtVerdict): PolicyBridge {
       seen.push(snapshot);
       return verdict;
     },
+    // A stand-in for a role with two messages implements both. The identities
+    // are fixed strings rather than real hashes: this double exists to show the
+    // Guardian depends on a role and not on `createBridge`, and the Guardian
+    // never reads them.
+    async evaluateWithEvidence(_point: string, _snapshot: unknown) {
+      return {
+        verdict,
+        policyInput: {},
+        inputIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        enforcedIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      };
+    },
   };
 }
 
