@@ -60,8 +60,8 @@
  * OTel name -- there is no single step span to point at. This is why
  * `TraceRow.span` (below) is typed as a bare `string`: a caller reading it
  * off a `TraceRow` this module returns cannot assume it is always a literal
- * OTel span or event name -- two of the eighteen rows' `span` values are
- * not.
+ * OTel span or event name -- one of the seventeen rows' `span` value (the
+ * provenance row) is not.
  *
  * WHAT `resolveField` DOES NOT MODEL: JSON Schema's conditional-requirement
  * keywords (`allOf`/`if`/`then`), which `response-envelope.json`'s

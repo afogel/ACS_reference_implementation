@@ -70,7 +70,7 @@ describe("N41 schema leg -- self-skips without the clone, validates against it w
       await trashDir(clone);
     });
 
-    it("runs and validates the constructed policy input at both points the Guardian actually sends one for", async () => {
+    it("reports both probe points as validated", async () => {
       const result = await checkPolicyInputSchema(evidenceFor({ marker: "ok" }));
 
       expect(result.ran).toBe(true);

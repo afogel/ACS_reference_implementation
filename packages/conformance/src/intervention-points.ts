@@ -16,7 +16,7 @@
  * with it.
  */
 import { resolveInterventionPoint, type Mapping } from "guardian";
-import { AGT_VERDICTS, everyCell, type CoverageCell } from "./cells.ts";
+import { everyCell, type CoverageCell } from "./cells.ts";
 
 export function checkInterventionPoints(mapping: Mapping): CoverageCell[] {
   return everyCell().map(({ point, verdict }) => ({

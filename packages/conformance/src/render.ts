@@ -34,8 +34,8 @@ import type { TraceRow } from "./trace-pillar.ts";
  * only what they use.
  *
  * SHARED ACROSS THIS FILE'S RENDERERS, deliberately placed here rather than
- * beside `renderCoverageMatrix`: `renderMappingTable` above does not use it,
- * but N52's `renderTraceRows` will, and the next implementer should find
+ * beside `renderCoverageMatrix`: `renderMappingTable` below does not use it,
+ * but N52's `renderTraceRows` does, and the next implementer should find
  * this in one place rather than pulled out of whichever renderer happened
  * to need it first. */
 export type RenderOptions = { color?: boolean };

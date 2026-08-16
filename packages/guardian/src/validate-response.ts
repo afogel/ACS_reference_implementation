@@ -1,10 +1,12 @@
 /**
  * N21's outbound twin, and the gap it closes was §V7's to find: inbound
- * requests are checked against all 43 v0.1.0 schemas and responses were
- * hand-built objects checked by nothing. A conformance harness publishing a
- * matrix over that wire would have been measuring a format that was never
- * itself contract-checked -- which weakens exactly the claim C2 exists to
- * prove.
+ * requests are compiled against three schemas (request-envelope.json and,
+ * method-gated, the two hook payload schemas -- all 43 are registered so
+ * `$ref`s resolve, but only those three are ever compiled) and responses
+ * were hand-built objects checked by nothing. A conformance harness
+ * publishing a matrix over that wire would have been measuring a format
+ * that was never itself contract-checked -- which weakens exactly the claim
+ * C2 exists to prove.
  *
  * THREE ANSWERS, NOT TWO, and the third is a measured fact about v0.1.0
  * rather than a hedge. `response-envelope.json` declares `result` as an

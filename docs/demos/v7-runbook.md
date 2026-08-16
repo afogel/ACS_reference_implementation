@@ -1,11 +1,12 @@
 # V7 demo runbook: the conformance matrix, captured
 
-**The demo, in the slice's own words** (`slices/v7/README.md`, and the corrected form in
-`docs/shaping/acs-reference-impl-slices.md` §V7):
+**The demo, in the slice's own words** (`slices/v7/README.md` and
+`docs/shaping/acs-reference-impl-slices.md` §V7 carry the identical sentence):
 
-> Eight intervention points by five AGT verdicts, every cell resolved — green where ACS
-> v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar,
-> measured as an explicit non-claim.
+> Eight intervention points by five AGT verdicts, every cell resolved — `expressed` where ACS
+> v0.1.0 expresses AGT, `guardian_only` where only process-local Guardian knowledge can,
+> `unexpressed` with a named reason where it cannot. Plus the Trace pillar, measured as an
+> explicit non-claim.
 
 This runbook is written from one real run of this tree's own conformance runner — the
 committed Guardian, the committed AGT bridge, the pinned `policy/lib` bundle, and a real
@@ -138,12 +139,13 @@ literal strings, not self-reporting checks: each prints because `main()` reached
 without throwing, and a check that failed to run at all would have thrown before reaching it —
 leaving no captured output whatsoever, not a false `RAN`.
 
-**The coverage matrix's own header line states its subject.** The line printed directly under
-`=== U30 coverage matrix ===` reads: *"Each cell measures ACS v0.1.0's expressive power
-against AGT's vocabulary at that point x verdict — it is NOT a claim about which methods this
-Guardian evaluates."* That sentence is this table's own scope statement, not a gloss added
-here — `packages/conformance/test/render-coverage-matrix.test.ts` asserts the rendered table
-matches `/expressive power/i`.
+**The coverage matrix's own header line states its subject.** The line after the axis line
+(`AGT intervention point (rows) x AGT verdicts (columns)`), itself directly under
+`=== U30 coverage matrix (N47, N41-N44 merged) ===`, reads: *"Each cell measures ACS v0.1.0's
+expressive power against AGT's vocabulary at that point x verdict -- it is NOT a claim about
+which methods this Guardian evaluates."* That sentence is this table's own scope statement,
+not a gloss added here — `packages/conformance/test/render-coverage-matrix.test.ts` asserts
+the rendered table matches `/expressive power/i`.
 
 **Three symbols, not two.** `✔` (expressed), `◐` (`guardian_only`), `✖` (`unexpressed`) — no
 cell is blank and no cell defaults to `✔`; `status` is required on every one of the 40
@@ -165,7 +167,9 @@ field exists and is optional. One is `acs.capability`, sourced from
 Trace-pillar row at all — `trace/otel-mapping.json` does not name it as a required or
 conditional attribute, so it does not appear in this table either way. `AcsResult.required`
 is `["type", "acs_version", "request_id", "decision"]`; `metadata` has no `required` list of
-its own, so none of the six is required.
+its own, so none of those five is required. The sixth, `acs.capability`, is optional for a
+different reason, from a different schema: `hooks/tool-call-request.json`'s own `required`
+array names only `tool` and `arguments`.
 
 **`◐[3]` (`warn`, six rows) and `◐[8]` (`transform` at the two tool-call points) are two of
 the declaration's three `guardian_only` findings.** The third is the six `✖` Trace rows just
@@ -182,9 +186,9 @@ This file is the **evidence**: one real, reproducible run, pasted verbatim. It i
 **declaration** — `slices/v7/README.md` states which ACS profiles and pillars this
 implementation claims and which it does not, and points at the tables above (and at
 `test/handshake-declares-what-it-evaluates.test.ts`, which this runner does not drive) for
-each line of it. Commitment 2 above and R5.3 both turn on those staying two separate
-artifacts; nothing in this file stands in for that declaration, and nothing in it should be
-read as one.
+each line of it. Commitment 2 (`slices/v7/README.md`) and R5.3 both turn on those staying two
+separate artifacts; nothing in this file stands in for that declaration, and nothing in it
+should be read as one.
 
 ## Verify
 
@@ -220,12 +224,14 @@ packages/guardian/src/session-context.ts
 packages/guardian/src/validate-envelope.ts
 packages/guardian/src/validate-response.ts
 policy/lib/data.json
+error: script "verify:zero-diff" exited with code 1
 ```
 
 Exit code `1`. The measured reason: `scripts/verify-zero-diff.sh:15` reads
 `base="${1:-slice/v4}"`, so a bare invocation always diffs HEAD against `slice/v4` — the base
-V5's own R3.4 proof was written against ("the second host costs zero added AGT code"). V6
-legitimately changed ten of the thirteen files listed above under those same frozen paths
+V5's own R3.4 proof was written against (R3.4: "Adding the second host requires zero new AGT
+code"). V6 legitimately changed ten of the thirteen files listed above under those same
+frozen paths
 (`git diff --stat slice/v4 slice/v6 -- packages/guardian/src/
 packages/agt-bridge/src/index.ts policy/lib/data.json`), and V7 added the other three:
 `validate-response.ts` (Task 2), the `evaluateWithEvidence` bridge change to
@@ -253,6 +259,17 @@ answers no. Not a V7 defect, and not fixed here.
   the other four mapped methods) is pinned by
   `test/handshake-declares-what-it-evaluates.test.ts`, which `bun run conformance` does not
   drive and this file does not capture.
+- **A `✔` in the `escalate` column, and the `◐[8]` cells in the `transform` column, are not
+  a claim that this Guardian's own `ask`/`modify` responses are schema-valid.** They mean
+  ACS v0.1.0 can express the verdict — the matrix's stated subject — and the cell is correct
+  under that subject. Separately, and unrelated to either cell, this Guardian's own
+  responses are measured elsewhere and fail: every ACS `ask` it has ever built fails
+  `response-envelope.json` by construction (`AcsDecision` has no `ask_details` member,
+  which `decision: "ask"` requires), and its `modify` responses built from a redaction
+  verdict are missing `reasoning`, which the same schema requires whenever `decision` is
+  not `allow`. `[8]`'s own footnote text covers only the identity gap, not this one. See
+  `slices/v7/README.md`'s "Finding from Task 2" for both, measured live in
+  `test/dispositions.test.ts`.
 - **No host and no model appears anywhere in this file** (stated in full at the top) —
   nothing here shows how a host renders any cell of the matrix, or how a model sees a
   decision built from one.

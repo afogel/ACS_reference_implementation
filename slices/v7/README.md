@@ -1,6 +1,6 @@
 # V7: Conformance matrix
 
-**Demo:** Eight intervention points by five AGT verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim.
+**Demo:** Eight intervention points by five AGT verdicts, every cell resolved — `expressed` where ACS v0.1.0 expresses AGT, `guardian_only` where only process-local Guardian knowledge can, `unexpressed` with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim.
 
 **Master doc:** [`docs/shaping/acs-reference-impl-slices.md`](../../docs/shaping/acs-reference-impl-slices.md) §V7 — authoritative for this slice's scope.
 
@@ -100,8 +100,8 @@ fixes a name and the role that name must fill, and nothing more.
    `docs/demos/v7-runbook.md`.
 
 5. **The harness imports the Guardian and calls it, and the Inspector's import ban does not
-   transfer.** `packages/inspector` imports nothing from `@acs/guardian`, `@acs/agt-bridge` or
-   `@acs/host-adapter` and re-declares every entry type it reads, gated by
+   transfer.** `packages/inspector` imports nothing from `guardian`, `agt-bridge` or
+   `host-adapter` and re-declares every entry type it reads, gated by
    `test/invariants.test.ts` — because R5.1/R5.2 are claims about a *third party* reading the
    wire, and the ban is what makes them measurable. C2 and R5.3 are claims about **this
    runtime**: that the translation it performs loses nothing, and that the profile it declares
@@ -217,7 +217,7 @@ and SHOULD always be included. Other profiles are optional and independently cla
 | `acs-core` | Qualified — not a bare claim | The Guardian serves `handshake/hello` and both `steps/toolCallRequest`/`steps/toolCallResult` (`packages/guardian/src/server.ts`; `test/handshake-declares-what-it-evaluates.test.ts`). But this slice's own Task 2 measured two ways a Guardian-built response fails `response-envelope.json` — see "Finding from Task 2" above. A bare "claimed" here is contradicted by this slice's own evidence |
 | `acs-trace` | Not claimed | Six required OTel attributes resolve to wire fields that are present but optional — the U33 block of `docs/demos/v7-runbook.md`; `packages/conformance/src/trace-pillar.ts` |
 | `acs-inspect` | Not claimed | Nothing implements `agbom/*`. The string occurs in exactly two source files, both incidentally: an AJV schema registration in `packages/guardian/src/validate-envelope.ts` and a scope-boundary comment in `packages/conformance/src/trace-pillar.ts`. No `agbom` method is dispatched anywhere in `packages/` or `hosts/` |
-| `acs-inspect-dynamic` | Not claimed | Same reason, plus `agbom/changed` specifically — nothing in this tree names it either |
+| `acs-inspect-dynamic` | Not claimed | Same reason — no `agbom` method, including `agbom/changed`, is dispatched anywhere in this tree. The string `agbom/changed` itself is named, but only incidentally: a scope-boundary comment in `packages/conformance/src/trace-pillar.ts` and a schema registration in `packages/guardian/src/validate-envelope.ts` |
 | `acs-provenance` | Not claimed | The ClientHello this repo's host adapter sends declares `provenance_producer: "none"` — a literal in the source, not an inference (`packages/host-adapter/src/handshake.ts:253`) |
 | `acs-crypto` | Not claimed | Nothing in this tree produces a signature. `signature` appears in Guardian source only as an optional **inbound** field's type on `AcsRequestParams` (`packages/guardian/src/validate-envelope.ts:70`) |
 | `acs-audit` | Not claimed | `AcsResult.chain_hash` is never set by anything in this tree. `chain_hash` occurs in Guardian source only as an inbound `session_state` field's type (`packages/guardian/src/validate-envelope.ts:49`) |
@@ -268,13 +268,14 @@ stated here as one, per `docs/shaping/acs-reference-impl-slices.md:531`: the `wa
 payload carries a field that score could be derived from), the six Trace-pillar rows above,
 and R1.4's identity (commitment 6 above — `packages/conformance/src/identity.ts` measures
 what AGT's enforced identity actually binds to: the policy target it rewrote, not the
-document the host applies modifications to). Two of the three are **optionality** — the
-`warn` input and the Trace attributes are fields the wire could carry, and never has to; the
-third, R1.4's identity, is a flat **absence** — ACS v0.1.0 has no action-identity field to be
-optional in the first place (commitment 6 above). The one finding all three share
-regardless: **v0.1.0's response envelope carries a decision and never has to carry the
-evidence for it** — a downstream consumer can read what was decided, and can neither
-reproduce it nor bind it to what executed.
+document the host applies modifications to). One of the three is **optionality** — the Trace
+attributes are fields the wire could carry, and never has to; the other two are a flat
+**absence**: the `warn` gate's input, because no ACS v0.1.0 method payload carries a field a
+drift score could be derived from, and R1.4's identity, because ACS v0.1.0 has no
+action-identity field to be optional in the first place (commitment 6 above). The one finding
+all three share regardless: **v0.1.0's response envelope carries a decision and never has to
+carry the evidence for it** — a downstream consumer can read what was decided, and can
+neither reproduce it nor bind it to what executed.
 
 The v0.2 fork this raises is published here, not resolved, per
 `docs/shaping/acs-reference-impl-slices.md:529`: adding `enforced_identity` to `AcsResult` is
@@ -290,7 +291,7 @@ host-side. This slice does not pick a branch, and it files nothing upstream.
 `packages/guardian/src/handshake.ts:88`'s `METHODS_EVALUATED` is the literal
 `["steps/toolCallRequest", "steps/toolCallResult"]` — the only two ACS methods this Guardian
 dispatches. `mapping.yaml` gives an `acs_method` to six of its eight intervention points (the
-U32 mapping table in `docs/demos/v7-runbook.md`), so four mapped methods (`agent_startup`,
+U32 mapping table in `docs/demos/v7-runbook.md`), so four mapped points (`agent_startup`,
 `agent_shutdown`, `input`, `output`) are never evaluated by this Guardian at all — even
 though the U30 coverage matrix in the same runbook resolves each of those four rows `✔`
 (expressed) at `allow`, `deny` and `escalate`, exactly as `pre_tool_call` and

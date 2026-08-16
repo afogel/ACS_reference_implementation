@@ -22,9 +22,11 @@
  * guardian-only rather than expressed. AGT's enforced identity binds to the
  * policy target it rewrote, not to the document the host will execute; making
  * those agree is the adapter's job, and ACS v0.1.0 carries no field to check
- * it with. `identity` occurs twice in the whole v0.1.0 spec directory --
- * `session-start.json`'s `user_identity` and prose inside
- * `skill-register.json` -- and neither is this. The nearest miss is
+ * it with. `identity` occurs four times, across two files, in the whole
+ * v0.1.0 spec directory -- three inside `session-start.json` (the
+ * `user_identity` field name and two prose uses in its own description) and
+ * one more in prose inside `skill-register.json` -- and none of the four is
+ * this. The nearest miss is
  * `context-entry.json`'s `request_hash` (context-entry.json:21-24): SHA-256
  * of the JCS-canonicalised request envelope params. It does not name what
  * this check measures either -- it is not wire-transmitted (context-
