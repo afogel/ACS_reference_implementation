@@ -8,6 +8,8 @@
   "dependencies": {
     "agt-bridge": "workspace:*",
     "agent-control-specification": "0.3.1-beta.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "guardian": "workspace:*"
   }
 }
