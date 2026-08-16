@@ -24,6 +24,7 @@
  */
 import type { Mapping } from "guardian";
 import type { CellStatus, CoverageCell } from "./cells.ts";
+import type { TraceRow } from "./trace-pillar.ts";
 
 /** Colour is opt-in, matching this repository's other renderer
  * (`packages/inspector/src/render.ts`'s own `RenderOptions`): a caller
@@ -256,5 +257,61 @@ export function renderCoverageMatrix(cells: CoverageCell[], options: RenderOptio
     "",
     `Legend: ${STATUS_SYMBOL.expressed} expressed   ${STATUS_SYMBOL.guardian_only} guardian_only   ${STATUS_SYMBOL.unexpressed} unexpressed`,
     ...(footnotes.length > 0 ? ["", ...footnotes] : []),
+  ].join("\n");
+}
+
+/**
+ * N52. Renders N49's `TraceRow[]` -- one line per required OTel attribute,
+ * against its v0.1.0 wire source and whether a downstream consumer of the
+ * ACS wire (not this Guardian) could emit it from that source alone. A
+ * trace row pairs an attribute with a wire source; a coverage cell pairs an
+ * intervention point with an AGT verdict -- two different shapes, which is
+ * why this shares no rendering code with `renderCoverageMatrix` above (no
+ * `STATUS_SYMBOL`, no footnote table, no coordinate lookup): only the
+ * module's shared colour plumbing (`RenderOptions`, `paint`, `YELLOW`) is
+ * common to both, and that sharing is deliberate (`RenderOptions`'s own
+ * comment, above).
+ *
+ * Reasons print INLINE, one per row, rather than as `renderCoverageMatrix`'s
+ * numbered footnotes: that table de-duplicates because many cells often
+ * share one reason (a whole column, say); a trace row's reason is specific
+ * to its own attribute and site, so nothing here would be saved by
+ * numbering it.
+ *
+ * `wireSource === null` (no property anywhere carries the attribute) is the
+ * only case coloured, and only its symbol: YELLOW, the same hue
+ * `statusColor` reserves for `guardian_only` above, on the same reasoning --
+ * it marks the finding worth a second look, not "bad". A present-but-optional
+ * row (`acs.capability`) is a smaller gap than an attribute with no wire
+ * source at all (`acs.evaluator`), and the plain/coloured split is what
+ * keeps that distinction visible at a glance rather than collapsing both
+ * into one undifferentiated ✖.
+ *
+ * Pure, like every renderer in this file: `rows` is the whole input, and
+ * rendering it twice produces the same string.
+ */
+export function renderTraceRows(rows: TraceRow[], options: RenderOptions = {}): string {
+  const color = options.color ?? false;
+
+  const attributeWidth = Math.max(0, ...rows.map((row) => row.attribute.length));
+  const spanWidth = Math.max(0, ...rows.map((row) => row.span.length));
+
+  const lines = rows.map((row) => {
+    const symbol = row.emittableByWireConsumer ? "✔" : "✖";
+    const painted = paint(symbol, row.wireSource === null ? YELLOW : null, color);
+    const source = row.wireSource ?? "(no wire source)";
+    const suffix = row.reason !== undefined ? ` ${row.reason}` : "";
+    return `  ${painted} ${row.attribute.padEnd(attributeWidth)} on ${row.span.padEnd(spanWidth)} <- ${source}${suffix}`;
+  });
+
+  return [
+    "Trace pillar (trace/otel-mapping.json): each required OTel attribute against its v0.1.0 wire source, and " +
+      "whether a downstream consumer of the ACS wire -- not this Guardian -- could emit it from that source " +
+      "alone. R5.3 declares this implementation does NOT claim the Trace pillar; this table is what that " +
+      "declaration is measured against.",
+    "",
+    ...lines,
+    "",
+    "Legend: ✔ emittable by a wire consumer alone   ✖ not emittable (reason inline)",
   ].join("\n");
 }
