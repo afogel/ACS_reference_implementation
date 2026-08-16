@@ -159,8 +159,10 @@ The runtime exists, but the artifact Microsoft reads is a machine-checked mappin
 | **C2** | Conformance harness: a round-trip case per point and per verdict proving no loss. A red cell is a spec defect, not a bug | |
 | **C3** | Host adapters driven by a per-host hook-mapping file rather than handwritten dispatch | |
 | **C4** | Guardian service, session layer, and AGT bridge, as A2–A4 | |
-| **C5** | Published artifact = mapping table + test matrix; the running demo is the proof it holds | |
+| **C5** | Published artifact = mapping table + coverage matrix; the running demo is the proof it holds | |
 | **C6** | Upstream drift watch: the same harness runs on a schedule against AGT `main`. A red cell names the changed intervention point, verdict, or schema field | |
+
+⚠️ **C5 said "test matrix".** That was a third name for the 8 × 5 — U30's `CoverageMatrix`, which N47 `renderCoverageMatrix()` publishes — in the one commitment whose subject is which two artifacts get published. `slices/v7/README.md` commitment 2 freezes the three names apart: `Mapping` is S10's data, `MappingTable` is U32's rendering of it, `CoverageMatrix` is U30's measurements. C5 names the two published artifacts, so it uses the two published names (PR #16 review).
 
 ---
 

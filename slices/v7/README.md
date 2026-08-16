@@ -70,4 +70,38 @@ fixes a name and the role that name must fill, and nothing more.
    `exportTrace`, `traceExporter` or `emitSpan`. A name in the emitting mood would be the
    first half of building the exporter §V7 says is a slice of its own.
 
+5. **The harness imports the Guardian and calls it, and the Inspector's import ban does not
+   transfer.** `packages/inspector` imports nothing from `@acs/guardian`, `@acs/agt-bridge` or
+   `@acs/host-adapter` and re-declares every entry type it reads, gated by
+   `test/invariants.test.ts` — because R5.1/R5.2 are claims about a *third party* reading the
+   wire, and the ban is what makes them measurable. C2 and R5.3 are claims about **this
+   runtime**: that the translation it performs loses nothing, and that the profile it declares
+   is the one it implements. Calling the runtime is the evidence for those, and a harness that
+   re-derived the mapping from `mapping.yaml` on its own would publish a table that agrees with
+   the file and says nothing about what the Guardian does with it — the exact defect the PR #10
+   review found, where `server.ts` hardcoded `"pre_tool_call"` while that table sat there
+   claiming to be the mapping. So N41's round trip goes through `resolveInterventionPoint` and
+   N42's through `mapVerdict`, both imported, and `Mapping` is imported rather than redeclared.
+
+   The bound runs the other way instead: **the harness takes its expected values from nowhere
+   the Guardian could also be wrong about.** The eight rows are AGT's `InterventionPoint` and
+   the five columns its `Decision` — both `Readonly` consts the pinned SDK exports
+   (`agent-control-specification`, `dist/src/index.d.ts`), which is what makes commitment 1's
+   enum a fact rather than a list this repository keeps in step by hand. The mapping's contents
+   come from `mapping.yaml` read as a file. A matrix whose axes came from a list the Guardian
+   hardcodes would be measuring the Guardian against itself, which is the failure mode the
+   import buys and this sentence pays for. `loadMapping` casts the parsed YAML with `as Mapping`
+   and validates nothing, so the imported type is a convenience for the harness and never a
+   check it may lean on.
+
+6. **N43 is a *recomputation* check, and nothing in this slice is named for a field ACS
+   v0.1.0 does not have.** AGT's `InterventionPointResult` carries `inputIdentity`,
+   `enforcedIdentity` and the `policyInput` they hash — the distinction A4 was amended to the
+   Node SDK to get (§V1 C1). ACS v0.1.0 carries no action-identity field at all: `identity`
+   appears in exactly two of the 43 schemas, as `session-start.json`'s `user_identity` and as
+   prose in `skill-register.json`, and neither is this. So N43 measures a Guardian-side
+   recomputation and says so; a name here that implied the wire carried an identity — an
+   `enforced_identity` member on anything envelope-shaped — would be the same collapse
+   commitment 2 forbids, one field over. §V7 records what that resolves the R1.4 cell to.
+
 Implementation goes here.

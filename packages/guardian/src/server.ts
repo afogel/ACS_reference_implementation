@@ -720,8 +720,10 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
  * from AGT.
  *
  * The intervention point comes from mapping.yaml's own `intervention_points`
- * table, not from a literal here: a declaration the runtime does not consult
- * is a claim nobody checks. An unresolvable method throws into the
+ * table, not from a literal here (PR #10 review, Critical): that table is what
+ * V7 publishes as its mapping table -- never as its coverage matrix, which
+ * measures rather than declares -- and a declaration the runtime does not
+ * consult is a claim nobody checks. An unresolvable method throws into the
  * catch below rather than defaulting to a point -- evaluating the wrong policy
  * and calling the result a decision is the one outcome worse than a reported
  * failure.
