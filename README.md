@@ -266,7 +266,9 @@ V5 ("second host, zero AGT changes") is implemented: OpenCode 1.18.15 is governe
 `packages/host-adapter` — two new artifacts (`hosts/opencode/acs-plugin.ts`,
 `hosts/opencode/opencode.hookmap.yaml`) against zero changed lines in the Guardian, the AGT
 bridge, `policy/lib`, `agt.lock`, `mapping.yaml`, or host #1's own wire contract, which
-`bun run verify:zero-diff` checks mechanically rather than by inspection. The adapter package
+`bun run verify:zero-diff` checked mechanically rather than by inspection — with HEAD at
+`slice/v5`, which is the only place that claim is measurable; see the note under Verify above.
+The adapter package
 itself is *not* unchanged: it gained four load-time hookmap gates, a second `exit_status` form,
 a normalising `loadHookmap`, and the `tools` rule both host shims now share. (No count is quoted
 here — not of insertions and not of files. Neither is pinned by anything, and both went stale
