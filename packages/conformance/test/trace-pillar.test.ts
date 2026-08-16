@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { loadMapping } from "guardian";
 import { renderTraceRows } from "../src/render.ts";
-import { checkTracePillar, type TraceRow } from "../src/trace-pillar.ts";
+import { checkTracePillar, METHODS_IN_SCOPE, type TraceRow } from "../src/trace-pillar.ts";
 
 const rows = checkTracePillar();
 
@@ -48,26 +49,43 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
     expect(row.reason).toBeUndefined();
   });
 
-  it("acs.evaluator is NOT emittable -- no wire source at all, the other of the two reasons", () => {
+  it("acs.evaluator is NOT emittable -- present at AcsResult.metadata.evaluator, but optional there, not absent", () => {
+    // AcsResult.properties.metadata.properties DOES declare `evaluator`
+    // (response-envelope.json, verified by reading it) -- this is the
+    // "present but optional" case, the same as acs.capability above, not
+    // "no such property at all". `metadata` itself is absent from
+    // `AcsResult.required`, and `metadata`'s own schema declares no
+    // `required` list either, which is what makes the row red: a
+    // conformant envelope may omit `metadata` entirely, or include it
+    // without `evaluator`.
     const row = only("acs.evaluator");
     expect(row.span).toBe("acs.decision");
     expect(row.emittableByWireConsumer).toBe(false);
-    expect(row.wireSource).toBeNull();
-    expect(row.reason).toMatch(/no wire source/i);
+    expect(row.wireSource).not.toBeNull();
+    expect(row.wireSource).toContain("AcsResult.metadata.evaluator");
+    expect(row.reason).toMatch(/optional/i);
+    expect(row.reason).not.toMatch(/no wire source/i);
   });
 
-  it("splits the four conditional decision attributes into the two reasons: acs.reasoning is present-but-optional, the other three are absent", () => {
-    const reasoning = only("acs.reasoning");
-    expect(reasoning.emittableByWireConsumer).toBe(false);
-    expect(reasoning.wireSource).not.toBeNull(); // AcsResult.reasoning exists
-    expect(reasoning.reason).toMatch(/optional/i);
-
-    for (const attribute of ["acs.confidence", "acs.evaluator_version", "acs.model_id"]) {
+  it("all four conditional decision attributes are present-but-optional -- none is absent from AcsResult", () => {
+    // acs.reasoning is a direct AcsResult sibling of acs.decision;
+    // acs.confidence, acs.evaluator_version and acs.model_id sit one level
+    // deeper, at AcsResult.metadata.<name>, exactly like acs.evaluator
+    // above -- all four verified present in response-envelope.json, all
+    // four optional (metadata is optional on AcsResult, and unconditionally
+    // required by neither AcsResult's own `required` nor metadata's).
+    for (const attribute of ["acs.reasoning", "acs.confidence", "acs.evaluator_version", "acs.model_id"]) {
       const row = only(attribute);
       expect(row.emittableByWireConsumer).toBe(false);
-      expect(row.wireSource).toBeNull(); // no such AcsResult property at all
-      expect(row.reason).toMatch(/no wire source/i);
+      expect(row.wireSource).not.toBeNull();
+      expect(row.reason).toMatch(/optional/i);
+      expect(row.reason).not.toMatch(/no wire source/i);
     }
+
+    expect(only("acs.reasoning").wireSource).toContain("AcsResult.reasoning");
+    expect(only("acs.confidence").wireSource).toContain("AcsResult.metadata.confidence");
+    expect(only("acs.evaluator_version").wireSource).toContain("AcsResult.metadata.evaluator_version");
+    expect(only("acs.model_id").wireSource).toContain("AcsResult.metadata.model_id");
   });
 
   it("acs.provenance.origin is emittable -- provenance.json's own `required` list includes `origin`", () => {
@@ -76,9 +94,21 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
     expect(row.wireSource).toContain("provenance.json");
   });
 
-  it("emittableByWireConsumer is false on every row whose wireSource is null, and that set is non-empty", () => {
+  it("emittableByWireConsumer is false wherever wireSource is null -- an invariant of buildRow, currently unexercised by real data", () => {
+    // Corrected from the facts file's original error (review round 1,
+    // Important 1): every one of these 17 rows turned out to resolve
+    // against a DECLARED response-envelope.json or provenance.json
+    // property once the four decision-metadata sites were fixed to walk
+    // into AcsResult.metadata -- v0.1.0 declares every field
+    // otel-mapping.json names in scope here, it just does not make most of
+    // the decision-event ones required. So `wireSource === null` currently
+    // holds for zero of the 17 rows -- asserted explicitly (not merely
+    // assumed) so this test cannot pass by accident, and the invariant
+    // stays checked because buildRow's "no such property" branch is still
+    // real, reachable code (N52's renderer has its own synthetic-row test
+    // for exactly that branch, below).
     const noWireSource = rows.filter((r) => r.wireSource === null);
-    expect(noWireSource.length).toBeGreaterThan(0);
+    expect(noWireSource).toHaveLength(0);
     for (const row of noWireSource) {
       expect(row.emittableByWireConsumer).toBe(false);
     }
@@ -90,11 +120,21 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
     }
   });
 
-  it("covers exactly the six in-scope spans' required attributes, plus decision_event's required and conditional attributes, plus provenance_attributes.required -- 17 rows total", () => {
-    // 2 (toolCallRequest) + 2 (toolCallResult) + 1 (sessionStart) + 1
-    // (sessionEnd) + 2 (userMessage) + 2 (agentResponse) = 10, plus 2
-    // decision_event required + 4 conditional = 6, plus 1 provenance
-    // required = 17.
+  it("covers exactly the right SET of spans with the right count each -- not just the right total, which a dropped span and a duplicated one could both still satisfy", () => {
+    const spanCounts: Record<string, number> = {};
+    for (const row of rows) {
+      spanCounts[row.span] = (spanCounts[row.span] ?? 0) + 1;
+    }
+    expect(spanCounts).toEqual({
+      "gen_ai.tool.call": 2, // steps/toolCallRequest: gen_ai.tool.name, acs.capability
+      "gen_ai.tool.result": 2, // steps/toolCallResult: gen_ai.tool.name, acs.exit_status
+      "acs.session": 1, // steps/sessionStart: acs.session.id
+      "acs.session.end": 1, // steps/sessionEnd: acs.session.reason
+      "acs.message.user": 2, // steps/userMessage: acs.session.id, acs.content.types
+      "acs.message.agent": 2, // steps/agentResponse: acs.session.id, acs.agent.id
+      "acs.decision": 6, // decision_event: 2 required + 4 conditional
+      "(every step span, when Provenance is attached)": 1, // provenance_attributes.required
+    });
     expect(rows).toHaveLength(17);
   });
 
@@ -103,6 +143,16 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
       expect(row.span.length).toBeGreaterThan(0);
     }
   });
+
+  it("the frozen METHODS_IN_SCOPE list is exactly mapping.yaml's non-null acs_method values -- self-checking rather than true-for-now", () => {
+    const mapping = loadMapping("mapping.yaml");
+    const declaredMethods = Object.values(mapping.intervention_points)
+      .map((row) => row.acs_method)
+      .filter((method): method is string => method !== null)
+      .sort();
+    const scopedMethods: string[] = [...METHODS_IN_SCOPE].sort();
+    expect(scopedMethods).toEqual(declaredMethods);
+  });
 });
 
 describe("N52 -- renderTraceRows", () => {
@@ -110,12 +160,26 @@ describe("N52 -- renderTraceRows", () => {
     expect(renderTraceRows(rows)).toBe(renderTraceRows(rows));
   });
 
-  it("names every row's attribute, and says 'no wire source' for at least one row that has none", () => {
+  it("names every row's attribute in the rendered table", () => {
     const table = renderTraceRows(rows);
     for (const row of rows) {
       expect(table).toContain(row.attribute);
     }
-    expect(table).toMatch(/no wire source/i);
+  });
+
+  it("renders '(no wire source)' for a synthetic row whose wireSource is genuinely null", () => {
+    // None of today's real 17 rows has a null wireSource (see the check
+    // suite's own test above), so this exercises render.ts's fallback
+    // branch directly rather than leaving it untested by accident of
+    // today's schema facts.
+    const synthetic: TraceRow = {
+      attribute: "acs.made_up",
+      span: "acs.decision",
+      wireSource: null,
+      emittableByWireConsumer: false,
+      reason: "no wire source for acs.made_up",
+    };
+    expect(renderTraceRows([synthetic])).toContain("(no wire source)");
   });
 
   it("renders the reason inline for a not-emittable row, not as a separate footnote system", () => {
@@ -125,10 +189,31 @@ describe("N52 -- renderTraceRows", () => {
   });
 
   it("RenderOptions.color is opt-in, and stripping the ANSI codes back out recovers exactly the plain render", () => {
-    const plain = renderTraceRows(rows);
-    const colored = renderTraceRows(rows, { color: true });
+    // A fixture, not `rows`: none of today's real 17 has wireSource ===
+    // null (the check suite's own test above), which is the only case this
+    // renderer colours -- against the real data, `color: true` currently
+    // produces byte-identical output to the plain render, and this test
+    // would pass without exercising the colour path at all.
+    const fixture: TraceRow[] = [
+      { attribute: "gen_ai.tool.name", span: "gen_ai.tool.call", wireSource: "hooks/tool-call-request.json#tool.name", emittableByWireConsumer: true },
+      { attribute: "acs.made_up", span: "acs.decision", wireSource: null, emittableByWireConsumer: false, reason: "no wire source for acs.made_up" },
+    ];
+
+    const plain = renderTraceRows(fixture);
+    const colored = renderTraceRows(fixture, { color: true });
     expect(colored).not.toBe(plain);
+    expect(colored).toContain("[33m"); // YELLOW -- the null-wireSource row's colour
+    expect(colored).toContain("[0m"); // RESET
+
     const stripped = colored.replace(/\x1b\[\d+m/g, "");
     expect(stripped).toBe(plain);
+  });
+
+  it("is still a pure function of the rows it is handed when colour is on -- rendering the real 17 rows twice with color:true produces the same string", () => {
+    // Separate from the fixture test above: even though `color: true`
+    // happens to be a no-op against today's real data (nothing here is
+    // painted), purity still holds and is worth asserting against the
+    // actual `rows`, not only the synthetic fixture.
+    expect(renderTraceRows(rows, { color: true })).toBe(renderTraceRows(rows, { color: true }));
   });
 });

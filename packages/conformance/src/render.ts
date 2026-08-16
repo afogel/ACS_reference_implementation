@@ -283,9 +283,20 @@ export function renderCoverageMatrix(cells: CoverageCell[], options: RenderOptio
  * `statusColor` reserves for `guardian_only` above, on the same reasoning --
  * it marks the finding worth a second look, not "bad". A present-but-optional
  * row (`acs.capability`) is a smaller gap than an attribute with no wire
- * source at all (`acs.evaluator`), and the plain/coloured split is what
- * keeps that distinction visible at a glance rather than collapsing both
- * into one undifferentiated ✖.
+ * source at all, and the plain/coloured split is what keeps that
+ * distinction visible at a glance rather than collapsing both into one
+ * undifferentiated ✖. None of N49's own 17 rows takes this branch today
+ * (`trace-pillar.ts`'s own test suite asserts and explains why -- every
+ * attribute currently in scope turned out to be a declared, merely optional
+ * property, not an absent one), so this split is exercised by a synthetic
+ * fixture rather than by `checkTracePillar()`'s real output; it stays
+ * general-purpose code because `resolveField` can still resolve a future
+ * attribute to genuinely absent, and this renderer should not stop telling
+ * that apart from "present but optional" the day the real data happens not
+ * to need the difference. `acs.evaluator` was this comment's example of the
+ * null case until review round 1 corrected it -- `response-envelope.json`
+ * does declare it, nested under `AcsResult.metadata`, which is why it no
+ * longer serves as one.
  *
  * Pure, like every renderer in this file: `rows` is the whole input, and
  * rendering it twice produces the same string.

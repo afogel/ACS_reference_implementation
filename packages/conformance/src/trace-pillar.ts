@@ -57,13 +57,59 @@
  * plainer still: `provenance_attributes`'s own description says they land
  * as ordinary attributes "on the resulting span" whichever step that is, so
  * that row's `span` is a parenthesised description rather than a literal
- * OTel name -- there is no single step span to point at.
+ * OTel name -- there is no single step span to point at. This is why
+ * `TraceRow.span` (below) is typed as a bare `string`: a caller reading it
+ * off a `TraceRow` this module returns cannot assume it is always a literal
+ * OTel span or event name -- two of the eighteen rows' `span` values are
+ * not.
+ *
+ * WHAT `resolveField` DOES NOT MODEL: JSON Schema's conditional-requirement
+ * keywords (`allOf`/`if`/`then`), which `response-envelope.json`'s
+ * `$defs.AcsResult` uses to require `reasoning` when `decision` is `deny`,
+ * `modify`, `ask` or `defer`. `resolveField` only ever reads a node's own
+ * unconditional `required` array, so `acs.reasoning`'s row reads "exists but
+ * is optional" -- true of `AcsResult` generally (its top-level `required`
+ * omits `reasoning`), but only because `allow` is the one decision that
+ * carries no such conditional obligation; a `deny`/`modify`/`ask`/`defer`
+ * result DOES require it. The verdict this rule produces is still correct
+ * under this module's own stated definition ("required" means "in the
+ * schema's own unconditional `required` list"), and none of the other six
+ * files this module reads uses `allOf`/`if`/`then` on a path any site here
+ * walks -- `AcsResult` is the only one.
+ *
+ * `acs.provenance.origin` is measured under a narrower rule than every other
+ * row, and that is deliberate, not an inconsistency left unstated. Every
+ * other row asks "starting from a construct guaranteed to exist once per
+ * step (a hook payload, the envelope's own metadata, the one `acs.decision`
+ * event) is this field present and unconditionally required", walking the
+ * FULL path including whatever optional container sits in between --
+ * `acs.evaluator`'s path walks through `AcsResult.metadata`, itself optional
+ * on `AcsResult`, and that optionality is exactly what makes the row red.
+ * Provenance has no such always-present parent in scope: nothing in the six
+ * in-scope spans' `required_attributes` names a `provenance` field, and
+ * whether a `Provenance` object is attached at all is a per-argument,
+ * per-output, per-content-item choice (`provenance.json`'s own consumers
+ * describe it as "OPTIONAL in the base schema") that this module's sites
+ * never walk into. `otel-mapping.json`'s own text scopes
+ * `provenance_attributes.required` the same way -- "When Provenance is
+ * attached to a hook payload, the resulting span MUST carry provenance
+ * facts as attributes" -- so this row measures exactly that conditional
+ * claim: GIVEN a `Provenance` object, is `origin` guaranteed within it. It
+ * does not, and could not from the sites this module reads, additionally
+ * ask whether a `Provenance` object is ever attached in the first place.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export type TraceRow = {
   attribute: string;
+  /** The OTel span or span-event name this attribute is recorded on --
+   * EXCEPT for the provenance row, whose `span` is a parenthesised
+   * description rather than a literal OTel name (module header): nothing in
+   * `otel-mapping.json` names a span or event for provenance facts the way
+   * `decision_event`'s `event_name` const names one for decision facts. A
+   * caller reading `.span` off a row this module returns cannot assume it
+   * is always one of the wire's own names. */
   span: string;
   wireSource: string | null;
   emittableByWireConsumer: boolean;
@@ -78,8 +124,11 @@ function readSpecJson<T>(relativePath: string): T {
 
 /** The six methods in scope (module header). Order is this module's own
  * publication order, not `mapping.yaml`'s -- rows are built method by
- * method, in this order, so a diff of two runs is stable. */
-const METHODS_IN_SCOPE = [
+ * method, in this order, so a diff of two runs is stable. Exported so
+ * `test/trace-pillar.test.ts` can assert this frozen list is exactly
+ * `mapping.yaml`'s non-null `acs_method` values, rather than a copy that
+ * could drift from it silently. */
+export const METHODS_IN_SCOPE = [
   "steps/toolCallRequest",
   "steps/toolCallResult",
   "steps/sessionStart",
@@ -93,7 +142,15 @@ const METHODS_IN_SCOPE = [
  * `$ref` (`#/$defs/...`), which is every `$ref` shape this module's sites
  * use. Every field is optional because a node this module's `deref` reaches
  * (a bare `{ "$ref": "..." }` property value, say) may carry only one of
- * them. */
+ * them.
+ *
+ * Deliberately NOT modeled: `allOf`, `if`/`then`, and every other
+ * conditional-requirement keyword. `resolveField` below only ever consults a
+ * node's own unconditional `required` array (module header, "WHAT
+ * resolveField DOES NOT MODEL") -- a field `AcsResult`'s `allOf` requires
+ * only when `decision` takes a particular value reads as plain "optional"
+ * here, which is this module's stated rule working as designed, not a gap
+ * in this type. */
 type SchemaNode = {
   type?: string;
   properties?: Record<string, SchemaNode>;
@@ -325,30 +382,81 @@ export function checkTracePillar(): TraceRow[] {
   }
 
   // Decision facts ride the "acs.decision" span EVENT, not a step span of
-  // their own (module header). Every attribute name here is literally
-  // "acs." + the AcsResult field it names (decision_event's own authors'
-  // convention), so the AcsResult property to check is read off the
-  // attribute name itself rather than a second hand-written table that
-  // could drift from the one above.
+  // their own (module header).
   const DECISION_SPAN = "acs.decision";
+
+  /** Where each `decision_event` attribute lives on `AcsResult`. Explicit,
+   * not derived from the attribute name (review round 1, Important 1): a
+   * mechanical `"acs.".length` slice reproduced the facts file's own wrong
+   * answer for four of these six, because `acs.evaluator`, `acs.confidence`,
+   * `acs.evaluator_version` and `acs.model_id` are NOT siblings of
+   * `AcsResult.decision` -- they live one level deeper, at
+   * `AcsResult.metadata.<name>` (verified by reading
+   * `response-envelope.json`: `AcsResult.properties.metadata.properties`
+   * lists all four; `AcsResult.required` and `metadata`'s own `required`
+   * are both silent on them, which is exactly what makes the row red under
+   * this module's rule -- metadata itself is optional on `AcsResult`, and
+   * none of its own fields is required either). `acs.decision` and
+   * `acs.reasoning` remain direct `AcsResult` siblings. A `decision_event`
+   * attribute this table does not name throws, rather than silently
+   * degrading to "no wire source" the way the mechanical derivation did. */
+  function decisionAttributeSite(attribute: string): FieldSite {
+    switch (attribute) {
+      case "acs.decision":
+        return { file: "response-envelope.json", fileRoot: responseEnvelope, startNode: acsResult, path: ["decision"], label: "AcsResult.decision" };
+      case "acs.evaluator":
+        return {
+          file: "response-envelope.json",
+          fileRoot: responseEnvelope,
+          startNode: acsResult,
+          path: ["metadata", "evaluator"],
+          label: "AcsResult.metadata.evaluator",
+        };
+      case "acs.reasoning":
+        return { file: "response-envelope.json", fileRoot: responseEnvelope, startNode: acsResult, path: ["reasoning"], label: "AcsResult.reasoning" };
+      case "acs.confidence":
+        return {
+          file: "response-envelope.json",
+          fileRoot: responseEnvelope,
+          startNode: acsResult,
+          path: ["metadata", "confidence"],
+          label: "AcsResult.metadata.confidence",
+        };
+      case "acs.evaluator_version":
+        return {
+          file: "response-envelope.json",
+          fileRoot: responseEnvelope,
+          startNode: acsResult,
+          path: ["metadata", "evaluator_version"],
+          label: "AcsResult.metadata.evaluator_version",
+        };
+      case "acs.model_id":
+        return {
+          file: "response-envelope.json",
+          fileRoot: responseEnvelope,
+          startNode: acsResult,
+          path: ["metadata", "model_id"],
+          label: "AcsResult.metadata.model_id",
+        };
+      default:
+        throw new Error(
+          `checkTracePillar: no known wire site for decision_event attribute "${attribute}" -- add one to decisionAttributeSite`,
+        );
+    }
+  }
+
   const decisionEvent = otelMapping.properties.decision_event.properties;
   const decisionAttributes = [...decisionEvent.required_attributes.default, ...decisionEvent.conditional_attributes.default];
   for (const attribute of decisionAttributes) {
-    const field = attribute.slice("acs.".length);
-    rows.push(
-      buildRow(attribute, DECISION_SPAN, {
-        file: "response-envelope.json",
-        fileRoot: responseEnvelope,
-        startNode: acsResult,
-        path: [field],
-        label: `AcsResult.${field}`,
-      }),
-    );
+    rows.push(buildRow(attribute, DECISION_SPAN, decisionAttributeSite(attribute)));
   }
 
   // Provenance attributes land as ordinary attributes on whichever step
   // span the payload they describe belongs to -- not a span or event of
   // their own (module header), hence the parenthesised, non-literal span.
+  // Measured under a narrower, deliberately different rule from every row
+  // above -- module header, "acs.provenance.origin is measured under a
+  // narrower rule".
   const PROVENANCE_SPAN = "(every step span, when Provenance is attached)";
   for (const attribute of otelMapping.properties.provenance_attributes.properties.required.default) {
     const field = attribute.slice("acs.provenance.".length);
