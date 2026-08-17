@@ -114,26 +114,26 @@ export type SchemaLegResult =
  * settings against the schema fetched from the pinned ref and both probe
  * snapshots below: both validate `true`, not merely "this schema compiles".
  */
-function buildValidator(pinnedClone: string) {
-  const schemaPath = join(pinnedClone, SCHEMA_RELATIVE_PATH);
+function buildValidator(cloneDir: string) {
+  const schemaPath = join(cloneDir, SCHEMA_RELATIVE_PATH);
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
   const ajv = new Ajv2020({ strict: true, allErrors: true, strictRequired: false, allowUnionTypes: true });
   addFormats(ajv);
   return ajv.compile(schema);
 }
 
-export async function checkPolicyInputSchema(bridge: EvidenceBridge): Promise<SchemaLegResult> {
-  const pinnedClone = process.env[PINNED_AGT_CLONE_ENV];
-  if (!pinnedClone) {
-    return {
-      ran: false,
-      reason:
-        `${PINNED_AGT_CLONE_ENV} is not set -- run \`bun run conformance\` (scripts/run-conformance.sh clones ` +
-        `AGT at agt.lock's pinned ref and sets it) to run this leg; \`bun test\` alone never performs the fetch`,
-    };
-  }
-
-  const validate = buildValidator(pinnedClone);
+/**
+ * The validation this file's header describes, run against whichever AGT
+ * clone `cloneDir` names. The clone lives in a parameter rather than an
+ * environment read, because this repository now asks the question of two
+ * different clones: `checkPolicyInputSchema`, below, still reads
+ * `PINNED_AGT_CLONE_ENV` itself and delegates here with the pinned clone;
+ * the upstream contract watch calls this directly with a clone of `main`.
+ * THROWS on a validation failure -- see this file's header for why that is
+ * the correct answer rather than a resolved finding.
+ */
+export async function checkPolicyInputSchemaAt(bridge: EvidenceBridge, cloneDir: string): Promise<SchemaLegResult> {
+  const validate = buildValidator(cloneDir);
   const points: string[] = [];
   for (const [point, snapshot] of PROBE_SNAPSHOTS) {
     const evidence = await bridge.evaluateWithEvidence(point, snapshot);
@@ -146,4 +146,18 @@ export async function checkPolicyInputSchema(bridge: EvidenceBridge): Promise<Sc
     points.push(point);
   }
   return { ran: true, points };
+}
+
+/** The pinned-ref question, which is the one the conformance run asks. */
+export async function checkPolicyInputSchema(bridge: EvidenceBridge): Promise<SchemaLegResult> {
+  const pinnedClone = process.env[PINNED_AGT_CLONE_ENV];
+  if (!pinnedClone) {
+    return {
+      ran: false,
+      reason:
+        `${PINNED_AGT_CLONE_ENV} is not set -- run \`bun run conformance\` (scripts/run-conformance.sh clones ` +
+        `AGT at agt.lock's pinned ref and sets it) to run this leg; \`bun test\` alone never performs the fetch`,
+    };
+  }
+  return checkPolicyInputSchemaAt(bridge, pinnedClone);
 }
