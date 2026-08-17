@@ -1,0 +1,20 @@
+name: upstream contract watch
+
+# Weekly, and on demand. The point is that a moved AGT surface shows up as
+# published output rather than rotting silently between releases.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install trash
+        run: sudo apt-get update && sudo apt-get install -y trash-cli
+      - run: bun install --frozen-lockfile
+      - name: Watch AGT's declared surfaces
+        run: bun run watch:upstream | tee "$GITHUB_STEP_SUMMARY"
