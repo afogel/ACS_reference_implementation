@@ -264,9 +264,9 @@ export type StartGuardianOptions = {
   /** A host-supplied annotator, threaded straight to `createBridge` (which
    * wraps it before handing it to AGT). Optional and off by default: the
    * main manifest (`policy/manifest.yaml`) declares no annotator, so a
-   * Guardian that omits this option behaves exactly as it did before this
-   * option existed -- see `policy/manifest.drift.yaml` and its own header
-   * for the one manifest that does declare one. */
+   * Guardian that omits this option runs with none -- see
+   * `policy/manifest.drift.yaml` and its own header for the one manifest
+   * that does declare one. */
   annotator?: Annotator;
   /** Overrides the bridge this Guardian evaluates snapshots against,
    * bypassing `createBridge(manifestPath, ...)` entirely -- and, with it,
@@ -283,12 +283,13 @@ export type StartGuardianOptions = {
    * use. */
   bridge?: PolicyBridge<GuardianSnapshot>;
   /**
-   * Where S3's chain is appended for U22 to tail. Defaults to no file: the
-   * store is authoritative, and the JSONL is a projection for the Inspector,
-   * the same relationship S6 has to the envelopes it records. Ignored when
-   * `sessionContextStore` is also supplied -- the override store owns its
-   * own persistence, and this Guardian does not retrofit a projection onto
-   * a store it did not construct; see that option's own doc comment.
+   * Where the session-context chain is appended for the Inspector's
+   * session-context view to tail. Defaults to no file: the store is
+   * authoritative, and the JSONL is a projection for the Inspector, the same
+   * relationship envelopeLogPath has to the envelopes it records. Ignored
+   * when `sessionContextStore` is also supplied -- the override store owns
+   * its own persistence, and this Guardian does not retrofit a projection
+   * onto a store it did not construct; see that option's own doc comment.
    */
   sessionContextLog?: string;
   /**
@@ -301,23 +302,25 @@ export type StartGuardianOptions = {
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
 /**
- * A total-by-construction `appendLine` for S3's optional JSONL projection --
- * shaped like `createEnvelopeLogSink`'s own write path (envelope-log-sink.ts:
- * mkdirSync guarded once at construction, every write wrapped, disabled and
- * reported once rather than thrown after the first failure), but not a call
- * INTO that function. `EnvelopeLogSink.write(direction, envelope, method)`
- * builds its own `EnvelopeLogEntry` (seq, recorded_at, direction, method,
- * rpc_id, envelope) around whatever it is handed; `SessionContextStore`'s
- * `appendLine` contract is one already-serialized JSON line with no
- * wrapping object at all (`session-context-store.ts`: "Called once per
- * appended entry with its JSON line, no trailing newline"). Routing S3's
- * lines through `createEnvelopeLogSink` would nest every session-context
- * entry inside an unrelated `EnvelopeLogEntry` -- `direction: "request"` on
- * a chain entry is meaningless, and the JSONL Step 6 pins
- * (`{session_id, seq, request_id, ...}` at the line's own top level) would
- * break. The failure behaviour is duplicated because the invariant it
- * upholds is the same one envelope-log-sink.ts states for S6: a projection
- * write must never be able to turn a governed tool call into a denied one.
+ * A total-by-construction `appendLine` for the session-context chain's
+ * optional JSONL projection -- shaped like `createEnvelopeLogSink`'s own
+ * write path (envelope-log-sink.ts: mkdirSync guarded once at construction,
+ * every write wrapped, disabled and reported once rather than thrown after
+ * the first failure), but not a call into that function.
+ * `EnvelopeLogSink.write(direction, envelope, method)` builds its own
+ * `EnvelopeLogEntry` (seq, recorded_at, direction, method, rpc_id, envelope)
+ * around whatever it is handed; `SessionContextStore`'s `appendLine`
+ * contract is one already-serialized JSON line with no wrapping object at
+ * all (`session-context-store.ts`: "Called once per appended entry with its
+ * JSON line, no trailing newline"). Routing the chain's lines through
+ * `createEnvelopeLogSink` would nest every session-context entry inside an
+ * unrelated `EnvelopeLogEntry` -- `direction: "request"` on a chain entry is
+ * meaningless, and the JSONL shape `test/session-context-roundtrip.test.ts`
+ * pins (`{session_id, seq, request_id, ...}` at the line's own top level)
+ * would break. The failure behaviour is duplicated because the invariant it
+ * upholds is the same one envelope-log-sink.ts states for the envelope log:
+ * a projection write must never be able to turn a governed tool call into a
+ * denied one.
  */
 function createSessionContextLogAppender(path: string): (line: string) => void {
   let disabled = false;
@@ -367,13 +370,14 @@ export async function startGuardian({
   const bridge = bridgeOverride ?? createBridge(manifestPath, annotator ? { annotator } : undefined);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
-  // S3's store is always the in-memory one, or the caller's own override --
-  // sessionContextLog never becomes an alternative backing store, only a
-  // JSONL PROJECTION of whichever store is in use, the same relationship
-  // envelopeLogPath has to S6. The `??` below means the projection is wired
-  // up (and its directory created) only in the branch that actually
-  // constructs the default store -- an override in sessionContextStore
-  // short-circuits past both, per that option's own doc comment.
+  // The session-context store is always the in-memory one, or the caller's
+  // own override -- sessionContextLog never becomes an alternative backing
+  // store, only a JSONL projection of whichever store is in use, the same
+  // relationship envelopeLogPath has to the envelope log. The `??` below
+  // means the projection is wired up (and its directory created) only in
+  // the branch that actually constructs the default store -- an override in
+  // sessionContextStore short-circuits past both, per that option's own doc
+  // comment.
   const sessionContextStore =
     sessionContextStoreOverride ??
     createMemorySessionContextStore(
@@ -669,12 +673,12 @@ async function dispatch(
 /**
  * evaluateStep's own bound: `AcsRequestEnvelope` narrowed just enough to read
  * the one payload member `ToolCallRequestPayload` and `ToolCallResultPayload`
- * both carry, `payload.tool.name` -- so N22's chain entry (below) can be built
- * generically over whichever gate called this function, without widening back
- * to a union of the two payload shapes. `ToolCallRequestEnvelope` and
- * `ToolCallResultEnvelope` are each narrower than this and satisfy it, so
- * inference at each call site still lands on the specific envelope type, not
- * on this bound itself.
+ * both carry, `payload.tool.name` -- so `appendContextEntry`'s chain entry
+ * (below) can be built generically over whichever gate called this function,
+ * without widening back to a union of the two payload shapes.
+ * `ToolCallRequestEnvelope` and `ToolCallResultEnvelope` are each narrower
+ * than this and satisfy it, so inference at each call site still lands on
+ * the specific envelope type, not on this bound itself.
  */
 type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name: string } } } };
 
@@ -731,10 +735,10 @@ async function evaluateStep<E extends SteppedEnvelope>(
   sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   try {
-    // N21 -> N22 -> N23, replacing V1's direct N21 -> N23 (slices doc, §V6). The
-    // entry is appended on ARRIVAL, before any verdict exists: a step that is
-    // later denied is still a step this session took, and a chain that recorded
-    // only permitted steps would be a chain an incident review cannot use.
+    // The chain entry is appended on arrival, before any verdict exists: a
+    // step that is later denied is still a step this session took, and a
+    // chain that recorded only permitted steps would be a chain an incident
+    // review cannot use.
     appendContextEntry(sessionContextStore, envelope.params.metadata.session_id, {
       method: envelope.method,
       request_id: envelope.params.request_id,
@@ -749,8 +753,8 @@ async function evaluateStep<E extends SteppedEnvelope>(
     const verdict = await bridge.evaluate(point, snapshot);
     const decision = mapVerdict(verdict, mapping, point);
 
-    // N25 -> S5. `verdict.result_labels` is `undefined` when the IFC gate did not
-    // run at all and `[]` when it ran and propagated nothing; `persistIfcLabels`
+    // `verdict.result_labels` is `undefined` when the IFC gate did not run
+    // at all and `[]` when it ran and propagated nothing; `persistIfcLabels`
     // keeps those apart deliberately -- see its own doc comment.
     persistIfcLabels(sessionContextStore, envelope.params.metadata.session_id, verdict.result_labels);
 

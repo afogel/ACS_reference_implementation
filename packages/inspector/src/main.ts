@@ -125,7 +125,7 @@ async function pumpAuditLog(): Promise<void> {
   }
 }
 
-// Carried across every call, for the life of the process -- U22's
+// Carried across every call, for the life of the process -- the
 // chain-break check (checkSessionChainLink, render.ts) needs to know the
 // last hash seen for a row's own session, which can be several entries back
 // once other sessions' rows have interleaved (see tail-session-context.ts's

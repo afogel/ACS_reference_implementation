@@ -9,7 +9,7 @@ import {
 const at = (iso: string) => () => new Date(iso);
 const step = (n: number) => ({ method: "steps/toolCallRequest", request_id: `req-${n}`, tool_name: "Bash" });
 
-describe("SessionContext — the hash chain (S3)", () => {
+describe("SessionContext — the hash chain", () => {
   it("starts a session at the genesis hash and seq 1", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     const entry = appendContextEntry(store, "sess-a", step(1));
@@ -51,9 +51,9 @@ describe("SessionContext — the hash chain (S3)", () => {
     expect(context.entries).toEqual([]);
   });
 
-  // `loadSessionContext` returns S3 alone, so S4 and S5 are read off the
-  // aggregate the store holds. Two names, two widths, neither pretending to
-  // be the other (PR #15 review).
+  // `loadSessionContext` returns the chain alone, so intent and provenance
+  // are read off the aggregate the store holds. Two names, two widths,
+  // neither pretending to be the other.
   it("gives an unknown session an empty intent and the seeded labels", () => {
     const store = createMemorySessionContextStore();
     const state = store.load("never-seen");
@@ -65,17 +65,16 @@ describe("SessionContext — the hash chain (S3)", () => {
   });
 });
 
-describe("S5 — the store is told its labels, and told nothing else", () => {
+describe("the store is told its labels, and told nothing else", () => {
   it("replaces the labels", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.replaceIfcLabels("sess-a", ["pii", "confidential"]);
     expect(store.sourceLabels("sess-a")).toEqual(["pii", "confidential"]);
   });
 
-  // The reason `putProvenance` is gone. A caller that could hand over a whole
-  // provenance record could rewrite `origin` and `source_id` while meaning to
-  // set labels -- and N25, whose only business is labels, had to spread the
-  // record to use it. This verb cannot express that mistake.
+  // A verb that handed over the whole provenance record would let a caller
+  // rewrite `origin` and `source_id` while meaning only to set labels. This
+  // verb cannot express that mistake.
   it("leaves every other member of the provenance record alone", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.replaceIfcLabels("sess-a", ["secret"]);
@@ -86,7 +85,7 @@ describe("S5 — the store is told its labels, and told nothing else", () => {
   });
 });
 
-describe("Intent (S4) — immutable baseline per session", () => {
+describe("Intent — immutable baseline per session", () => {
   it("records the first intent it is given", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.setIntent("sess-a", "ship the redaction slice");

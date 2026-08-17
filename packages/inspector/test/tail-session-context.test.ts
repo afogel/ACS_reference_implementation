@@ -177,7 +177,7 @@ describe("tailSessionContextLog", () => {
   });
 });
 
-describe("renderSessionChain (U22)", () => {
+describe("renderSessionChain", () => {
   it("shows each entry's seq, tool, and a short hash", () => {
     const entry: SessionContextLogEntry = {
       session_id: "sess-1",
@@ -282,10 +282,10 @@ describe("renderSessionChain (U22)", () => {
     expect(secondRow).not.toContain("CHAIN BREAK");
   });
 
-  // The reason the check and the renderer are two functions (PR #15 review).
-  // While they were one, this second call read the state the first call had
-  // written -- the entry's own hash -- found its prev_hash no longer matching,
-  // and reported a chain break that the log did not contain.
+  // If the check and the renderer were one function, this second call would
+  // read the state the first call had written -- the entry's own hash --
+  // find its prev_hash no longer matching, and report a chain break that the
+  // log did not contain.
   it("renders the same entry twice identically, because rendering is not the check", () => {
     const state = createSessionChainState();
     const entry = sessionEntry({ hash: "hash-1" });

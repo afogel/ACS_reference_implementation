@@ -100,8 +100,8 @@ function ifcMember(sourceLabels: IfcLabels): { ifc: { source_labels: string[] } 
  * arguments, unwrapped from ACS's `{value, provenance}` shape, and their keys
  * are the tool's business rather than this project's.
  *
- * `input.ifc.source_labels` carries this session's IFC labels (V6), nested
- * under `input` because `policy/lib/agt_ifc.rego` reads
+ * `input.ifc.source_labels` carries this session's IFC labels, nested under
+ * `input` because `policy/lib/agt_ifc.rego` reads
  * `input.snapshot.input.ifc.source_labels` -- never `ifc` at the snapshot
  * root, which its own test pins as reading `[]`.
  */

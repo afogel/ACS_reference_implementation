@@ -1,6 +1,6 @@
 /**
- * tailSessionContextLog (U22's reader) streams S3 -- the Guardian's
- * per-session hash chain, appended one JSONL line per entry by
+ * tailSessionContextLog, the Inspector's session-context reader, streams the
+ * Guardian's per-session hash chain -- appended one JSONL line per entry by
  * packages/guardian/src/session-context-store.ts -- as it grows, the way
  * `tail -f` does.
  *
@@ -12,22 +12,23 @@
  * here; see tail-audit-log.ts's module doc for the reasoning behind each of
  * those choices, all of which apply unchanged to this file.
  *
- * S3, like S14, is created lazily by its writer on the first entry appended:
- * packages/guardian/src/server.ts's session-context-log appender calls
- * `appendFileSync`, which creates the file on its first call. A session that
- * never appends an entry never creates this file at all, and that must stay
- * silent rather than reported as a missing log -- the same healthy-absence
- * case tail-audit-log.ts's module doc describes for S14.
+ * This chain's log, like the audit log, is created lazily by its writer on
+ * the first entry appended: packages/guardian/src/server.ts's
+ * session-context-log appender calls `appendFileSync`, which creates the
+ * file on its first call. A session that never appends an entry never
+ * creates this file at all, and that must stay silent rather than reported
+ * as a missing log -- the same healthy-absence case tail-audit-log.ts's
+ * module doc describes for the audit log.
  *
- * This package imports nothing from `guardian` (R5.1). SessionContextLogEntry
- * is re-declared here rather than imported; the round-trip contract test at
- * test/session-context-roundtrip.test.ts is what keeps the two declarations
- * in agreement.
+ * This package imports nothing from the Guardian's own package:
+ * `SessionContextLogEntry` is re-declared here rather than imported, and the
+ * round-trip contract test at test/session-context-roundtrip.test.ts is what
+ * keeps the two declarations in agreement.
  *
- * ONE FILE, MANY SESSIONS. The Guardian appends every session's entries to
- * this one log, in whatever order its own single process happens to append
- * them. `seq` is per session (packages/guardian/src/session-context.ts), so
- * a file's lines are not globally ordered by it. This reader makes no
+ * One file holds many sessions. The Guardian appends every session's entries
+ * to this one log, in whatever order its own single process happens to
+ * append them. `seq` is per session (packages/guardian/src/session-context.ts),
+ * so a file's lines are not globally ordered by it. This reader makes no
  * attempt to sort or group entries by session; it yields each line in the
  * order it appears in the file, carrying its own `session_id`, and leaves
  * grouping to whatever reads the stream. `renderSessionChain` (render.ts) is
@@ -39,10 +40,11 @@
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
 /**
- * U22's reader. Declares its own entry shape rather than importing the
- * Guardian's (R5.1) -- the Inspector imports nothing from that package and
- * proves it by reading S3 as a file. `test/session-context-roundtrip.test.ts`
- * is what keeps this declaration honest against the writer's.
+ * The Inspector's own reader-side entry type. Declares its own shape rather
+ * than importing the Guardian's -- the Inspector imports nothing from that
+ * package and proves it by reading the chain as a plain file.
+ * `test/session-context-roundtrip.test.ts` is what keeps this declaration
+ * honest against the writer's.
  */
 export type SessionContextLogEntry = {
   session_id: string;
@@ -75,11 +77,12 @@ export type TailSessionContextLogOptions = {
 const NEWLINE = 0x0a;
 
 /**
- * S3 is a plain file on disk; anything can write a line to it that is valid
- * JSON but not a valid SessionContextLogEntry. Checked here, right after
- * `JSON.parse`, using every field the renderer depends on, so a line of the
- * wrong shape is routed to `onMalformedLine` instead of reaching a consumer
- * that assumes every field is present and correctly typed.
+ * The session-context log is a plain file on disk; anything can write a
+ * line to it that is valid JSON but not a valid SessionContextLogEntry.
+ * Checked here, right after `JSON.parse`, using every field the renderer
+ * depends on, so a line of the wrong shape is routed to `onMalformedLine`
+ * instead of reaching a consumer that assumes every field is present and
+ * correctly typed.
  */
 function isSessionContextLogEntryShape(value: unknown): value is SessionContextLogEntry {
   if (typeof value !== "object" || value === null) {

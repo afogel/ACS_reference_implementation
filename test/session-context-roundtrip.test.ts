@@ -22,10 +22,10 @@ import {
  * The contract test that keeps two independent SessionContextLogEntry
  * declarations honest -- the same job test/audit-sink-roundtrip.test.ts and
  * test/envelope-log-sink-roundtrip.test.ts do for their own pairs, and the
- * reason the R5.1 import gate is meaningful rather than merely inconvenient.
- * The Inspector declares its own type BECAUSE it must not import the
- * Guardian's; that duplication is only safe while something fails when the
- * two drift.
+ * reason the Inspector's import boundary is meaningful rather than merely
+ * inconvenient. The Inspector declares its own type because it must not
+ * import the Guardian's; that duplication is only safe while something fails
+ * when the two drift.
  *
  * This file is the only place in the tree that imports both sides.
  */
@@ -121,7 +121,7 @@ const _inspectorAcceptsWhatTheStoreWrites: Required<InspectorSessionContextLogEn
 void _entryFieldsMatch;
 void _inspectorAcceptsWhatTheStoreWrites;
 
-describe("S3 write -> U22 read: every field survives", () => {
+describe("a write through the store and a read through the Inspector: every field survives", () => {
   it("round-trips a Guardian-written entry through the Inspector's own declaration", async () => {
     const path = join(scratch(), "session-context.jsonl");
     // `createMemorySessionContextStore`'s real `append` -- the same code

@@ -3,11 +3,9 @@ import { createMemorySessionContextStore } from "../src/session-context-store.ts
 import { persistIfcLabels, supplySourceLabels } from "../src/ifc-labels.ts";
 
 describe("persistIfcLabels / supplySourceLabels — the round trip AGT delegates", () => {
-  // Renamed from "supplies an empty list for a session that has none": a
-  // fresh session now reports the lattice floor, not `[]` --
-  // `emptySessionState` seeds `ifc_labels: ["public"]`
-  // (packages/guardian/src/session-context.ts), because AGT's own IFC gate
-  // denies a zero-label flow outright.
+  // A fresh session reports the lattice floor, not `[]` -- `emptySessionState`
+  // seeds `ifc_labels: ["public"]` (packages/guardian/src/session-context.ts),
+  // because AGT's own IFC gate denies a zero-label flow outright.
   it("supplies the seeded floor for a session that has none", () => {
     const store = createMemorySessionContextStore();
     expect(supplySourceLabels(store, "sess-a")).toEqual(["public"]);

@@ -1,49 +1,48 @@
 /**
- * S3/S4/S5: the Guardian's per-session state, and the hash chain that orders
- * it.
+ * The Guardian's per-session state, and the hash chain that orders it.
  *
- * THREE AFFORDANCES, THREE TYPES, AND ONE AGGREGATE OVER THEM. `SessionContext`
- * is S3 and only S3 -- a session's entries and the digests that link them.
- * `Intent` is S4, `SessionProvenance` is S5, and `SessionState` is what the
- * store holds for one session: the three together. The chain's name used to sit
- * on that aggregate, so S3 read as the thing that also carried an intent and a
- * provenance record, and `loadSessionContext` returned something wider than its
- * own name (PR #15 review).
+ * This module declares three types and one aggregate over them.
+ * `SessionContext` holds a session's hash chain alone -- its entries and the
+ * digests that link them. `Intent` holds the immutable first-message
+ * baseline recorded for a session, and `SessionProvenance` holds the record
+ * described below, including AGT's IFC labels. `SessionState` is what the
+ * store holds for one session: the three together. Keeping `SessionContext`
+ * scoped to just the chain matters because `loadSessionContext` returns
+ * exactly that type, and its name should promise no more than what it
+ * returns.
  *
- * DECLARED HERE, NOT IN `@acs/host-adapter`, and that is R6.2/A3 rather than
- * a filing preference: the adapter is what a HOST links against, and a host
- * neither writes this chain nor is trusted to. `@acs/host-adapter` already
- * exports a `Session*` cluster -- `SessionConfig`, `SessionConfigStore`,
+ * This is declared in the Guardian's own package, not in `@acs/host-adapter`:
+ * the adapter is what a host links against, and a host neither writes this
+ * chain nor is trusted to write it. `@acs/host-adapter` already exports a
+ * `Session*` cluster -- `SessionConfig`, `SessionConfigStore`,
  * `ResolvedSessionConfig` and friends -- and every one of them is about the
  * handshake. `SessionContext` is a different object with a different owner,
  * so it is never shortened to `session`, and the two names always appear
- * written out in full (slices/v6/README.md, commitment 1).
+ * written out in full.
  *
- * THIS CHAIN DOES NOT INHERIT S14's DUPLICATE-`seq` HAZARD, and the reason is
- * structural rather than careful. Risk row 13 of the slices doc says a
- * per-session monotonic sequence "would need the duplicate closed first" --
- * true of S14's, which a fresh host subprocess derives per hook by re-reading
- * the log, so two concurrent hooks can derive the same number. `seq` here is
- * assigned by the store that owns the chain, in the Guardian's single
- * `Bun.serve` process, and the ORDER is carried by `prev_hash` rather than by
- * the counter: two entries claiming the same `seq` would still have to agree
- * on a hash covering the entry before them. `seq` is an index for readers,
- * not the chain's integrity.
+ * This chain's `seq` does not inherit the audit log's duplicate-`seq`
+ * hazard, and the reason is structural. The audit log's `seq` is derived by
+ * a fresh host subprocess re-reading the log on each hook, so two concurrent
+ * hooks can derive the same number. `seq` here is assigned by the store that
+ * owns the chain, inside the Guardian's single `Bun.serve` process, and the
+ * entries' order is carried by `prev_hash` rather than by the counter: two
+ * entries claiming the same `seq` would still have to agree on a hash
+ * covering the entry before them. `seq` is an index for readers, not the
+ * chain's integrity.
  */
 import { createHash } from "node:crypto";
 
 /**
  * AGT's IFC tags: the type of the `ifc_labels` field below, and nothing wider.
  *
- * NOT A STORE, and the name is not one either. This Guardian has no separate
- * IFC label store: the labels are a field on a session's provenance record,
- * held alongside that session's chain and intent by the one thing here called
- * a store, `SessionContextStore` (slices/v6/README.md, commitment 2).
+ * This Guardian has no separate store for labels. They are a field on a
+ * session's provenance record, held alongside that session's chain and
+ * intent by the one thing here called a store, `SessionContextStore`.
  *
- * ACS `Provenance` -- `spec/acs/specification/v0.1.0/provenance.json`, which
- * defines `provenance_id`, `origin`, `source_id`, `derived_from` -- carries no
- * label member. V6 does not widen it into a label bag; the labels ride a NAMED
- * FIELD on the record below.
+ * ACS `Provenance` (`spec/acs/specification/v0.1.0/provenance.json`, which
+ * defines `provenance_id`, `origin`, `source_id`, `derived_from`) carries no
+ * label member. This does not widen it into a label bag; the labels ride a
+ * named field on the record below.
  */
 export type IfcLabels = readonly string[];
 
@@ -63,28 +62,28 @@ export type ProvenanceOrigin =
   | "external";
 
 /**
- * S5: the provenance record the Guardian synthesizes PER SESSION -- ACS
- * `Provenance` as v0.1.0 defines it, plus the one field carrying AGT's labels.
+ * The provenance record the Guardian synthesizes per session -- ACS
+ * `Provenance` as v0.1.0 defines it, plus one field carrying AGT's labels.
  *
- * `Session`-prefixed because this codebase has two provenance records and they
- * never meet (PR #15 review). The other one is on the WIRE: the optional
- * `provenance` member of each `{value, provenance}` argument and output an ACS
- * payload carries, typed `unknown` on the way in and stripped before any
- * snapshot is assembled (C5). This record is synthesized here, one per session,
- * seeded at the lattice floor, and never reads that member. Under one bare
- * `Provenance` a reader of provenance.json and a reader of this type had every
- * reason to think they were looking at the same record.
+ * `Session`-prefixed because this codebase has two provenance records that
+ * never meet. The other one is on the wire: the optional `provenance` member
+ * of each `{value, provenance}` argument and output an ACS payload carries,
+ * typed `unknown` on the way in and stripped before any snapshot is
+ * assembled. This record is synthesized here, one per session, seeded at the
+ * lattice floor, and never reads that wire member. Under one bare
+ * `Provenance` name, a reader of provenance.json and a reader of this type
+ * would have every reason to think they were looking at the same record.
  */
 export type SessionProvenance = {
   provenance_id: string;
   origin: ProvenanceOrigin;
   source_id?: string;
   derived_from?: readonly string[];
-  /** AGT's labels. A field ON the provenance record, not a redefinition of it. */
+  /** AGT's labels: a field on the provenance record, not a redefinition of it. */
   ifc_labels: IfcLabels;
 };
 
-/** S4: the immutable per-session baseline. First one written wins. */
+/** The session's immutable baseline: the first intent recorded for it. First one written wins. */
 export type Intent = { readonly text: string; readonly recorded_at: string };
 
 /** What a step contributes to the chain. Deliberately not the whole envelope. */
@@ -101,16 +100,16 @@ export type SessionContextEntry = {
   tool_name: string;
 };
 
-/** S3: one session's hash chain, and nothing else the session happens to own. */
+/** One session's hash chain, and nothing else the session happens to own. */
 export type SessionContext = {
   session_id: string;
   entries: readonly SessionContextEntry[];
 };
 
 /**
- * S3 + S4 + S5: everything `SessionContextStore` holds for one session, named
- * for the aggregate it is rather than for the one of its three members that
- * gives the store its name.
+ * Everything `SessionContextStore` holds for one session: the chain, the
+ * intent, and the provenance record together, named for the aggregate it is
+ * rather than for any one of its three members.
  */
 export type SessionState = {
   context: SessionContext;
@@ -153,14 +152,14 @@ export function emptySessionState(sessionId: string): SessionState {
       provenance_id: `acs:session:${sessionId}`,
       origin: "system",
       source_id: "acs.guardian",
-      // The lattice floor, and the deployment-supplied first label this slice
-      // exists to demonstrate the need for. ACS v0.1.0 carries no label field
+      // The lattice floor: the first label a session carries before any step
+      // adds more. ACS v0.1.0 carries no label field itself
       // (`spec/acs/specification/v0.1.0/provenance.json` defines
-      // provenance_id/origin/source_id/derived_from and nothing a sensitivity
+      // provenance_id/origin/source_id/derived_from, nothing a sensitivity
       // could be read from), and AGT's gate denies a zero-label flow outright
       // rather than waving it through: `flow_allowed` in
       // `policy/lib/agt_ifc.rego` requires `count(labels) > 0`. A session with
-      // no seed is therefore a session that can do nothing at all.
+      // no seed label is therefore a session that can do nothing at all.
       ifc_labels: ["public"],
     },
   };

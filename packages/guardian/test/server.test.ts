@@ -100,21 +100,21 @@ async function postAcs(url: string, body: unknown): Promise<JsonRpcResponse> {
   return (await res.json()) as JsonRpcResponse;
 }
 
-/** V6: postAcs against a started guardian rather than a bare URL -- the
+/** postAcs against a started guardian rather than a bare URL -- the
  * session-state tests below post several steps per guardian and read
  * `guardian.url` off the same value each time. */
 async function postStep(guardian: { url: string }, envelope: unknown): Promise<JsonRpcResponse> {
   return postAcs(guardian.url, envelope);
 }
 
-/** V6: the options every session-state test starts from, spread with its
- * own overrides. Extracted from what beforeAll already passed inline. */
+/** The options every session-state test starts from, spread with its own
+ * overrides. Extracted from what beforeAll already passed inline. */
 const baseOptions = { port: 0, manifestPath: "policy/manifest.yaml" } as const;
 
 /**
- * V6: a stub PolicyBridge that records every snapshot handed to `evaluate`
- * and always answers with `verdict`, regardless of `point`. Exists because
- * the session-state tests need a `result_labels` they chose and a look at the
+ * A stub PolicyBridge that records every snapshot handed to `evaluate` and
+ * always answers with `verdict`, regardless of `point`. Exists because the
+ * session-state tests need a `result_labels` they chose and a look at the
  * snapshot that reached evaluation, and the real bridge yields neither. It
  * does emit `result_labels` -- `policy/lib/data.json` sets
  * `config.ifc.sink_clearance`, and test/redaction.test.ts measures a real
@@ -1188,24 +1188,25 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
   });
 });
 
-// N21 -> N22 -> N23, end to end: the chain grows on arrival, a denied step
-// still lands in it, and the labels one verdict returns reach the next
-// step's snapshot. `recordingBridge` stands in wherever a controlled
-// `result_labels` or a captured snapshot is the point of the test: the stock
-// IFC gate is on and real verdicts do carry `result_labels`, but AGT
-// propagates the labels it is handed and originates none, so a real bridge
-// could only return `["public"]` to a session already seeded at `["public"]`
-// -- a carried label and an untouched one would be the same assertion.
+// Validation, the chain, and snapshot assembly, end to end: the chain grows
+// on arrival, a denied step still lands in it, and the labels one verdict
+// returns reach the next step's snapshot. `recordingBridge` stands in
+// wherever a controlled `result_labels` or a captured snapshot is the point
+// of the test: the stock IFC gate is on and real verdicts do carry
+// `result_labels`, but AGT propagates the labels it is handed and originates
+// none, so a real bridge could only return `["public"]` to a session already
+// seeded at `["public"]` -- a carried label and an untouched one would be
+// the same assertion.
 //
-// session_id and request_id are generated UUIDs throughout, not the "sess-a"
-// / "req-1" literals a draft of this suite used: request-envelope.json pins
-// `format: "uuid"` on both (Metadata.session_id, AcsParams.request_id), so a
-// literal like "sess-a" fails schema validation before evaluateStep is ever
-// reached -- envelope_invalid, not the behaviour these tests exist to pin.
-// Measured directly: posting a literal session_id/request_id through a real
-// startGuardian answers `{decision: "deny", reason_codes: ["envelope_invalid"]}`
-// and leaves the chain empty.
-describe("session state end to end (V6)", () => {
+// session_id and request_id are generated UUIDs throughout:
+// request-envelope.json pins `format: "uuid"` on both (Metadata.session_id,
+// AcsParams.request_id), so a literal like "sess-a" fails schema validation
+// before evaluateStep is ever reached -- envelope_invalid, not the behaviour
+// these tests exist to pin. Measured directly: posting a literal
+// session_id/request_id through a real startGuardian answers
+// `{decision: "deny", reason_codes: ["envelope_invalid"]}` and leaves the
+// chain empty.
+describe("session state end to end", () => {
   it("grows the chain by one entry per governed step, on one session", async () => {
     const store = createMemorySessionContextStore();
     const guardian = await startGuardian({ ...baseOptions, sessionContextStore: store });
@@ -1302,21 +1303,19 @@ describe("session state end to end (V6)", () => {
     }
   });
 
-  // The projection write used to be raw
-  // appendFileSync/mkdirSync with no guard, so a filesystem failure on the
-  // (optional, Inspector-only) session-context log threw INSIDE
-  // evaluateStep's try -- landing in the same catch AGT's own evaluation
-  // failures use, and coming back as an honoured deny with
-  // reason_codes: ["evaluation_failed"]. Every governed step would have been
-  // denied by a broken projection file, blamed on policy evaluation.
-  // `sessionContextLog` names a path whose parent component is a plain FILE,
+  // If the projection write used raw appendFileSync/mkdirSync with no guard,
+  // a filesystem failure on the (optional, Inspector-only) session-context
+  // log would throw inside evaluateStep's try -- landing in the same catch
+  // AGT's own evaluation failures use, and coming back as an honoured deny
+  // with reason_codes: ["evaluation_failed"]. Every governed step would then
+  // be denied by a broken projection file, blamed on policy evaluation.
+  // `sessionContextLog` names a path whose parent component is a plain file,
   // not a directory, so `mkdirSync(dirname(path), {recursive: true})` is
   // asked to create a directory where an existing plain file already sits and
-  // throws EEXIST. Measured, not assumed: the run captured in
-  // docs/demos/v6-runbook.md prints this test's own disable notice as
-  // `EEXIST: file already exists, mkdir '<the blocker file>'`. (ENOTDIR is
-  // the errno for a path BENEATH a plain file, which this is not: `dirname`
-  // is the blocker itself.)
+  // throws EEXIST. Measured: the run captured in docs/demos/v6-runbook.md
+  // prints this test's own disable notice as `EEXIST: file already exists,
+  // mkdir '<the blocker file>'`. (ENOTDIR is the errno for a path beneath a
+  // plain file, which this is not: `dirname` is the blocker itself.)
   it("does not let a failing session-context log turn a governed tool call into a denied one", async () => {
     const blocker = join(GUARDIAN_PKG, `tmp-session-log-blocker-${crypto.randomUUID()}.txt`);
     writeFileSync(blocker, "not a directory");

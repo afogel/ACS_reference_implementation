@@ -1,11 +1,12 @@
 /**
- * The V6 demo, against the real pinned bundle: AGT emits `result_labels` at
- * one step and reads them back as `input.ifc.source_labels` at the next.
+ * The IFC round trip, against the real pinned bundle: AGT emits
+ * `result_labels` at one step and reads them back as
+ * `input.ifc.source_labels` at the next.
  *
  * Nothing here stubs the policy runtime. The gate is AGT's own
  * `agt.defaults` rule set, turned on through `data.agt.defaults.config`
- * alone (R2.1), and the labels travel the path `policy/lib/agt_ifc.rego`
- * actually resolves.
+ * alone, and the labels travel the path `policy/lib/agt_ifc.rego` actually
+ * resolves.
  */
 import { describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
@@ -43,12 +44,11 @@ describe("the IFC round trip, on the shipped bundle", () => {
     expect(verdict.reason).toBe("ifc_clearance_violation");
   });
 
-  // Corrected from the brief's literal assertion (`not.toBe("deny")`) --
-  // measured, not assumed. Once the gate is live, an empty label set ALSO
-  // denies (agt_ifc.rego's own `test_missing_and_empty_labels_deny_fail_closed`
-  // fails closed on `count(labels) == 0`), so a snapshot carrying ONLY the
+  // Once the gate is live, an empty label set also denies
+  // (agt_ifc.rego's own `test_missing_and_empty_labels_deny_fail_closed`
+  // fails closed on `count(labels) == 0`), so a snapshot carrying only the
   // wrong-path label and nothing at the right path denies regardless of
-  // which path AGT actually read -- "not deny" stops distinguishing "read
+  // which path AGT actually read -- "not deny" would not distinguish "read
   // nothing" from "read the secret". Supplying a valid, allow-worthy label at
   // the right path turns that ambiguity back into a real signal: if the
   // wrong-path "secret" label were read too, the effective label set would be
@@ -62,8 +62,8 @@ describe("the IFC round trip, on the shipped bundle", () => {
       tool_call: { name: "Bash", args: { command: "echo hello" }, id: "req-1" },
       input: { ifc: { source_labels: ["confidential"] } },
       // The trap agt_ifc_test.rego pins: labels at the snapshot root are not
-      // read. Left where the brief put it, at the snapshot root rather than
-      // nested under `input`.
+      // read. Deliberately placed at the snapshot root rather than nested
+      // under `input`.
       ifc: { source_labels: ["secret"] },
     } as never);
     expect(verdict.decision).toBe("allow");
@@ -82,13 +82,13 @@ describe("the IFC round trip, on the shipped bundle", () => {
     expect(supplySourceLabels(store, "sess-a")).toEqual(["confidential"]);
   });
 
-  // What this task discovered, pinned: an empty label set is a DENIED flow,
-  // not a permissive one. `flow_allowed_with_lattice` (policy/lib/agt_ifc.rego)
-  // requires `count(labels) > 0`, so `source_labels: []` never reaches the
-  // dominance check at all -- `verdict_propagating` takes its violation
-  // branch regardless of how permissive the configured clearance is. This is
-  // what makes the session seed load-bearing rather than cosmetic: without
-  // it, a fresh session's first step hits exactly this case.
+  // Pinned here: an empty label set is a denied flow, not a permissive one.
+  // `flow_allowed_with_lattice` (policy/lib/agt_ifc.rego) requires
+  // `count(labels) > 0`, so `source_labels: []` never reaches the dominance
+  // check at all -- `verdict_propagating` takes its violation branch
+  // regardless of how permissive the configured clearance is. This is what
+  // makes the session seed load-bearing rather than cosmetic: without it, a
+  // fresh session's first step hits exactly this case.
   it("denies a session whose labels were cleared outright, because zero labels is a denied flow", async () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {

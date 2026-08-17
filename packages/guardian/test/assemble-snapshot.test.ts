@@ -10,20 +10,19 @@ import { isToolCallRequest, isToolCallResult, validateEnvelope } from "../src/va
 import type { IfcLabels } from "../src/session-context.ts";
 
 /**
- * V6: both assemblers now require a labels argument (required, not optional --
- * an omitted one would silently read as "no labels"). Every V1/V4 test below
- * predates that requirement and passes this: no labels, so none of those
- * tests' own assertions about envelope-derived members are affected by adding
- * it. The V6 tests further down that need an explicit "no labels" case reuse
- * this same constant rather than declaring a second one with an identical
- * value.
+ * Both assemblers require a labels argument -- required, not optional, so an
+ * omitted one cannot silently read as "no labels". Tests below that do not
+ * care about labels pass this constant, so none of their own assertions
+ * about envelope-derived members are affected by adding it. Tests further
+ * down that need an explicit "no labels" case reuse this same constant
+ * rather than declaring a second one with an identical value.
  *
- * NAMED FOR WHAT IT IS. As `NO_SESSION_STATE` it read as the shape of a
- * session that has none -- the case the Guardian's `["public"]` seed exists so
- * that AGT never sees, since the stock gate denies a zero-label flow outright
- * (PR #15 review). What it actually is is an empty label list: a value these
- * two assemblers accept and pass through unexamined, which is exactly why
- * every pre-V6 test can carry it.
+ * Named for what it is: an empty label list, not the absence of session
+ * state. The Guardian's own session seed supplies `["public"]` by default,
+ * since the stock gate denies a zero-label flow outright, so a real session
+ * snapshot never carries labels this empty. What it actually is is a value
+ * these two assemblers accept and pass through unexamined, which is exactly
+ * why every test that doesn't care about labels can carry it.
  */
 const EMPTY_SOURCE_LABELS: IfcLabels = [];
 
@@ -330,14 +329,14 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   });
 });
 
-// V6 (N23): the request-side and result-side envelope builders above, under
+// The request-side and result-side envelope builders above, aliased under
 // the names the session-state tests below use. Not new envelope-building
 // logic -- makeEnvelope() and makeResultEnvelope() already build exactly
 // what these need with no arguments.
 const requestEnvelope = (): ToolCallRequestEnvelope => makeEnvelope();
 const resultEnvelope = (): ToolCallResultEnvelope => makeResultEnvelope();
 
-describe("session state in the snapshot (V6, N23)", () => {
+describe("session state in the snapshot", () => {
   it("puts source labels where AGT's stock IFC library actually reads them", () => {
     const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), ["confidential"]);
     // policy/lib/agt_ifc.rego: input.snapshot.input.ifc.source_labels.
@@ -363,12 +362,11 @@ describe("session state in the snapshot (V6, N23)", () => {
     expect(snapshot.input.ifc.source_labels).toEqual(["secret"]);
   });
 
-  it("leaves every V1/V4 member of both snapshots exactly as it was", () => {
+  it("leaves every pre-existing member of both snapshots exactly as it was", () => {
     const pre = assemblePreToolCallSnapshot(requestEnvelope(), EMPTY_SOURCE_LABELS);
-    // requestEnvelope() is makeEnvelope() under its V6 name, and
+    // requestEnvelope() is makeEnvelope() under its alias here, and
     // makeEnvelope()'s own default toolName is "run_shell" (see its
     // definition above) -- not "Bash", which is resultEnvelope()'s default.
-    // Measured, not the plan's description of it.
     expect(pre.tool_call.name).toBe("run_shell");
     expect(pre.envelope.budgets).toEqual({ tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 });
     const post = assemblePostToolCallSnapshot(resultEnvelope(), EMPTY_SOURCE_LABELS);
