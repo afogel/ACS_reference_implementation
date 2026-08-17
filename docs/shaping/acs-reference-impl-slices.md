@@ -611,19 +611,150 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 
 Every measurement in this section is in `docs/shaping/spike-unreached-gates.md`, taken against the pinned bundle through the shipped assembler and the shipped `mapVerdict` rather than read out of AGT's documentation.
 
+### Detail V9: affordances
+
+Breadboarded against the shipped code, so every name below points at something real.
+
+**UI affordances — all existing, none new.**
+
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
-| N54 | P3 | guardian | `resolvePolicyTargetArgument(toolName, mapping, point)` — the per-tool argument name, one declaration read twice | call | → N23, → N24 | — |
-| N55 | P3 | guardian | `annotateEgressDestination()` — reads `raw_command`, answers `{destination}` for `input.annotations.egress` | call | → N30 | — |
-| N23 | P3 | guardian | `assemblePreToolCallSnapshot()` — gains the normalised policy-target leaf and forwards `raw_command` | call | → N30 | — |
-| N24 | P3 | guardian | `mapVerdict()` — `into_argument` resolved through N54 instead of read as a literal | call | → N25, → N26 | → N4, → N13 |
-| S10 | shared | store | `mapping.yaml` — gains the per-tool policy-target argument table | — | — | → N54 |
-| S8 | P3.1 | store | `data.agt.defaults.config` — gains `egress` | — | — | → N30 |
-| S7 | P3.1 | store | `policy/manifest.yaml` — gains the fetch tool per host, and an `annotators: egress` block | — | — | → N31 |
-| S1 | P1 | store | `claude-code.hookmap.yaml` — declares `raw_command` | — | — | → N2 |
-| S2 | P2 | store | `opencode.hookmap.yaml` — declares `raw_command` | — | — | → N11 |
+| U2 | P1 | claude-code | tool permission outcome in transcript — now also carries `egress_destination_not_allowed` | render | — | — |
+| U11 | P2 | opencode | tool decision surface | render | — | — |
+| U20 | P4 | inspector | envelope stream, request/response JSON pairs | render | — | — |
+| U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
 
-**This slice's affordances are N54, N55, N23, N24, S10, S8, S7, S1, S2.** No new UI: the denial renders through U2 and U11 (each host's own decision surface) and through U20/U21 in the Inspector, exactly as every other verdict class has since V3. A slice that ends in demo-able UI does not have to end in *new* UI, and inventing a surface for the fourth gate class when the first three share one would be the wrong kind of vertical.
+**No new UI, and that is the right answer rather than an omission.** The fourth gate class denies through the same surfaces the first three have used since V3, because a deny is a deny — U21 already renders whatever `reason_codes` comes back. Inventing a surface for `egress` would claim it is a different kind of decision than `destructive_shell_command_blocked`, and it is not.
+
+**Code affordances.**
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| N54 | P3 | guardian / `map-verdict.ts` | **NEW** `resolvePolicyTargetArgument(mapping, point, toolName)` — S10's `by_tool` table, falling back to its `default` | call | — | → N23, → N24 |
+| N55 | P3 | guardian / `annotate-egress.ts` | **NEW** `annotateEgressDestination(name, config, preliminary)` — answers `{destination}` when it finds one in `raw_command`, `{}` when it does not | call | — | → N30 |
+| N23 | P3 | guardian | `assemblePreToolCallSnapshot(envelope, sourceLabels, policyTargetArgument)` — **third parameter is new**; writes the normalised leaf and forwards `raw_command` | call | → N30 | — |
+| N24 | P3 | guardian | `mapVerdict(verdict, mapping, point, policyTargetArgument)` — **fourth parameter is new**; `synthesizeModifications` keys `parameter_overrides` by it instead of by `rule.into_argument` | call | → N25, → N26 | → N4, → N13 |
+| N21 | P3 | guardian | `validateEnvelope()` — `raw_command` already typed at `validate-envelope.ts:100`; V9 is what first populates it | call | → N22, → N27 | — |
+| N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest)` — **now always constructed with an annotator dispatcher**, because the manifest declares one | call | — | → N30 |
+| N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — dispatches N55 while building the policy input | call | → N55 | → N24 |
+| N2 | P1 | `@acs/host-adapter` | `buildEnvelope()` — `buildPayload`'s request branch reads S1's new `raw_command` path | call | → N4 | — |
+| N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — same module as N2, reads S2's | call | → N13 | — |
+
+**Data stores.**
+
+| # | Place | Store | What changes |
+|---|-------|-------|--------------|
+| S17 | P1 | **NEW** `.claude/settings.json` and `hosts/claude-code/settings.json` | The `PreToolUse` matcher, `^Bash$` → `^(Bash\|WebFetch)$`. **Never in this breadboard before**, which is exactly why the one-tool limit went unnoticed through eight slices: the file that decides which tools are governed at all had no affordance |
+| S10 | shared | `mapping.yaml` | Gains `intervention_points.<point>.policy_target_argument: {default, by_tool}`. `modifications.into_argument` is **removed**, not kept alongside — two declarations of the same fact are two things that can disagree |
+| S7 | P3.1 | `policy/manifest.yaml` | `policy_target` → the normalised leaf; `tools:` gains `WebFetch` and `webfetch`; gains `annotators: egress` and `pre_tool_call.annotations.egress` |
+| S8 | P3.1 | `data.agt.defaults.config` | Gains `egress` **with an explicit `allowlist`** (risk row 21) |
+| S1 | P1 | `claude-code.hookmap.yaml` | `PreToolUse` gains `raw_command: $.tool_input.command` |
+| S2 | P2 | `opencode.hookmap.yaml` | Request gate gains `raw_command`, and its `tools:` list gains OpenCode's fetch tool |
+
+**This slice's affordances are N54, N55, N23, N24, N21, N31, N30, N2, N11, S17, S10, S7, S8, S1, S2, and the four existing U's.**
+
+### Wiring
+
+```mermaid
+flowchart TB
+    subgraph P1["P1: Claude Code session"]
+        S17["S17: settings.json PreToolUse matcher"]
+        S1["S1: claude-code.hookmap.yaml"]
+        N2["N2: buildEnvelope()"]
+        U2["U2: permission outcome"]
+    end
+
+    subgraph P2["P2: OpenCode session"]
+        S2["S2: opencode.hookmap.yaml"]
+        N11["N11: buildEnvelope()"]
+        U11["U11: decision surface"]
+    end
+
+    subgraph P3["P3: ACS Guardian service"]
+        N21["N21: validateEnvelope()"]
+        N54["N54: resolvePolicyTargetArgument()"]
+        N23["N23: assemblePreToolCallSnapshot()"]
+        N24["N24: mapVerdict()"]
+        N55["N55: annotateEgressDestination()"]
+        N26["N26: envelope log sink"]
+
+        subgraph P31["P3.1: AGT bridge"]
+            N31["N31: AgentControl.fromPath()"]
+            N30["N30: evaluateInterventionPoint()"]
+            S7["S7: policy/manifest.yaml"]
+            S8["S8: data.agt.defaults.config"]
+        end
+    end
+
+    subgraph P4["P4: Envelope Inspector"]
+        U20["U20: envelope stream"]
+        U21["U21: decision badge"]
+    end
+
+    S10["S10: mapping.yaml"]
+
+    S17 -.->|which tools reach the shim| N2
+    S1 -.->|raw_command path| N2
+    S2 -.->|raw_command path| N11
+    N2 --> N21
+    N11 --> N21
+    N21 --> N54
+    S10 -.->|by_tool table| N54
+    N54 -.->|argument name| N23
+    N54 -.->|argument name| N24
+    N23 -->|snapshot: normalised leaf + raw_command| N30
+    S7 -.-> N31
+    S8 -.-> N31
+    N31 -.-> N30
+    N30 -->|dispatch| N55
+    N55 -.->|{destination} or {}| N30
+    N30 -.->|verdict| N24
+    N24 --> N26
+    N24 -.-> U2
+    N24 -.-> U11
+    N26 -.-> U20
+    N26 -.-> U21
+
+    classDef ui fill:#ffb6c1,stroke:#d87093,color:#000
+    classDef nonui fill:#d3d3d3,stroke:#808080,color:#000
+    classDef store fill:#e6e6fa,stroke:#9370db,color:#000
+    classDef new fill:#90EE90,stroke:#228B22,color:#000
+
+    class U2,U11,U20,U21 ui
+    class N2,N11,N21,N23,N24,N26,N30,N31 nonui
+    class S1,S2,S7,S8,S10,S17 store
+    class N54,N55 new
+```
+
+### Demo walkthrough
+
+| Step | Action | Where to look |
+|------|--------|---------------|
+| **1** | Ask for a fetch of an off-allowlist host | S17 admits `WebFetch` → N2 builds `arguments.url` → N54 answers `url` → N23 writes the leaf |
+| **2** | AGT decides on the wire's own field | N30 reads `snapshot.tool_call.args.url`, `egress.rego`'s **first** default path — no annotator involved |
+| **3** | Denial lands | N24 → U2, and N26 → U20/U21 |
+| **4** | Ask for `curl` of the same host | N2 builds `arguments.command` **and** `raw_command` → N54 answers `command` |
+| **5** | The Guardian originates the destination | N30 dispatches N55, which answers `{destination}` → `egress.rego`'s **fifth** default path |
+| **6** | Same rule, same reason code, different provenance | Identical `egress_destination_not_allowed` at U2 — the two cells differ only on the matrix |
+
+### ⚠️ V9 widens the request gate's matcher and NOT the result gate's, and that is measured rather than cautious
+
+`claude-code.hookmap.yaml`'s `PostToolUse` entry declares `outputs.from: $.tool_response.stdout` and `outputs.within: $.tool_response`. A `WebFetch` result carries no `stdout`, so `resolvePath` answers `undefined` and `buildPayload` **throws** — *"a result payload carrying no output would ask the far end to govern a step whose output it cannot see"*. That throw is caught by `governStep` at stage `"request"` and answered with the negotiated delivery posture, which under the shipped default (`proceed`) means **the step runs ungoverned with an audit event**.
+
+So widening `PostToolUse` alongside `PreToolUse` would buy a fail-open on every fetch result, in exchange for nothing: no stock gate reads a fetch's output. V9 widens the request gate only, and `.claude/settings.json` keeps `^Bash$` on `PostToolUse`.
+
+**The general form of this is not V9's to close, and is stated so it is not mistaken for solved:** `outputs.from` is a single path per hook, exactly as `policy_target` was a single path per intervention point — the same one-shape-per-gate assumption, one layer out, in the hookmap instead of the manifest. N54 answers it for arguments; nothing answers it for outputs. Whoever governs a second tool shape *at the result gate* needs the `outputs` counterpart of S10's `by_tool` table, and that is a slice with its own measurements.
+
+### What N54 replaces, and why the old check cannot simply be kept
+
+`test/path-dialects.test.ts` derives `mapping.yaml`'s `into_argument` from `policy/manifest.yaml`'s `policy_target` and fails if the two stop describing one leaf. Under V9 the manifest's `policy_target` names the normalised leaf, so that derivation would yield the leaf's own name — which is no host's argument, and would fail against every row of the new table.
+
+The check does not disappear; it splits into the two agreements that are actually load-bearing now:
+
+1. The manifest's `policy_target` names the leaf N23 writes. One derivation, as before.
+2. Every argument named in S10's `by_tool` table is one the tool it is keyed by can actually carry — checked against `policy/manifest.yaml`'s `tools:` registry for existence, which is the honest half. ⚠️ *The registry cannot tell whether `WebFetch` takes a `url`, only that `WebFetch` is registered — the same limit §V8 measured for hookmap `tools` entries, and for the same reason: the manifest names more than any one host dispatches.*
+
+
 
 ### What is config, and what is code
 
@@ -820,6 +951,7 @@ Not repaired in V5 because every one predates this slice, none is reachable thro
 | 21 | ⚠️ `cfg.egress` without an explicit `allowlist` denies every destination | V9 | `allowlist(rules)` falls back to `input.tool.security_labels`, which is `["shell"]` on every tool `policy/manifest.yaml` registers. An operator turning the gate on with a bare `egress: {}` gets a total-deny that reads like a policy decision. `policy/manifest.yaml`'s own `bash` comment anticipated the coupling but not this direction of it. Accepted and pinned by a test rather than engineered around: the fallback is AGT's, and `policy/lib` is byte-identical upstream |
 | 22 | ⚠️ An egress destination the extractor cannot parse falls through to `allow`, not to `deny` | V9, V7 | Structural, and stated rather than fixed. `egress.rego`'s gate is `undefined` when no destination resolves, so an obfuscated or novel egress form is unexamined rather than blocked. C7.2 is a detector, and a detector's misses are allows. The runbook says so in the slice's own voice, because the demo's shape invites the opposite reading, and V7's matrix carries the cell as `guardian_only` for exactly this reason |
 | 23 | ⚠️ V10's approved digest is manifest-static, so the register→load binding ACS specifies is not the binding AGT checks | V10, V7 | Not closable from this side: `content_hash.rego` reads the declared hash from `input.tool` alone, which the SDK resolves from the manifest's `tools:` catalog — no config hook, no annotations. A digest approved at `steps/skillLoad`'s own `steps/skillRegister` cannot reach the gate through session state. V10 declares the digest in the manifest and says so; the `(skill_id, digest)` binding is a Guardian-side ACS control V10 does not build. Closing it upstream would mean AGT accepting a declared hash from the snapshot, which weakens AGT's trust model — an upstream conversation, not a slice |
+| 24 | ⚠️ The result gate carries the same one-shape-per-gate assumption N54 closes at the request gate, one layer out, and **nothing answers it** | V9 (bounded), unassigned (general) | Found by V9 breadboarding. A hookmap declares `outputs.from` and `outputs.within` once per hook, exactly as the manifest declared `policy_target` once per intervention point. Measured on the shipped hookmap: `$.tool_response.stdout` against a `WebFetch` result resolves to `undefined`, `buildPayload` throws, `governStep` answers with the posture, and under the shipped `proceed` **the step runs ungoverned with an audit event**. V9 bounds it by widening the `PreToolUse` matcher only — no stock gate reads a fetch's output, so the result gate buys nothing and costs a fail-open. The general close is the `outputs` counterpart of S10's `by_tool` table, and it is **not** V9's: it needs its own measurements per host, and the two hookmaps' `outputs` blocks already differ (`mirrors` on one, a real `exit_status` path on the other). Recorded with the boundary stated rather than left to be inherited |
 
 ## Open decisions carried from shaping
 

@@ -339,6 +339,7 @@ Guardian dispatches nothing for denies **every** call, benign ones included.
 | S1 | P1 | `claude-code.hookmap.yaml` | Claude Code hook names ↔ ACS `steps/*`; ACS decisions ↔ `permissionDecision` / `updatedInput` / `updatedToolOutput` |
 | S2 | P2 | `opencode.hookmap.yaml` | OpenCode plugin hooks ↔ ACS `steps/*`; ACS decisions ↔ plugin return values |
 | S13 | P1 | `negotiated session config` | ServerHello result: `methods_evaluated`, `timeout_config`, `on_decision_failure`, startup posture. Stored whole — the store round-trips fields it does not name — while only the two this host reads are validated on the way in. **One interface, two implementations** (V3): file-backed at `.acs/sessions/<session_id>.json` for subprocess hosts like Claude Code, in-memory for in-process hosts. A fresh hook process has to read the negotiated posture without asking the Guardian — that is the only situation the posture exists for. `session_id` is untrusted input on a filesystem path and is validated as one safe segment |
+| S17 | P1 | 🟡 `.claude/settings.json` and `hosts/claude-code/settings.json` | The host's hook registration: which events fire the shim, and **which tools reach it at all** (`"matcher": "^Bash$"`). Found missing during V9 breadboarding, and its absence is why the one-tool limit survived eight slices — every affordance downstream assumes a governed call, and nothing in the breadboard said which calls those are. OpenCode has no counterpart: its plugin registers for every tool and scopes in S2's `tools:` list instead, which is why the same fact lives in two different kinds of place per host |
 | S14 | P1 | `audit sink` | Every fail-open proceed, per §6.4's MUST. JSONL at `.acs/audit.jsonl`. Total by construction, on N26's discipline: it runs on the decision path, so a sink that cannot write degrades observability and never a decision |
 | S15 | P2 | `negotiated session config` | Same interface as S13, in-memory implementation — an in-process plugin needs no file |
 | S16 | P2 | `audit sink` | Same shape as S14 |
@@ -376,6 +377,7 @@ flowchart TB
         N6["N6: applyFailurePosture()"]
         N7["N7: validateDecision()"]
         S1["S1: claude-code.hookmap.yaml"]
+        S17["S17: settings.json hook registration + tool matcher"]
         S13["S13: negotiated session config"]
         S14["S14: audit sink"]
     end
@@ -459,6 +461,7 @@ flowchart TB
 
     U1 --> N1
     N1 --> N2
+    S17 -.-> N1
     S1 -.-> N2
     N2 --> N4
     N4 --> N20
