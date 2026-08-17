@@ -1,0 +1,65 @@
+# V9: A second tool shape, and the egress gate
+
+**Demo:** Ask for a web fetch of a host the allowlist does not cover. AGT's stock `egress` gate denies it — a fourth gate class live, from one `data.json` key and no code. Then ask for the same destination over `curl`, and it denies again, this time from a Guardian-extracted destination. Both verdicts come from the same unforked rule.
+
+**Master doc:** [`docs/shaping/acs-reference-impl-slices.md`](../../docs/shaping/acs-reference-impl-slices.md) §V9 — authoritative for this slice's scope. Its measurements are in [`docs/shaping/spike-unreached-gates.md`](../../docs/shaping/spike-unreached-gates.md).
+
+**Affordances:** N54, N55, S17 are this slice's own; N23, N24, N21, N31, N30, N2, N11 change; S10, S7, S8, S1, S2 gain declarations. Defined in [Detail C](../../docs/shaping/acs-reference-impl-shaping.md#detail-c-affordances) and detailed in §V9's breadboard. No new UI — the denial renders through U2, U11, U20 and U21, which is the right answer rather than an omission: a deny is a deny, and U21 already renders whatever `reason_codes` comes back.
+
+## What this slice actually is
+
+The demo's first half needs **no code at all**, and saying so plainly is the point. `egress.rego`'s first default destination path is `["snapshot", "tool_call", "args", "url"]`, and `assemblePreToolCallSnapshot` already unwraps every ACS `arguments.<k>.value` into `tool_call.args.<k>`. For a tool whose ACS arguments name a `url`, the wire and the gate already agree. Measured against the pinned bundle with one `data.json` key and one manifest `tools:` entry:
+
+| Envelope | Verdict |
+|---|---|
+| `arguments.url.value = "https://docs.anthropic.com/x"` | `allow`, `result_labels: ["public"]` |
+| `arguments.url.value = "https://exfil.attacker.test/steal"` | `deny` `egress_destination_not_allowed` |
+
+The code in this slice is not what makes egress work. It is what makes a **second tool shape** work at all — and what covers the shell case the first half cannot.
+
+AGT's `manifest.schema.json` defines `intervention_point` with `additionalProperties: false` and exactly one `policy_target`. One manifest, one point, one path. `policy/manifest.yaml` declares `$.tool_call.args.command`, AGT resolves it before any rule runs, and a benign `WebFetch` call under it is **denied** with `runtime_error:path_missing` — measured. This has never bitten because the deployment governs exactly one tool.
+
+## Names frozen before implementation
+
+No V9 code exists yet, which is the only reason this section can be written at all. This slice has the same collision V8 had, in the same shape: **`egress` is already spent.** `policy/lib/egress.rego` is AGT's stock gate, `cfg.egress` under `data.agt.defaults.config` is its configuration, `egress_destination_not_allowed` is the reason it emits, and `input.tool.security_labels` is the allowlist it falls back to. Every one of those is AGT's. What this slice builds is a Guardian-side *extractor* that feeds that gate, and left to implementation time the first file is called `egress.ts` and is read as the gate.
+
+Each numbered sentence below is a commitment a future implementer can be held to. None describes measured V9 behaviour — there is none yet. Each fixes a name and the role that name must fill, and nothing more.
+
+1. **Nothing this slice builds is named `egress` alone.** The annotator is `annotateEgressDestination()` (N55) and the file that holds it is `annotate-egress.ts`. `egress.ts`, `Egress`, and a bare `egress` export are not available: they name AGT's gate, which this repository vendors byte-identical and does not author.
+
+2. **The declaration in `mapping.yaml` is `policy_target_argument`, with members `default` and `by_tool`.** The echo of AGT's own `policy_target` is deliberate and is the file's whole job: the manifest's `policy_target` and this table name the same leaf in two dialects, exactly as `into_argument` and `into_path` already do for the two gates. A third noun would hide that they are one fact.
+
+3. **`modifications.into_argument` is removed, not kept alongside.** N54 answers both questions — which argument the policy target is read from, and which argument a `transform` is written back to — because two declarations of one fact are two things that can disagree. Measured, that disagreement is a redaction emitted against `parameter_overrides.command` on a tool that has no `command` argument, while the argument that carries the secret is delivered untouched.
+
+4. **The synthetic snapshot leaf is `acs_policy_target`, and it must not shadow a tool's real argument.** It is written by `assemblePreToolCallSnapshot` and named by `policy/manifest.yaml`'s `policy_target`. The `acs_` stem marks it as this side's construct rather than something a host sent, which is what stops it being read as an argument the tool declared. An implementation that finds a real tool argument by that name fails loudly rather than overwriting it.
+
+5. **`resolvePolicyTargetArgument(mapping, point, toolName)` is told the tool name; it does not read an envelope.** Its callers already hold that name — `evaluateStep` reads `envelope.params.payload.tool.name` for the chain entry two statements earlier. A resolver that took an envelope would couple `map-verdict.ts` to the wire shape it currently knows nothing about.
+
+6. **`annotateEgressDestination` answers `{destination}` or `{}`, never a throw and never `null`.** A command it cannot parse is not an error: `egress.rego`'s gate is `undefined` when no destination resolves, and the call falls through to the other gates. This is the slice's stated miss direction (risk row 22) and must read as a deliberate answer in the code, not as a swallowed failure.
+
+7. **The Guardian supplies an annotator dispatcher unconditionally once the manifest declares one.** Measured: a manifest carrying `annotators: egress` evaluated by a bridge built without a dispatcher answers `deny runtime_error:annotation_failed` for `echo hi` as readily as for a `curl` — a **total deny wearing a runtime-error reason**. `StartGuardianOptions.annotator` stays overridable; what changes is that omitting it no longer means "no annotator", it means "the built-in one". A test asserting a benign call is not denied under the shipped manifest is the one check in this slice whose absence would be silent.
+
+8. **`cfg.egress` ships with an explicit `allowlist`.** With the key absent, `allowlist(rules)` falls back to `input.tool.security_labels`, which is `["shell"]` on every tool `policy/manifest.yaml` registers, and every destination is denied. That fallback is AGT's and stays untouched; what this slice owes is a configuration that does not walk into it, and a test that pins the reason.
+
+## What this slice does not do, stated so it is not assumed
+
+**Only the request gate's matcher widens.** `claude-code.hookmap.yaml`'s `PostToolUse` entry declares `outputs.from: $.tool_response.stdout`. A `WebFetch` result carries no `stdout`, so `resolvePath` answers `undefined`, `buildPayload` throws, `governStep` answers with the negotiated posture, and under the shipped `proceed` **the step runs ungoverned with an audit event**. No stock gate reads a fetch's output, so widening `PostToolUse` buys nothing and costs a fail-open. `.claude/settings.json` keeps `^Bash$` there.
+
+The general form — a hookmap declares `outputs.from` once per hook, exactly as the manifest declared `policy_target` once per point — is the same one-shape assumption one layer out, and **nothing in this slice answers it.** It is risk row 24 and is explicitly unassigned.
+
+**Widening the matcher governs the tools named in it and no others.** Claude Code dispatches many more; each is a `tools:` registration plus a `by_tool` row. Additive, not automatic. The `runtime_error:tool_unknown` wall that made both `Bash` and `bash` necessary is unchanged.
+
+**The two egress routes are not one claim.** The `url` route's destination is constructible from the ACS envelope alone, so V7's matrix records it `expressed`. The `raw_command` route's destination is Guardian-originated, so its cell is `guardian_only` — the status R1.3's `annotations` and R1.4's identity already carry. Two colours for one gate is the honest result, and it is why both halves ship instead of one.
+
+## The check that changes
+
+`test/path-dialects.test.ts` derives `mapping.yaml`'s `into_argument` from `policy/manifest.yaml`'s `policy_target`. Under this slice the manifest's `policy_target` names the synthetic leaf, so that derivation would yield `acs_policy_target` — no host's argument — and fail against every row of the new table.
+
+It splits into the two agreements that are load-bearing now:
+
+1. The manifest's `policy_target` names the leaf `assemblePreToolCallSnapshot` writes. One derivation, as before.
+2. Every argument in `policy_target_argument.by_tool` is keyed by a tool `policy/manifest.yaml`'s registry knows. ⚠️ *The registry can tell you `WebFetch` is registered; it cannot tell you `WebFetch` takes a `url`. Same limit §V8 measured for hookmap `tools` entries, and for the same reason: one manifest serves both hosts, so it names more than either dispatches.*
+
+## Found while breadboarding
+
+**S17 is new, and its absence is the finding.** `.claude/settings.json` and `hosts/claude-code/settings.json` decide which tools reach the shim at all (`"matcher": "^Bash$"`), and neither has ever appeared in this project's breadboard. Every affordance downstream assumes a governed call and nothing said which calls those are — which is how a one-tool deployment survived eight slices unnoticed. OpenCode has no counterpart: its plugin registers for every tool and scopes in `opencode.hookmap.yaml`'s `tools:` list, so the same fact lives in a different *kind* of place per host.
