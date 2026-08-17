@@ -155,13 +155,12 @@ Upstream contract watch: could not read main's surfaces -- readSurfaces: expecte
 
 Exit code `0`. The run names the surface it could not read and which side it was reading, and
 it reports rather than refusing — so the scheduled job publishes the finding instead of dying
-with the error buried in a raw log. This run never gets far enough to know which two commits
-it was comparing, so it prints none of the other three lines from a clean run — a report that
-a read failed is the whole of what there is to report.
+with the error buried in a raw log. The run returns the moment a side cannot be read, so a read
+failure is the whole of its output — no compared-refs line, no schema line, no hookmap line.
 
 ## What this file is, and is not
 
-This file is the **evidence** — real, reproducible runs, pasted verbatim, one clean and two
+This file is the **evidence** — real, reproducible runs, pasted verbatim, two clean and two
 against clones edited on purpose to show what a reported movement looks like. It does not
 declare which contract surfaces this project watches or what a run does and does not close;
 that declaration lives beside the code it describes, not beside the captured output.
