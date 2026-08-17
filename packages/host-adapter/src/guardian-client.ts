@@ -98,17 +98,17 @@ export class GuardianResultCorrelationError extends Error {
 /**
  * Thrown when the negotiated timeout elapses with no response (§6.4).
  *
- * NAMES A MISSING RESPONSE, NOT A MISSING DECISION (PR #12 review, second
- * pass). This is `post`'s error -- the wire primitive -- and `post` also
- * carries `handshake/hello`, whose result is a ServerHello and which never
- * asked for a decision at all. The message used to say "no decision within
- * ...ms" regardless, and that string is not ephemeral: it becomes
- * `AuditEntry.failure.message` through `classifyDeliveryFailure`, so a
- * handshake that timed out could file a durable record blaming a missing
- * decision on a round trip that never sought one. Where a decision genuinely
- * was sought, `applyFailurePosture` already writes "no decision arrived from
- * the guardian for <method>" around this, so nothing is lost by this layer
- * reporting only what it knows: nothing came back.
+ * Names a missing response, not a missing decision. This is `post`'s error
+ * -- the wire primitive -- and `post` also carries `handshake/hello`, whose
+ * result is a ServerHello and which never asked for a decision at all. A
+ * message like "no decision within ...ms" would be wrong there, and that
+ * string is not ephemeral: it becomes `AuditEntry.failure.message` through
+ * `classifyDeliveryFailure`, so a handshake that timed out would file a
+ * durable record blaming a missing decision on a round trip that never
+ * sought one. Where a decision genuinely was sought, `applyFailurePosture`
+ * already writes "no decision arrived from the guardian for <method>"
+ * around this, so nothing is lost by this layer reporting only what it
+ * knows: nothing came back.
  */
 export class GuardianTimeoutError extends Error {
   readonly timeoutMs: number;
@@ -121,8 +121,8 @@ export class GuardianTimeoutError extends Error {
 
 export type PostOptions = {
   /** The negotiated `timeout_config` value for this method. Omitted means no
-   * timeout, which is how V1 called this and how the handshake calls it --
-   * the handshake has no negotiated timeout yet, by definition. */
+   * timeout, the same way the handshake calls it -- the handshake has no
+   * negotiated timeout yet, by definition. */
   timeoutMs?: number;
 };
 

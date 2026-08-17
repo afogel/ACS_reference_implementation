@@ -1,13 +1,13 @@
 /**
- * U20 (envelope stream), U21 (decision badge), U23 (posture badge), and N51
- * (audit-entry line).
+ * This module renders four things: the envelope stream, the decision badge,
+ * the posture badge, and the audit-entry line.
  *
  * Every function here is pure: no clock, no env, no process. The CLI decides
  * whether the terminal wants ANSI and passes `color`; tests assert exact
  * plain strings. Nothing here knows what produced a decision -- the decision
  * badge reads ACS's own `decision`, `reason_codes`, and `policy_references`
- * fields and nothing else (global constraint 9). The posture badge and the
- * audit-entry line read only the fields S14's AuditEntry declares.
+ * fields and nothing else. The posture badge and the audit-entry line read
+ * only the fields the audit log's AuditEntry declares.
  *
  * `renderDecisionBadge` is told a decision rather than handed a log row to
  * interrogate: `outcomeMessageOf` is the one place that reads an envelope's
@@ -243,35 +243,38 @@ export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderO
 }
 
 /**
- * U23's running state: the posture carried by the most recent S14 entry, and
- * how many audited fail-open proceeds have crossed since the tail started.
+ * The posture badge's running state: the posture carried by the most recent
+ * audit-log entry, and how many audited fail-open proceeds have crossed
+ * since the tail started.
  *
  * `posture` is the *last observed* posture, not the negotiated one, and the
- * label says so (whole-branch review, I5). It is null until an S14 entry
- * arrives -- which, in the healthy case, is forever: a session with zero
- * delivery failures writes no audit entry at all, and the posture it
- * negotiated is sitting in the session store this package cannot read. It
- * cannot read it for a stated reason rather than an accidental one: the store
- * is keyed by the host's own raw session identifier, which no artifact this
- * package tails carries (see tail-audit-log.ts's module doc on the raw vs
- * derived split), and reading a host-side store would put this package back
- * inside the boundary R5.1/R5.2 draw around it.
+ * label says so. It is null until an audit-log entry arrives -- which, in
+ * the healthy case, is forever: a session with zero delivery failures
+ * writes no audit entry at all, and the posture it negotiated is sitting in
+ * the session store this package cannot read. It cannot read it for a
+ * stated reason rather than an accidental one: the store is keyed by the
+ * host's own raw session identifier, which no artifact this package tails
+ * carries (see tail-audit-log.ts's module doc on the raw vs derived split),
+ * and reading a host-side store would cross the boundary that keeps this
+ * package an observer of the wire, not a participant in the host's own
+ * state.
  */
 export type PostureBadgeState = { posture: "proceed" | "deny" | null; proceeds: number };
 
 /**
- * U23. The count is the point (see this module's own header and §6.4): a
+ * The count is the point (see this module's own header and §6.4): a
  * fail-open proceed is a tool call that ran with no policy decision behind
  * it, and it is invisible unless something puts a number on it. A non-zero
  * count is painted as a warning; zero is clean. The posture itself is
  * painted so `deny` and `proceed` read as visibly different states, not
- * just different words -- distinguishing them is what U23 is for.
+ * just different words -- distinguishing them is what this badge is for.
  *
  * Both halves are labelled as what they are: the posture is the last one
- * *observed* in S14, and its absence is "(none observed)", not "(not
- * negotiated)". The old label made a claim this badge cannot check -- a
- * session that negotiated `deny` and had zero delivery failures is the
- * healthy case, and it read as though nothing had been negotiated at all.
+ * *observed* in the audit log, and its absence is "(none observed)", not
+ * "(not negotiated)". A label of "(not negotiated)" would make a claim this
+ * badge cannot check -- a session that negotiated `deny` and had zero
+ * delivery failures is the healthy case, and it would read as though
+ * nothing had been negotiated at all.
  */
 export function renderPostureBadge(state: PostureBadgeState, options: RenderOptions = {}): string {
   const color = options.color ?? false;
@@ -286,16 +289,17 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
 }
 
 /**
- * N51. One S14 line as a header plus the failure that produced it. Every
+ * One audit-log line as a header plus the failure that produced it. Every
  * AuditEntry carries an `outcome`, and the two are rendered distinctly
- * (`PROCEEDED` in the same warning colour as a non-zero U23 count, `BLOCKED`
- * in the deny colour) for the same reason U21 refuses to render a fired
- * policy identically to a clean allow: the outcome that bypassed a decision
- * is the one line here that must not read like an ordinary one.
+ * (`PROCEEDED` in the same warning colour as the posture badge's non-zero
+ * count, `BLOCKED` in the deny colour) for the same reason
+ * renderDecisionBadge refuses to render a fired policy identically to a
+ * clean allow: the outcome that bypassed a decision is the one line here
+ * that must not read like an ordinary one.
  *
- * S14 records the host's own raw session identifier, not the UUID derived
- * from it that S6's envelopes carry (see tail-audit-log.ts's module doc,
- * which now spells the split out) -- the two logs cannot be joined on it.
+ * The audit log records the host's own raw session identifier, not the
+ * UUID derived from it that the envelope log's envelopes carry (see
+ * tail-audit-log.ts's module doc) -- the two logs cannot be joined on it.
  * Labelled `audit_session` here, deliberately not `session`, so nothing
  * reads this value as comparable to an id printed anywhere near a rendered
  * EnvelopeLogEntry.

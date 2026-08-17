@@ -67,11 +67,11 @@ describe("agt-bridge", () => {
   });
 
   it("a caller that never touches createBridge can satisfy the role too", async () => {
-    // The property that matters for V5 and V7: the Guardian depends on
-    // something it can be told to evaluate, not on this package's factory. A
-    // stand-in written by hand type-checks and answers, with no AGT in it --
-    // which is what makes `PolicyBridge` a role rather than a synonym for
-    // `ReturnType<typeof createBridge>` (PR #10 review).
+    // The property that matters: the Guardian depends on something it can be
+    // told to evaluate, not on this package's factory. A stand-in written by
+    // hand type-checks and answers, with no AGT in it -- which is what makes
+    // `PolicyBridge` a role rather than a synonym for
+    // `ReturnType<typeof createBridge>`.
     const standIn: PolicyBridge = {
       async evaluate(point, snapshot) {
         return { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` };
@@ -83,8 +83,8 @@ describe("agt-bridge", () => {
   });
 });
 
-// R1.2's annotator wiring, tested directly against createBridge rather than
-// through the Guardian (test/dispositions.test.ts covers the wire-level
+// The bridge's annotator wiring, tested directly against createBridge rather
+// than through the Guardian (test/dispositions.test.ts covers the wire-level
 // round trip for all five verdicts, including this one) -- these two cases
 // belong here because they are about the bridge's own contract for its
 // `annotator` option, not about how a verdict maps onto an ACS decision.

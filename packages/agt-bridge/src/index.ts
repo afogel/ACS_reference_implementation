@@ -50,10 +50,9 @@ export type PolicyBridge<S extends InterventionSnapshot = InterventionSnapshot> 
  * other placements were tried against the snapshot and all were dropped;
  * see the drift manifest's own header). Deliberately a plain function, not
  * the SDK's own `AnnotatorDispatcher` interface: that shape is an
- * AGT-specific type this package's own callers should not have to import,
- * per R3.3 (this bridge carries no host-specific code, and by the same
- * token should not force a host-shaped caller to reach into AGT's types
- * either).
+ * AGT-specific type this package's own callers should not have to import.
+ * This bridge carries no host-specific code, and by the same token should
+ * not force a host-shaped caller to reach into AGT's types either.
  */
 export type Annotator = (name: string, config: unknown, preliminary: unknown) => unknown;
 
@@ -62,8 +61,8 @@ export type CreateBridgeOptions = {
 };
 
 /**
- * N31 — construct once at boot. N30 — evaluate per decision.
- * Stateless: nothing is retained between evaluate() calls (R6.1).
+ * Construct once at boot, then call `evaluate` once per decision. Stateless:
+ * nothing is retained between `evaluate()` calls.
  */
 export function createBridge(manifestPath: string, options?: CreateBridgeOptions): PolicyBridge {
   if (manifestPath.includes("/./")) {

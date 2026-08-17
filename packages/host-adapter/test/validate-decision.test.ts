@@ -4,7 +4,7 @@ import { validateDecision } from "../src/validate-decision.ts";
 const FRESH = { elapsedMs: 10 };
 const ARGS = { command: "echo ghp_ABCDEF123456", timeout: 30 };
 
-describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)", () => {
+describe("validateDecision — malformed modifications fail closed (§6.3)", () => {
   it("passes a modify whose modifications are well formed, and applies them", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "redacted", modifications: { parameter_overrides: { command: "echo [REDACTED]" } } },
@@ -40,11 +40,11 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
   });
 
   // Two redactions must be disjoint from each other, not only from the
-  // overrides. Before this check, `/a` then `/a/b` yielded
+  // overrides. Without this check, `/a` then `/a/b` would yield
   // `{a: {b: "[REDACTED]"}}`: the first redaction discarded, `keep` silently
-  // gone from the arguments the host was about to run, and the decision still
-  // rendered as an applied modify. Losing an argument is worse than failing to
-  // redact one, and both are worse than a deny.
+  // gone from the arguments the host was about to run, and the decision
+  // still rendered as an applied modify. Losing an argument is worse than
+  // failing to redact one, and both are worse than a deny.
   it("denies two redaction paths that overlap each other", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/a" }, { path: "/a/b" }] } },
@@ -89,7 +89,7 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     expect(out.decision).toBe("deny");
   });
 
-  // Fix round 1, item 4: an empty path segment list ("" or "/") addresses
+  // An empty path segment list ("" or "/") addresses
   // no field. Applying it would report a successful modify while redacting
   // nothing -- a policy that fired and did not take effect -- so this fails
   // closed the same as any other unusable modifications object.
@@ -104,10 +104,9 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     ).decision).toBe("deny");
   });
 
-  // Fix round 1, item 5: a malformed redactions entry must be denied
-  // whether or not parameter_overrides is also present -- the overlap
-  // check alone used to be the only thing validating a path's shape, and
-  // it only ran when overrides existed too.
+  // A malformed redactions entry must be denied whether or not
+  // parameter_overrides is also present -- validation must not depend on
+  // which other fields happen to be there.
   it("denies a redaction with a missing or non-string path even with no parameter_overrides present", () => {
     expect(validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{}] } },
@@ -115,12 +114,13 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     ).decision).toBe("deny");
   });
 
-  // The CRITICAL this round exists for. Reproduced before the fix: the
-  // decision stayed `modify`, `applied_input` carried BOTH the invented key
-  // and the untouched original, the hookmap rendered
-  // `permissionDecision: allow` with that updatedInput, and the host ran the
-  // original un-redacted command -- while reporting the rewrite as applied.
-  // Nothing was audited, because the audit sink records delivery failures.
+  // The hazard this guards against: if unchecked, the decision would stay
+  // `modify`, `applied_input` would carry BOTH the invented key and the
+  // untouched original, the hookmap would render `permissionDecision: allow`
+  // with that updatedInput, and the host would run the original
+  // un-redacted command -- while reporting the rewrite as applied. Nothing
+  // would be audited, because the audit sink records delivery failures, not
+  // this.
   it("denies a parameter_overrides key that names no existing argument, instead of inventing the field", () => {
     const out = validateDecision(
       {
@@ -195,9 +195,9 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
     expect(out.applied_input).toBeUndefined();
   });
 
-  // Deferred minor from Task 6, closed here: both of these already failed
-  // closed, but the raw JS error text ("...map is not a function") was what
-  // landed in the deny's reasoning, which is the audit record a human reads.
+  // Both of these fail closed either way, but the raw JS error text
+  // ("...map is not a function") should never be what lands in the deny's
+  // reasoning, which is the audit record a human reads.
   it("reports a clean ModificationsInvalidError for a non-object redactions entry or a non-array redactions", () => {
     for (const modifications of [{ redactions: [null] }, { redactions: "abc" }, { redactions: [42] }]) {
       const out = validateDecision(
@@ -220,7 +220,7 @@ describe("validateDecision — malformed modifications fail closed (R1.8, §6.3)
   });
 });
 
-describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
+describe("validateDecision — ASK and DEFER expiry", () => {
   it("passes a fresh ask through untouched", () => {
     const ask = {
       decision: "ask",
@@ -257,7 +257,7 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     expect(out.decision).toBe("deny");
   });
 
-  // Fix round 1, item 2: every other ASK test here produces the same verdict
+  // Every other ASK test here produces the same verdict
   // whether or not the timeout_seconds -> ms conversion happens at all
   // (1s/2000ms reads "expired" either way; 60s/10ms reads "not expired"
   // either way), so the `* 1000` was unverified. timeout_seconds: 1 is
@@ -277,9 +277,9 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     expect(out.decision).toBe("ask");
   });
 
-  // Fix round 1, item 1: pins the exact boundary (strict `>`, per the
-  // module's own comment) so a regression to `>=` would fail here even
-  // though every other ASK test above sits far past the boundary.
+  // Pins the exact boundary (strict `>`, per the module's own comment) so a
+  // regression to `>=` would fail here even though every other ASK test
+  // above sits far past the boundary.
   // timeout_seconds: 1 -> timeoutMs 1000. Below, exactly at, and just past.
   it("expires an ask strictly after its timeout, not at or before it", () => {
     const askDetails = { approver: { type: "user" }, question: "ok?", timeout_seconds: 1 };
@@ -321,12 +321,12 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     ).toBe("defer");
   });
 
-  // PR #12 review, second pass. defer-details.json permits
-  // `timeout_decision: "ask"`, and this used to emit `{decision: "ask"}` with
-  // no `ask_details` -- a message ACS's own schema rejects, and one this
-  // module's peer resolver would deny as `ask_details_invalid` if anything
-  // ever asked it. Nothing does: no substitution re-enters N7, so the
-  // malformed ask went straight to the host's renderer.
+  // defer-details.json permits `timeout_decision: "ask"`. Substituting it
+  // naively would emit `{decision: "ask"}` with no `ask_details` -- a
+  // message ACS's own schema rejects, and one this module's peer resolver
+  // would deny as `ask_details_invalid` if anything ever asked it. Nothing
+  // does: no substitution re-enters `validateDecision`, so a malformed ask
+  // would go straight to the host's renderer.
   describe("an expired defer whose timeout_decision is ask", () => {
     const askOnTimeout = {
       reason: "low_confidence",
@@ -370,8 +370,8 @@ describe("validateDecision — ASK and DEFER expiry (R1.8)", () => {
     });
   });
 
-  // Fix round 1, item 1: DEFER's own boundary, pinned the same way as ASK's
-  // above. resolution_timeout_ms: 50 -- below, exactly at, and just past.
+  // DEFER's own boundary, pinned the same way as ASK's above.
+  // resolution_timeout_ms: 50 -- below, exactly at, and just past.
   it("expires a defer strictly after its resolution_timeout_ms, not at or before it", () => {
     const deferDetails = { reason: "low_confidence", resolution_method: "timeout", resolution_timeout_ms: 50 };
     expect(
@@ -410,7 +410,7 @@ describe("validateDecision — everything else passes through", () => {
     expect(validateDecision(deny, { ...FRESH, originalArguments: ARGS })).toEqual(deny);
   });
 
-  // Constraint 1: an arriving deny is honoured. There is no path in this
+  // An arriving deny is honoured. There is no path in this
   // module that can turn one into anything else.
   it("never rewrites a deny", () => {
     for (const elapsed of [0, 1, 1_000_000]) {

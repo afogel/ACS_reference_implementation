@@ -69,7 +69,7 @@ function withTempDir(run: (dir: string, path: string) => Promise<void>): Promise
   });
 }
 
-describe("tailAuditLog (N51)", () => {
+describe("tailAuditLog", () => {
   it("streams what arrives after the tail starts", async () => {
     await withTempDir(async (_dir, path) => {
       writeFileSync(path, "");

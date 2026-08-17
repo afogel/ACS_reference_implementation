@@ -39,7 +39,7 @@ function readEntries(path: string): AuditEntry[] {
     .map((line) => JSON.parse(line) as AuditEntry);
 }
 
-describe("createAuditSink — S14", () => {
+describe("createAuditSink", () => {
   it("appends one JSONL entry per fail-open proceed", () => {
     const path = join(scratch(), "audit.jsonl");
     const sink = createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") });
@@ -58,11 +58,11 @@ describe("createAuditSink — S14", () => {
     expect(readEntries(path).map((e) => e.seq)).toEqual([1, 2]);
   });
 
-  // I6: seq used to be per sink *instance*, and the shipped host builds a
-  // fresh sink in a fresh subprocess per hook -- so every entry in a session
-  // was `seq: 1`. It ordered nothing, could not exhibit the gap its own doc
-  // tells a reader to look for, and rendered as identical `#1` headers that
-  // read as one entry repeated.
+  // A per-instance counter would number every entry in a session `seq: 1`,
+  // since the shipped host builds a fresh sink in a fresh subprocess per
+  // hook. That would order nothing, could not exhibit the gap the module's
+  // own doc tells a reader to look for, and would render as identical `#1`
+  // headers that read as one entry repeated.
   it("continues the numbering a previous sink instance left in the file", () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path }).write(EVENT);
@@ -105,7 +105,7 @@ describe("createAuditSink — S14", () => {
     expect(createAuditSink({ path }).write(EVENT)).toBe(true);
   });
 
-  it("records a blocked step too, so U23 can distinguish the two outcomes", () => {
+  it("records a blocked step too, so the Inspector's posture badge can distinguish the two outcomes", () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path }).write({ ...EVENT, posture: "deny", outcome: "blocked" });
     const [entry] = readEntries(path);
@@ -122,7 +122,7 @@ describe("createAuditSink — S14", () => {
   });
 });
 
-describe("createAuditSink — total by construction (constraint 2)", () => {
+describe("createAuditSink — total by construction", () => {
   it("does not throw when the path cannot be written, and reports once", () => {
     const errors: unknown[] = [];
     // A path whose parent is a file, not a directory: mkdir and write both fail.
@@ -135,9 +135,10 @@ describe("createAuditSink — total by construction (constraint 2)", () => {
     expect(errors).toHaveLength(1);
   });
 
-  // Totality and silence are different properties: the sink must not throw,
-  // and it must still tell the caller nothing was recorded, so N6 can honour
-  // constraint 3 rather than proceeding on an unrecorded bypass.
+  // Totality and silence are different properties: the sink stays total,
+  // and it still tells the caller nothing was recorded, so
+  // applyFailurePosture can downgrade an unrecorded proceed instead of
+  // letting it stand as a silent bypass.
   it("reports false when it could not write, without throwing", () => {
     const dir = scratch();
     const blocker = join(dir, "blocker-false");
@@ -161,16 +162,16 @@ describe("createAuditSink — total by construction (constraint 2)", () => {
   });
 
   // Every other test in this file supplies `onError`, so the branch a caller
-  // passing no reporter actually takes -- the `console.error` fallback -- was
-  // the one branch never executed. The shipped host is that caller:
+  // passing no reporter actually takes -- the `console.error` fallback --
+  // needs its own direct coverage. The shipped host is that caller:
   // acs-hook.ts builds its sink with a path and nothing else, so this is the
   // reporting path a real deployment uses when its audit log cannot be
   // written.
   //
-  // Spied rather than left to print, so the run stays pristine (constraint
-  // 6), and spied rather than silenced by a new production option: adding an
-  // option to keep a test quiet would change the shipped code to suit the
-  // test, and the branch under test is precisely "no options were given".
+  // Spied rather than left to print, so the run stays pristine, and spied
+  // rather than silenced by a new production option: adding an option to
+  // keep a test quiet would change the shipped code to suit the test, and
+  // the branch under test is precisely "no options were given".
   it("falls back to console.error when no reporter is supplied, and still does not throw", () => {
     const dir = scratch();
     const blocker = join(dir, "blocker-default-reporter");
@@ -203,14 +204,13 @@ describe("createAuditSink — total by construction (constraint 2)", () => {
     expect(() => sink.write(EVENT)).not.toThrow();
   });
 
-  // A judgement call the brief left open: a failed write must not consume a
-  // sequence number. Concretely, that can only mean one thing an outside
-  // observer can check: a failed write leaves no entry -- of any seq -- on
-  // disk at all. (The sink disables itself permanently on the first
-  // failure, per constraint 1, so there is never a *later* successful write
-  // on the same instance whose seq could reveal a skipped or reused number;
-  // the file itself is the only externally visible record, and it is the
-  // thing this test inspects.)
+  // A failed write must not consume a sequence number. Concretely, that can
+  // only mean one thing an outside observer can check: a failed write
+  // leaves no entry -- of any seq -- on disk at all. (The sink disables
+  // itself permanently on the first failure, so there is never a *later*
+  // successful write on the same instance whose seq could reveal a skipped
+  // or reused number; the file itself is the only externally visible
+  // record, and it is the thing this test inspects.)
   it("a failed write persists no entry: it does not invent a seq that was never recorded", () => {
     const dir = scratch();
     const blocker = join(dir, "blocker4");
@@ -246,7 +246,7 @@ describe("NULL_AUDIT_SINK", () => {
   });
 
   // It records nothing, so it says nothing was recorded. Claiming otherwise
-  // would make this the one sink able to hide a bypass from constraint 3.
+  // would make this the one sink able to hide a bypass.
   it("reports false, because it recorded nothing", () => {
     expect(NULL_AUDIT_SINK.write(EVENT)).toBe(false);
   });

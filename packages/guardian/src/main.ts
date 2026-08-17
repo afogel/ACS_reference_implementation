@@ -31,7 +31,7 @@ const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
 const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 
 // Read and validate the posture BEFORE starting the server. Not the audit
-// sink's path (S14): that file is the host's, written by the hook, not by
+// sink's path: that file is the host's, written by the hook, not by
 // this process, so this Guardian has no way to know it. What this process
 // does know -- and is about to declare to every session that handshakes --
 // is the posture. Calling buildServerHello() with no argument here reads

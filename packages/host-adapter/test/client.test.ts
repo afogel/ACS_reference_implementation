@@ -160,10 +160,9 @@ describe("GuardianClient.post", () => {
   });
 });
 
-// PR #10 review, Important: the shim used to receive a raw JSON-RPC response
-// and work out for itself whether a decision was in it. These are the branches
-// it no longer owns -- and the last of them is the one a copy of that
-// inspection would get wrong.
+// requestDecision owns every branch a shim would otherwise have to work out
+// for itself by inspecting a raw JSON-RPC response -- and the last of them
+// is the one a copy of that inspection would get wrong.
 describe("GuardianClient.requestDecision", () => {
   it("answers with the decision when one arrives", async () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
@@ -318,7 +317,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
     }
   });
 
-  it("still works with no timeout given, exactly as V1 called it", async () => {
+  it("still works with no timeout given", async () => {
     const server = Bun.serve({
       port: 0,
       fetch: () => Response.json({ jsonrpc: "2.0", id: "1", result: { decision: "allow" } }),
@@ -332,13 +331,12 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
     }
   });
 
-  // Whole-branch review, I8: `await res.json()` used to sit OUTSIDE the try
-  // that maps a TimeoutError onto GuardianTimeoutError, so a Guardian whose
-  // headers beat the timeout while its body did not surfaced as a bare
-  // DOMException -- which classifyDeliveryFailure then filed as
-  // `error_without_decision` rather than `timeout`. §6.4 defines a decision
-  // failure by the absence of a usable decision within the negotiated
-  // timeout; a body that never arrives is exactly that.
+  // `await res.json()` sits INSIDE the try that maps a TimeoutError onto
+  // GuardianTimeoutError, so a Guardian whose headers beat the timeout while
+  // its body does not is still classified as `timeout`, not
+  // `error_without_decision`. §6.4 defines a decision failure by the
+  // absence of a usable decision within the negotiated timeout; a body that
+  // never arrives is exactly that.
   it("throws GuardianTimeoutError when the headers arrive but the body never does", async () => {
     const server = Bun.serve({
       port: 0,
@@ -375,8 +373,8 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
   });
 });
 
-describe("negotiateSessionConfig (N5)", () => {
-  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store (S13)", async () => {
+describe("negotiateSessionConfig", () => {
+  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store", async () => {
     const store = createSessionConfigStore();
     expect(store.get()).toBeUndefined();
 
@@ -394,11 +392,10 @@ describe("negotiateSessionConfig (N5)", () => {
     expect(stored?.on_decision_failure).toBe("proceed");
   });
 
-  // PR #10 review, Important: the ServerHello used to become a SessionConfig by
-  // `as unknown as SessionConfig` -- a rename dressed as a type. Now it becomes
-  // one by being checked, so a Guardian emitting the wrong shape fails at the
-  // handshake instead of writing an unusable config that every later read
-  // silently rejects.
+  // The ServerHello becomes a SessionConfig by being checked, not by
+  // `as unknown as SessionConfig` -- so a Guardian emitting the wrong shape
+  // fails at the handshake instead of writing an unusable config that every
+  // later read silently rejects.
   it("refuses a ServerHello that is not a usable session config, rather than casting it into one", async () => {
     const mock = Bun.serve({
       port: 0,
@@ -429,13 +426,13 @@ describe("negotiateSessionConfig (N5)", () => {
   });
 });
 
-// C1: `handshake` used to cast `response.result` straight to SessionConfig
-// and store it unchecked. Harmless for READS -- `get()` re-validates, so a
-// junk file returns undefined -- but the consequence nothing surfaced is
-// that every `get()` afterwards returns undefined, so every hook
-// re-handshakes, forever, while the deployment runs on the ACS default
-// rather than the posture its Guardian keeps declaring. Silently.
-describe("handshake (N5) — a ServerHello that is not a usable session config", () => {
+// Storing an unusable ServerHello without checking it would be harmless for
+// READS -- `get()` re-validates, so a junk file returns undefined -- but the
+// consequence nothing would surface is that every `get()` afterwards returns
+// undefined, so every hook re-handshakes, forever, while the deployment runs
+// on the ACS default rather than the posture its Guardian keeps declaring.
+// Silently.
+describe("handshake — a ServerHello that is not a usable session config", () => {
   /** A stub answering `handshake/hello` with whatever `result` it is given. */
   async function handshakeAgainst(result: unknown, store = createSessionConfigStore()) {
     const server = Bun.serve({
@@ -487,8 +484,8 @@ describe("handshake (N5) — a ServerHello that is not a usable session config",
       selected_transport: "http",
       timeout_config: { default_ms: 1234 },
       on_decision_failure: "deny" as const,
-      // A field this slice never names: the store round-trips it, and the
-      // new validation must not start dropping it.
+      // A field this module never names: the store round-trips it, and
+      // validation must not drop it.
       profiles_accepted: ["ACS-Core"],
     };
     const { thrown, store } = await handshakeAgainst(hello);
@@ -497,7 +494,7 @@ describe("handshake (N5) — a ServerHello that is not a usable session config",
   });
 });
 
-describe("handshake (N5) — the negotiated timeout (§6.4)", () => {
+describe("handshake — the negotiated timeout (§6.4)", () => {
   it("throws GuardianTimeoutError when the Guardian accepts the connection and never answers, and stores nothing", async () => {
     const server = Bun.serve({
       port: 0,
@@ -539,12 +536,13 @@ describe("handshake (N5) — the negotiated timeout (§6.4)", () => {
 });
 
 // `resolveSessionConfig` is what a host shim actually calls, and it exists so
-// that no shim repeats the interrogation this replaced: run the negotiation,
+// that no shim repeats this interrogation itself: run the negotiation,
 // catch, test `instanceof`, read `.config` off the error to discover whether a
-// posture had been negotiated after all. Every property below was previously
-// pinned only end to end through a subprocess (hosts/claude-code/test/
-// posture.test.ts), which is exactly the coverage shape that lets a
-// reimplementation in a second host go wrong quietly.
+// posture had been negotiated after all. These properties are pinned
+// directly here, at the unit level, not only end to end through a
+// subprocess (hosts/claude-code/test/posture.test.ts) -- which is exactly
+// the coverage shape that would let a reimplementation in a second host go
+// wrong quietly.
 describe("resolveSessionConfig — the session, as a message rather than a throw", () => {
   const HELLO = {
     negotiated_version: "0.1.0",
@@ -592,7 +590,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
     expect(resolved).toEqual({ config: HELLO, failure: undefined });
   });
 
-  // Risk row 14. `set()` throws, `get()` stays undefined, and the posture the
+  // `set()` throws, `get()` stays undefined, and the posture the
   // Guardian just declared has to reach THIS step anyway -- otherwise a
   // deployment that asked to fail closed fails open on the very step whose
   // posture it negotiated, and does so on every hook, forever.
@@ -662,7 +660,7 @@ describe("host -> wire -> policy -> host, end to end", () => {
     ) as { hookSpecificOutput: Record<string, unknown> };
 
     // No `hookEventName` here: it is not a function of the decision, so the
-    // shim adds it as it wraps (PR #10 review, Critical). What a Claude Code
+    // shim adds it as it wraps. What a Claude Code
     // process actually reads back, with that field in place, is pinned in
     // hosts/claude-code/test/wire-shape.test.ts against the real shim.
     expect(hookSpecificOutput).toEqual({ permissionDecision: "allow" });

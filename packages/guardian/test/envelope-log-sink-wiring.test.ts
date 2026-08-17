@@ -102,14 +102,14 @@ describe("Guardian envelope log wiring", () => {
     });
   });
 
-  // Decision P5. The envelope that fails validation is the most useful
-  // thing an ACS-first reader can see; recording it after the validator is
-  // exactly what would hide it.
-  // N27: this envelope names steps/* and carries a request_id, so it is
-  // addressable -- the schema failure now arrives as an honoured deny
-  // decision (a JSON-RPC success), not a bare error. Still recorded in both
-  // directions the same as any other response (asserted below).
-  it("records a schema-invalid steps/* request, then its deny decision (N27)", async () => {
+  // The envelope that fails validation is the most useful thing an
+  // ACS-first reader can see; recording it after the validator is exactly
+  // what would hide it. This envelope names steps/* and carries a
+  // request_id, so it is addressable -- the schema failure arrives as an
+  // honoured deny decision (a JSON-RPC success), not a bare error. Still
+  // recorded in both directions the same as any other response (asserted
+  // below).
+  it("records a schema-invalid steps/* request, then its deny decision", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       const bad = toolCallEnvelope("rm -rf /", { id: 12 });
       delete (bad.params as Record<string, unknown>).acs_version;

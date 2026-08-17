@@ -30,23 +30,23 @@
  * No policy-runtime vocabulary here and no host vocabulary either;
  * test/invariants.test.ts gates both. An observe-only upstream signal has
  * already become an ACS `allow` (with policy_references) by the time it
- * reaches this module, per R1.2, and it is dispatched through the exact same
+ * reaches this module, and it is dispatched through the exact same
  * `decisions.allow` entry a plain allow is: still one dispatch path, still
  * driven by the hookmap alone.
  *
- * V3: `decisions.allow` now also declares a reason field, so a plain allow and
- * an observe-only allow are no longer indistinguishable on the way out -- the
- * latter typically carries a `reasoning` string synthesized for it upstream,
- * and that string now reaches the host field the hookmap names for it, where a
+ * `decisions.allow` also declares a reason field, so a plain allow and an
+ * observe-only allow are not indistinguishable on the way out -- the latter
+ * typically carries a `reasoning` string synthesized for it upstream, and
+ * that string reaches the host field the hookmap names for it, where a
  * plain allow's absent `reasoning` leaves the field off entirely (pinned in
  * render-decision.test.ts). Still one dispatch path, still driven by the
- * hookmap alone -- only the rendered shape can now differ.
+ * hookmap alone -- only the rendered shape can differ.
  *
- * V3: the decision this module renders now arrives via N7's
- * validateDecision (validate-decision.ts), which resolves §6.3's
- * modifications and any ASK/DEFER expiry before this module ever sees the
- * result -- which is why `modify`'s hookmap entry names a post-validation
- * field (`applied_input`), not `modifications` itself.
+ * The decision this module renders arrives via `validateDecision`
+ * (validate-decision.ts), which resolves §6.3's modifications and any
+ * ASK/DEFER expiry before this module ever sees the result -- which is why
+ * `modify`'s hookmap entry names a post-validation field (`applied_input`),
+ * not `modifications` itself.
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";

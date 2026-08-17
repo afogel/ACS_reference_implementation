@@ -1,29 +1,20 @@
 /**
- * The third of R1.8's mandatory fail-closed resolvers, beside
- * decision-expiry.ts's two: what an arriving `modify` becomes once this host
- * has had its last word on it.
+ * One of three mandatory fail-closed resolvers, beside decision-expiry.ts's
+ * two: what an arriving `modify` becomes once this host has had its last
+ * word on it.
  *
- * A PEER, IN ITS OWN MODULE (PR #12 review, second pass). R1.8 names three
- * cases and this project handles all three, but they did not read as three of
- * anything: `resolveAsk` and `resolveDefer` were exported resolvers in a module
- * of their own, while `resolveModify` was a private function inside the
- * orchestrator that sequences them, and `applyModifications` -- the §6.3
- * collaborator underneath it -- throws. Three seams for one job family, so a
- * reader checking that all three fail closed had to establish it three
- * different ways.
+ * A peer, in its own module: `resolveAsk`, `resolveDefer`, and
+ * `resolveModify` all share the same shape --
+ * `resolve<Disposition>(decision, ...) -> ValidatedAcsDecision`, never
+ * throwing, each in a module beside the knowledge it needs -- and
+ * `validateDecision` is the switch that dispatches to them and nothing else.
  *
- * Now all three have the same shape: `resolve<Disposition>(decision, ...) ->
- * ValidatedAcsDecision`, never throwing, each in a module beside the knowledge
- * it needs, and `validateDecision` is the switch that dispatches to them and
- * nothing else.
+ * The translation from "this rewrite cannot be honoured" to "deny" stays
+ * here rather than moving down into modifications.ts, which owns §6.3 and
+ * owns no decision vocabulary at all.
  *
- * The translation from "this rewrite cannot be honoured" to "deny" stays HERE
- * rather than moving down into modifications.ts, which owns §6.3 and owns no
- * decision vocabulary at all. That separation is unchanged; what moved is only
- * which side of the orchestrator this function sits on.
- *
- * R3.2: this module knows ACS's decision vocabulary and §6.3's apply step.
- * No policy-runtime vocabulary.
+ * This module knows ACS's decision vocabulary and §6.3's apply step. No
+ * policy-runtime vocabulary.
  */
 
 import { deny, type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";

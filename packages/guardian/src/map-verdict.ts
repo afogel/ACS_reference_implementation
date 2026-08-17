@@ -143,7 +143,7 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
 }
 
 /**
- * R1.6 -- the $policy_target bound survives as ACS modifications.
+ * The $policy_target bound survives as ACS modifications.
  *
  * AGT's transform names the leaf it rewrote by the literal "$policy_target",
  * resolved against the manifest's intervention point. ACS expresses a

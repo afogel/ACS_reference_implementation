@@ -1,6 +1,6 @@
 /**
- * tailAuditLog (N51) streams S14 -- the audit record §6.4 requires for every
- * step that proceeds with no decision behind it -- as it grows, the way
+ * tailAuditLog streams the audit log -- the audit record §6.4 requires for
+ * every step that proceeds with no decision behind it -- as it grows, the way
  * `tail -f` does. Same contract as tailEnvelopeLog: same option shape, same
  * lazily-started poll, same eagerly-captured starting offset, same
  * Buffer-based partial-line reassembly, same shape check between
@@ -8,29 +8,29 @@
  * tail-envelope-log.ts's module doc for the reasoning behind each of those
  * choices, all of which apply unchanged to this file.
  *
- * S14 is written on the other side of the wire from S6: something that
- * negotiates a failure posture, not anything running a policy decision.
- * This package still imports nothing from it. AuditEntry is re-declared
- * here for the same reason EnvelopeLogEntry is: the round-trip contract test at
- * test/audit-sink-roundtrip.test.ts is what keeps the two declarations in
- * agreement, and importing the other side's type would make that agreement
- * a tautology instead of a check.
+ * The audit log is written on the other side of the wire from the envelope
+ * log: something that negotiates a failure posture, not anything running a
+ * policy decision. This package still imports nothing from it. AuditEntry
+ * is re-declared here for the same reason EnvelopeLogEntry is: the
+ * round-trip contract test at test/audit-sink-roundtrip.test.ts is what
+ * keeps the two declarations in agreement, and importing the other side's
+ * type would make that agreement a tautology instead of a check.
  *
- * THE RAW VS DERIVED SESSION IDENTIFIER, stated here because render.ts's
- * renderAuditEntry doc points at this paragraph for it and, until the
- * whole-branch review (I1), this paragraph did not exist. **S14's
- * `session_id` and S6's are not the same value, and the two logs cannot be
- * joined on it.** S14 records the identifier the host itself uses -- whatever
- * the host's own session is called, which is also the key its session store
- * is filed under. S6's envelopes carry `metadata.session_id`, which ACS's
- * schemas constrain to `format: uuid`, so a host whose session identifier is
- * not already a UUID has one *derived* from it before the envelope goes out.
+ * The raw session identifier versus the derived one, stated here because
+ * render.ts's renderAuditEntry doc points at this paragraph for it. **The
+ * audit log's `session_id` and the envelope log's are two different values;
+ * the two logs cannot be joined on it.** The audit log records the
+ * identifier the host itself uses -- whatever the host's own session is
+ * called, which is also the key its session store is filed under. The
+ * envelope log's envelopes carry `metadata.session_id`, which ACS's schemas
+ * constrain to `format: uuid`, so a host whose session identifier is not
+ * already a UUID has one *derived* from it before the envelope goes out.
  * Derivation is one-way as far as this package is concerned: nothing here can
  * turn one into the other, so nothing here tries. The mitigation is to label
  * rather than to correlate -- renderAuditEntry prints `audit_session=`, never
  * `session=`, so neither value can be misread as comparable to the other.
- * Making the two joinable is not this slice's work; V6's session chain is
- * where that seam is next touched.
+ * Making the two joinable is out of scope for this package; a future
+ * session-chain feature is where that seam would need to be touched next.
  *
  * One divergence from tail-envelope-log.ts, deliberate rather than
  * incidental: there, a log file that does not exist yet is ordinary --
@@ -39,15 +39,15 @@
  * through `onPollError` instead of silently read as size zero -- but a log
  * that has never yet appeared is still treated as size zero without
  * comment, exactly like tail-envelope-log.ts. That distinction matters
- * because a session with zero fail-open bypasses never creates S14 at all
- * (the sink on the other side of the wire creates its file lazily, on its
- * first write) -- that is the *healthy* outcome, and it must not read as an
- * error repeated on every tick for as long as the Inspector runs. A log
- * that vanishes after this tailer had already read from it is a different,
- * genuinely reportable event -- but reported once, on the tick the absence
- * is first observed, not on every tick it remains absent: a human watching
- * this stream needs to be told the log went away, not shown the same line
- * once a poll interval forever.
+ * because a session with zero fail-open bypasses never creates the audit
+ * log at all (the sink on the other side of the wire creates its file
+ * lazily, on its first write) -- that is the *healthy* outcome, and it must
+ * not read as an error repeated on every tick for as long as the Inspector
+ * runs. A log that vanishes after this tailer had already read from it is a
+ * different, genuinely reportable event -- but reported once, on the tick
+ * the absence is first observed, not on every tick it remains absent: a
+ * human watching this stream needs to be told the log went away, once, not
+ * shown the same line every poll interval forever.
  *
  * Because the poll after recreation must not assume whatever is on disk now
  * continues what was read before -- an unlink-and-recreate can land a
@@ -58,13 +58,14 @@
  */
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
-/** One line of S14, as written by the audit sink on the posture-negotiating
- * side of the wire. */
+/** One line of the audit log, as written by the audit sink on the
+ * posture-negotiating side of the wire. */
 export type AuditEntry = {
   seq: number;
   recorded_at: string;
-  /** The writer's own session identifier, which is NOT the `session_id` an
-   * envelope in S6 carries -- see this module's doc. */
+  /** The writer's own session identifier -- a different value from the
+   * `session_id` an envelope in the envelope log carries; see this module's
+   * doc. */
   session_id: string;
   /** An ACS method, or null when the writer never determined one. Never a
    * host's own event name: this reader knows ACS and nothing else. */
@@ -100,8 +101,8 @@ export type TailAuditLogOptions = {
 const NEWLINE = 0x0a;
 
 /**
- * S14 is a plain file on disk; anything can write a line to it that is
- * valid JSON but not a valid AuditEntry. Checked here, right after
+ * The audit log is a plain file on disk; anything can write a line to it
+ * that is valid JSON but not a valid AuditEntry. Checked here, right after
  * `JSON.parse`, using exactly the fields the renderer depends on, so a line
  * of the wrong shape is routed to `onMalformedLine` instead of reaching a
  * consumer that assumes every field is present and correctly typed.

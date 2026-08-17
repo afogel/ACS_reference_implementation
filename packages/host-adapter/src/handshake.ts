@@ -2,7 +2,7 @@
  * The host half of `handshake/hello`: send a ClientHello, keep what comes back
  * as this session's config.
  *
- * TWO ENTRY POINTS, AND THE DIFFERENCE BETWEEN THEM:
+ * Two entry points, with a real difference between them:
  *
  *   - `negotiateSessionConfig` does the exchange and THROWS. One request, one
  *     stored config, or an error naming which part failed.
@@ -11,62 +11,53 @@
  *     to apply to this step, and whatever went wrong getting it. It never
  *     throws, and it never makes the caller ask an error object what it holds.
  *
- * That second one exists because the asking it replaces was load-bearing and
- * subtle (PR #12 review, Important). The shim used to run the negotiation
- * itself, catch, test `error instanceof SessionConfigNotStoredError`, and read
+ * The second one exists because the alternative -- catching a negotiation
+ * failure, testing `error instanceof SessionConfigNotStoredError`, and reading
  * `error.config` off it to find out whether a posture had been negotiated
- * after all. Every host would have had to repeat that, and getting it wrong is
- * a fail-open: see the risk-row-14 note on `SessionConfigNotStoredError`.
+ * after all -- is exactly the kind of thing every host shim would otherwise
+ * have to repeat, and getting it wrong is a fail-open (see
+ * `SessionConfigNotStoredError`'s own doc comment below).
  *
- * ONE NAME FOR THE STORED MESSAGE (PR #10 review, Important and naming
- * symmetry). This module speaks `SessionConfig` throughout -- the message a
- * host stores and reads its posture and timeout from -- and not `ServerHello`,
- * which is the Guardian's noun for what it emits
- * (packages/guardian/src/handshake.ts's `buildServerHello`). The two used to be
- * used interchangeably here for the same value, joined by
- * `as unknown as SessionConfig`: a rename dressed as a type, checking nothing.
+ * The stored message is a `SessionConfig`, never a `ServerHello`.
+ * `isSessionConfig` requires the two fields this host actually needs, not the
+ * five handshake.json's ServerHello $def requires, so naming the stored type
+ * after the wire message would over-claim what this host validates.
+ * `ServerHello` stays scoped to one thing: what the Guardian sent, before
+ * this host has confirmed it can use it (the Guardian's own noun for what it
+ * emits -- packages/guardian/src/handshake.ts's `buildServerHello`).
+ * `ServerHelloInvalidError` is named for the wire for the same reason -- the
+ * fault it reports IS the arrival ("the Guardian emitted the wrong shape"),
+ * not the store. No stored value, field, or type is called a ServerHello
+ * anywhere.
  *
- * `SessionConfig` is the honest name on this side, because `isSessionConfig`
- * requires the two fields this host actually needs, not the five
- * handshake.json's ServerHello $def requires -- so naming the stored type after
- * the wire message would over-claim what this host validates, which is the same
- * defect as a type that claims a check it does not perform. That leaves
- * `ServerHello` a scoped noun rather than a second name for one message, and
- * the scope is exactly one thing: what the Guardian sent, before this host has
- * confirmed it can use it. `ServerHelloInvalidError` is named for the wire for
- * that reason -- the fault it reports IS the arrival ("the Guardian emitted the
- * wrong shape"), not the store. No stored value, field, or type is called a
- * ServerHello anywhere.
+ * `negotiateSessionConfig`, not `handshake`: a bare wire verb says nothing
+ * about what the caller gets, so this names the message it produces,
+ * matching the `<verb><Message>` shape of the Guardian's own half
+ * (`buildServerHello`).
  *
- * `negotiateSessionConfig`, not `handshake`: the old name was one of four for a
- * single negotiation (`handshake` / `handshakeResponder` / `SessionConfig` /
- * `ServerHello`), and the least informative of them -- a bare wire verb that
- * said nothing about what the caller gets. This one names the message it
- * produces, matching the `<verb><Message>` shape of the Guardian's own half.
+ * Stores only. Applying the negotiated posture -- falling back to
+ * `timeout_config` when the Guardian is slow or silent, recording a
+ * fail-open audit event per `on_decision_failure: "proceed"` -- happens
+ * elsewhere. That boundary is deliberate: this project keeps a policy
+ * runtime's own evaluation-layer fail-closed behaviour distinct from
+ * wire-delivery failure. This module does not retry and does not write to
+ * an audit sink -- it sends one request, stores one response, and returns
+ * or throws.
  *
- * V1 SCOPE -- stores only. Applying the negotiated posture (falling back
- * to `timeout_config` when the Guardian is slow or silent; recording a
- * fail-open audit event per `on_decision_failure: "proceed"`) is N6/N7,
- * and belongs to slice V3. That boundary is deliberate: this project keeps
- * a policy runtime's own evaluation-layer fail-closed behaviour distinct
- * from wire-delivery failure, and V3 is where the wire-delivery half
- * lands. This module does not retry and does not write to an audit sink --
- * it sends one request, stores one response, and returns or throws.
- *
- * V3: this call CAN time out (`HandshakeOptions.timeoutMs`, optional). It
- * has to -- there is no negotiated `timeout_config` yet at the point this
- * runs, so a caller with nothing else to bound it would otherwise hang on
- * a Guardian that accepts the connection and never answers, for exactly as
+ * This call CAN time out (`HandshakeOptions.timeoutMs`, optional). It has
+ * to -- there is no negotiated `timeout_config` yet at the point this runs,
+ * so a caller with nothing else to bound it would otherwise hang on a
+ * Guardian that accepts the connection and never answers, for exactly as
  * long as it takes Claude Code's own hook timeout to kill the process:
  * unaudited, and with nothing on stdout. What happens on a timeout (or any
  * other delivery failure) is still the caller's decision, not this
  * module's -- it only throws `GuardianTimeoutError`, same as
- * `guardianClient.post` always has; applying a posture to that throw is
- * N6/N7's job, one layer up.
+ * `guardianClient.post` always has; applying a posture to that throw
+ * happens one layer up, in `applyFailurePosture`.
  *
- * R3.2: this module knows ACS handshake vocabulary and JSON-RPC, nothing
- * else. It has no runtime dependency on the Guardian package -- it talks
- * to the Guardian only through the client role it is given, over the wire.
+ * This module knows ACS handshake vocabulary and JSON-RPC, nothing else. It
+ * has no runtime dependency on the Guardian package -- it talks to the
+ * Guardian only through the client role it is given, over the wire.
  */
 import { randomUUID } from "node:crypto";
 import type { GuardianClient, JsonRpcRequest } from "./guardian-client.ts";
@@ -117,21 +108,17 @@ export type HandshakeOptions = {
  * failure. It is undefined only when there was never a usable config to begin
  * with, which is one of the two members below.
  *
- * ABSTRACT, so the family name is only ever the family (PR #12 review,
- * Important). This class used to mean two things at once -- "not stored" AND
- * "never a config" -- with the second reached through a `kind` parameter that
- * defaulted to the first. So `new SessionConfigNotStoredError(...)` read as
- * either the family or one specific member, and the default quietly picked one.
- * Now each member is its own class, each names its own `kind` with no default,
- * and the two names say which remedy applies: fix this host's disk
+ * Abstract, so the family name can never be instantiated as if it were one
+ * specific member: each concrete subclass names its own `kind`, and the two
+ * names say which remedy applies -- fix this host's disk
  * (`SessionConfigStoreFailedError`), or fix the Guardian's output
  * (`ServerHelloInvalidError`).
  *
  * What stays true of every member, and is why they share a root at all: the
- * Guardian answered, and nothing was stored. `classifySessionFailure` (N6)
- * reads the family's `kind` and is unaffected by which member it is handed, and
- * a caller that only wants the config to apply reads `.config` without a second
- * branch.
+ * Guardian answered, and nothing was stored. `classifySessionFailure` reads
+ * the family's `kind` and is unaffected by which member it is handed, and a
+ * caller that only wants the config to apply reads `.config` without a
+ * second branch.
  */
 export abstract class SessionConfigNotStoredError extends Error {
   /** Which member of the family this is -- see classifySessionFailure. */
@@ -157,16 +144,16 @@ export abstract class SessionConfigNotStoredError extends Error {
 
 /**
  * The member where a usable config DID arrive and this host could not persist
- * it. The value in hand is authoritative for the step that negotiated it -- see
- * the risk-row-14 note on the family above -- so it travels on `config`, and
- * discarding it because the write failed is the fail-open this class exists to
- * prevent.
+ * it. The value in hand is authoritative for the step that negotiated it --
+ * see the family's own doc comment above -- so it travels on `config`, and
+ * discarding it because the write failed is the fail-open this class exists
+ * to prevent.
  *
  * Named for the store rather than for the state, so it does not read as a
  * near-duplicate of the family it belongs to: its sibling reports a bad
  * arrival, this one reports a bad disk. Its `kind` stays
- * `session_config_unstored`, which is a durable value in the audit log (S14)
- * and so is spelled the way already-written entries spell it.
+ * `session_config_unstored`, which is a durable value in the audit log and
+ * so is spelled the way already-written entries spell it.
  */
 export class SessionConfigStoreFailedError extends SessionConfigNotStoredError {
   declare readonly kind: "session_config_unstored";
@@ -225,7 +212,7 @@ export async function negotiateSessionConfig(
       metadata: { agent_id: options.agentId, session_id: options.sessionId },
       // ClientHello shape (handshake.json's $defs.ClientHello). Not schema-
       // enforced on this method by the Guardian's own validateEnvelope
-      // (Task 5) today, but supplied honestly rather than left empty.
+      // today, but supplied honestly rather than left empty.
       payload: {
         acs_versions_supported: [ACS_VERSION],
         methods_implemented: ["steps/toolCallRequest"],
@@ -311,26 +298,25 @@ export type ResolvedSessionConfig = {
  * message rather than a throw.
  *
  * A handshake failure decides nothing by itself, and it does not become the
- * step call's failure. It is not *discarded* either (whole-branch review, I3):
- * it travels beside that failure as `session_failure`, because the case that
- * matters is a session store this deployment cannot write to -- `set()` throws
- * by design there, every hook then re-negotiates and `store.get()` stays
- * undefined, so a deployment that declared `deny` silently fails open on every
- * delivery failure. `posture_source: "default"` records that no negotiated
- * config was found; `session_failure` records why. The step call may still
- * succeed even after this fails (Global Constraint 1: the posture must never
- * touch an arriving decision).
+ * step call's failure. It is not *discarded* either: it travels beside that
+ * failure as `session_failure`, because the case that matters is a session
+ * store this deployment cannot write to -- `set()` throws by design there,
+ * every hook then re-negotiates and `store.get()` stays undefined, so a
+ * deployment that declared `deny` silently fails open on every delivery
+ * failure. `posture_source: "default"` records that no negotiated config was
+ * found; `session_failure` records why. The step call may still succeed even
+ * after this fails: the posture must never touch an arriving decision.
  *
- * Risk row 14, and why `config` is not simply `store.get()`: the config
- * `negotiateSessionConfig` returns is no longer lost when `store.set` throws.
- * Persisting it is an optimisation for LATER hooks -- a host whose hooks run as
- * fresh subprocesses finds the posture through the file -- while the value in
- * hand is authoritative for the step that just negotiated it. Throwing it away
- * because the write failed meant a deployment declaring
- * `on_decision_failure: deny` failed *open* on that very step: the posture was
- * known in-process and unused.
+ * Why `config` is not simply `store.get()`: the config `negotiateSessionConfig`
+ * returns is not lost when `store.set` throws. Persisting it is an
+ * optimisation for LATER hooks -- a host whose hooks run as fresh subprocesses
+ * finds the posture through the file -- while the value in hand is
+ * authoritative for the step that just negotiated it. Throwing it away
+ * because the write failed would mean a deployment declaring
+ * `on_decision_failure: deny` fails *open* on that very step: the posture
+ * would be known in-process and unused.
  *
- * This is the function whose absence made every host shim ask an error object
+ * Without this function, every host shim would have to ask an error object
  * what it was carrying. `SessionConfigNotStoredError` is this module's own
  * type, so reading it here is a module reading itself; the `.config` on it is
  * `undefined` for `ServerHelloInvalidError` by construction, which is why one

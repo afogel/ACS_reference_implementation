@@ -7,17 +7,16 @@ import type { ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
 /**
- * `governStep` is the exchange that used to live inside
- * hosts/claude-code/acs-hook.ts, and the reason it moved is that slice V5's
- * second host would otherwise have had to reproduce it -- including the parts
- * where nine fail-opens were closed. So the properties are pinned HERE, at the
+ * `governStep` is the exchange a host shim collaborates with, factored out
+ * so a second host does not have to reproduce it -- including the parts
+ * that close a fail-open. Its properties are pinned HERE, at the
  * collaborator, and not only end to end through one host's subprocess
  * (hosts/claude-code/test/posture.test.ts, which still proves the whole thing
  * against a real Guardian).
  *
  * A deliberately synthetic hookmap, naming no real host's fields: this
  * function is host-agnostic, and a test written against the shipped Claude Code
- * hookmap would not have caught it quietly becoming otherwise.
+ * hookmap would not catch it quietly becoming otherwise.
  */
 const hookmap: Hookmap = {
   host: "test-host",
@@ -91,7 +90,7 @@ describe("governStep — a decision that arrived", () => {
     expect(events).toEqual([]);
   });
 
-  // Global Constraint 1 / R1.5, from this side of the seam: the posture here is
+  // A decision that arrives always outranks the posture: the posture here is
   // `deny`, so a step answered by the posture would be blocked -- and this
   // arriving `allow` must still be honoured. The mirror case (an arriving deny
   // under a `proceed` posture) is pinned end to end in posture.test.ts.
@@ -110,10 +109,10 @@ describe("governStep — a decision that arrived", () => {
     expect(events).toEqual([]);
   });
 
-  // N7 runs on the arriving decision, and its substitutions are decisions, not
-  // failures: an expired `ask` becomes its own timeout disposition rather than
-  // reaching the posture. The stage stays "guardian" because a decision did
-  // arrive and was honoured.
+  // validateDecision runs on the arriving decision, and its substitutions
+  // are decisions, not failures: an expired `ask` becomes its own timeout
+  // disposition rather than reaching the posture. The stage stays
+  // "honoured" because a decision did arrive and was honoured.
   it("puts it through the host's own validation without changing the stage", async () => {
     const { sink, events } = recordingSink();
     const governed = await govern(
@@ -136,11 +135,11 @@ describe("governStep — a decision that arrived", () => {
 });
 
 describe("governStep — the three failure stages name three different incidents", () => {
-  // "request": nothing was ever asked of anything, so the audit reasoning must
-  // not blame a Guardian that was never contacted. This wiring -- a build
-  // failure IS the request stage -- was previously derived by asking whether a
-  // local variable was still undefined inside a catch block, and nothing pinned
-  // it end to end.
+  // "request": nothing was ever asked of anything, so the audit reasoning
+  // must not blame a Guardian that was never contacted. This wiring -- a
+  // build failure IS the request stage -- is pinned directly here, at the
+  // collaborator, rather than only derived by inspecting a local variable's
+  // state inside a catch block somewhere else.
   it("files a request that could not be built under \"request\", and never reaches the Guardian", async () => {
     const { sink, events } = recordingSink();
     const governed = await govern(

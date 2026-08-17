@@ -1,6 +1,7 @@
 /**
- * N6 -- applyFailurePosture. The delivery half of the two failure domains
- * (Global Constraint 1).
+ * applyFailurePosture handles the delivery half of ACS's two-failure-domain
+ * split: evaluation failures fail closed on their own; this handles a
+ * failure of the wire itself, by applying the negotiated posture.
  *
  * This function is only ever reached when NO usable decision arrived: the
  * Guardian stayed silent past the negotiated timeout, the transport died, or
@@ -9,25 +10,23 @@
  * which proceeds without a decision MUST be audited.
  *
  * It is NOT reached when a decision arrived. A `deny` that arrives is
- * honoured regardless of posture (R1.5), and that is enforced by the caller
- * never calling this on a decision, plus the end-to-end assertions in Task 8.
+ * honoured regardless of posture, and that is enforced by the caller never
+ * calling this on a decision.
  *
- * One place two of this slice's global constraints genuinely disagree, and
- * how it is resolved: constraint 2 says a sink that cannot write "degrades
- * observability and nothing else", while constraint 3 says every fail-open
- * proceed is audited and "a proceed with no audit entry is a silent bypass
- * and is the one outcome this slice exists to make impossible". Constraint 3
- * governs, because §6.4 makes the entry a MUST for a step that proceeds
- * without a decision -- an unauditable bypass is not a bypass the spec
- * permits. So a `proceed` this function could not audit is downgraded to
- * `deny`, with its own reason code. What constraint 2 was protecting is
- * untouched: the sink still never throws, never delays a decision, and never
- * changes one -- the change is entirely in what this caller does with a
- * write it was told did not happen.
+ * §6.4 makes the audit entry a MUST for a step that proceeds without a
+ * decision, and the audit sink is documented total -- it must never throw,
+ * delay a decision, or change one, even when it cannot write. Those two
+ * properties can disagree: when the write genuinely fails, the entry MUST
+ * exist but the sink cannot make it exist. This function resolves that by
+ * downgrading a `proceed` it could not audit to `deny`, with its own reason
+ * code -- an unauditable bypass is not a bypass the spec permits. The sink's
+ * own contract is untouched: it still never throws, never delays a decision,
+ * and never changes one; the change is entirely in what this caller does
+ * with a write it was told did not happen.
  *
- * R3.2: nothing here knows the policy runtime behind the wire. A delivery
- * failure is a property of the wire, not of whatever evaluates policy on
- * the other side of it.
+ * Nothing here knows the policy runtime behind the wire. A delivery failure
+ * is a property of the wire, not of whatever evaluates policy on the other
+ * side of it.
  */
 import type { AuditEvent, AuditSink } from "./audit-sink.ts";
 import type {
@@ -42,8 +41,8 @@ import { SessionConfigNotStoredError, type ResolvedSessionConfig } from "./hands
 
 // The failure taxonomies this module classifies into live in
 // `./failure-kinds.ts`, shared with the audit sink that stores them, and are
-// re-exported here so every existing importer of N6 still finds them where it
-// always did.
+// re-exported here so every importer of this module can find them without a
+// second import.
 export type {
   DeliveryFailureKind,
   FailureStage,
@@ -52,7 +51,7 @@ export type {
   StepFailureKind,
 } from "./failure-kinds.ts";
 
-/** handshake.json's own default, and R1.7's (D8 closed here). */
+/** handshake.json's own default for `on_decision_failure`. */
 export const DEFAULT_POSTURE = "proceed" as const;
 
 /** Used when no handshake completed, so no timeout was negotiated either.
@@ -64,24 +63,23 @@ type ErrorLike = { code?: unknown; message?: unknown };
 
 /**
  * Connection-level `.code` values fetch can throw with, confirmed against
- * THIS runtime (Bun) rather than assumed from the WHATWG fetch spec -- see
- * the correction below, fix round 2 of Task 8's review. Bun's fetch throws
- * a plain `Error` (name "Error", not "TypeError") carrying one of these on
- * `.code` for a failure below the HTTP layer: refused, closed, never
- * opened, or a DNS lookup or TLS handshake that failed. Confirmed two ways:
- * reading Bun's own src/http/error.rs (the `Error` enum's `.name()` is what
- * becomes `.code`), and, for `ConnectionRefused` specifically, provoking it
- * directly (`fetch` against a reliably-refused port, port 1) and
- * inspecting the thrown value.
+ * THIS runtime (Bun) rather than assumed from the WHATWG fetch spec. Bun's
+ * fetch throws a plain `Error` (name "Error", not "TypeError") carrying one
+ * of these on `.code` for a failure below the HTTP layer: refused, closed,
+ * never opened, or a DNS lookup or TLS handshake that failed. Confirmed two
+ * ways: reading Bun's own src/http/error.rs (the `Error` enum's `.name()` is
+ * what becomes `.code`), and, for `ConnectionRefused` specifically,
+ * provoking it directly (`fetch` against a reliably-refused port, port 1)
+ * and inspecting the thrown value.
  *
  * Deliberately NOT exhaustive: Bun's TLS certificate-validation failures
  * fan out into a further ~70 more specific X.509 codes (a nested
  * `CertError` enum -- `CERT_HAS_EXPIRED`, `UNABLE_TO_GET_ISSUER_CERT`, and
  * so on) not enumerated here, because which of those actually surface as a
  * flat `.code` string (versus some other shape) is not confirmed --
- * enumerating them anyway would be exactly the mistake this fix undoes.
- * `ERR_TLS_CERT_ALTNAME_INVALID` is the one TLS-related code confirmed as
- * its own top-level enum member, so it is the one line "the TLS
+ * enumerating them anyway would be exactly the kind of guess this list is
+ * built to avoid. `ERR_TLS_CERT_ALTNAME_INVALID` is the one TLS-related code
+ * confirmed as its own top-level enum member, so it is the one line "the TLS
  * equivalent" below commits to.
  */
 const TRANSPORT_ERROR_CODES = new Set([
@@ -98,15 +96,12 @@ const TRANSPORT_ERROR_CODES = new Set([
  * Total: an unrecognised shape is "unknown", never a throw -- this runs while
  * the host is already handling a failure.
  *
- * Half of the `classify<Role>Failure` pair, with `classifySessionFailure`: same
- * verb, and now two accurate role nouns (PR #12 review, naming symmetry ×2).
- * The review offered two routes to that and this is the second one -- rename
- * the function until the name covers the kinds, or narrow the kinds until the
- * name is true. The role here really is delivery (every kind it can return is a
- * property of the wire, R3.2), so widening the name would have preserved the
- * lie under better spelling. `classifyStepFailure` below is the genuinely wider
- * role, and it stays private because nothing outside this module chooses a
- * stage.
+ * Half of the `classify<Role>Failure` pair, with `classifySessionFailure`.
+ * The role here really is delivery -- every kind it can return is a property
+ * of the wire, not of the policy runtime behind it -- so the name states
+ * exactly what it classifies. `classifyStepFailure` below is the genuinely
+ * wider role, and it stays private because nothing outside this module
+ * chooses a stage.
  */
 export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailureKind; message: string } {
   try {
@@ -115,9 +110,8 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
     }
     if (failure instanceof Error) {
       // Two independent routes to "transport", because no single one is
-      // reliable across runtimes -- Task 4's original assumption (that
-      // fetch always throws a TypeError for this) was wrong for the
-      // runtime this project actually runs on:
+      // reliable across runtimes: fetch does not always throw a TypeError
+      // for this on the runtime this project actually runs on:
       //   1. The WHATWG fetch spec's own route: a TypeError for a network
       //      error. Other runtimes take this one, and a future Bun might.
       //   2. This runtime's actual route: a plain Error whose `.code`
@@ -146,9 +140,9 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
  * the same reason classifyDeliveryFailure is: this runs while the host is
  * already handling a failure.
  *
- * The two used to share one constant (`"session_config"`), separated only by
- * free text -- so in a Guardian-down session every entry carried the note and
- * the one occurrence that actually costs something was buried in it.
+ * The two are distinct kinds, not one constant separated by free text, so a
+ * Guardian-down session's audit entries make the occurrence that actually
+ * costs something easy to find rather than burying it in a note.
  */
 export function classifySessionFailure(failure: unknown): { kind: SessionFailureKind; message: string } {
   return {
@@ -162,12 +156,10 @@ export type ApplyFailurePostureInput = {
   failure: unknown;
   /**
    * This session's config and whatever went wrong establishing it, exactly as
-   * `resolveSessionConfig` (N5) answers -- the message, not its halves.
+   * `resolveSessionConfig` answers -- the message, not its halves.
    *
-   * It used to be two fields, `sessionConfig` and `sessionFailure`, so every
-   * caller unpacked one message to hand this one two loose values and this
-   * function read them back as a pair. The two are read for two unrelated
-   * purposes and that is exactly why they travel together:
+   * The two are read for two unrelated purposes, and that is exactly why
+   * they travel together:
    *
    *   - `config` decides the posture (its `on_decision_failure`, or the ACS
    *     default when nothing was negotiated) and, on the audit entry,
@@ -184,7 +176,7 @@ export type ApplyFailurePostureInput = {
    * knowable. Never a host's own event name -- see AuditEntry.method. */
   method: string | null;
   rpcId: string | number | null;
-  /** Required, not optional: constraint 3 makes auditing non-skippable. */
+  /** Required, not optional: §6.4 makes auditing non-skippable. */
   audit: AuditSink;
   /**
    * Where in the exchange this failure happened -- see FailureStage. Both
@@ -201,11 +193,10 @@ export type ApplyFailurePostureInput = {
  * `AcsDecision` message every other path hands the host (decision-message.ts),
  * refined by what is additionally known about one that came from here.
  *
- * It used to be called `PostureDecision`, which named the wrong message (PR #12
- * review, Important, twice): a posture is `proceed|deny` and this payload is
- * `allow|deny`, so every reader had to translate a noun that said "posture"
- * into a value that was a decision. The refinement is real and worth keeping
- * typed, though, and it is the two facts a caller relies on:
+ * Named for the decision, not the posture: a posture is `proceed|deny` and
+ * this payload is `allow|deny`, so naming the type after the posture would
+ * make every reader translate one vocabulary into the other. The refinement
+ * is the two facts a caller relies on:
  *
  *   - `decision` is `allow` or `deny` and never anything else, which is what
  *     lets a caller's fallback render of it be unfailing (a hookmap that
@@ -273,17 +264,16 @@ export function applyFailurePosture({
       ? `no session was ever negotiated, so the ACS default posture (${DEFAULT_POSTURE}) applies`
       : "the session's negotiated posture applies";
 
-  // Never names a Guardian for a request that never reached one (whole-branch
-  // review, I2): a `host_configuration` failure is this host's own, and an
-  // audit trail that blames the policy runtime for it sends an incident
-  // review to the wrong process. `render` is the same misattribution read
-  // the other way round -- a decision genuinely did arrive, so saying none
-  // did would send that reviewer to the wrong process too, just a different
-  // wrong one.
+  // Never names a Guardian for a request that never reached one: a
+  // `host_configuration` failure is this host's own, and an audit trail
+  // that blames the policy runtime for it sends an incident review to the
+  // wrong process. `render` is the same misattribution read the other way
+  // round -- a decision genuinely did arrive, so saying none did would send
+  // that reviewer to the wrong process too, just a different wrong one.
   //
-  // The "delivery" wording below is quoted verbatim in four v3-runbook
-  // captures reproduced against a live Guardian. It is not to be reworded
-  // without re-capturing them.
+  // The "delivery" wording below is quoted verbatim in four
+  // docs/demos/v3-runbook.md captures reproduced against a live Guardian.
+  // It is not to be reworded without re-capturing them.
   const cause =
     stage === "request"
       ? `this host could not build a request for this step, so no decision was ever sought ` +
@@ -299,15 +289,15 @@ export function applyFailurePosture({
       : ` this session's negotiated configuration could not be established or stored ` +
         `(${messageOf(sessionFailure)}), so any posture this deployment declared was unavailable to this step;`;
 
-  // Constraint 3 outranks the posture here, and this is the one place the two
-  // can disagree. §6.4 makes the audit entry a MUST for a step that proceeds
-  // without a decision, so a proceed that could not be recorded is not a
-  // proceed this deployment is entitled to take: an unauditable bypass is
-  // exactly the silent bypass this slice exists to make impossible. The sink
-  // stays total (it never threw and never will); what changes is what the
-  // caller does with a failed write. A `deny` needs no such downgrade -- the
-  // step is blocked either way, and the failed write is already reported by
-  // the sink's own error path.
+  // The audit requirement outranks the posture here, and this is the one
+  // place the two can disagree. §6.4 makes the audit entry a MUST for a
+  // step that proceeds without a decision, so a proceed that could not be
+  // recorded is not a proceed this deployment is entitled to take: an
+  // unauditable bypass is exactly the silent bypass this project exists to
+  // make impossible. The sink stays total (it never threw and never will);
+  // what changes is what the caller does with a failed write. A `deny`
+  // needs no such downgrade -- the step is blocked either way, and the
+  // failed write is already reported by the sink's own error path.
   if (posture === "proceed" && !audited) {
     return {
       decision: "deny",
@@ -331,11 +321,9 @@ export function applyFailurePosture({
  * expressed in: the ACS decision the host is handed, and the outcome the audit
  * entry records.
  *
- * One declaration, read once (PR #12 review, Important). It used to be two
- * open-coded translations in the middle of `applyFailurePosture` -- the posture
- * re-encoded as an outcome on one line and as a decision seventy lines later --
- * which is three encodings of a single resolution inside one body, with nothing
- * but proximity keeping them in step. Now they agree by construction.
+ * One declaration, read once, so the posture, the decision, and the outcome
+ * agree by construction rather than by three separate encodings staying in
+ * step by proximity alone.
  *
  * The three vocabularies are deliberately NOT collapsed into one; the note on
  * `AuditEntry.outcome` is where that was weighed and why the audit rail keeps

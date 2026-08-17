@@ -1,30 +1,29 @@
 /**
- * S14 -- the host-side audit sink. §6.4 makes one thing a MUST: every step
- * that proceeds without a decision is recorded, so a fail-open bypass is
- * visible rather than silent. That is the entire job.
+ * The host-side audit sink. §6.4 makes one thing a MUST: every step that
+ * proceeds without a decision is recorded, so a fail-open bypass is visible
+ * rather than silent. That is the entire job.
  *
- * TOTAL BY CONSTRUCTION (Global Constraint 2, inherited from N26's envelope
- * tap). This sink runs on the decision path, in a hook process whose stdout
- * is a policy decision. It must never throw, never change a decision, and
- * never delay one beyond the append it is asked for -- so the first failure
+ * Total by construction, the same contract
+ * packages/guardian/src/envelope-log-sink.ts's envelope log sink keeps. This
+ * sink runs on the decision path, in a hook process whose stdout is a
+ * policy decision. It must never throw, never change a decision, and never
+ * delay one beyond the append it is asked for -- so the first failure
  * disables it, reports once, and every later write is a no-op.
  *
  * It does, however, SAY whether the append happened: `write` returns a
- * boolean. Totality and silence are different properties, and only the first
- * one is Global Constraint 2's. Constraint 3 -- "a proceed with no audit
- * entry is a silent bypass and is the one outcome this slice exists to make
- * impossible" -- is the one that governs when the two collide, because §6.4
- * makes the entry a MUST for a step that proceeds without a decision: an
- * unauditable bypass is not a bypass the spec permits. So the sink still
- * never throws, and `applyFailurePosture` (N6) decides what an unrecorded
- * proceed means. This sink does not decide it, and does not change a
- * decision to express it.
+ * boolean. Totality and the sink's own silence about its failures are
+ * different properties: the sink must never throw, but a `proceed` with no
+ * audit entry is a silent bypass, and §6.4 makes the entry a MUST for a step
+ * that proceeds without a decision -- an unauditable bypass is not a bypass
+ * the spec permits. So the sink still never throws, and
+ * `applyFailurePosture` decides what an unrecorded proceed means. This sink
+ * does not decide it, and does not change a decision to express it.
  *
- * Structurally the same as packages/guardian/src/envelope-tap.ts, and
- * deliberately not shared with it: that one is the Guardian's (P3, the
- * wire), this one is the host's (P1, the posture). They record different
- * things at different sides of the wire, and R3.2 keeps the host adapter
- * free of the Guardian's imports.
+ * Structurally the same as packages/guardian/src/envelope-log-sink.ts, and
+ * deliberately not shared with it: that one is the Guardian's, recording the
+ * wire; this one is the host's, recording the posture. They record different
+ * things at different sides of the wire, and this package stays free of the
+ * Guardian's imports.
  */
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -67,10 +66,9 @@ export type AuditEntry = {
    * be recorded.
    *
    * A THIRD vocabulary beside the wire posture (`proceed|deny`) and the ACS
-   * decision (`allow|deny`), and kept as one on purpose -- the review asks for a
-   * third stem only if the Inspector's badge genuinely needs it (PR #12,
-   * Important), and it does. Two things it buys, both visible on one rendered
-   * line of `bun run inspector`:
+   * decision (`allow|deny`), justified only because the Inspector's badge
+   * genuinely needs a third stem. Two things it buys, both visible on one
+   * rendered line of `bun run inspector`:
    *
    *   - `renderAuditEntry` prints the outcome and `posture=` side by side.
    *     Mirroring the posture would print one word twice and lose which of the
@@ -89,15 +87,15 @@ export type AuditEntry = {
   /**
    * What went wrong with THIS step, classified.
    *
-   * `kind` carries the taxonomy rather than a bare `string` (PR #12 review,
-   * second pass). N6 goes to some trouble to tell a delivery failure from a
-   * host-side one -- `DeliveryFailureKind` was deliberately narrowed for it,
-   * and `HostFailureKind` exists so a host misconfiguration is not filed as an
-   * unknown delivery failure -- and this is the only boundary that outlives the
-   * process, so a widening here is where all of that would have been lost. It is
-   * also the only place an incident review ever reads: a value this union does
-   * not contain is a value nothing downstream was written to interpret, and
-   * `string` invited exactly that.
+   * `kind` carries the taxonomy rather than a bare `string`.
+   * `applyFailurePosture` goes to some trouble to tell a delivery failure
+   * from a host-side one -- `DeliveryFailureKind` was deliberately narrowed
+   * for it, and `HostFailureKind` exists so a host misconfiguration is not
+   * filed as an unknown delivery failure -- and this is the only boundary
+   * that outlives the process, so a widening here is where all of that
+   * would have been lost. It is also the only place an incident review ever
+   * reads: a value this union does not contain is a value nothing
+   * downstream was written to interpret, and `string` invited exactly that.
    */
   failure: { kind: StepFailureKind; message: string };
   /**
@@ -121,9 +119,9 @@ export type AuditSink = {
   /** Where entries land, or null for the null sink. */
   path: string | null;
   /**
-   * Appends one entry. Never throws (Global Constraint 2). Returns true when
-   * the entry was actually recorded and false otherwise, so a caller that
-   * must not proceed unrecorded (constraint 3, §6.4) can tell the difference.
+   * Appends one entry. Never throws. Returns true when the entry was
+   * actually recorded and false otherwise, so a caller that must not
+   * proceed unrecorded (§6.4) can tell the difference.
    * A false return has already been reported through `onError`; the caller
    * does not need to report it again.
    */
@@ -133,8 +131,8 @@ export type AuditSink = {
 /**
  * Used where no audit path is configured. Accepts writes, records nothing --
  * and says so, by returning false: "nothing was recorded" is exactly what a
- * caller weighing constraint 3 needs to hear, and claiming otherwise would
- * make this the one sink that can hide a bypass.
+ * caller deciding whether a proceed can stand needs to hear, and claiming
+ * otherwise would make this the one sink that can hide a bypass.
  */
 export const NULL_AUDIT_SINK: AuditSink = {
   path: null,

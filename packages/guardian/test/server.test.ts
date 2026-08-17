@@ -131,13 +131,13 @@ describe("startGuardian POST /acs", () => {
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
   });
 
-  // N27: a steps/* envelope that fails schema validation is a governance
-  // outcome, not a transport accident -- denyOnInvalidEnvelope turns it into
-  // an honoured deny decision instead of a bare JSON-RPC error.
-  // validate-envelope.test.ts's own guard is unchanged and still accurate:
-  // validateEnvelope itself only ever throws. It is server.ts's dispatch,
-  // one layer up, that now turns that throw into a decision.
-  it("answers a schema-invalid steps/* envelope with a deny decision, not a bare error (N27)", async () => {
+  // A steps/* envelope that fails schema validation is a governance outcome,
+  // not a transport accident -- denyOnInvalidEnvelope turns it into an
+  // honoured deny decision instead of a bare JSON-RPC error.
+  // validate-envelope.test.ts's own guard stays accurate: validateEnvelope
+  // itself only ever throws. It is server.ts's dispatch, one layer up, that
+  // turns that throw into a decision.
+  it("answers a schema-invalid steps/* envelope with a deny decision, not a bare error", async () => {
     const requestId = crypto.randomUUID();
     const bad = toolCallEnvelope("rm -rf /", { requestId });
     delete (bad.params as Record<string, unknown>).acs_version;
@@ -156,14 +156,13 @@ describe("startGuardian POST /acs", () => {
   });
 });
 
-// N27: the four cases that stay bare JSON-RPC errors even though a
-// schema-invalid steps/* envelope and an evaluation failure now resolve to
-// deny decisions. Grouped together because each one is a distinct reason to
-// stay an error, not a variation on one reason: no envelope at all (parse
-// failure), no id of any kind to address a decision to (constraint 10), no
-// step to decide about (handshake), and no handler for a well-formed method
-// (undispatched).
-describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error", () => {
+// The four cases that stay bare JSON-RPC errors even though a schema-invalid
+// steps/* envelope and an evaluation failure resolve to deny decisions.
+// Grouped together because each one is a distinct reason to stay an error,
+// not a variation on one reason: no envelope at all (parse failure), no id
+// of any kind to address a decision to, no step to decide about (handshake),
+// and no handler for a well-formed method (undispatched).
+describe("startGuardian POST /acs -- denyOnInvalidEnvelope's boundary: what stays a JSON-RPC error", () => {
   it("keeps a JSON parse failure a JSON-RPC error — there is no envelope to decide about", async () => {
     const res = await fetch(url, {
       method: "POST",
@@ -176,7 +175,7 @@ describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error
     expect(body.error?.code).toBe(-32700);
   });
 
-  it("keeps an unaddressable invalid envelope a JSON-RPC error (constraint 10)", async () => {
+  it("keeps an unaddressable invalid envelope a JSON-RPC error", async () => {
     // No top-level "id" and no params.request_id: denyOnInvalidEnvelope has
     // nothing to address a decision to, so this must stay an error rather
     // than synthesize an id.
@@ -190,16 +189,16 @@ describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error
     expect(response.error?.code).toBe(-32010);
   });
 
-  // Half 2 of 2 (see deny-on-invalid-envelope.test.ts's unit-level half for
-  // half 1). params.request_id present, top-level id absent -- the one
-  // shape where two correct-looking behaviours have to compose:
-  // denyOnInvalidEnvelope legitimately returns a decision (it found a
-  // usable params.request_id), and asDecisionResponse legitimately refuses
+  // Covers the HTTP-level half of this case; deny-on-invalid-envelope.test.ts
+  // covers the unit-level half. params.request_id present, top-level id
+  // absent -- the one shape where two correct-looking behaviours have to
+  // compose: denyOnInvalidEnvelope legitimately returns a decision (it found
+  // a usable params.request_id), and asDecisionResponse legitimately refuses
   // to send it (a JSON-RPC *response* needs a non-null id of its own, and
   // this envelope gives it none). The error response below is the honest
   // answer -- pinned here so nobody "simplifies" asDecisionResponse into
   // forwarding a decision the client could never correlate.
-  it("keeps an envelope addressable only by params.request_id a JSON-RPC error, since the response itself has no id to carry (constraint 10)", async () => {
+  it("keeps an envelope addressable only by params.request_id a JSON-RPC error, since the response itself has no id to carry", async () => {
     const response = await postAcs(url, {
       jsonrpc: "2.0",
       method: "steps/toolCallRequest",
@@ -230,7 +229,7 @@ describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
   });
 
-  // S6 tapping (P5): the response for the schema-invalid deny path is now a
+  // Envelope-log tapping: the response for the schema-invalid deny path is a
   // JSON-RPC success rather than an error, so this confirms the tap still
   // pairs request and response for it, the same as any other response.
   it("pairs the request and response in the tap for the schema-invalid deny path, even though the response is now a success", async () => {
@@ -271,7 +270,7 @@ describe("startGuardian POST /acs -- N27's boundary: what stays a JSON-RPC error
 // genuine AGT "allow" verdict for a benign command (which carries no
 // reason/message) makes mapVerdict throw inside handleAcsRequest for real.
 describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest", () => {
-  it("answers an evaluation failure with a deny decision (N27, R1.5)", async () => {
+  it("answers an evaluation failure with a deny decision", async () => {
     const guardian = await startGuardian({
       port: 0,
       manifestPath: "policy/manifest.yaml",
@@ -279,14 +278,14 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
     });
 
     try {
-      // res.json() below is exactly guardianClient.post's call. Pre-fix
-      // (the original fail-open this describe block guards), Bun.serve's
-      // unhandled-rejection page is text/html and this throws a SyntaxError
-      // instead of resolving -- the same failure mode the finding describes
-      // at guardian-client.ts:70. N27 now additionally turns the parseable
-      // error this fix produces into a deny decision when there is a
-      // request to address it to, keeping AGT's fail-closed evaluation (the
-      // real mapVerdict throw here) inside §6.4's honoured path.
+      // res.json() below is exactly guardianClient.post's call: an unhandled
+      // rejection reaching Bun.serve's default handler answers with a
+      // text/html error page, and res.json() throws a SyntaxError on that
+      // body instead of resolving (see guardian-client.ts:70).
+      // denyOnInvalidEnvelope turns the parseable error this catch produces
+      // into a deny decision when there is a request to address it to,
+      // keeping AGT's fail-closed evaluation (the real mapVerdict throw
+      // here) inside §6.4's honoured path.
       const requestId = crypto.randomUUID();
       const response = await postAcs(guardian.url, toolCallEnvelope("ls -la", { requestId }));
 
@@ -617,15 +616,14 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  // This rethrow route bypasses N27 entirely: denyOnInvalidEnvelope only
-  // runs when validateEnvelope throws its own typed EnvelopeValidationError
-  // (a real schema mismatch). The ENOENT withSchemalessGuardian forces here
-  // is a Guardian bug -- a missing schema directory, not an invalid
-  // envelope -- so dispatch's `instanceof EnvelopeValidationError` check is
-  // false and it rethrows past N27 unconditionally, landing in
-  // handleAcsRequest's outer net, which this task does not touch and which
-  // stays a bare JSON-RPC error.
-  it("carries no decision -- this rethrow bypasses N27, since a missing schema directory is a Guardian bug, not an invalid envelope", async () => {
+  // This rethrow route bypasses denyOnInvalidEnvelope entirely: it only runs
+  // when validateEnvelope throws its own typed EnvelopeValidationError (a
+  // real schema mismatch). The ENOENT withSchemalessGuardian forces here is
+  // a Guardian bug -- a missing schema directory, not an invalid envelope --
+  // so dispatch's `instanceof EnvelopeValidationError` check is false and it
+  // rethrows unconditionally, landing in handleAcsRequest's outer net,
+  // which stays a bare JSON-RPC error.
+  it("carries no decision -- this rethrow bypasses denyOnInvalidEnvelope, since a missing schema directory is a Guardian bug, not an invalid envelope", async () => {
     await withSchemalessGuardian(async ({ url }) => {
       const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
 

@@ -1,25 +1,27 @@
 /**
  * The Envelope Inspector's entrypoint -- `bun run inspector`.
  *
- * A third terminal beside `bun run guardian` and the agent host: it tails S6
- * and S14 and prints each ACS envelope, plus each audited fail-open
- * proceed/blocked outcome, as they cross the wire. Not re-exported from
- * ./index.ts -- this is a process entrypoint, not a library call.
+ * A third terminal beside `bun run guardian` and the agent host: it tails
+ * the envelope log and the audit log and prints each ACS envelope, plus
+ * each audited fail-open proceed/blocked outcome, as they cross the wire.
+ * Not re-exported from ./index.ts -- this is a process entrypoint, not a
+ * library call.
  *
  * `ACS_ENVELOPE_LOG` defaults to `.acs/envelopes.jsonl`, the same default
  * packages/guardian/src/main.ts writes to, so the two agree without either
  * hardcoding the other's value. `ACS_AUDIT_LOG` defaults to
- * `.acs/audit.jsonl` the same way, for whatever writes S14.
+ * `.acs/audit.jsonl` the same way, for whatever writes the audit log.
  *
  * The two logs are tailed concurrently and independently -- neither waits
- * on the other, and S14's raw session identifier is never matched against
- * S6's derived one (see tail-audit-log.ts's module doc for the split, and
- * render.ts's renderAuditEntry doc for how it is labelled). The posture
- * badge (U23) is reprinted every time an S14 entry changes it: the last
- * posture *observed* in the audit log -- not the negotiated one, which lives
- * in a host-side store this package deliberately does not read -- and the
- * running count of audited fail-open proceeds, which is the number this
- * whole task exists to keep in front of a human.
+ * on the other, and the audit log's raw session identifier is never matched
+ * against the envelope log's derived one (see tail-audit-log.ts's module doc
+ * for the split, and render.ts's renderAuditEntry doc for how it is
+ * labelled). The posture badge is reprinted every time an audit-log entry
+ * changes it: the last posture *observed* in the audit log -- not the
+ * negotiated one, which lives in a host-side store this package
+ * deliberately does not read -- and the running count of audited fail-open
+ * proceeds, which is the number this project exists to keep in front of a
+ * human.
  */
 import { tailAuditLog, type AuditEntry } from "./tail-audit-log.ts";
 import { tailEnvelopeLog } from "./tail-envelope-log.ts";
@@ -40,13 +42,13 @@ function flagValue(argv: string[], flag: string): string | undefined {
 
 const argv = process.argv.slice(2);
 const fromStart = argv.includes("--from-start");
-// `--envelope-log`, not `--path` (PR #11 review, second pass): this stream is
-// the envelope log, and this slice tails a second one beside it. A generic
-// `--path` would have been the flag for whichever stream happened to come
-// first, leaving the sibling to carry the qualifier -- the same asymmetry the
-// `EnvelopeLogEntry` / `AuditEntry` rename closed one layer down. Named for its
-// artifact, so the pair reads as a pair, and so each flag rhymes with the env
-// var that overrides the same thing.
+// `--envelope-log`, not `--path`: this stream is the envelope log, and this
+// file tails a second one beside it. A generic `--path` would be the flag
+// for whichever stream happened to come first, leaving the sibling to carry
+// the qualifier -- the same asymmetry `EnvelopeLogEntry` / `AuditEntry`
+// avoids one layer down. Named for its artifact, so the pair reads as a
+// pair, and so each flag rhymes with the env var that overrides the same
+// thing.
 const envelopeLogFlag = flagValue(argv, "--envelope-log");
 const auditLogFlag = flagValue(argv, "--audit-log");
 

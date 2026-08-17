@@ -7,8 +7,7 @@ import { buildEnvelope, loadHookmap, toSessionUuid, unwrapArguments, type Hookma
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// The real PreToolUse payload shape Claude Code delivers on stdin, per the
-// Task 7 brief -- not a sketch.
+// The real PreToolUse payload shape Claude Code delivers on stdin.
 const preToolUsePayload = {
   session_id: "abc123",
   transcript_path: "/path/to/transcript.jsonl",
@@ -54,7 +53,7 @@ describe("buildEnvelope", () => {
   it("produces an envelope that validates against the real ACS v0.1.0 request-envelope + tool-call-request schemas", () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload, hookmap);
 
-    // guardian's own validateEnvelope (Task 5) -- imported here, in the
+    // guardian's own validateEnvelope -- imported here, in the
     // TEST file only, so the runtime adapter stays dependency-free while
     // this proves the two sides genuinely agree on the wire format.
     expect(() => validateEnvelope(envelope)).not.toThrow();
@@ -152,9 +151,9 @@ describe("buildEnvelope", () => {
     expect(() => validateEnvelope(envelope)).not.toThrow();
   });
 
-  describe("loadHookmap — decisions.allow and decisions.deny must both be renderable (V3 fix round 1, item 1)", () => {
+  describe("loadHookmap — decisions.allow and decisions.deny must both be renderable", () => {
     // Guards against the residual case a shim could otherwise only trust:
-    // applyFailurePosture (N6) never returns anything but "allow" or
+    // applyFailurePosture never returns anything but "allow" or
     // "deny", so a shim falling back to the posture because the ORIGINAL
     // decision could not be rendered needs the posture's own output to be
     // guaranteed renderable too, or the fallback itself can throw. Enforced
@@ -205,26 +204,25 @@ describe("buildEnvelope", () => {
       });
     });
 
-    // Fix round 3: presence alone let both of these through. `allow: null`
+    // Presence alone would let both of these through. `allow: null`
     // satisfies `"allow" in decisions` but is not an entry renderDecision can
     // read an output block off -- it would throw at render time, past every
-    // guard, exiting 1 with empty stdout (a third route to the fail-open this
-    // task exists to remove). `allow: {}` also satisfies presence, and used to
-    // render an output whose one field was `undefined`, which JSON.stringify
-    // drops -- stdout would carry a wrapper with no decision in it at all.
-    // Both must be rejected at load time instead.
+    // guard, exiting 1 with empty stdout (a third route to the fail-open
+    // this project exists to remove). `allow: {}` also satisfies presence,
+    // and would render an output whose one field was `undefined`, which
+    // JSON.stringify drops -- stdout would carry a wrapper with no decision
+    // in it at all. Both must be rejected at load time instead.
     it("throws when allow is present but not an object (null)", () => {
       withHookmapFile(`${HOOKS}decisions:\n  allow: null\n${DENY}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
       });
     });
 
-    // Was "names no permissionDecision" before S1's output block became
-    // declarative. The claim it can still make is the one the adapter is
-    // allowed to make: an entry that renders NOTHING is rejected. Which host
-    // field a renderable entry has to name is no longer this module's business
-    // -- R3.2 forbids it naming one -- and the `permissionDecision` half of
-    // the old claim now lives in the shim's own gate
+    // The claim this test makes is the one the adapter is allowed to make:
+    // an entry that renders NOTHING is rejected. Which host field a
+    // renderable entry has to name is not this module's business -- it
+    // knows nothing about any particular host's field names -- and the
+    // `permissionDecision`-specific check lives in the shim's own gate
     // (assertHostAcceptsEveryDecision, hosts/claude-code/acs-hook.ts), where
     // hosts/claude-code/test/posture.test.ts exercises it end to end.
     it("throws when allow is an object but declares no output block", () => {
@@ -248,7 +246,7 @@ describe("buildEnvelope", () => {
     });
   });
 
-  describe("unwrapArguments (V3 fix round 1, item 6)", () => {
+  describe("unwrapArguments", () => {
     it("unwraps the {value, provenance?} shape buildEnvelope just wrote, keyed by argument name", () => {
       const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
       const envelope = buildEnvelope("PreToolUse", preToolUsePayload, parsed);

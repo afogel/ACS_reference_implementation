@@ -7,25 +7,23 @@
  * absent one) can all speak the same message -- and without a `deny` that
  * means something subtly different on each side of a seam.
  *
- * ONE STEM, ADJECTIVES FOR STAGE (PR #10 review, Important; PR #12 review,
- * naming symmetry, which is what added the second and third rows). There is one
- * public noun for "the ACS decision for this step", and every refinement of it
- * still contains that noun:
+ * One stem, with adjectives for stage. There is one public noun for "the ACS
+ * decision for this step", and every refinement of it still contains that
+ * noun:
  *
  *   AcsDecision                 the message as it arrives, and the type every
  *                               path hands the host
- *   ValidatedAcsDecision        after N7's validation and §6.3's apply (below)
- *   FailureResolvedAcsDecision  after N6's posture answered an absent one
- *                               (failure-posture.ts)
+ *   ValidatedAcsDecision        after `validateDecision`'s validation and
+ *                               §6.3's apply (below)
+ *   FailureResolvedAcsDecision  after `applyFailurePosture` answered an
+ *                               absent one (failure-posture.ts)
  *
- * There used to be four parallel nouns for that one role -- `AcsDecision` on
- * the Guardian's side, `AcsDecisionResult` in render-decision.ts,
- * `DecisionInput` in validate-decision.ts, `PostureDecision` in
- * failure-posture.ts -- so a reader following one decision through the stack
- * learned a new name at every hop while the role never changed. The suffixes
- * described processing stage or origin, not a different message.
+ * A single stem keeps a reader following one decision through the stack from
+ * learning a new name at every hop for a role that never actually changes; a
+ * suffix here describes processing stage or origin, never a different
+ * message.
  *
- * WHY THIS IS NOT AN IMPORT OF THE GUARDIAN'S OWN `AcsDecision`. The Guardian
+ * This is not an import of the Guardian's own `AcsDecision`. The Guardian
  * declares the same message (packages/guardian/src/map-verdict.ts) as a strict
  * union of the five ACS dispositions, because it is the side that *builds*
  * one. This side reads one off HTTP, so it is deliberately loose: only
@@ -33,8 +31,8 @@
  * hookmap's `from:` declarations rather than assumed to exist under a fixed
  * key. The two are structurally compatible in the direction that matters (the
  * Guardian's is assignable to this one), and they share the NAME rather than
- * an import, because R3.2 forbids this package depending on the Guardian's
- * type graph. Same deliberate structural duplication as the Inspector's
+ * an import, because this package must not depend on the Guardian's type
+ * graph. Same deliberate structural duplication as the Inspector's
  * AuditEntry and EnvelopeLogEntry, for the same reason.
  *
  * One noun for "the ACS decision for this step", across both sides of the
@@ -50,9 +48,9 @@
  */
 export type AcsDecision = { decision: string } & Record<string, unknown>;
 
-/** An `AcsDecision` after N7 has had its last word on it: §6.3's rewrite
- * applied under the post-validation field name the hookmap renders from, and
- * any expired ask/defer outcome already substituted. */
+/** An `AcsDecision` after `validateDecision` has had its last word on it:
+ * §6.3's rewrite applied under the post-validation field name the hookmap
+ * renders from, and any expired ask/defer outcome already substituted. */
 export type ValidatedAcsDecision = AcsDecision & { applied_input?: Record<string, unknown> };
 
 /**

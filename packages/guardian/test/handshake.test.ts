@@ -6,17 +6,15 @@ const MODULE = fileURLToPath(new URL("../src/handshake.ts", import.meta.url));
 
 /**
  * Calls `buildServerHello()` with NO argument at all -- the shipped call
- * site, and the one path every test in this file used to skip by passing an
+ * site, and the one path every other test in this file skips by passing an
  * explicit object.
  *
  * In a subprocess, deliberately. The zero-argument path reads
- * `process.env`, and setting that in-process leaks into every other test in
- * the run: plan Risk 7 forbids it by name, and Task 1's own posture wiring
- * was reworked to take an explicit option for exactly this reason. A
- * subprocess gets its own environment, so `posture` here is the genuine
- * value of `process.env.ACS_ON_DECISION_FAILURE` inside that process --
- * including genuinely unset, which is the case a mocked env cannot honestly
- * produce.
+ * `process.env`, and setting that in-process would leak into every other
+ * test in the run. A subprocess gets its own environment, so `posture` here
+ * is the genuine value of `process.env.ACS_ON_DECISION_FAILURE` inside that
+ * process -- including genuinely unset, which is the case a mocked env
+ * cannot honestly produce.
  */
 async function respondInSubprocess(
   posture: string | undefined,
@@ -36,7 +34,7 @@ async function respondInSubprocess(
   return { exitCode: await proc.exited, stdout, stderr };
 }
 
-describe("buildServerHello — negotiated posture (D8, R1.7)", () => {
+describe("buildServerHello — negotiated posture", () => {
   it("ships the ACS spec default when nothing is configured", () => {
     expect(buildServerHello({}).on_decision_failure).toBe("proceed");
   });
@@ -51,7 +49,8 @@ describe("buildServerHello — negotiated posture (D8, R1.7)", () => {
 
   // A typo must not silently pick a posture. Fail-open is the spec default,
   // but "dney" is not a request for it -- it is a broken deployment, and a
-  // governance tool that guesses here is the whole problem this slice is about.
+  // governance tool that guesses here is the failure mode this project
+  // exists to prevent.
   it("throws on a value that is neither posture, naming the value", () => {
     expect(() => buildServerHello({ ACS_ON_DECISION_FAILURE: "dney" })).toThrow(/dney/);
   });
@@ -65,9 +64,9 @@ describe("buildServerHello — negotiated posture (D8, R1.7)", () => {
   // A posture is a deployment's declared intent, not a spelling suggestion.
   // `"Deny"` is not a request to fail closed and `"PROCEED"` is not a
   // request to fail open -- both are typos, and a governance tool that
-  // normalizes them is guessing at exactly the point this slice exists to
-  // stop guessing. Correct today; untested until now, so a future
-  // `.toLowerCase()` added for "convenience" would have shipped silently.
+  // normalizes them is guessing at exactly the point this project exists to
+  // stop guessing. This test exists so a future `.toLowerCase()` added for
+  // "convenience" cannot ship silently.
   for (const miscased of ["Deny", "DENY", "PROCEED", "Proceed", " deny", "deny "]) {
     it(`throws on ${JSON.stringify(miscased)} rather than normalizing it`, () => {
       expect(() => buildServerHello({ ACS_ON_DECISION_FAILURE: miscased })).toThrow(

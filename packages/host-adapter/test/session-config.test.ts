@@ -37,7 +37,7 @@ afterEach(() => {
   }
 });
 
-describe("createFileSessionConfigStore — S13 across processes", () => {
+describe("createFileSessionConfigStore — the session config store across processes", () => {
   it("survives the process that wrote it: a second store reads the first's config", () => {
     const dir = scratch();
     createFileSessionConfigStore({ dir, sessionId: "sess-1" }).set(HELLO);
@@ -141,7 +141,7 @@ describe("createFileSessionConfigStore — S13 across processes", () => {
   });
 });
 
-describe("createFileSessionConfigStore — session_id is untrusted input (constraint 9)", () => {
+describe("createFileSessionConfigStore — session_id is untrusted input", () => {
   // session_id arrives in a host payload and becomes part of a path. These
   // must be impossible, not unlikely.
   const badSessionIds = ["..", ".", "../escape", "a/b", "a\\b", "", "sess\nid", "a".repeat(129)];
@@ -158,10 +158,10 @@ describe("createFileSessionConfigStore — session_id is untrusted input (constr
     }
   });
 
-  // Only the 129-character rejection was pinned, which passes for a pattern
+  // Asserting only the 129-character rejection would pass for a pattern
   // whose bound is anywhere at or below 128 -- an off-by-one that tightened
-  // the limit would not have failed anything. Both sides of the boundary,
-  // asserted together, are what actually locate it.
+  // the limit would not fail anything. Both sides of the boundary, asserted
+  // together, are what actually locate it.
   it("accepts exactly 128 characters and rejects 129 — both sides of the boundary", () => {
     const dir = scratch();
     expect(() => createFileSessionConfigStore({ dir, sessionId: "a".repeat(128) })).not.toThrow();
@@ -169,7 +169,7 @@ describe("createFileSessionConfigStore — session_id is untrusted input (constr
   });
 });
 
-describe("createSessionConfigStore — the in-memory store V5 keeps", () => {
+describe("createSessionConfigStore — the in-memory store", () => {
   it("still satisfies the same interface", () => {
     const store = createSessionConfigStore();
     expect(store.get()).toBeUndefined();

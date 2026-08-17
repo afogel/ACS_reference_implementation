@@ -1,7 +1,7 @@
 /**
  * The two expiry substitutions §6 makes mandatory for the *host* (the
- * Observed Agent), extracted from validate-decision.ts (N7), which now
- * sequences them rather than owning them:
+ * Observed Agent). validate-decision.ts sequences them rather than owning
+ * them:
  *
  * 1. An expired `ask` falls back to `ask_details.timeout_disposition`,
  *    defaulting to `deny`.
@@ -31,8 +31,8 @@
  * substitution: an `ask` or `defer` inside its window is returned as it
  * arrived, by identity, not rebuilt.
  *
- * R3.2: this module knows ACS's ask_details and defer_details shapes,
- * nothing else -- no policy-runtime vocabulary.
+ * This module knows ACS's ask_details and defer_details shapes, nothing
+ * else -- no policy-runtime vocabulary.
  */
 
 import { deny, type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
@@ -103,26 +103,26 @@ export function resolveDefer(decision: AcsDecision, elapsedMs: number): Validate
     if (details.timeout_decision === "ask") {
       // defer-details.json permits `timeout_decision: "ask"`, and this host
       // cannot carry it out. Denying closed rather than substituting one is the
-      // only honest answer available here (PR #12 review, second pass).
+      // only honest answer available here.
       //
-      // WHAT THE OBVIOUS SUBSTITUTION WOULD PRODUCE. An `ask` requires
+      // What the obvious substitution would produce: an `ask` requires
       // `ask_details` -- response-envelope.json makes it conditionally required
       // on the decision, and ask-details.json requires `approver`, `question`
       // and `timeout_seconds` inside it. `defer_details` carries none of the
-      // three. So the substitution that used to happen here emitted
-      // `{decision: "ask"}` with no details at all: a message ACS's own schema
-      // rejects, and one this module's PEER would reject too -- `resolveAsk`
-      // denies exactly that shape as `ask_details_invalid`. Nothing re-enters
-      // N7 after a substitution, so it was never asked; the malformed ask went
-      // straight to the host's renderer.
+      // three. So substituting here would emit `{decision: "ask"}` with no
+      // details at all: a message ACS's own schema rejects, and one this
+      // module's PEER would reject too -- `resolveAsk` denies exactly that
+      // shape as `ask_details_invalid`. Nothing re-enters `validateDecision`
+      // after a substitution, so a malformed ask would go straight to the
+      // host's renderer, never asked again.
       //
-      // AND INVENTING THE MISSING FIELDS IS WORSE THAN DENYING. `approver` is
-      // an identity -- who is permitted to answer this question -- and there is
-      // no honest value for it here. A host that fabricates one has forged the
-      // load-bearing field of an approval request, in a governance tool, to
-      // avoid saying "I cannot ask this". That the resulting ASK would then be
-      // approved by whoever the fabrication happened to name is the whole
-      // objection.
+      // Inventing the missing fields would be worse than denying: `approver`
+      // is an identity -- who is permitted to answer this question -- and
+      // there is no honest value for it here. A host that fabricates one has
+      // forged the load-bearing field of an approval request, in a
+      // governance tool, to avoid saying "I cannot ask this". That the
+      // resulting ASK would then be approved by whoever the fabrication
+      // happened to name is the whole objection.
       //
       // Its own reason code, not `defer_expired`: an operator reading this
       // needs to know the deployment declared an escalation their Guardian did

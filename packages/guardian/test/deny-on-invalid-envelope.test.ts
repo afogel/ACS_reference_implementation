@@ -3,7 +3,7 @@ import { denyOnInvalidEnvelope } from "../src/deny-on-invalid-envelope.ts";
 
 const OPTS = { reasonCode: "envelope_invalid", message: "params.payload.tool is required" };
 
-describe("denyOnInvalidEnvelope — N27", () => {
+describe("denyOnInvalidEnvelope", () => {
   it("returns a deny decision addressed by params.request_id", () => {
     const out = denyOnInvalidEnvelope(
       { jsonrpc: "2.0", id: "rpc-1", method: "steps/toolCallRequest", params: { acs_version: "0.1.0", request_id: "req-1" } },
@@ -33,7 +33,7 @@ describe("denyOnInvalidEnvelope — N27", () => {
     expect(out).toMatchObject({ kind: "decision", result: { acs_version: "0.1.0", request_id: "7" } });
   });
 
-  // Constraint 10 / P5: a decision must name the request it answers.
+  // A decision must name the request it answers.
   it("reports unaddressable when there is no id of any kind", () => {
     expect(denyOnInvalidEnvelope({ jsonrpc: "2.0", method: "steps/toolCallRequest" }, OPTS)).toEqual({
       kind: "unaddressable",
@@ -42,9 +42,10 @@ describe("denyOnInvalidEnvelope — N27", () => {
     expect(denyOnInvalidEnvelope({ id: { not: "a scalar" } }, OPTS)).toEqual({ kind: "unaddressable" });
   });
 
-  // Half 1 of 2 (see server.test.ts's HTTP-level half): params.request_id
-  // present, top-level id absent. denyOnInvalidEnvelope's job stops at
-  // finding an id to address the decision to -- it does not know or care
+  // Covers the unit-level half of this case; server.test.ts covers the
+  // HTTP-level half. params.request_id present, top-level id absent.
+  // denyOnInvalidEnvelope's job stops at finding an id to address the
+  // decision to -- it does not know or care
   // whether that id can also address a JSON-RPC *response*, which is
   // asDecisionResponse's job in server.ts. Pinned here so nobody
   // "simplifies" this function to require both ids at once: a decision is

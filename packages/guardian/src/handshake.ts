@@ -3,19 +3,11 @@
  * handshake.json's ServerHello $def
  * (spec/acs/specification/v0.1.0/handshake.json).
  *
- * V1 scope:
- *   - `methods_evaluated` is exactly the set this Guardian actually wires
- *     up, per the V1 watch-for ("only pre_tool_call is wired").
- *   - `on_decision_failure` ships the spec default, "proceed" (fail-open).
- *     D8 closes on "proceed" as the default. This responder is now deployment-
- *     configurable (N28): one binary can demo both halves of V3 without a rebuild.
- *     Applying the declared posture (N6/N7) is V3 work. A value that is neither
- *     posture throws rather than falling back -- guessing which posture a typo
- *     meant is the silent bypass this slice removes.
- *
  * `methods_evaluated` is exactly the set this Guardian wires up.
- * `on_decision_failure` ships the spec default, "proceed" (fail-open). This
- * side only declares it on the wire; nothing here reads or acts on it.
+ * `on_decision_failure` reports the deployment's declared posture; this
+ * responder only declares it on the wire, and applying that posture --
+ * falling back to fail-open or fail-closed once a decision fails to arrive --
+ * happens elsewhere.
  */
 
 export type ServerHello = {
@@ -29,7 +21,7 @@ export type ServerHello = {
 /** The ACS spec version every schema and mapping in this repo is pinned to. */
 const NEGOTIATED_VERSION = "0.1.0";
 
-/** Only intervention point wired in V1 (mapping.yaml's pre_tool_call). */
+/** Only intervention point wired (mapping.yaml's pre_tool_call). */
 const METHODS_EVALUATED = ["steps/toolCallRequest"];
 
 /**
@@ -45,16 +37,17 @@ const POSTURES = ["proceed", "deny"] as const;
 type Posture = (typeof POSTURES)[number];
 
 /**
- * The deployment's declared posture. D8 closed on the spec default
- * (`proceed`, per handshake.json's own `default` and R1.7); this makes it
- * configurable so one binary can demo both halves of V3 without a rebuild.
+ * The deployment's declared posture, read from `ACS_ON_DECISION_FAILURE` and
+ * defaulting to the spec's default of `proceed` (handshake.json's own
+ * `default`). Making it configurable lets one binary demonstrate both
+ * fail-open and fail-closed behaviour without a rebuild.
  *
  * A value that is neither posture THROWS rather than falling back. Falling
- * back to fail-open on a typo is exactly the silent-bypass shape this slice
- * exists to remove: the deployment asked for something, and guessing which
- * posture it meant is not available to us.
+ * back to fail-open on a typo would be exactly the silent bypass this
+ * project exists to prevent: the deployment asked for something, and
+ * guessing which posture it meant is not available to us.
  */
-// The parameter type is deliberately WIDER than handshakeResponder's own
+// The parameter type is deliberately WIDER than buildServerHello's own
 // (`{ ACS_ON_DECISION_FAILURE?: string }`), and the asymmetry is forced
 // rather than accidental: the zero-argument call site passes `process.env`,
 // whose index signature is `Record<string, string | undefined>` and which

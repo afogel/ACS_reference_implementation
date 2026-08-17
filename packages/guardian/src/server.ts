@@ -31,12 +31,11 @@
  *
  * Two DIFFERENT catches inside `dispatch` -- the evaluation catch above and
  * dispatch's own EnvelopeValidationError catch, around `validateEnvelope` --
- * now turn a steps/* failure into an honoured ACS `deny` decision instead
- * of a bare error, via N27 (denyOnInvalidEnvelope): see the module comment
- * on `dispatch` below. The outer net here is deliberately untouched by N27:
- * it exists for a `dispatch` rethrow -- a bug in the Guardian itself (e.g. a
- * missing schema directory), not an invalid envelope -- so it stays a bare
- * JSON-RPC error.
+ * turn a steps/* failure into an honoured ACS `deny` decision via
+ * denyOnInvalidEnvelope: see the module comment on `dispatch` below. The
+ * outer net here is deliberately left untouched: it exists for a `dispatch`
+ * rethrow -- a bug in the Guardian itself (e.g. a missing schema directory),
+ * not an invalid envelope -- so it stays a bare JSON-RPC error.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -206,13 +205,13 @@ export type StartGuardianOptions = {
    * passes it. */
   envelopeLogPath?: string;
   /** Overrides the declared `on_decision_failure` posture this Guardian's
-   * ServerHello carries, bypassing `handshakeResponder`'s own
+   * ServerHello carries, bypassing `buildServerHello`'s own
    * `process.env.ACS_ON_DECISION_FAILURE` read entirely. Explicit rather
    * than an env-shaped bag on purpose: a test that needs a Guardian
    * declaring `deny` can pass one here instead of mutating `process.env`,
-   * which would leak into every other test sharing that process (plan Risk
-   * 7). Omitted means the real deployment path: `handshakeResponder()` is
-   * called with no argument and reads the actual environment, exactly as
+   * which would leak into every other test sharing that process. Omitted
+   * means the real deployment path: `buildServerHello()` is called with no
+   * argument and reads the actual environment, exactly as
    * `packages/guardian/src/main.ts` needs it to. */
   onDecisionFailure?: "proceed" | "deny";
   /** A host-supplied annotator, threaded straight to `createBridge` (which
@@ -234,7 +233,7 @@ export async function startGuardian({
   onDecisionFailure,
   annotator,
 }: StartGuardianOptions): Promise<StartedGuardian> {
-  // N31 -- construct the bridge once at boot, not per request.
+  // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath, annotator ? { annotator } : undefined);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
@@ -263,12 +262,11 @@ export async function startGuardian({
 /**
  * Three phases, in order: parse, record the request, dispatch, record the
  * response. The envelope-log writes live here and only here -- `dispatch`
- * below leaves by eight routes now (seven `return`s and one rethrow). V1/V2
- * left six (five `return`s and one rethrow); N27 (V3) added two more, not
- * one -- both dispatch's EnvelopeValidationError catch and its evaluation
- * catch gained a second `return`, for the deny-decision case, beside the
- * bare-error `return` each already had. Writing S6 inside `dispatch` would
- * make totality something a future task has to remember rather than
+ * below leaves by eight routes (seven `return`s and one rethrow), since
+ * each of dispatch's two catches (its EnvelopeValidationError catch and its
+ * evaluation catch) can produce either a deny-decision response or a
+ * bare-error response. Writing to the envelope log inside `dispatch` would
+ * make totality something a future change has to remember rather than
  * something the structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
@@ -310,13 +308,13 @@ async function handleAcsRequest(
   try {
     response = await dispatch(raw, bridge, mapping, onDecisionFailure);
   } catch (error) {
-    // The outer net (whole-branch review, finding 1). Deliberately a bare
-    // JSON-RPC error, not an ACS `deny`: this route is `dispatch` rethrowing
-    // past N27 entirely -- a bug in the Guardian itself (e.g. a missing
-    // schema directory), not an invalid envelope, so denyOnInvalidEnvelope
-    // never runs here. What this buys is that the client can parse the
-    // answer at all, and that S6 holds a response line paired with the
-    // request line above it.
+    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`:
+    // this route is `dispatch` rethrowing entirely past denyOnInvalidEnvelope
+    // -- a bug in the Guardian itself (e.g. a missing schema directory), not
+    // an invalid envelope, so denyOnInvalidEnvelope never runs. What this
+    // buys is that the client can parse the answer at all, and that the
+    // envelope log holds a response line paired with the request line above
+    // it.
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
@@ -334,16 +332,15 @@ async function dispatch(
 
   let envelope: AcsRequestEnvelope;
   try {
-    // validateEnvelope (N21) checks the general request-envelope.json shape
-    // for every method, plus -- only for steps/toolCallRequest -- the
+    // validateEnvelope checks the general request-envelope.json shape for
+    // every method, plus -- only for steps/toolCallRequest -- the
     // hook-specific payload schema. Failure is a THROWN typed error, never
     // a decision itself -- validateEnvelope stays total to its own contract
-    // (see its doc comment) -- but the catch below (N27,
-    // denyOnInvalidEnvelope) turns a steps/* failure into an honoured ACS
-    // `deny` decision rather than a bare JSON-RPC error, since there is an
-    // identifiable step to answer for. A handshake failure and an
-    // undispatched method are not steps/*, so they always fall through to
-    // the JSON-RPC error unchanged.
+    // (see its doc comment) -- but the catch below (denyOnInvalidEnvelope)
+    // turns a steps/* failure into an honoured ACS `deny` decision rather
+    // than a bare JSON-RPC error, since there is an identifiable step to
+    // answer for. A handshake failure and an undispatched method are not
+    // steps/*, so they always fall through to the JSON-RPC error unchanged.
     envelope = validateEnvelope(raw);
   } catch (error) {
     if (error instanceof EnvelopeValidationError) {
@@ -385,12 +382,12 @@ async function dispatch(
 
       return successResponse(envelope.id, finalResult(envelope.params, decision));
     } catch (error) {
-      // Fix wave finding 1 -- see the module-level comment above -- made
-      // this a parseable JSON-RPC error instead of an HTML 500. N27
-      // (denyOnInvalidEnvelope) goes one step further: AGT's evaluation
-      // layer fails CLOSED (R1.5), and this catch is where that failure
-      // surfaces, so it is delivered as an honoured `deny` decision rather
-      // than a bare error, keeping it in §6.4's honoured path.
+      // This catch (see the module-level comment above) keeps an evaluation
+      // failure a parseable JSON-RPC error rather than an HTML 500.
+      // denyOnInvalidEnvelope goes one step further: AGT's evaluation layer
+      // fails CLOSED, and this catch is where that failure surfaces, so it
+      // is delivered as an honoured `deny` decision rather than a bare
+      // error, keeping it in §6.4's honoured path.
       const message = toRepoRelativeMessage(error);
       const denial = denyOnInvalidEnvelope(raw, { reasonCode: "evaluation_failed", message });
       const decisionResponse = asDecisionResponse(rpcId, denial);
@@ -450,10 +447,10 @@ function extractMethod(raw: unknown): string | null {
 }
 
 /** Whether the raw envelope names a `steps/*` method -- read before
- * validation, so it is a string test and nothing more. N27 only turns a
- * schema-validation failure into a deny decision for steps/*: a handshake
- * failure is not a governance decision (there is no step to decide about),
- * and an undispatched method is answered separately, below. */
+ * validation, so it is a string test and nothing more. denyOnInvalidEnvelope
+ * only turns a schema-validation failure into a deny decision for steps/*:
+ * a handshake failure is not a governance decision (there is no step to
+ * decide about), and an undispatched method is answered separately, below. */
 function isStepMethod(raw: unknown): boolean {
   const method = extractMethod(raw);
   return typeof method === "string" && method.startsWith("steps/");

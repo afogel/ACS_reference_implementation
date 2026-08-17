@@ -3,18 +3,17 @@
  * the wire, on this side of it, and while establishing the session -- plus the
  * stage of the exchange each belongs to.
  *
- * A MODULE OF ITS OWN so the writer and the classifier share one declaration
- * (PR #12 review, second pass). `failure-posture.ts` builds these values and
- * `audit-sink.ts` is the durable boundary that stores them, and the store used
- * to declare `kind: string` -- so the taxonomy N6 goes to the trouble of
- * getting right died at the one boundary that outlives the process, which is
- * also the only one an incident review ever reads. The two modules cannot
- * simply import from each other (`failure-posture.ts` already depends on
- * `audit-sink.ts` for the sink role), so the shared vocabulary lives here,
- * the same way `decision-message.ts` holds the decision every module on this
- * side speaks.
+ * A module of its own, so the writer and the classifier share one
+ * declaration. `failure-posture.ts` builds these values and `audit-sink.ts`
+ * is the durable boundary that stores them; sharing one declaration here
+ * keeps the taxonomy `applyFailurePosture` builds from being lost at the one
+ * boundary that outlives the process, which is also the only one an incident
+ * review ever reads. The two modules cannot simply import from each other
+ * (`failure-posture.ts` already depends on `audit-sink.ts` for the sink
+ * role), so the shared vocabulary lives here, the same way
+ * `decision-message.ts` holds the decision every module on this side speaks.
  *
- * R3.2: these name failures of the wire and of this host. No policy-runtime
+ * These name failures of the wire and of this host. No policy-runtime
  * vocabulary -- a delivery failure is a property of the wire, not of whatever
  * evaluates policy on the other side of it.
  */
@@ -24,13 +23,13 @@
  * back. §6.4's own case, and the only kinds `classifyDeliveryFailure` can
  * produce.
  *
- * Narrow, and the narrowing IS the fix (PR #12 review, Critical). This type
- * used to carry `host_configuration` and `decision_unrenderable` too, each
- * under its own comment admitting it was "not a delivery failure at all" -- so
- * `failure.kind` presented two precisely-known, entirely host-side causes under
- * a delivery-shaped name, and `classifyDeliveryFailure` advertised a return it
- * never actually produced. A type that lies is a lie the type system then
- * teaches every reader. The two live in `HostFailureKind` below.
+ * Deliberately narrow: `host_configuration` and `decision_unrenderable` are
+ * not delivery failures at all -- both are precisely-known, entirely
+ * host-side causes -- so including them here would mean `failure.kind`
+ * presents them under a delivery-shaped name, and `classifyDeliveryFailure`
+ * would advertise a return it never actually produces. A type that lies is a
+ * lie the type system then teaches every reader. The two live in
+ * `HostFailureKind` below.
  */
 export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decision" | "unknown";
 
@@ -73,8 +72,7 @@ export type StepFailureKind = DeliveryFailureKind | HostFailureKind;
 /**
  * WHERE in the exchange the failure happened. Three materially different
  * incidents, and the audit record has to tell them apart -- an entry that
- * confuses them sends an incident review to the wrong process, which is the
- * defect this type replaced a boolean to fix:
+ * confuses them sends an incident review to the wrong process:
  *
  *   "delivery" -- a request went out and no usable decision came back.
  *                 §6.4's own case, and the default for every ordinary call

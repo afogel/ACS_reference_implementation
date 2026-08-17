@@ -62,19 +62,18 @@ const ACS_VERSION = "0.1.0";
 /**
  * A hookmap's `decisions` block must declare at least `allow` and `deny`
  * -- the only two decisions a delivery-failure posture
- * (applyFailurePosture, N6) ever produces -- and every entry it DOES
+ * (applyFailurePosture) ever produces -- and every entry it DOES
  * declare must actually be renderable, not merely present. "Renderable"
  * means shaped like render-decision.ts's own `DecisionRenderRule`: a
  * non-null object naming a non-empty string `permissionDecision`, the one
  * field renderDecision writes into Claude Code's output unconditionally.
- * Presence alone is not enough to guarantee that -- fix round 3 found the
- * gap directly: `allow: null` still satisfies `"allow" in decisions`, and
- * then renderDecision throws on the non-object entry; `allow: {}` also
- * satisfies it and renderDecision does NOT throw, but writes
- * `permissionDecision: undefined`, which `JSON.stringify` then drops
- * entirely -- stdout ends up with no decision in it at all, defeating
- * "always a decision on stdout" exactly as surely as a missing entry does,
- * just more quietly.
+ * Presence alone is not enough to guarantee that: `allow: null` still
+ * satisfies `"allow" in decisions`, and then renderDecision throws on the
+ * non-object entry; `allow: {}` also satisfies it and renderDecision does
+ * NOT throw, but writes `permissionDecision: undefined`, which
+ * `JSON.stringify` then drops entirely -- stdout ends up with no decision
+ * in it at all, defeating "always a decision on stdout" exactly as surely
+ * as a missing entry does, just more quietly.
  *
  * Every declared entry is checked here, not only `allow` and `deny`: a
  * malformed `modify` (or `ask`, or `defer`) entry would otherwise only
@@ -91,8 +90,8 @@ const ACS_VERSION = "0.1.0";
  * throw -- not because `allow` and `deny` merely exist, but because
  * existing here means shape-checked here.
  *
- * What "shape-checked" means is S1's own declarative output shape (PR #10
- * review, Critical): an entry carries a non-empty `output` block, and every
+ * What "shape-checked" means is the hookmap's own declarative output shape:
+ * an entry carries a non-empty `output` block, and every
  * field in it names either a literal `value` or a non-empty `from`. It is
  * deliberately not a check for any particular host field -- this module names
  * none, and test/invariants.test.ts gates that -- so the check is that the
@@ -149,7 +148,7 @@ function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
   }
 }
 
-/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
+/** Loads and parses a hookmap YAML file (e.g. claude-code.hookmap.yaml).
  * Throws if `decisions` is missing `allow` or `deny`, or if any declared
  * entry is not a renderable rule -- see assertRenderableDecisions. */
 export function loadHookmap(path: string): Hookmap {
@@ -164,7 +163,7 @@ export function loadHookmap(path: string): Hookmap {
  * wire. Knowledge of the ACS argument wrapper belongs here, next to the
  * type that defines it, not duplicated in every host shim that needs the
  * unwrapped form (e.g. to hand a `modify` decision's `parameter_overrides`
- * something to apply against, per N7's `validateDecision`).
+ * something to apply against, for `validateDecision`).
  */
 export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, unknown> {
   const originalArguments: Record<string, unknown> = {};

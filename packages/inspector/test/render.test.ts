@@ -267,7 +267,7 @@ describe("renderEnvelopeLogEntry", () => {
   });
 });
 
-describe("renderPostureBadge — U23", () => {
+describe("renderPostureBadge", () => {
   it("shows the last observed posture and a zero count before anything fails", () => {
     expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: false }))
       .toBe("last_observed_posture=proceed  fail-open proceeds=0");
@@ -280,12 +280,12 @@ describe("renderPostureBadge — U23", () => {
       .toBe("last_observed_posture=proceed  fail-open proceeds=3");
   });
 
-  // Whole-branch review, I5: this used to read "posture=(not negotiated)",
-  // which is false in the healthiest case there is -- a session that
-  // negotiated `deny` and had zero delivery failures writes no audit entry at
-  // all, so the badge said "not negotiated" forever while the negotiated
-  // value sat in the session store. The badge reports what it can actually
-  // see: the last posture observed in S14, and its absence.
+  // A label of "posture=(not negotiated)" would be false in the healthiest
+  // case there is -- a session that negotiated `deny` and had zero delivery
+  // failures writes no audit entry at all, so the badge would say "not
+  // negotiated" forever while the negotiated value sat in the session
+  // store. The badge reports what it can actually see: the last posture
+  // observed in the audit log, and its absence.
   it("says nothing has been observed yet, rather than claiming nothing was negotiated", () => {
     const badge = renderPostureBadge({ posture: null, proceeds: 0 }, { color: false });
     expect(badge).toBe("last_observed_posture=(none observed)  fail-open proceeds=0");
@@ -313,7 +313,7 @@ describe("renderPostureBadge — U23", () => {
   });
 });
 
-describe("renderAuditEntry — N51", () => {
+describe("renderAuditEntry", () => {
   it("renders a proceeded entry with the failure that caused it", () => {
     const line = renderAuditEntry(
       {
@@ -344,11 +344,11 @@ describe("renderAuditEntry — N51", () => {
     expect(line).toContain("BLOCKED");
   });
 
-  // Whole-branch review, I2: `method` used to be rendered verbatim from the
-  // entry, and the writer put its own hook event name there when no request
-  // was ever built -- so this package, whose whole claim is that it names no
-  // host, printed a host's event name at runtime while the grep gate over its
-  // source stayed green. It now reads null, and this is the fallback.
+  // Rendering `method` verbatim from the entry would print a host's event
+  // name at runtime: the writer puts its own hook event name there when no
+  // request was ever built, and this package's whole claim is that it
+  // names no host, even though the grep gate over its own source would
+  // stay green. It reads null instead, and this is the fallback.
   it("labels an entry with no ACS method rather than printing whatever was in the field", () => {
     const line = renderAuditEntry(
       { seq: 1, recorded_at: "2026-08-10T12:00:00.000Z", session_id: "s", method: null, rpc_id: null,

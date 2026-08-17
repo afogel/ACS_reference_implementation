@@ -4,16 +4,14 @@ import { renderDecision } from "../src/render-decision.ts";
 import { validateDecision } from "../src/validate-decision.ts";
 
 /**
- * A hookmap for a host that is not Claude Code, deliberately.
- *
- * The old version of this file used the real hookmap's decisions block, which
- * meant every assertion here was also an assertion about one host's field
- * names -- and that was the shape of the problem PR #10's Critical finding
- * named: the adapter's own tests could not tell "renders what the hookmap
- * says" apart from "renders permissionDecision". This host nests its decision
- * two levels deep under different names, carries a field OUTSIDE that wrapper,
- * and has no permission-style field at all. Nothing in the module under test
- * knows any of it.
+ * A hookmap for a host that is not Claude Code, deliberately: using the real
+ * hookmap's decisions block here would make every assertion in this file
+ * also an assertion about one host's field names, so the adapter's own
+ * tests could not tell "renders what the hookmap says" apart from "renders
+ * permissionDecision". This host nests its decision two levels deep under
+ * different names, carries a field OUTSIDE that wrapper, and has no
+ * permission-style field at all. Nothing in the module under test knows any
+ * of it.
  *
  * The one test at the bottom does load the real file, so the shipped hookmap
  * is still exercised end to end.
@@ -124,7 +122,6 @@ describe("renderDecision", () => {
   });
 
   it("is hookmap-driven: a path with no dot puts the field alongside the wrapper, not inside it", () => {
-    // The shape the old, host-named types could not express at all.
     const flat: Hookmap = {
       ...hookmap,
       decisions: { allow: { output: { verdict: { value: "pass" } } } },
@@ -178,12 +175,11 @@ describe("renderDecision", () => {
     expect(() => renderDecision({ decision: "allow" }, reserved)).toThrow(/addresses no field/);
   });
 
-  it("pins the real hookmap's rendering of a warn-derived allow: reasoning now surfaces (V3 fix round 1)", () => {
-    // V3 added reason_from: reasoning to the real hookmap's allow entry
-    // (claude-code.hookmap.yaml), which the local `hookmap` fixture above
-    // deliberately does not carry -- this test locks in the REAL file's
-    // now-different behaviour so Task 10's five-verdicts work does not have
-    // to guess it. Shape matches what an observe-only upstream signal
+  it("pins the real hookmap's rendering of a warn-derived allow: reasoning surfaces", () => {
+    // The real hookmap's allow entry (claude-code.hookmap.yaml) declares
+    // `reason_from: reasoning`, which the local `hookmap` fixture above
+    // deliberately does not carry -- this test locks in the real file's
+    // behaviour directly. Shape matches what an observe-only upstream signal
     // (mapping.yaml's warn -> allow, require_policy_references: true)
     // actually produces: `reasoning` and `policy_references` both set.
     const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
@@ -209,15 +205,15 @@ describe("renderDecision", () => {
     });
   });
 
-  // The coupling nothing guarded before this test (whole-branch review, C2):
-  // `validateDecision` puts the applied arguments in `applied_input`, and the
-  // real hookmap's `modify` entry names `updatedInput_from: applied_input`.
-  // Every other modify test in this file uses the local fixture above, whose
-  // `modify` entry names `modifications` instead -- so renaming either half
-  // would leave the real deployment rendering `allow` with no `updatedInput`
-  // at all, and the whole suite would still pass. This is the one test that
-  // fails when the two names stop agreeing.
-  it("loads the real hookmap and renders a modify with updatedInput carrying the applied arguments (R1.6)", () => {
+  // The coupling nothing else guards: `validateDecision` puts the applied
+  // arguments in `applied_input`, and the real hookmap's `modify` entry
+  // names `updatedInput_from: applied_input`. Every other modify test in
+  // this file uses the local fixture above, whose `modify` entry names
+  // `modifications` instead -- so renaming either half would leave the real
+  // deployment rendering `allow` with no `updatedInput` at all, and the
+  // whole suite would still pass. This is the one test that fails when the
+  // two names stop agreeing.
+  it("loads the real hookmap and renders a modify with updatedInput carrying the applied arguments", () => {
     const real = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
     const originalArguments = { command: "echo ghp_SECRET123456" };
 

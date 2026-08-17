@@ -43,9 +43,9 @@ describe("mapVerdict", () => {
 
   it("emits only lowercase decisions", () => {
     for (const dec of ["allow", "deny", "warn", "escalate", "transform"] as const) {
-      // transform maps to a MODIFY, which requires a transform object (R1.6)
-      // -- this loop's own point is decision casing, not that shape, so it
-      // supplies one for the one decision that needs it.
+      // transform maps to a MODIFY, which requires a transform object -- this
+      // loop's own point is decision casing, not that shape, so it supplies
+      // one for the one decision that needs it.
       const verdict =
         dec === "transform"
           ? { decision: dec, reason: "r", transform: { path: "$policy_target", value: "x" } }
@@ -55,21 +55,18 @@ describe("mapVerdict", () => {
     }
   });
 
-  // Fix wave finding 1 -- previously-deferred coverage gap: this throw path
-  // (require_policy_references marked true, but no policy_references could
-  // be synthesized) had no test. It's real: a "warn" verdict with no
-  // `reason` hits it directly, and it's exactly what the Guardian's
-  // evaluation-failure catch (server.test.ts) now has to survive without
-  // turning it into an HTML 500 or a silent decision.
+  // This throw path (require_policy_references marked true, but no
+  // policy_references could be synthesized) is real: a "warn" verdict with
+  // no `reason` hits it directly, and it's exactly what the Guardian's
+  // evaluation-failure catch (server.test.ts) has to survive without turning
+  // it into an HTML 500 or a silent decision.
   it("throws when require_policy_references is set but verdict.reason is empty", () => {
     expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
   });
 
-  // PR #10 review, second pass: `field_synthesis.reason_codes.wrap` was
-  // required on the type and written in mapping.yaml while mapVerdict built
-  // `[value]` from a literal -- the same "declared but unread" defect the
-  // hardcoded `pre_tool_call` was. These read the declaration rather than the
-  // literal, so an edit to the table changes behaviour.
+  // Confirms mapVerdict reads `field_synthesis.reason_codes.wrap` from the
+  // mapping declaration rather than assuming array-wrapping, so an edit to
+  // the table changes behaviour.
   describe("field_synthesis.reason_codes.wrap is read, not assumed", () => {
     it("wraps per the declared mode, on the shipped mapping", () => {
       expect(mapVerdict({ decision: "deny", reason: "r" }, m).reason_codes).toEqual(["r"]);
@@ -92,10 +89,9 @@ describe("mapVerdict", () => {
   });
 });
 
-// PR #10 review, Critical: the intervention_points table used to be a claim
-// nobody checked -- declared here, hardcoded in server.ts. These read the real
-// mapping.yaml, so a row edited there without a matching runtime change fails
-// somewhere rather than nowhere.
+// These tests read the real mapping.yaml's intervention_points table, so a
+// row edited there without a matching runtime change fails somewhere rather
+// than nowhere.
 describe("resolveInterventionPoint", () => {
   it("answers the ACS method the shipped mapping wires, from the table rather than a literal", () => {
     expect(resolveInterventionPoint("steps/toolCallRequest", m)).toBe("pre_tool_call");
@@ -159,7 +155,7 @@ describe("resolveInterventionPoint", () => {
   });
 });
 
-describe("mapVerdict — transform becomes a MODIFY that carries modifications (R1.6)", () => {
+describe("mapVerdict — transform becomes a MODIFY that carries modifications", () => {
   it("synthesizes parameter_overrides from the transform's $policy_target value", () => {
     const decision = mapVerdict(
       {
@@ -209,16 +205,11 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications (
       .toBeUndefined();
   });
 
-  // Fix round 2 -- round 1's finding was that `into` was declared, typed,
-  // and read by nobody. Widening `into` to test that directly let a value
-  // the code can't honour type-check and get built, which needed an
-  // `as AcsModifications` cast to compile -- a bad trade. `into` is back to
-  // its single-member union (no cast in the implementation), and this test
-  // simulates what that cast was covering for: a mapping.yaml edit that
-  // loadMapping's unchecked `as Mapping` would let through unnoticed. The
-  // cast belongs here now -- the test is deliberately standing in for
-  // malformed YAML -- and proves the runtime rejects it loudly instead of
-  // silently misbuilding or disagreeing with the declaration.
+  // Simulates a mapping.yaml edit that declares an `into` this mapping
+  // cannot express -- something loadMapping's unchecked `as Mapping` would
+  // let through unnoticed. The cast here stands in for that malformed YAML,
+  // proving the runtime rejects it loudly instead of silently misbuilding or
+  // disagreeing with the declaration.
   it("throws when mapping.yaml declares an into this mapping cannot express", () => {
     const withUnsupportedInto = {
       ...m,

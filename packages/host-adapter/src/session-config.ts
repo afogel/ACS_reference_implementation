@@ -9,8 +9,8 @@
  * Two implementations share one interface: an in-memory store for an
  * in-process host, and a file-backed store for a host whose hooks run as
  * fresh subprocesses (Claude Code) and so cannot share memory across a
- * handshake and the tool call that follows it. N6/N7 (slice V3) read
- * whichever store the host wired up, without knowing which one it is.
+ * handshake and the tool call that follows it. Every caller reads whichever
+ * store the host wired up, without knowing which one it is.
  *
  * A factory rather than a module-level singleton, matching this package's
  * existing style (loadHookmap, buildEnvelope take every dependency as an
@@ -85,21 +85,20 @@ export function sessionConfigPath(dir: string, sessionId: string): string {
 }
 
 /**
- * A `SessionConfig` must at minimum carry the two fields N6 and the client
- * timeout read. Anything less is treated as "not negotiated" rather than
- * trusted half-way: the caller then applies the ACS default, which is a
- * defined posture, where a half-read config is not.
+ * A `SessionConfig` must at minimum carry the two fields this host reads: the
+ * posture and the timeout. Anything less is treated as "not negotiated"
+ * rather than trusted half-way: the caller then applies the ACS default,
+ * which is a defined posture, where a half-read config is not.
  *
  * Deliberately NOT the five fields handshake.json's ServerHello $def requires.
  * This checks what this host needs, so `SessionConfig` is the honest name for
  * what it certifies; naming the stored type after the wire message would
- * over-claim in exactly the way the cast this replaced did -- `as unknown as
- * SessionConfig` made the name a claim nothing checked, which is the same
- * defect as a type named for a validation it does not perform (PR #10 review,
- * Important).
+ * over-claim in exactly the way a cast would -- `as unknown as SessionConfig`
+ * makes the name a claim nothing checks, which is the same defect as a type
+ * named for a validation it does not perform.
  *
  * Exported because `get()` is not the only place this question is asked:
- * `handshake` (N5) asks it of the ServerHello BEFORE storing one, so a
+ * `negotiateSessionConfig` asks it of the ServerHello BEFORE storing one, so a
  * Guardian returning a malformed hello fails loudly at the handshake rather
  * than being written to disk and then rejected, unremarked, by every
  * subsequent `get()` -- which is a silent re-handshake on every hook,
@@ -129,7 +128,7 @@ export type CreateFileSessionConfigStoreOptions = {
 };
 
 /**
- * S13 with a home that outlives the process (P1).
+ * The negotiated session config store, with a home that outlives the process.
  *
  * The Claude Code shim is a fresh subprocess per hook, so the negotiated
  * ServerHello has to be readable by a process that never handshook. It also

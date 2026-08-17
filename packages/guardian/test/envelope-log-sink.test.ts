@@ -64,7 +64,7 @@ describe("createEnvelopeLogSink -- the envelope log's JSONL format", () => {
     });
   });
 
-  it("carries rpc_id from both directions, so the Inspector can pair them (P4)", () => {
+  it("carries rpc_id from both directions, so the Inspector can pair them", () => {
     withTempDir((dir) => {
       const path = join(dir, "envelopes.jsonl");
       const sink = createEnvelopeLogSink({ path });

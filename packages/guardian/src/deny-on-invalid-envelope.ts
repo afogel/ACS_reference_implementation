@@ -1,5 +1,6 @@
 /**
- * N27 -- denyOnInvalidEnvelope.
+ * denyOnInvalidEnvelope turns a Guardian-side failure into an explicit ACS
+ * deny decision.
  *
  * A Guardian-side failure (the envelope failed validation, or evaluation
  * threw) is a governance outcome, not a transport accident. §6.4 says a
@@ -8,28 +9,21 @@
  * routing them into the host's fail-open posture -- which for a governance
  * tool is the difference between "blocked" and "silently allowed".
  *
- * That is the whole two-failure-domain rule (Global Constraint 1): AGT's
- * evaluation layer fails CLOSED, the wire's delivery layer applies the
- * negotiated posture, and the two must not be conflated.
+ * That is the whole two-failure-domain rule: AGT's evaluation layer fails
+ * CLOSED, the wire's delivery layer applies the negotiated posture, and the
+ * two must not be conflated.
  *
- * Constraint 10 (P5): response-envelope.json's AcsResult REQUIRES
- * request_id, and an envelope that failed validation may carry none. Rather
- * than invent one -- which would hand the host a decision it cannot
- * correlate -- this reports `unaddressable` and the caller returns a bare
- * JSON-RPC error. A parse failure never reaches here at all: there is no
- * envelope.
+ * response-envelope.json's AcsResult REQUIRES request_id, and an envelope
+ * that failed validation may carry none. Rather than invent one -- which
+ * would hand the host a decision it cannot correlate -- this reports
+ * `unaddressable` and the caller returns a bare JSON-RPC error. A parse
+ * failure never reaches here at all: there is no envelope.
  *
  * Total: never throws, whatever shape it is handed.
  *
- * ONE MESSAGE FOR "HERE IS A DENY" (PR #12 review, second pass). This used to
- * answer with `result: Record<string, unknown>` -- an anonymous dict assembled
- * field by field -- while `mapVerdict`, on the same side of the same wire and
- * for the same response slot, answered with a real `AcsDecision`. Two messages
- * for one thing, and the untyped one was the failure path: the route where
- * nothing else was checking either. It now builds the same `AcsFinalResult`
- * the decision path does, through the same `finalResult`, so a field that
- * belongs on an ACS result cannot be present on one of these and missing from
- * the other.
+ * This answers through the same `AcsFinalResult` type that `mapVerdict` uses
+ * for the same response slot, so a field that belongs on an ACS result
+ * cannot be present on one path and missing from the other.
  */
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import type { AcsDecision } from "./map-verdict.ts";
@@ -77,9 +71,9 @@ export function denyOnInvalidEnvelope(
       decision: "deny",
       reasoning: message,
       reason_codes: [reasonCode],
-      // Empty on purpose, and load-bearing: R1.2 makes a NON-empty
-      // policy_references the marker of a policy-fired allow. A Guardian-side
-      // failure fired no policy, so this stays empty.
+      // Empty on purpose, and load-bearing: a non-empty policy_references is
+      // the marker of a policy-fired allow. A Guardian-side failure fired no
+      // policy, so this stays empty.
       policy_references: [],
     };
 

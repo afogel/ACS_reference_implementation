@@ -1,8 +1,7 @@
 /**
  * §6.3's `modifications`: what makes one honourable, and what applying it
- * does to the arguments that actually went out on the wire. Extracted from
- * validate-decision.ts (N7), which now sequences this job rather than owning
- * it.
+ * does to the arguments that actually went out on the wire.
+ * validate-decision.ts sequences this job rather than owning it.
  *
  * A `modify` whose `modifications` cannot be applied exactly as written is a
  * DENY at the caller, never a best-effort partial apply and never a
@@ -16,7 +15,7 @@
  * those would otherwise report a successful `modify` while the original
  * argument -- the un-redacted one -- is what the host actually runs.
  *
- * R3.2: this module knows ACS's `modifications` shape and a tool call's
+ * This module knows ACS's `modifications` shape and a tool call's
  * arguments object, nothing else -- no policy-runtime vocabulary, and no
  * decision vocabulary either. What an unhonourable `modifications` means for
  * the *decision* is validate-decision.ts's sentence to say, which is why
@@ -139,21 +138,17 @@ function assertTargetExists(originalArguments: Record<string, unknown>, segments
 
 /**
  * Validates a single redaction's `path` and returns it split into segments.
- * Runs unconditionally for every redaction entry -- fix round 1, item 5:
- * this used to run only inside the overlap loop below, which only executes
- * when `parameter_overrides` is also present, so a redactions-only
- * `modifications` with a missing or non-string `path` passed validation
- * here and only blew up later, inside `applyModifications`'s apply loop,
- * as a bare `TypeError` stringified into the deny's `reasoning`. Still
- * fail-closed, but an unusable audit message and an asymmetric validation
- * path -- both fixed by validating every redaction the same way regardless
- * of what else is present.
+ * Runs unconditionally for every redaction entry, regardless of whether
+ * `parameter_overrides` is also present: a redactions-only `modifications`
+ * with a missing or non-string `path` must fail here, with a clear message,
+ * rather than surfacing later as a bare `TypeError` stringified into the
+ * deny's `reasoning`.
  *
  * A path that survives the split as `[]` -- `""` or `"/"` -- addresses no
  * field. Applying it would report a successful `modify` while redacting
  * nothing: a policy that fired and the host did not carry out, the exact
- * fail-open shape this project exists to catch (fix round 1, item 4). That
- * case fails closed here too, not silently as a no-op apply.
+ * fail-open shape this project exists to catch. That case fails closed here
+ * too, not silently as a no-op apply.
  */
 function assertValidRedactionPath(path: unknown): string[] {
   if (typeof path !== "string") {
@@ -217,8 +212,8 @@ export function assertValidModifications(
 
   // Container shapes first: everything below reads `.length` or
   // `Object.keys` off these, and a non-array `redactions` (`"abc"` has a
-  // `.length` of 3) used to reach `.map` and throw raw JS error text into
-  // the deny's reasoning.
+  // `.length` of 3) would otherwise reach `.map` and throw raw JS error text
+  // into the deny's reasoning.
   if (mods.redactions !== undefined && !Array.isArray(mods.redactions)) {
     throw new ModificationsInvalidError(
       `redactions must be an array of {path, replacement?} objects, got ${JSON.stringify(mods.redactions)}`,
@@ -294,12 +289,12 @@ export function assertValidModifications(
   // identically here, and the consequence of not checking is the same
   // reported-as-applied partial rewrite the existence check above rejects.
   //
-  // Concretely, before this check `{a: {b: 1, keep: "x"}}` with redactions
-  // `/a` then `/a/b` yielded `{a: {b: "[REDACTED]"}}`: the first redaction
-  // was discarded, `keep` was silently dropped from the arguments the host
-  // was about to run, and the decision still rendered as an applied `modify`.
-  // Losing an argument is worse than not redacting one, and both are worse
-  // than a deny.
+  // Concretely, without this check, `{a: {b: 1, keep: "x"}}` with redactions
+  // `/a` then `/a/b` would yield `{a: {b: "[REDACTED]"}}`: the first
+  // redaction would be discarded, `keep` would be silently dropped from the
+  // arguments the host was about to run, and the decision would still
+  // render as an applied `modify`. Losing an argument is worse than not
+  // redacting one, and both are worse than a deny.
   for (let i = 0; i < redactionTargets.length; i += 1) {
     for (let j = i + 1; j < redactionTargets.length; j += 1) {
       const [first, second] = [redactionTargets[i] as string[], redactionTargets[j] as string[]];
@@ -328,8 +323,7 @@ export function assertValidModifications(
  * Returns a clone of `target` with `segments` (a JSON-pointer's already
  * split path) set to `value` at every level the path descends through.
  * Cloning every level, not just the leaf, is what keeps a depth>1 redaction
- * from mutating a nested object inside the caller's original arguments
- * (Global Constraint 4).
+ * from mutating a nested object inside the caller's original arguments.
  *
  * Every path reaching here has been checked against these same arguments by
  * `assertTargetExists`, and every pair of paths has been checked against each
@@ -337,12 +331,9 @@ export function assertValidModifications(
  * reach the `{}` fallback below.
  *
  * That is a statement about the current callers, NOT a guarantee about this
- * function. An earlier version of this comment claimed the fallback was
- * unreachable while two overlapping redaction paths reached it and produced a
- * partial rewrite reported as applied -- the exact shape this module exists
- * to reject. The fallback stays because this function is total by
- * construction and a future caller must not be able to make it throw; do not
- * upgrade this note back into a guarantee without a check that earns it.
+ * function. The fallback stays because this function is total by
+ * construction and a future caller must not be able to make it throw; do
+ * not promote this note to a guarantee without a check that earns it.
  */
 function setAtPath(target: Record<string, unknown>, segments: string[], value: unknown): Record<string, unknown> {
   const [head, ...rest] = segments;
@@ -361,15 +352,15 @@ function setAtPath(target: Record<string, unknown>, segments: string[], value: u
 
 /**
  * Applies §6.3's `modifications` to `originalArguments`, returning a new
- * object -- `originalArguments` is never mutated (Global Constraint 4: a
- * later step reuses the same argument object that went out on the wire).
- * Validates first (`assertValidModifications`, which also checks every
- * target against these same arguments); throws `ModificationsInvalidError`
- * rather than applying anything on a violation.
+ * object -- `originalArguments` is never mutated: a later step reuses the
+ * same argument object that went out on the wire. Validates first
+ * (`assertValidModifications`, which also checks every target against these
+ * same arguments); throws `ModificationsInvalidError` rather than applying
+ * anything on a violation.
  *
  * `modified_content` (wholesale replacement) has no defined mapping onto an
- * arguments object in this slice, so validation refuses it outright -- a
- * valid `modifications` reaching the apply loops below is always the
+ * arguments object, so validation refuses it outright -- a valid
+ * `modifications` reaching the apply loops below is always the
  * structured-edit shape, with every target already known to exist.
  */
 export function applyModifications(
