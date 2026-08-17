@@ -38,7 +38,7 @@ describe("AGT pin", () => {
 
   // UPSTREAM_BUNDLE is set by `bun run verify:pin`, which clones the pinned
   // ref and needs network access to GitHub -- unavailable in the fast unit
-  // run. Fix wave finding 4: a bare early `return` here used to make this
+  // run. A bare early `return` here used to make this
   // report green while asserting nothing, silently un-guarding the
   // project's central "AGT runs unforked" claim. `it.skipIf` instead makes
   // bun report this test as SKIPPED, not passed -- unmistakable in output --
