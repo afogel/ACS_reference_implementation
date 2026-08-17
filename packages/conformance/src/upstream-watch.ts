@@ -21,17 +21,35 @@ const HOOKMAP_PATHS = ["hosts/claude-code/claude-code.hookmap.yaml", "hosts/open
  * about a hookmap than its `tools` lists -- a hookmap that fails that wider
  * validation for a reason this section does not measure must not stop this
  * section from reporting on the other hookmap.
+ *
+ * A read or parse failure is rethrown naming THIS path. `Bun.YAML.parse`'s
+ * own error on malformed YAML carries no file name at all (measured: "YAML
+ * Parse error: Unexpected token"), so with three files read in this section
+ * a caller cannot tell which one failed from the error alone -- naming the
+ * path here, at the one point that still knows it, is what keeps the report
+ * answerable.
  */
 function readHookmapTools(path: string): { path: string; hooks: Record<string, { tools?: unknown }> } {
-  const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { hooks?: Record<string, { tools?: unknown }> };
-  return { path, hooks: raw.hooks ?? {} };
+  try {
+    const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { hooks?: Record<string, { tools?: unknown }> };
+    return { path, hooks: raw.hooks ?? {} };
+  } catch (error) {
+    throw new Error(`${path}: ${(error as Error).message}`);
+  }
 }
 
 /** The policy manifest's own tool registry: the keys of its top-level
- * `tools:` mapping, one entry per name a host actually dispatches. */
+ * `tools:` mapping, one entry per name a host actually dispatches.
+ *
+ * A read or parse failure is rethrown naming THIS path, for the identical
+ * reason `readHookmapTools` does. */
 function readManifestToolRegistry(path: string): string[] {
-  const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { tools?: Record<string, unknown> };
-  return Object.keys(raw.tools ?? {});
+  try {
+    const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { tools?: Record<string, unknown> };
+    return Object.keys(raw.tools ?? {});
+  } catch (error) {
+    throw new Error(`${path}: ${(error as Error).message}`);
+  }
 }
 
 /**
@@ -41,11 +59,20 @@ function readManifestToolRegistry(path: string): string[] {
  * finds. A missing, unreadable or unparseable file is caught here and
  * rendered as a line naming what went wrong, never propagated -- this
  * function does not throw.
+ *
+ * `hookmapPaths` and `manifestPath` default to the two shipped hookmaps and
+ * the real policy manifest, so the one real caller below needs to pass
+ * neither. They are parameters rather than only the module's own constants
+ * so a test can point this at a fixture that is missing or will not parse,
+ * without touching a real file in this repository.
  */
-function renderToolsRegistrySection(): string {
+export function renderToolsRegistrySection(
+  hookmapPaths: readonly string[] = HOOKMAP_PATHS,
+  manifestPath: string = MANIFEST_PATH,
+): string {
   try {
-    const hookmaps = HOOKMAP_PATHS.map(readHookmapTools);
-    const registry = readManifestToolRegistry(MANIFEST_PATH);
+    const hookmaps = hookmapPaths.map(readHookmapTools);
+    const registry = readManifestToolRegistry(manifestPath);
     return renderToolsRegistryReport(checkToolsAgainstRegistry(hookmaps, registry));
   } catch (error) {
     return `Hookmap tools against the policy manifest: could not read -- ${(error as Error).message}`;

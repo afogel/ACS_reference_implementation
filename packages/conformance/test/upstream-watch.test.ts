@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { runUpstreamWatch } from "../src/upstream-watch.ts";
+import { renderToolsRegistrySection, runUpstreamWatch } from "../src/upstream-watch.ts";
 import { UPSTREAM_AGT_CLONE_ENV } from "../src/fetch-upstream.ts";
 import { PINNED_AGT_CLONE_ENV } from "../src/policy-input-schema.ts";
 
@@ -121,5 +121,41 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
     expect(run.output).toContain("quarantine");
     expect(run.output).toContain("FAILURE");
     expect(run.output).toContain("policy-input.schema.json");
+  });
+});
+
+// A missing file and a malformed file fail this section differently: a
+// missing file's own read error happens to name its path, but a YAML parse
+// error does not (measured: "YAML Parse error: Unexpected token", no file
+// name in it at all) -- so naming the file has to be this section's own job,
+// not something it can leave to whichever underlying error it catches.
+describe("renderToolsRegistrySection -- a hookmap or the manifest is missing or will not parse", () => {
+  function tempManifest(): string {
+    const dir = mkdtempSync(join(tmpdir(), "tools-registry-manifest-"));
+    const path = join(dir, "manifest.yaml");
+    writeFileSync(path, "tools:\n  bash:\n    type: Tool\n");
+    return path;
+  }
+
+  it("names a hookmap path that names no file, and still reports rather than throwing", () => {
+    const missing = join(mkdtempSync(join(tmpdir(), "tools-registry-missing-")), "no-such.hookmap.yaml");
+
+    let line = "";
+    expect(() => {
+      line = renderToolsRegistrySection([missing], tempManifest());
+    }).not.toThrow();
+    expect(line).toContain(missing);
+  });
+
+  it("names a hookmap that exists but does not parse as YAML, and still reports rather than throwing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tools-registry-bad-"));
+    const unparseable = join(dir, "broken.hookmap.yaml");
+    writeFileSync(unparseable, "hooks: [this is not: valid: yaml");
+
+    let line = "";
+    expect(() => {
+      line = renderToolsRegistrySection([unparseable], tempManifest());
+    }).not.toThrow();
+    expect(line).toContain(unparseable);
   });
 });
