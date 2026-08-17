@@ -58,5 +58,12 @@ fetch_into() {
 fetch_into "$pinned_dir" "$agt_ref"
 fetch_into "$upstream_dir" "main"
 
+# Resolved here, and handed to the runner the same way the clone paths are --
+# by environment variable -- so the report can name the two commits it
+# actually compared without anything in TypeScript resolving a ref itself.
+pinned_sha="$(git -C "$pinned_dir" rev-parse HEAD)"
+upstream_sha="$(git -C "$upstream_dir" rev-parse HEAD)"
+
 PINNED_AGT_CLONE="$pinned_dir" UPSTREAM_AGT_CLONE="$upstream_dir" \
+  PINNED_AGT_SHA="$pinned_sha" UPSTREAM_AGT_SHA="$upstream_sha" \
   bun run packages/conformance/src/upstream-watch.ts

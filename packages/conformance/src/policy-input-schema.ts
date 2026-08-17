@@ -39,10 +39,11 @@
  * PINNED, NOT UPSTREAM, and the distinction matters. This clone is
  * `agt.lock`'s locked ref -- the contract this repository is built against,
  * not AGT's moving `main`. A separate name is reserved for `main`
- * (`UpstreamSurfaces` beside `PinnedSurfaces`), and both will live in this
- * package once its drift watch exists. A differ told "upstream" twice is
- * exactly the failure that split was written to prevent, so this one says
- * which ref it means.
+ * (`UpstreamSurfaces` beside `PinnedSurfaces`, both defined in `surfaces.ts`),
+ * and both now live in this package: `upstream-watch.ts`'s upstream contract
+ * watch reads one clone of each. A differ told "upstream" twice is exactly
+ * the failure that split was written to prevent, so this one says which ref
+ * it means.
  *
  * A THROW, not a resolved finding, when a constructed policy input actually
  * FAILS validation -- the same choice `failure-domains.ts`'s

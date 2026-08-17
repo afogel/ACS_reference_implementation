@@ -118,6 +118,37 @@ function renderSchemaAgainstMain(result: SchemaAgainstMainChecked): string {
     : `Policy-input schema against main: FAILURE -- ${result.reason}`;
 }
 
+/** Names the two commits `scripts/run-upstream-watch.sh` resolves with
+ * `git -C "$dir" rev-parse HEAD` after making each clone -- the pinned ref's
+ * side and main's. Read here, and printed in the degraded line below, so a
+ * reader of the run's own output does not have to go and find the name in
+ * this file to reproduce the resolution locally. */
+export const PINNED_AGT_SHA_ENV = "PINNED_AGT_SHA";
+export const UPSTREAM_AGT_SHA_ENV = "UPSTREAM_AGT_SHA";
+
+/**
+ * Names the two commits this run actually compared. "No watched surface
+ * moved" reads identically whether the diff compared the right two refs or
+ * the wrong ref against itself -- this line is what tells those apart.
+ *
+ * Both SHAs are resolved by the shell script, never here: nothing in this
+ * module resolves a ref or shells out, for the same reason nothing in it
+ * clones. `bun test` sets neither variable, so every test run takes the
+ * `undefined` branch -- a fixed line saying the SHAs were not supplied,
+ * never an empty string and never a fabricated commit.
+ */
+function renderComparedRefs(env: Record<string, string | undefined>): string {
+  const pinnedSha = env[PINNED_AGT_SHA_ENV];
+  const upstreamSha = env[UPSTREAM_AGT_SHA_ENV];
+  if (pinnedSha === undefined || pinnedSha.length === 0 || upstreamSha === undefined || upstreamSha.length === 0) {
+    return (
+      `Compared refs: not supplied -- ${PINNED_AGT_SHA_ENV} and ${UPSTREAM_AGT_SHA_ENV} are only set by ` +
+      `scripts/run-upstream-watch.sh.`
+    );
+  }
+  return `Compared refs: pinned ${pinnedSha} against main ${upstreamSha}.`;
+}
+
 /**
  * Assembles the run: reads the pinned side, fetches the upstream side, hands
  * both to the differ, re-asks the policy-input schema question of the
@@ -158,6 +189,11 @@ function renderSchemaAgainstMain(result: SchemaAgainstMainChecked): string {
  * present. `renderToolsRegistrySection` catches its own read and parse
  * failures and never throws, for the identical reason the two checks above
  * it are caught rather than left to propagate.
+ *
+ * The compared-refs line is prepended to a successful run's output rendering
+ * the two resolved commits `env` was handed, or a fixed line saying they
+ * were not supplied when it was not -- so a clean diff is never mistaken for
+ * a run that compared the wrong ref, or the same ref twice.
  *
  * This slice reports; it never refuses, and nothing here fails a build.
  */
@@ -207,6 +243,8 @@ export async function runUpstreamWatch(
   }
 
   const output = [
+    renderComparedRefs(env),
+    "",
     renderUpstreamDiff(diffs),
     "",
     renderSchemaAgainstMain(schemaAgainstMain),

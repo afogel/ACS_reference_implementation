@@ -17,4 +17,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y trash-cli
       - run: bun install --frozen-lockfile
       - name: Watch AGT's declared surfaces
-        run: bun run watch:upstream | tee "$GITHUB_STEP_SUMMARY"
+        # No `pipefail` here on purpose: this slice reports and never
+        # refuses, so a shell-side failure (git fetch, the pinned ref gone
+        # upstream, AGT renaming main, jq missing) must still show up in the
+        # step summary rather than turning the job red. `2>&1` is what makes
+        # that failure visible in the summary at all -- stderr would
+        # otherwise be stranded in the raw log while tee's own exit status
+        # (not the pipeline's) keeps the job green with an empty summary.
+        run: bun run watch:upstream 2>&1 | tee "$GITHUB_STEP_SUMMARY"

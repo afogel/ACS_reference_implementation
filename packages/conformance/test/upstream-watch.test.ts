@@ -1,17 +1,30 @@
 // packages/conformance/test/upstream-watch.test.ts
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { renderToolsRegistrySection, runUpstreamWatch } from "../src/upstream-watch.ts";
+import {
+  PINNED_AGT_SHA_ENV,
+  UPSTREAM_AGT_SHA_ENV,
+  renderToolsRegistrySection,
+  runUpstreamWatch,
+} from "../src/upstream-watch.ts";
 import { UPSTREAM_AGT_CLONE_ENV } from "../src/fetch-upstream.ts";
 import { PINNED_AGT_CLONE_ENV } from "../src/policy-input-schema.ts";
+
+const createdDirs: string[] = [];
+
+/** trash every fixture directory this file's tests create -- never rm -rf. */
+async function trashDir(dir: string): Promise<void> {
+  await Bun.$`trash ${dir}`.quiet();
+}
 
 // policyInputSchema defaults to a permissive schema that accepts any
 // document, so callers not testing the schema question themselves don't
 // have to think about it.
 function clone(verdicts: string[], policyInputSchema = "{}"): string {
   const dir = mkdtempSync(join(tmpdir(), "watch-"));
+  createdDirs.push(dir);
   const write = (rel: string, body: string) => {
     const full = join(dir, rel);
     mkdirSync(dirname(full), { recursive: true });
@@ -27,6 +40,12 @@ function clone(verdicts: string[], policyInputSchema = "{}"): string {
 }
 
 describe("runUpstreamWatch -- the pinned side is read here, not inside the differ", () => {
+  afterEach(async () => {
+    while (createdDirs.length > 0) {
+      await trashDir(createdDirs.pop() as string);
+    }
+  });
+
   it("self-skips when either clone is missing", async () => {
     expect((await runUpstreamWatch({})).ran).toBe(false);
     expect((await runUpstreamWatch({ [UPSTREAM_AGT_CLONE_ENV]: clone(["allow"]) })).ran).toBe(false);
@@ -75,6 +94,7 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
   // with a report instead of letting it escape.
   it("reports a failure instead of throwing when a clone is missing an AGT surface", async () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "watch-empty-"));
+    createdDirs.push(emptyDir);
     const env = { [PINNED_AGT_CLONE_ENV]: emptyDir, [UPSTREAM_AGT_CLONE_ENV]: clone(["allow"]) };
 
     const run = await runUpstreamWatch(env);
@@ -89,6 +109,7 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
   // in the failure it reports, so this pins the other half of that pair.
   it("reports a failure instead of throwing when the upstream clone is missing an AGT surface", async () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "watch-empty-"));
+    createdDirs.push(emptyDir);
     const env = { [PINNED_AGT_CLONE_ENV]: clone(["allow"]), [UPSTREAM_AGT_CLONE_ENV]: emptyDir };
 
     const run = await runUpstreamWatch(env);
@@ -122,6 +143,35 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
     expect(run.output).toContain("FAILURE");
     expect(run.output).toContain("policy-input.schema.json");
   });
+
+  // A weekly summary reading "no watched surface moved" cannot be told apart
+  // from a run that compared the wrong ref, or the same ref twice, unless
+  // the two commits actually compared are in the output themselves.
+  it("prints both resolved commit SHAs when the script supplies them", async () => {
+    const env = {
+      [PINNED_AGT_CLONE_ENV]: clone(["allow"]),
+      [UPSTREAM_AGT_CLONE_ENV]: clone(["allow"]),
+      [PINNED_AGT_SHA_ENV]: "1111111111111111111111111111111111111111",
+      [UPSTREAM_AGT_SHA_ENV]: "2222222222222222222222222222222222222222",
+    };
+
+    const run = await runUpstreamWatch(env);
+
+    expect(run.output).toContain("1111111111111111111111111111111111111111");
+    expect(run.output).toContain("2222222222222222222222222222222222222222");
+  });
+
+  // Every `bun test` run is this case: the script that resolves the two SHAs
+  // never runs, so neither variable is set. The output must say so rather
+  // than printing an empty value or inventing one.
+  it("degrades cleanly, naming neither an empty nor a fake SHA, when the SHAs are not supplied", async () => {
+    const env = { [PINNED_AGT_CLONE_ENV]: clone(["allow"]), [UPSTREAM_AGT_CLONE_ENV]: clone(["allow"]) };
+
+    const run = await runUpstreamWatch(env);
+
+    expect(run.output).toContain("Compared refs: not supplied");
+    expect(run.output).not.toContain("Compared refs: pinned  against");
+  });
 });
 
 // A missing file and a malformed file fail this section differently: a
@@ -130,15 +180,24 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
 // name in it at all) -- so naming the file has to be this section's own job,
 // not something it can leave to whichever underlying error it catches.
 describe("renderToolsRegistrySection -- a hookmap or the manifest is missing or will not parse", () => {
+  afterEach(async () => {
+    while (createdDirs.length > 0) {
+      await trashDir(createdDirs.pop() as string);
+    }
+  });
+
   function tempManifest(): string {
     const dir = mkdtempSync(join(tmpdir(), "tools-registry-manifest-"));
+    createdDirs.push(dir);
     const path = join(dir, "manifest.yaml");
     writeFileSync(path, "tools:\n  bash:\n    type: Tool\n");
     return path;
   }
 
   it("names a hookmap path that names no file, and still reports rather than throwing", () => {
-    const missing = join(mkdtempSync(join(tmpdir(), "tools-registry-missing-")), "no-such.hookmap.yaml");
+    const missingDir = mkdtempSync(join(tmpdir(), "tools-registry-missing-"));
+    createdDirs.push(missingDir);
+    const missing = join(missingDir, "no-such.hookmap.yaml");
 
     let line = "";
     expect(() => {
@@ -149,6 +208,7 @@ describe("renderToolsRegistrySection -- a hookmap or the manifest is missing or 
 
   it("names a hookmap that exists but does not parse as YAML, and still reports rather than throwing", () => {
     const dir = mkdtempSync(join(tmpdir(), "tools-registry-bad-"));
+    createdDirs.push(dir);
     const unparseable = join(dir, "broken.hookmap.yaml");
     writeFileSync(unparseable, "hooks: [this is not: valid: yaml");
 

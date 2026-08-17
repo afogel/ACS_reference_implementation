@@ -1,11 +1,19 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "../src/fetch-upstream.ts";
 
+const createdDirs: string[] = [];
+
+/** trash every fixture directory this file's tests create -- never rm -rf. */
+async function trashDir(dir: string): Promise<void> {
+  await Bun.$`trash ${dir}`.quiet();
+}
+
 function fakeClone(): string {
   const dir = mkdtempSync(join(tmpdir(), "upstream-"));
+  createdDirs.push(dir);
   const write = (rel: string, body: string) => {
     const full = join(dir, rel);
     mkdirSync(dirname(full), { recursive: true });
@@ -21,6 +29,12 @@ function fakeClone(): string {
 }
 
 describe("fetchUpstreamSurfaces -- reads the clone the script made, never the network", () => {
+  afterEach(async () => {
+    while (createdDirs.length > 0) {
+      await trashDir(createdDirs.pop() as string);
+    }
+  });
+
   it("self-skips when the upstream clone variable is unset, exactly as the schema leg does", () => {
     expect(fetchUpstreamSurfaces({})).toBeUndefined();
   });
@@ -36,6 +50,7 @@ describe("fetchUpstreamSurfaces -- reads the clone the script made, never the ne
 
   it("throws rather than self-skipping when the variable names a directory with no AGT in it", () => {
     const empty = mkdtempSync(join(tmpdir(), "upstream-empty-"));
+    createdDirs.push(empty);
     expect(() => fetchUpstreamSurfaces({ [UPSTREAM_AGT_CLONE_ENV]: empty })).toThrow(/manifest.schema.json/);
   });
 });

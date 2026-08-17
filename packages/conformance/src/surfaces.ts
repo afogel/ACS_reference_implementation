@@ -55,15 +55,30 @@ const PATHS = {
   defaultsRego: "policy-engine/policy/lib/agt_default.rego",
 } as const;
 
+/**
+ * Reads and parses one JSON surface. Both steps are inside the one try: a
+ * read failure and a parse failure are different problems, but only the read
+ * failure named `relative` before this was written -- `JSON.parse`'s own
+ * error carries no file name at all (measured: "JSON Parse error: Expected
+ * '}'"), so a malformed document used to surface as an anonymous parse error
+ * with no way to tell which of the five JSON surfaces it came from. Naming
+ * `relative` in both branches is what keeps the report answerable, the same
+ * fix `readHookmapTools` (upstream-watch.ts) already makes for a malformed
+ * hookmap.
+ */
 function readJson(cloneDir: string, relative: string): unknown {
   const full = join(cloneDir, relative);
-  let raw: string;
   try {
-    raw = readFileSync(full, "utf8");
-  } catch {
+    const raw = readFileSync(full, "utf8");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `readSurfaces: expected an AGT surface at ${relative}, and it did not parse as JSON -- ${error.message}`,
+      );
+    }
     throw new Error(`readSurfaces: expected an AGT surface at ${relative}, and the clone has no such file`);
   }
-  return JSON.parse(raw);
 }
 
 /**

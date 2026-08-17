@@ -1,5 +1,5 @@
 // packages/conformance/test/upstream-schema-check.test.ts
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -8,8 +8,16 @@ import { createBridge } from "agt-bridge";
 
 const SCHEMA_REL = "policy-engine/spec/schema/wire/policy-input.schema.json";
 
+const createdDirs: string[] = [];
+
+/** trash every fixture directory this file's tests create -- never rm -rf. */
+async function trashDir(dir: string): Promise<void> {
+  await Bun.$`trash ${dir}`.quiet();
+}
+
 function cloneWithSchema(schema: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "upstream-schema-"));
+  createdDirs.push(dir);
   const full = join(dir, SCHEMA_REL);
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, JSON.stringify(schema));
@@ -17,6 +25,12 @@ function cloneWithSchema(schema: unknown): string {
 }
 
 describe("checkPolicyInputSchemaAt -- the document we send, against the schema at a given clone", () => {
+  afterEach(async () => {
+    while (createdDirs.length > 0) {
+      await trashDir(createdDirs.pop() as string);
+    }
+  });
+
   it("validates against a permissive schema", async () => {
     const bridge = createBridge("policy/manifest.yaml");
     const result = await checkPolicyInputSchemaAt(bridge, cloneWithSchema({ type: "object" }));
