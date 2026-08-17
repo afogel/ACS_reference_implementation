@@ -7,7 +7,10 @@ import { runUpstreamWatch } from "../src/upstream-watch.ts";
 import { UPSTREAM_AGT_CLONE_ENV } from "../src/fetch-upstream.ts";
 import { PINNED_AGT_CLONE_ENV } from "../src/policy-input-schema.ts";
 
-function clone(verdicts: string[]): string {
+// policyInputSchema defaults to a permissive schema that accepts any
+// document, so callers not testing the schema question themselves don't
+// have to think about it.
+function clone(verdicts: string[], policyInputSchema = "{}"): string {
   const dir = mkdtempSync(join(tmpdir(), "watch-"));
   const write = (rel: string, body: string) => {
     const full = join(dir, rel);
@@ -15,7 +18,7 @@ function clone(verdicts: string[]): string {
     writeFileSync(full, body);
   };
   write("policy-engine/spec/schema/manifest.schema.json", JSON.stringify({ properties: { intervention_points: { propertyNames: { enum: ["input"] } } } }));
-  write("policy-engine/spec/schema/wire/policy-input.schema.json", "{}");
+  write("policy-engine/spec/schema/wire/policy-input.schema.json", policyInputSchema);
   write("policy-engine/spec/schema/wire/verdict.schema.json", JSON.stringify({ properties: { decision: { enum: verdicts } } }));
   write("policy-engine/spec/schema/wire/snapshot.schema.json", "{}");
   write("policy-engine/spec/reserved-reasons.json", "{}");
@@ -78,5 +81,45 @@ describe("runUpstreamWatch -- the pinned side is read here, not inside the diffe
 
     expect(run.ran).toBe(false);
     expect(run.output).toContain("manifest.schema.json");
+  });
+
+  // The pinned side isn't the only one that can be missing a surface -- main
+  // moves, so an AGT release that renames or drops a watched file is a real
+  // way for the upstream side to fail the same read. Each side names itself
+  // in the failure it reports, so this pins the other half of that pair.
+  it("reports a failure instead of throwing when the upstream clone is missing an AGT surface", async () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "watch-empty-"));
+    const env = { [PINNED_AGT_CLONE_ENV]: clone(["allow"]), [UPSTREAM_AGT_CLONE_ENV]: emptyDir };
+
+    const run = await runUpstreamWatch(env);
+
+    expect(run.ran).toBe(false);
+    expect(run.output).toContain("could not read main's surfaces");
+    expect(run.output).toContain("manifest.schema.json");
+  });
+
+  // A read failure and a schema rejection are different answers -- the first
+  // means the run itself did not complete, the second means it completed and
+  // came back negative -- and this is what tells them apart: a clone that
+  // reads fine but whose policy-input.schema.json now requires a field the
+  // Guardian does not send. The catch inside runUpstreamWatch turns that
+  // rejection into a reported line rather than letting it propagate, and the
+  // surface diff above it still has to be there -- a schema failure is not a
+  // reason to stop reporting what moved.
+  it("reports a schema rejection as a failure line, alongside the surface diff, instead of throwing", async () => {
+    const tightened = JSON.stringify({ type: "object", required: ["a_field_agt_does_not_send_today"] });
+    const env = {
+      [PINNED_AGT_CLONE_ENV]: clone(["allow", "deny"]),
+      [UPSTREAM_AGT_CLONE_ENV]: clone(["allow", "quarantine"], tightened),
+    };
+
+    const run = await runUpstreamWatch(env);
+
+    expect(run.ran).toBe(true);
+    expect(run.schemaAgainstMain.checked).toBe(true);
+    expect(run.schemaAgainstMain).toMatchObject({ ok: false });
+    expect(run.output).toContain("quarantine");
+    expect(run.output).toContain("FAILURE");
+    expect(run.output).toContain("policy-input.schema.json");
   });
 });
