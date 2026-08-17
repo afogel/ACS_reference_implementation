@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 // Test-only import: stands up a real Guardian so this test proves the wire
 // contract for real, not against a hand-copied shape -- same precedent as
-// packages/host-adapter/test/client.test.ts (Task 8). `host-adapter` here
+// packages/host-adapter/test/client.test.ts. `host-adapter` here
 // is used the same way the shim itself uses it, so this test also proves
 // what a subprocess sees is what the adapter would have produced directly.
 import { startGuardian, type StartedGuardian } from "guardian";
@@ -11,9 +11,9 @@ import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type 
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
 
-/** The real PreToolUse payload shape Claude Code delivers on stdin (per the
- * Task 7 brief), with `tool_name: "Bash"` -- what Claude Code actually
- * sends, and what `policy/manifest.yaml` registers (Task 8's fix). */
+/** The real PreToolUse payload shape Claude Code delivers on stdin, with
+ * `tool_name: "Bash"` -- what Claude Code actually sends, and what
+ * `policy/manifest.yaml` registers. */
 function preToolUsePayload(command: string): Record<string, unknown> {
   return {
     session_id: "abc123",
@@ -59,7 +59,7 @@ afterAll(async () => {
   await guardian.close();
 });
 
-describe("acs-hook.ts (N1) -- the Claude Code hook shim, run as a real subprocess", () => {
+describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", () => {
   it("denies a real rm -rf / tool call: exit 0, clean JSON on stdout, and the policy's own reasoning in permissionDecisionReason", async () => {
     const payload = preToolUsePayload("rm -rf /");
 

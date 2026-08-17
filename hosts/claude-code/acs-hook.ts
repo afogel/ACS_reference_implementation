@@ -1,5 +1,5 @@
 /**
- * acs-hook.ts (N1) -- Claude Code's PreToolUse hook shim.
+ * acs-hook.ts -- Claude Code's PreToolUse hook shim.
  *
  * Deliberately thin: read the hook JSON Claude Code sends on stdin, call
  * buildEnvelope -> createGuardianClient(...).requestDecision -> renderDecision
@@ -7,10 +7,9 @@
  * back into the JSON Claude Code expects, and write it to stdout. All logic lives
  * in the adapter -- this file is only the wiring a Claude Code hook process
  * needs (stdin, stdout, exit code, which hookmap file to load) plus the one
- * thing the adapter must not know: this host's own output shape. Slice V5
- * adds a second host by writing another shim this thin against the same,
- * unchanged adapter; any logic added here is logic V5 would have to
- * duplicate.
+ * thing the adapter must not know: this host's own output shape. A second
+ * host is another shim this thin against the same, unchanged adapter, so any
+ * logic added here is logic that host would have to duplicate.
  *
  * This file is host-specific by definition (it may name Claude Code
  * freely) but must not reach into AGT -- it never imports `agt-bridge` or
@@ -29,14 +28,13 @@
  * policy deny is expressed, so getting this wrong would make a deny look
  * like a crash.
  *
- * V1 SCOPE -- Guardian-unreachable handling: if anything above throws (the
- * Guardian is down, returns a JSON-RPC error, or the stdin payload is
- * malformed), this shim does NOT implement a fail-open/fail-closed
- * posture. That negotiation is N6/N7, deliberately deferred to slice V3.
- * It writes the error to stderr only, and exits 1 ("non-blocking error"
- * per the hook protocol) with nothing on stdout -- Claude Code proceeds as
- * though the hook had not fired. This is a placeholder, not a considered
- * posture; V3 should replace it deliberately.
+ * Guardian-unreachable handling is a placeholder, not a considered posture.
+ * If anything above throws -- the Guardian is down, it returns a JSON-RPC
+ * error, or the stdin payload is malformed -- this shim writes the error to
+ * stderr and exits 1 ("non-blocking error" per the hook protocol) with
+ * nothing on stdout, so Claude Code proceeds as though the hook had not
+ * fired. Negotiating a fail-open or fail-closed posture, and auditing a
+ * bypass when one is taken, is not implemented here yet.
  */
 import { fileURLToPath } from "node:url";
 import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type HostOutput } from "host-adapter";
@@ -50,13 +48,12 @@ const HOOKMAP_PATH = fileURLToPath(new URL("./claude-code.hookmap.yaml", import.
 const DEFAULT_GUARDIAN_URL = "http://localhost:8787/acs";
 
 /**
- * Claude Code's own output shape, which lives here and nowhere else (PR #10
- * review, Critical).
+ * Claude Code's own output shape, which lives here and nowhere else.
  *
  * The adapter renders into a shape it does not name: `renderDecision` reads
  * the hookmap's dotted output paths and assembles the object they describe,
- * knowing ACS decisions and nothing about this host. That is what lets slice
- * V5 add a second host with a shim and a hookmap instead of a fork of the
+ * knowing ACS decisions and nothing about this host. That is what lets a
+ * second host arrive as a shim and a hookmap rather than a fork of the
  * shared module -- and it is only true while these names appear on this side
  * of the seam. The two inside the wrapper appear as data in
  * claude-code.hookmap.yaml's output paths; here the wrapper itself is the one
@@ -126,16 +123,15 @@ async function main(): Promise<void> {
   const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
 
   // Told whether a decision arrived, rather than handed a JSON-RPC bag to
-  // interrogate (PR #10 review, Important). This shim no longer reads
-  // `.error`, casts `.result`, or decides which of those means "no decision" --
-  // getting that branch wrong is a fail-open, and a second host would have
-  // inherited it by copying this file.
+  // interrogate. This shim never reads `.error`, casts `.result`, or decides
+  // which of those means "no decision" -- getting that branch wrong is a
+  // fail-open, and a second host would inherit it by copying this file.
   const outcome = await guardian.requestDecision(envelope);
   if (!outcome.decisionArrived) {
-    // V1 placeholder, unchanged: this throw lands in main().catch below, which
-    // still exits 1. Deciding what a delivery failure means -- the negotiated
-    // fail-open/fail-closed posture, and auditing a bypass when one is taken --
-    // is N6/N7 and belongs to V3. See this file's header.
+    // Placeholder: this throw lands in main().catch below, which exits 1.
+    // Deciding what a delivery failure means -- the negotiated fail-open or
+    // fail-closed posture, and auditing a bypass when one is taken -- is not
+    // implemented here. See this file's header.
     throw new Error(`acs-hook: no decision arrived from the Guardian: ${describeFailure(outcome.failure)}`);
   }
 

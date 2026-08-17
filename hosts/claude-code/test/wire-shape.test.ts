@@ -25,11 +25,11 @@ import { fileURLToPath } from "node:url";
  * and `deny` would leave the three rarest renderings -- the ones nobody looks
  * at, and the ones a careless change breaks first -- unpinned.
  *
- * V1 SCOPE: the shim makes exactly one call, the step call. It does not
- * handshake (N5 is exercised from packages/host-adapter/test/client.test.ts at
- * this slice, not from the shim), so the stub answers one method and needs no
- * ServerHello. When a later slice makes the shim negotiate first, this stub
- * grows a `handshake/hello` branch -- the assertions below should not move.
+ * The shim makes exactly one call, the step call. It does not handshake --
+ * that is exercised from packages/host-adapter/test/client.test.ts instead --
+ * so the stub answers one method and needs no ServerHello. If the shim is ever
+ * made to negotiate first, this stub grows a `handshake/hello` branch, and the
+ * assertions below should not move.
  */
 const SHIM = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 
@@ -86,9 +86,9 @@ describe("the wire shape this host writes to stdout, pinned decision by decision
   });
 
   it("renders an allow that carries reasoning as a bare allow too -- this hookmap's allow names no reason field", async () => {
-    // The shape an observe-only upstream signal produces (R1.2): an ACS allow
-    // with a synthesized explanation and non-empty policy_references. At V1
-    // the hookmap's `allow` entry declares no reason source, so neither the
+    // The shape an observe-only upstream signal produces: an ACS allow with a
+    // synthesized explanation and non-empty policy_references. This hookmap's
+    // `allow` entry declares no reason source, so neither the
     // explanation nor the references reach the transcript, and this rendering
     // is indistinguishable from a plain allow. Pinned as it IS, not as it
     // arguably should be: giving `allow` a reason is a behaviour change, and

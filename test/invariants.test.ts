@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { Glob } from "bun";
 
 /**
- * Strips comments before matching, so these gates assert what R3.2/R3.3
- * actually claim -- no AGT/host vocabulary *used in code* (imports, types,
- * calls) -- rather than the much weaker, much more brittle claim "never
- * mentioned anywhere, including prose". Doc comments in this codebase
+ * Strips comments before matching, so these gates assert what the package
+ * boundaries actually claim -- no AGT or host vocabulary *used in code*
+ * (imports, types, calls) -- rather than the much weaker and much more
+ * brittle claim "never mentioned anywhere, including prose". Doc comments
  * routinely explain a module's boundary by naming the exact vocabulary it
  * must stay clear of (see hosts/claude-code/acs-hook.ts: "must not reach
  * into AGT -- it never imports `agt-bridge`..."). A gate that fires on
@@ -50,10 +50,10 @@ function assertNoVocabulary(dir: string, terms: string[]): void {
 
 describe("architectural invariants", () => {
   /**
-   * R3.2 -- the claim the whole M×N argument rests on: a host implements
-   * ACS once (packages/host-adapter) and is governable by any conformant
-   * runtime. That collapse is only real if the adapter never leaks
-   * policy-runtime (AGT) vocabulary into its own code.
+   * The claim the whole M×N argument rests on: a host implements ACS once
+   * (packages/host-adapter) and is governable by any conformant runtime. That
+   * collapse is only real if the adapter never leaks policy-runtime (AGT)
+   * vocabulary into its own code.
    *
    * Scope, deliberately: packages/host-adapter/src only.
    *   - hosts/claude-code/ is NOT scanned here. A host shim is
@@ -82,13 +82,12 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * The other half of R3.2, and the one PR #10's review found false
-   * (Critical): the adapter is promised to slice V5's second host
-   * *unchanged*, so it must not name the FIRST host's output fields either.
-   * `renderDecision` used to declare `HookSpecificOutput` with a mandatory
-   * `permissionDecision`, and returned `{ hookSpecificOutput }` -- Claude
-   * Code's wire shape as the shared module's public API. A second host would
-   * have inherited that vocabulary or forked the module.
+   * The other half of that boundary: the adapter is promised to a second
+   * host *unchanged*, so it must not name the FIRST host's output fields
+   * either. Declaring Claude Code's wire shape here -- a mandatory
+   * `permissionDecision`, a returned `{ hookSpecificOutput }` -- would make
+   * one host's vocabulary the shared module's public API, and a second host
+   * would have to inherit it or fork the module.
    *
    * All four names now live in hosts/claude-code/: two as data in
    * claude-code.hookmap.yaml's output paths, and the wrapper in acs-hook.ts,
@@ -106,9 +105,9 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R3.3 -- what makes slice V5's second host cost zero AGT code: the
-   * bridge that knows AGT must never learn a specific host's wire shape,
-   * or adding a host would mean touching this package too.
+   * What makes a second host cost zero AGT code: the bridge that knows AGT
+   * must never learn a specific host's wire shape, or adding a host would
+   * mean touching this package too.
    */
   it("AGT bridge's source contains zero host-specific code", () => {
     assertNoVocabulary("packages/agt-bridge/src", [
