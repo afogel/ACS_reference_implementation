@@ -76,8 +76,8 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R2.2 | AGT's engine runs unforked, at a pinned upstream version | Must-have |
 | R2.3 | No change to AGT source is required to run the demo | Must-have |
 | R2.4 | 🟡 Coupling is to AGT's declared contract surfaces only — `manifest.schema.json`, the `policy-input` / `verdict` / `snapshot` wire schemas, the intervention-point and verdict enums, and `data.agt.defaults.config`. Never SDK internals or private APIs | Must-have |
-| R2.5 | 🟡 Scheduled CI re-runs the conformance harness against upstream AGT `main`, so drift surfaces as a failing case rather than silent rot | Must-have |
-| R2.6 | 🟡 A drift failure names what changed in AGT's own terms — which intervention point, verdict, or schema field — so the fix is obvious | Must-have |
+| R2.5 | 🟡 Scheduled CI re-runs the conformance harness against upstream AGT `main`, so a moved contract surface shows up as a failing case rather than silent rot | Must-have |
+| R2.6 | 🟡 An upstream-contract failure names what changed in AGT's own terms — which intervention point, verdict, or schema field — so the fix is obvious | Must-have |
 | R2.7 | 🟡 Non-breaking upstream AGT releases require no code change here | Must-have |
 | **R3** | **The M×N collapse is demonstrated** | Core goal |
 | R3.1 | Two structurally different hook surfaces governed by one AGT policy set | Must-have |
@@ -184,7 +184,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 
 **Notes:**
 - R1 fails A and B: both assert complete expressibility, neither proves it. Only C2 turns "completely expressed" into a per-case result someone can check. On the claim the whole pitch rests on, asserted is not enough. Adding R1.7 and R1.8 does not move these verdicts — all three shapes *can* implement the posture split; only C demonstrates it case by case, now via the extended N44.
-- 🟡 R2 fails A and B on drift (R2.5, R2.6): without a conformance harness there is nothing to re-run against upstream, so an AGT change is discovered by a human noticing, or not at all. C6 makes upstream divergence a named failing case. MS-ACS is `0.3.1-beta` and warns of breaking changes between minor versions, so this is a live risk, not a theoretical one.
+- 🟡 R2 fails A and B on the upstream contract (R2.5, R2.6): without a conformance harness there is nothing to re-run against upstream, so an AGT change is discovered by a human noticing, or not at all. C6 makes upstream divergence a named failing case. MS-ACS is `0.3.1-beta` and warns of breaking changes between minor versions, so this is a live risk, not a theoretical one.
 - R5 fails B: envelopes that are never serialized are not inspectable on the wire, which is what R5.1 asks for.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.

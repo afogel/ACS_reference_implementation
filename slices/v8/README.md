@@ -75,4 +75,15 @@ fixes a name and the role that name must fill, and nothing more.
    AGT" and starts answering "what did the harness notice", which is a different claim
    published under the first one's name.
 
+5. **The pinned side is `PINNED_AGT_CLONE`, and `upstream` is never spent on the pinned
+   ref.** Commitment 1 reserves the `upstream` stem for AGT's `main`, and the conformance
+   harness already clones the *pinned* ref for its policy-input schema check — so both
+   names now live in one package, and a differ told "upstream" twice is precisely the
+   failure commitment 2 describes. That clone's environment variable and its local binding
+   are `PINNED_AGT_CLONE` / `PINNED_AGT_CLONE_ENV`
+   (`packages/conformance/src/policy-input-schema.ts`), leaving `UPSTREAM_*` free for the
+   store N45 fetches into. `scripts/run-conformance.sh` sets the pinned one;
+   whatever script drives this slice's watch sets the upstream one, and the two must never
+   be read by the same name.
+
 Implementation goes here.
