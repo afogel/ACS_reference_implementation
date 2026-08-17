@@ -44,5 +44,5 @@ const posture = buildServerHello().on_decision_failure;
 
 const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
 console.log(`Guardian listening at ${guardian.url}`);
-console.log(`Envelope log (S6): ${envelopeLogPath}`);
+console.log(`Envelope log: ${envelopeLogPath}`);
 console.log(`Failure posture: ${posture}   (override with ACS_ON_DECISION_FAILURE=deny)`);

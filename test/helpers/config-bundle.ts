@@ -73,7 +73,7 @@ export function buildConfigBundle(config: unknown): ConfigBundle {
     if (!source.equals(copy)) {
       throw new Error(
         `buildConfigBundle: ${file} was not copied byte-identically from ${POLICY_LIB_DIR} -- ` +
-          `a fixture bundle must never silently fork the pinned bundle (R2.2/R2.3)`,
+          `a fixture bundle must never silently fork the pinned bundle`,
       );
     }
   }
