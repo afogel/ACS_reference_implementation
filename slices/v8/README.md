@@ -86,4 +86,50 @@ fixes a name and the role that name must fill, and nothing more.
    whatever script drives this slice's watch sets the upstream one, and the two must never
    be read by the same name.
 
-Implementation goes here.
+## What this slice measured
+
+Eight surfaces, and eight surfaces are not eight files. `manifest.schema.json`,
+`policy-input.schema.json`, `verdict.schema.json` and `snapshot.schema.json` are whole
+documents, read out of `policy-engine/spec/schema/` (`wire/` for the latter three) at
+whichever ref the clone in hand is checked out to. The intervention-point enum sits
+*inside* `manifest.schema.json`, at `/properties/intervention_points/propertyNames/enum`;
+the verdict enum sits *inside* `verdict.schema.json`, at `/properties/decision/enum` — both
+extracted from documents `readSurfaces()` (`packages/conformance/src/surfaces.ts`) has
+already read whole, never fetched a second time. `reserved-reasons.json` is a fifth
+document, at `policy-engine/spec/reserved-reasons.json`. The eighth, `data.agt.defaults.config`
+keys, has no document at all: it is the set of `cfg.<key>` reads `readSurfaces()` finds by
+pattern in `policy-engine/policy/lib/agt_default.rego`, deduped and sorted. One consequence
+of that arrangement: a value that moves inside one of the four whole documents is reported
+**twice** — once against the document, once against the extracted enum. That is this
+arrangement working as built, not a duplicate.
+
+`PinnedSurfaces` and `UpstreamSurfaces` are read out of two separate clones a shell script
+makes (`scripts/run-upstream-watch.sh`): one checked out at the ref `agt.lock` pins, handed
+in as `PINNED_AGT_CLONE`; one checked out at `main`, handed in as `UPSTREAM_AGT_CLONE`. The
+two variables are never read by the same name, and nothing under `packages/conformance/src`
+touches the network — cloning, checkout and cleanup are the shell script's job alone.
+`diffSurfaces(pinned, upstream)` is told both snapshots and reads neither store itself; it
+returns one `SurfaceDiff` per field that moved, naming the surface, the field as a JSON
+pointer, what it was, and what it is now. `renderUpstreamDiff()` renders that list; it is
+not `renderCoverageMatrix()`, and a `SurfaceDiff` never arrives as a cell of V7's 8 × 5.
+
+A run (`bun run watch:upstream`) reports three things, one beneath the other: the surface
+diff; whether the policy input this Guardian actually constructs still validates against
+`main`'s **own** copy of `policy-input.schema.json`, not the pinned copy; and whether either
+shipped hookmap (`hosts/claude-code/claude-code.hookmap.yaml`,
+`hosts/opencode/opencode.hookmap.yaml`) declares a `tools` entry `policy/manifest.yaml`'s
+registry has nothing for. A moved surface, a surface that cannot be read at all, a schema
+rejection and an unreadable hookmap are each rendered as a line of output, never thrown.
+Nothing exits non-zero. The scheduled workflow (`.github/workflows/upstream-watch.yml`) runs
+weekly and on manual dispatch.
+
+**What this does not do, stated plainly.** It never fails a build. Forward compatibility is
+bought by pinning, not by watching: `agent-control-specification` is pinned at exactly
+`0.3.1-beta.0` with no caret, `agt.lock` pins a ref, and nothing on AGT's `main` reaches this
+repository until a human bumps the pin. What upstream movement breaks is the truth of the
+published claim, not the running implementation. And the hookmap-tools check does not catch
+a gate recased to another host's registered name: `policy/manifest.yaml` registers
+`run_shell`, `Bash` and `bash` — all three, deliberately, one per host — so a gate recased
+from its own host's spelling to the other's is still a registered name and this check passes
+it clean. Closing that needs a per-host declaration of the tool names that host actually
+dispatches, which no document in this repository carries.

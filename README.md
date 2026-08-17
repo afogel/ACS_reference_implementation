@@ -58,11 +58,15 @@ What V5 does **not** deliver: `modifications.modified_content` still has no buil
 | Every one of the 8 intervention points × 5 AGT verdicts resolves — `expressed` where ACS v0.1.0's wire can carry AGT's vocabulary at that point × verdict, `guardian_only` where only process-local Guardian knowledge can, `unexpressed` with a named reason where it cannot — measured against the pinned AGT SDK's own `InterventionPoint`/`Decision` consts, never against a list this repo keeps by hand | `bun run conformance` ([`scripts/run-conformance.sh`](scripts/run-conformance.sh)); real captured output in [`docs/demos/v7-runbook.md`](docs/demos/v7-runbook.md); [`packages/conformance/test/render-coverage-matrix.test.ts`](packages/conformance/test/render-coverage-matrix.test.ts) asserts every cell prints one of the three symbols and that the table's own header states its subject as ACS v0.1.0's expressive power, not this Guardian's coverage |
 | R5.3 — which ACS profiles and pillars this implementation claims, and which it does not, with the measurement behind each line rather than standing in for it. The Trace pillar is a measured non-claim: six required OTel attributes resolve to wire fields that are present but optional, not absent | [`slices/v7/README.md`](slices/v7/README.md)'s declaration, measured against [`docs/demos/v7-runbook.md`](docs/demos/v7-runbook.md)'s U33 block and [`packages/conformance/src/trace-pillar.ts`](packages/conformance/src/trace-pillar.ts) |
 
-**Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
+**Delivered in V8** — a scheduled watch that reads AGT's eight declared contract surfaces out of a real clone of `main`, against the same eight read from the ref this repository pins, and reports every field that moved.
 
-| Claim | Slice |
+| Claim | How it is demonstrated |
 |---|---|
-| A scheduled harness run against AGT `main` catches an upstream contract change automatically | V8 |
+| R2.4/R2.6 — a moved field in any of AGT's eight declared contract surfaces — its four wire/manifest schemas, the two enums that live inside them, `reserved-reasons.json`, and the config keys its default policy reads — is named: which surface, which field, what it was, what it is now | `bun run watch:upstream` ([`scripts/run-upstream-watch.sh`](scripts/run-upstream-watch.sh)) shallow-clones AGT twice — the pinned ref and `main` — and diffs the two reads; real captured output, one clean and one against a clone edited on purpose, in [`docs/demos/v8-runbook.md`](docs/demos/v8-runbook.md) |
+| The policy input this Guardian actually sends is re-validated against `main`'s own copy of the wire schema, not the pinned copy, so a field that never shows up as moved can still be caught if a tightened rule on `main` now rejects it | Second reported line of the same run; [`packages/conformance/src/policy-input-schema.ts`](packages/conformance/src/policy-input-schema.ts) |
+| A gate in either shipped hookmap naming a tool the policy manifest registers nothing for is reported | Third reported line of the same run; [`packages/conformance/src/tools-registry.ts`](packages/conformance/src/tools-registry.ts) |
+
+What V8 does **not** deliver, stated here because a watch invites a stronger reading than it can carry: it never fails a build. `agent-control-specification` is pinned at exactly `0.3.1-beta.0` with no caret, `agt.lock` pins a ref, and `verify:pin` proves `policy/lib` is byte-identical to it, so nothing on AGT's `main` reaches this repository until a human bumps the pin — forward compatibility is bought by pinning, not by watching. And the tools-against-registry line does not catch a gate recased to the *other* host's own registered spelling: `policy/manifest.yaml` registers one tool name per host, deliberately, so a name valid for one host is still a registered name on the other's gate. Full statement, and why closing that needs a document this repository does not have, in [`slices/v8/README.md`](slices/v8/README.md).
 
 ## Layout
 
@@ -292,8 +296,6 @@ the result gate and rebuilds `metadata` from its own pre-hook copy, so only the 
 refusal is a throw and the result gate's is a replacement.
 
 V6 ("session state and provenance carriage") is implemented — see [`slices/v6/README.md`](slices/v6/README.md) and [`docs/demos/v6-runbook.md`](docs/demos/v6-runbook.md). This section does not yet carry a claims table for it.
-
-Slice V8 is shaped and sliced but not started; it is tracked as an issue on the project board, with a stacked pull request.
 
 ## License
 
