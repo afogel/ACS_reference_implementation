@@ -629,12 +629,19 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "modify",
     });
 
-    // Empty, not even `reason`: this `modify` carries no `reasoning` field,
-    // and `reason.text: { from: reasoning }` renders nothing without one. So
-    // the render is `{}` -- byte-identical to what a clean `allow` renders on
-    // this host, the same shape the request gate's own equivalent rule
-    // closes.
-    expect(output).toEqual({});
+    // A reason, and nothing else. `reason.text: { from: reasoning }` renders
+    // now -- the Guardian composes a sentence for a redaction out of the rule
+    // that decided it, where AGT's own transform verdict carries no message --
+    // but no sink is declared, so nothing here carries the redacted output and
+    // the secret is delivered whole below. An explanation beside an unapplied
+    // redaction is the shape this pins.
+    expect(output).toEqual({
+      reason: {
+        text:
+          "Secrets in this output were replaced before the model saw them. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      },
+    });
     expect(threw).toBeUndefined();
     expect(result.output).toBe(TOOL_OUTPUT);
     expect(result.metadata.output).toBe(TOOL_OUTPUT);
@@ -769,7 +776,16 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "modify",
     });
 
-    expect(output).toEqual({});
+    // `result` is dropped by the type filter -- applied_output is an object --
+    // so the composed reason is all that renders, and nothing carries the
+    // redaction.
+    expect(output).toEqual({
+      reason: {
+        text:
+          "Secrets in this output were replaced before the model saw them. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      },
+    });
     expect(threw).toBeUndefined();
     expect(result.output).toBe("TOKEN=ghp_SECRET123456");
     expect(result.metadata.output).toBe("TOKEN=ghp_SECRET123456");

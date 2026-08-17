@@ -395,9 +395,16 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     // merely missing the fault; it asserts the opposite of it.
     expect(governed.stage).toBe("honoured");
 
-    // Literally `{}`: this modify carries no `reasoning`, so `reason.text`
-    // renders nothing either, and no other field is declared.
-    expect(governed.output).toEqual({});
+    // A reason and nothing else: `reason.text` renders the sentence the
+    // Guardian composed for this redaction, and no field able to land the
+    // rewrite is declared. The explanation arrives; the redaction does not.
+    expect(governed.output).toEqual({
+      reason: {
+        text:
+          "A secret in this command was replaced before it ran. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      },
+    });
 
     expect(() => applyOpenCodeOutput(governed.output, { gate: "request", args })).not.toThrow();
     // The command runs unredacted.
@@ -722,7 +729,14 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       "request-modify-as-refusal.yaml",
       "ses-request-gate-modify-as-refusal",
     );
-    expect(output).toEqual({ refuse: { denied: true } });
+    expect(output).toEqual({
+      refuse: {
+        denied: true,
+        reason:
+          "A secret in this command was replaced before it ran. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      },
+    });
     expect(threw).toBeInstanceOf(Error);
     // Nothing half-applied: pass 2a throws before any assignment.
     expect(args.command).toBe("echo ghp_ABCDEF123456");

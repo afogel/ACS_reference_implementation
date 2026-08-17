@@ -29,6 +29,32 @@ type FieldSource = { source: string };
 type WrappedFieldSource = { source: string; wrap: WrapMode };
 type FieldLiteral = { literal: string };
 
+/** One rule's summary sentence: a single string, or one per intervention
+ * point where the same rule means different things at different gates. */
+type ReasoningSummary = string | Record<string, string>;
+
+/** How AGT's own message is rendered into the composed sentence's last
+ * clause. */
+type ReasoningDetail = { when_matches: string; render: string; otherwise: string };
+
+/**
+ * How `reasoning` is composed.
+ *
+ * `source` still names the verdict field AGT's own message arrives in.
+ * Everything beside it is wording THIS side supplies, and it has to be:
+ * AGT writes that message in `policy/lib/patterns.rego`, which is vendored
+ * byte-identical from upstream and proven so by `scripts/verify-pin.sh`, so
+ * rewording it upstream would fork the bundle this deployment's whole claim
+ * rests on. Composing here is what leaves that bundle untouched.
+ */
+type ReasoningRule = {
+  source: string;
+  /** Absent means this mapping asks for `source` copied, not composed. */
+  template?: string;
+  summaries?: Record<string, ReasoningSummary>;
+  detail?: ReasoningDetail;
+};
+
 /** The wrap modes this mapping can express. Named as a set so `applyWrap`
  * can refuse everything outside it. */
 type WrapMode = "array";
@@ -89,7 +115,7 @@ export type Mapping = {
   intervention_points: Record<string, InterventionPoint>;
   verdicts: Record<string, VerdictRule>;
   field_synthesis: {
-    reasoning: FieldSource;
+    reasoning: ReasoningRule;
     reason_codes: WrappedFieldSource;
     policy_references: {
       rule_id: FieldSource;
@@ -264,6 +290,82 @@ function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: s
   );
 }
 
+/**
+ * The summary sentence for the rule that decided, at the gate it decided at.
+ *
+ * A rule with no entry takes `default` rather than throwing. Every other
+ * failure in this module is a throw because the alternative is a decision the
+ * host cannot honour; this one is different in kind. An incomplete wording
+ * table is a gap in prose, and the Guardian's evaluation catch turns a throw
+ * into a deny -- so throwing here would convert a step AGT allowed into a
+ * blocked one because nobody had written its sentence yet.
+ *
+ * The same reasoning covers a per-gate rule reached at a gate it has no
+ * sentence for: fall back rather than refuse the step.
+ */
+function resolveSummary(summaries: Record<string, ReasoningSummary>, ruleId: string, point: string): string {
+  const entry = summaries[ruleId];
+  if (typeof entry === "string") return entry;
+  if (entry !== undefined) {
+    const perPoint = entry[point];
+    if (typeof perPoint === "string") return perPoint;
+  }
+  const fallback = summaries.default;
+  return typeof fallback === "string" ? fallback : "";
+}
+
+/**
+ * AGT's own message, rendered for the reader the composed sentence is for.
+ *
+ * The recognised shape is `patterns.rego`'s sprintf, whose regex is the one
+ * part of the raw message a human gains nothing from -- the offset is kept
+ * and the regex dropped. Anything else is passed through whole and
+ * attributed to AGT, so a message shape this does not know is never lost.
+ * That fallback is what keeps the recognition safe: it couples to an upstream
+ * sprintf format that no schema pins and the upstream watch does not cover,
+ * and the cost of that format changing is a longer sentence, not a missing one.
+ *
+ * Replacements are functions, never strings: AGT's messages carry regexes
+ * containing `$`, and a string replacement would have `$&` and `$1` inside
+ * one interpreted as replacement patterns.
+ */
+function renderDetail(rule: ReasoningDetail, message: string | undefined): string {
+  if (message === undefined || message.length === 0) return "";
+  const hit = new RegExp(rule.when_matches).exec(message);
+  if (hit) return rule.render.replaceAll("{1}", () => hit[1] ?? "");
+  return rule.otherwise.replaceAll("{message}", () => message);
+}
+
+/**
+ * Composes the sentence a host shows a human or hands a model.
+ *
+ * Answers `undefined` when no rule decided -- a clean allow carries no reason
+ * and has nothing to explain, and composing a sentence for it would put
+ * reasoning on the one decision whose entire signature is the absence of it.
+ */
+function composeReasoning(
+  rule: ReasoningRule,
+  ruleId: string | undefined,
+  message: string | undefined,
+  policyId: string,
+  point: string,
+): string | undefined {
+  // A mapping that declares no template is asking for its source copied
+  // rather than composed, and copying it is implementing that table exactly.
+  // This is the shape every mapping had before a wording table existed, so a
+  // fixture pinning some other part of the translation stays a two-line
+  // declaration instead of carrying a table it does not test.
+  if (rule.template === undefined) return message;
+  if (ruleId === undefined || ruleId.length === 0) return undefined;
+  const summary = resolveSummary(rule.summaries ?? {}, ruleId, point);
+  const detail = rule.detail === undefined ? "" : renderDetail(rule.detail, message);
+  return rule.template
+    .replaceAll("{summary}", () => summary)
+    .replaceAll("{rule_id}", () => ruleId)
+    .replaceAll("{policy_id}", () => policyId)
+    .replaceAll("{detail}", () => detail);
+}
+
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
@@ -273,8 +375,24 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string)
   const fs = mapping.field_synthesis;
   const out: AcsDecision = { decision: rule.decision };
 
-  const reasoning = readVerdictField(verdict, fs.reasoning);
-  if (typeof reasoning === "string") {
+  // Read before `reasoning` is composed, because the composed sentence names
+  // the rule; assigned to `out` below, in the order the wire has always
+  // carried these fields.
+  const ruleId = readVerdictField(verdict, fs.policy_references.rule_id);
+
+  // Composed, not copied. AGT's verdict.message is written for an operator
+  // reading a log, and the bundle that writes it is vendored byte-identical
+  // from upstream -- so the sentence a host shows a human, or hands a model,
+  // is assembled here from the table mapping.yaml declares.
+  const agtMessage = readVerdictField(verdict, fs.reasoning);
+  const reasoning = composeReasoning(
+    fs.reasoning,
+    typeof ruleId === "string" ? ruleId : undefined,
+    typeof agtMessage === "string" ? agtMessage : undefined,
+    fs.policy_references.policy_id.literal,
+    point,
+  );
+  if (reasoning !== undefined) {
     out.reasoning = reasoning;
   }
 
@@ -283,7 +401,6 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string)
     out.reason_codes = applyWrap(reasonForCodes, fs.reason_codes.wrap, "reason_codes");
   }
 
-  const ruleId = readVerdictField(verdict, fs.policy_references.rule_id);
   if (typeof ruleId === "string") {
     out.policy_references = [{ policy_id: fs.policy_references.policy_id.literal, rule_id: ruleId }];
   }

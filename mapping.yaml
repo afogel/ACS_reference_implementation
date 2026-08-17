@@ -111,8 +111,42 @@ verdicts:
 #   { literal: <value> }                        — a fixed value, not read
 #                                                  from the verdict at all
 field_synthesis:
+  # AGT writes verdict.message for an operator reading a log: patterns.rego
+  # sprintf's "matched pattern <regex> at offset <n>". policy/lib is vendored
+  # byte-identical from AGT — verify:pin re-clones and byte-diffs it — so the
+  # sentence a human or a model reads is composed HERE, on this side of the
+  # boundary, and the upstream bundle is never edited to change wording.
+  #
+  # Three parts in order: the summary this table gives the deciding rule, the
+  # rule's own name and the bundle it came from, and whatever detail AGT's own
+  # message carries.
   reasoning:
     source: verdict.message
+    template: "{summary} Policy: {rule_id}, from AGT's stock bundle ({policy_id}).{detail}"
+    # Keyed by AGT's rule name. A rule with no entry here takes `default`, so
+    # a rule an AGT release adds is still named and attributed rather than
+    # arriving as a bare sprintf.
+    #
+    # redaction_applied is the one rule needing a sentence per gate: the same
+    # rule rewrites the command at the request gate and the output at the
+    # result gate, and the rule name alone does not say which happened.
+    summaries:
+      default: "This step was decided by AGT's stock policy bundle."
+      destructive_shell_command_blocked: "This command was blocked because it matches a destructive-shell-command pattern."
+      approval_required: "This step needs human approval before it can run."
+      drift_detected: "This step was allowed, but flagged: the agent's behaviour drifted from its baseline."
+      redaction_applied:
+        pre_tool_call: "A secret in this command was replaced before it ran."
+        post_tool_call: "Secrets in this output were replaced before the model saw them."
+    # AGT's message, rendered for the reader the sentence above is for. The
+    # pattern form carries the regex that matched, which is the one part of
+    # the raw message a human gains nothing from, so the offset is kept and
+    # the regex dropped. Every other message is passed through whole: a shape
+    # this does not recognise is attributed, never dropped.
+    detail:
+      when_matches: "^matched pattern .+ at offset ([0-9]+)$"
+      render: " Matched at offset {1}."
+      otherwise: " AGT reported: {message}."
   reason_codes:
     source: verdict.reason
     wrap: array

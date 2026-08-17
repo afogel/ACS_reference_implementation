@@ -10,12 +10,11 @@ describe("mapVerdict", () => {
 
   it("maps deny, carrying reason and message into ACS fields", () => {
     const d = mapVerdict(
-      { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X" },
+      { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X at offset 5" },
       m,
       "pre_tool_call",
     );
     expect(d.decision).toBe("deny");
-    expect(d.reasoning).toBe("matched pattern X");
     expect(d.reason_codes).toEqual(["destructive_shell_command_blocked"]);
     expect(d.policy_references?.[0]?.rule_id).toBe("destructive_shell_command_blocked");
   });
@@ -92,6 +91,100 @@ describe("mapVerdict", () => {
       expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode, "pre_tool_call")).toThrow(
         /field_synthesis\.reason_codes\.wrap as "csv"/,
       );
+    });
+  });
+
+  // AGT writes verdict.message for an operator reading a log: patterns.rego
+  // sprintf's "matched pattern <regex> at offset <n>". That file is vendored
+  // byte-identical from AGT and verify:pin proves it, so the sentence a human
+  // or a model reads is composed on this side of the boundary and never
+  // upstream. What arrives at a host is one sentence of ordinary English, the
+  // rule that decided, and the attribution to AGT's bundle.
+  describe("reasoning reads as English, names the rule, and attributes AGT", () => {
+    it("composes a deny from the rule's declared summary, dropping AGT's regex", () => {
+      const d = mapVerdict(
+        {
+          decision: "deny",
+          reason: "destructive_shell_command_blocked",
+          message: "matched pattern (?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$) at offset 5",
+        },
+        m,
+        "pre_tool_call",
+      );
+      expect(d.reasoning).toBe(
+        "This command was blocked because it matches a destructive-shell-command pattern. " +
+          "Policy: destructive_shell_command_blocked, from AGT's stock bundle (agt_stock). Matched at offset 5.",
+      );
+    });
+
+    // One AGT rule, two gates, two different things to say about it: the same
+    // redaction_applied rewrites the command at the request gate and the
+    // output at the result gate, and a reader cannot tell which from the rule
+    // name alone.
+    it("says something different for the same rule at each gate", () => {
+      const verdict = {
+        decision: "transform" as const,
+        reason: "redaction_applied",
+        transform: { path: "$policy_target", value: "echo [REDACTED]" },
+      };
+      expect(mapVerdict(verdict, m, "pre_tool_call").reasoning).toBe(
+        "A secret in this command was replaced before it ran. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      );
+      expect(mapVerdict(verdict, m, "post_tool_call").reasoning).toBe(
+        "Secrets in this output were replaced before the model saw them. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
+      );
+    });
+
+    // A rule this table has no sentence for still gets named and attributed,
+    // and AGT's own message is passed through whole rather than dropped. A
+    // summary table that silently swallowed an unrecognised rule would be
+    // worse than the raw message it replaced.
+    it("falls back for an unknown rule without losing AGT's message", () => {
+      const d = mapVerdict(
+        { decision: "deny", reason: "some_future_agt_rule", message: "whatever AGT said" },
+        m,
+        "pre_tool_call",
+      );
+      expect(d.reasoning).toBe(
+        "This step was decided by AGT's stock policy bundle. " +
+          "Policy: some_future_agt_rule, from AGT's stock bundle (agt_stock). AGT reported: whatever AGT said.",
+      );
+    });
+
+    it("omits the detail clause when AGT supplied no message", () => {
+      const d = mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call");
+      expect(d.reasoning).toBe(
+        "This step needs human approval before it can run. " +
+          "Policy: approval_required, from AGT's stock bundle (agt_stock).",
+      );
+    });
+
+    // A clean allow carries no rule and nothing to explain. Composing a
+    // sentence for it would put reasoning on the one decision whose whole
+    // signature is the absence of it.
+    it("leaves a clean allow with no reasoning at all", () => {
+      expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").reasoning).toBeUndefined();
+    });
+
+    // Composition is what a `template` asks for. A mapping that declares only
+    // a source is asking for that field copied, and copying it is
+    // implementing that table exactly -- which is what lets a fixture pinning
+    // some other part of the translation stay a two-line declaration instead
+    // of carrying a wording table it does not test.
+    it("copies the source verbatim for a mapping that declares no template", () => {
+      const sourceOnly = {
+        ...m,
+        field_synthesis: { ...m.field_synthesis, reasoning: { source: "verdict.message" } },
+      } as unknown as Mapping;
+
+      const d = mapVerdict(
+        { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X at offset 5" },
+        sourceOnly,
+        "pre_tool_call",
+      );
+      expect(d.reasoning).toBe("matched pattern X at offset 5");
     });
   });
 });

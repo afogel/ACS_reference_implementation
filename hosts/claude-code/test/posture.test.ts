@@ -150,7 +150,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       });
       const hook = expectQuietDecision(out);
       expect(hook.permissionDecision).toBe("deny");
-      expect(hook.permissionDecisionReason).toContain("matched pattern");
+      expect(hook.permissionDecisionReason).toContain("destructive_shell_command_blocked");
       // Nothing failed to be delivered, so nothing is audited.
       expect(existsSync(join(dir, "audit.jsonl"))).toBe(false);
     } finally {

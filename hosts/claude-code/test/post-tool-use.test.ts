@@ -216,17 +216,19 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     // `decision: block` beside the wrapper, are both changes a
     // replacement-only assertion would not see.
     //
-    // No `additionalContext` here, and it is the hookmap that is right rather
-    // than this literal. The `modify` entry declares one (`from: reasoning`), and
-    // the field is conditional; the pinned bundle's own redaction verdict comes
-    // back carrying `reason_codes` and `policy_references` and no `reasoning`
-    // string, so there is nothing for it to carry. The mechanism is pinned in
-    // render-decision.test.ts and, end to end, by the test below -- so this
-    // literal records what this deployment actually produces today: a redaction
-    // the model reads with nothing in the transcript explaining it.
+    // `additionalContext` carries the sentence explaining the redaction, and
+    // the hookmap's `modify` entry declares it (`from: reasoning`). The pinned
+    // bundle's own transform verdict carries no message -- AGT writes one only
+    // where a rule has something to report about the text it matched -- so
+    // this string is composed from the rule that decided rather than copied
+    // from upstream. Until it was, this literal recorded a redaction the model
+    // read with nothing in the transcript explaining it.
     expect(JSON.parse(out.stdout)).toEqual({
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
+        additionalContext:
+          "Secrets in this output were replaced before the model saw them. " +
+          "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
         updatedToolOutput: {
           stdout: "TOKEN=[REDACTED]",
           stderr: "",
