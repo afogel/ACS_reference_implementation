@@ -3,47 +3,40 @@
  * envelope into the AGT snapshot for the intervention point that answers its
  * method, shaped per AGT-SNAPSHOT-1.0.md §2.5:
  *
- *   assemblePreToolCallSnapshot        steps/toolCallRequest -> pre_tool_call
- *   assemblePostToolCallSnapshot  steps/toolCallResult  -> post_tool_call   (V4)
+ *   assemblePreToolCallSnapshot   steps/toolCallRequest -> pre_tool_call
+ *   assemblePostToolCallSnapshot  steps/toolCallResult  -> post_tool_call
  *
  * Siblings, not one function with two modes. §2.5 gives each point its own
  * snapshot shape, and these two share no member but `envelope.budgets`: one
  * carries the arguments a step was asked to run, the other the outputs it
  * produced. A single assembler reading `payload.arguments` OR `payload.outputs`
  * depending on what it found would be back to the union type the narrowing
- * exists to prevent -- and would take an envelope of either method, which is
- * exactly what the PR #10 review closed.
+ * exists to prevent, and would accept an envelope of either method when each
+ * snapshot shape belongs to only one.
  *
- * `assemblePreToolCallSnapshot` keeps its name: it is affordance N23 by that name in the
- * shaping docs' own affordance tables (docs/shaping/acs-reference-impl-slices.md,
- * docs/shaping/acs-reference-impl-shaping.md). Its parameter type says which
- * envelope it takes, and the sibling below names the wire's noun for the other
- * one. policy/manifest.yaml's post_tool_call comment used to be cited here too;
- * it named this function for the synthesis `assemblePostToolCallSnapshot` performs,
- * and it now names the sibling instead -- so the justification rests on the
- * shaping docs, which is where the affordance name actually lives.
+ * `assemblePreToolCallSnapshot` keeps its original name rather than being
+ * renamed to match its sibling: its parameter type already says which
+ * envelope it takes, and `assemblePostToolCallSnapshot` names the wire's noun
+ * for the other one.
  *
- * Envelope-only (per the V1 watch-for): both read nothing but the envelope
- * handed to them -- no session state, no chain hash, no prior decisions, no
- * intent. Those arrive in V6 via S3/S4/S5. The result gate carries no
- * `tool_call.args` for the same reason and one more: the result payload has
- * none to carry, and synthesizing them from the originating request would be
- * inventing state this slice does not have (correlation is `request_id_ref`,
- * V6's).
+ * Envelope-only: both read nothing but the envelope handed to them -- no
+ * session state, no chain hash, no prior decisions, no intent. The result
+ * gate carries no `tool_call.args` for the same reason and one more: the
+ * result payload has none to carry, and synthesizing them from the
+ * originating request would be inventing state this module does not have.
  */
 
 /**
- * The envelope types are validate-envelope.ts's (Task 5) -- re-exported here
- * so existing imports of `ToolCallRequestEnvelope` from this module keep
- * working. Task 4 had declared a local, narrower type as a temporary seam;
- * this closes it so there's exactly one envelope shape, not two that could
- * silently diverge.
+ * The envelope types are re-exported from validate-envelope.ts, so there is
+ * exactly one envelope shape rather than two that could silently diverge, and
+ * existing imports of `ToolCallRequestEnvelope` from this module keep
+ * working.
  *
- * Since the PR #10 review those names mean what they say: the method-narrowed
- * view of a validated ACS request, each reachable only through its own
- * predicate (`isToolCallRequest`, `isToolCallResult`). Each function below
- * takes exactly one of them, so no signature here accepts a
- * `handshake/hello` it would read `params.payload.tool.name` off.
+ * These names mean what they say: the method-narrowed view of a validated ACS
+ * request, each reachable only through its own predicate
+ * (`isToolCallRequest`, `isToolCallResult`). Each function below takes
+ * exactly one of them, so no signature here accepts a `handshake/hello` it
+ * would read `params.payload.tool.name` off.
  */
 import type { ToolCallRequestEnvelope, ToolCallResultEnvelope } from "./validate-envelope.ts";
 export type { ToolCallRequestEnvelope, ToolCallResultEnvelope };
@@ -55,8 +48,8 @@ export type { ToolCallRequestEnvelope, ToolCallResultEnvelope };
  * neither is assignable to the other.
  *
  * All four counters are always present and always real numbers: budgets.rego
- * fails closed on a present-but-wrong-typed counter (V1's C-note), and that
- * hazard belongs to every gate, not just the request one.
+ * fails closed on a present-but-wrong-typed counter, and that hazard belongs
+ * to every gate, not just the request one.
  */
 export type AgtSnapshotBudgets = {
   tool_call_count: number;
@@ -93,53 +86,52 @@ export type AgtPreToolCallSnapshot = {
 };
 
 /**
- * The AGT `post_tool_call` snapshot: the sibling type the comment above said a
- * later slice would bring, standing beside `AgtPreToolCallSnapshot` rather
- * than widening it with optional members. Named for its own intervention
- * point, for the same reason its twin is.
+ * The AGT `post_tool_call` snapshot, standing beside `AgtPreToolCallSnapshot`
+ * rather than widening it with optional members. Named for its own
+ * intervention point, for the same reason its twin is.
  *
  * Every member is load-bearing, and there are only three:
- *   - `envelope.budgets`  the one member both snapshots carry.
- *   - `tool_call.name`    SYNTHESIZED from the result payload's `tool.name`.
- *                         ACS's result payload has no `tool_call` member of its
- *                         own, and AGT resolves the manifest's
- *                         `tool_name_from` BEFORE any policy runs -- a snapshot
- *                         without a name fails closed with
- *                         `runtime_error:path_missing` on every call
- *                         (test/redaction.test.ts pins it).
+ *   - `envelope.budgets`     the one member both snapshots carry.
+ *   - `tool_call.name`       synthesized from the result payload's
+ *                            `tool.name`. ACS's result payload has no
+ *                            `tool_call` member of its own, and AGT resolves
+ *                            the manifest's `tool_name_from` before any
+ *                            policy runs -- a snapshot without a name fails
+ *                            closed with `runtime_error:path_missing` on
+ *                            every call (test/redaction.test.ts pins it).
  *   - `tool_result.outputs`  what policy/manifest.yaml's post_tool_call point
- *                         targets, at `$.tool_result.outputs[0].value`. EVERY
- *                         output is carried, and that target names index 0 --
- *                         so a step returning several outputs has its first one
- *                         evaluated and the rest carried but unexamined. That
- *                         is the manifest's declaration, not this assembler's
- *                         choice; widening it is a manifest change with its own
- *                         policy consequences.
+ *                            targets, at `$.tool_result.outputs[0].value`.
+ *                            Every output is carried, and that target names
+ *                            index 0 -- so a step returning several outputs
+ *                            has its first one evaluated and the rest
+ *                            carried but unexamined. That is the manifest's
+ *                            declaration, not this assembler's choice;
+ *                            widening it is a manifest change with its own
+ *                            policy consequences.
  *
- * Three members ABSENT on purpose, each for its own reason:
- *   - `tool_call.args`    the result payload has none. Carrying the originating
- *                         call's arguments forward would be inventing state
- *                         this slice does not have (C5).
- *   - `tool_call.id`      NOT because no id is on the wire -- `params.request_id`
- *                         is required by request-envelope.json at every step, and
- *                         the request gate uses exactly that field for its own
- *                         `tool_call.id`. But at this step that field identifies
- *                         THIS result message, not the call that produced it. The
- *                         originating call's id arrives only as the optional
- *                         `request_id_ref`, so an id here would name the wrong
- *                         request. Correlating the two is V6's session chain.
- *   - `exit_status`       required by hooks/tool-call-result.json, validated on
- *                         the way in, and deliberately not forwarded: AGT's
- *                         snapshot for this point (test/redaction.test.ts pins
- *                         the shape the stock bundle evaluates) has no place for
- *                         it, and no stock rule reads it. A later slice wanting a
- *                         policy that branches on it adds the member here --
- *                         additively, with a test showing a policy reading it.
+ * Three members absent on purpose, each for its own reason:
+ *   - `tool_call.args`  the result payload has none. Carrying the
+ *                       originating call's arguments forward would be
+ *                       inventing state this module does not have.
+ *   - `tool_call.id`    not because no id is on the wire -- `params.request_id`
+ *                       is required by request-envelope.json at every step,
+ *                       and the request gate uses exactly that field for its
+ *                       own `tool_call.id`. But at this step that field
+ *                       identifies this result message, not the call that
+ *                       produced it. The originating call's id arrives only
+ *                       as the optional `request_id_ref`, so an id here
+ *                       would name the wrong request, and nothing here
+ *                       correlates the two.
+ *   - `exit_status`     required by hooks/tool-call-result.json, validated
+ *                       on the way in, and deliberately not forwarded: AGT's
+ *                       snapshot for this point (test/redaction.test.ts pins
+ *                       the shape the stock bundle evaluates) has no place
+ *                       for it, and no stock rule reads it.
  *
  * `outputs` items are `{value}` alone -- ACS's `{value, provenance}` wrapper does
  * not survive into a snapshot, the same rule the request side applies to its
- * arguments (C5), and `value` stays `unknown` because what a tool produced is
- * the tool's business rather than this project's.
+ * arguments, and `value` stays `unknown` because what a tool produced is the
+ * tool's business rather than this project's.
  */
 export type AgtPostToolCallSnapshot = {
   envelope: { budgets: AgtSnapshotBudgets };
@@ -177,9 +169,9 @@ export function assemblePostToolCallSnapshot(envelope: ToolCallResultEnvelope): 
     envelope: { budgets: zeroedBudgets() },
     // Synthesized, and load-bearing: see AgtPostToolCallSnapshot above.
     tool_call: { name: payload.tool.name },
-    // Unwrap every output, exactly as the request side unwraps every argument
-    // (C5): AGT reads the raw value at $.tool_result.outputs[0].value, and the
-    // ACS {value, provenance} wrapper does not survive into the snapshot.
+    // Unwrap every output, exactly as the request side unwraps every argument:
+    // AGT reads the raw value at $.tool_result.outputs[0].value, and the ACS
+    // {value, provenance} wrapper does not survive into the snapshot.
     tool_result: { outputs: payload.outputs.map((output) => ({ value: output.value })) },
   };
 }

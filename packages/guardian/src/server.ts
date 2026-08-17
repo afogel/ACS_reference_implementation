@@ -4,16 +4,15 @@
  * project's own choice -- so dispatch inside the handler is by the JSON-RPC
  * `method` field, never by URL path.
  *
- * Composes every earlier task, in order, for each ACS method it assembles a
- * snapshot for -- `steps/toolCallRequest`, and `steps/toolCallResult` since V4:
- *   validateEnvelope (Task 5) -> assemblePreToolCallSnapshot / assemblePostToolCallSnapshot
- *   (Task 4, V4's Task 3) ->
- *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot)
- *   (Task 2) -> mapVerdict(verdict, mapping, point) (Task 3) -> response
- *   envelope. The resolved point reaches mapVerdict because the ACS
- *   modification an AGT transform becomes differs per gate (V4): a tool
- *   argument override at the request gate, a redaction on the result payload
- *   at the result gate. One resolution, used by both consumers of it.
+ * Composes the full pipeline, in order, for each ACS method it assembles a
+ * snapshot for -- `steps/toolCallRequest` and `steps/toolCallResult`:
+ *   validateEnvelope -> assemblePreToolCallSnapshot / assemblePostToolCallSnapshot ->
+ *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot) ->
+ *   mapVerdict(verdict, mapping, point) -> response envelope.
+ * The resolved point reaches mapVerdict because the ACS modification an AGT
+ * transform becomes differs per gate: a tool argument override at the
+ * request gate, a redaction on the result payload at the result gate. One
+ * resolution, used by both consumers of it.
  *
  * Every throw on this path is caught, in two places, because nothing may
  * escape the fetch handler. Bun.serve would answer an unhandled rejection with
@@ -27,24 +26,23 @@
  * The two catches are:
  *   - Inside `evaluateStep` (reached from `dispatch`, once per assembling
  *     gate), around the assembler / bridge.evaluate / mapVerdict -- the
- *     evaluation itself (an earlier fix wave's finding 1).
- *   - Around the whole `dispatch` call in `handleAcsRequest` -- the outer net
- *     (the whole-branch review's finding 1). `dispatch` rethrows anything
- *     that is not an EnvelopeValidationError, and that rethrow is live:
- *     validateEnvelope builds its Ajv registry LAZILY, on the first request
- *     rather than at boot, so a tree cloned without `--recurse-submodules`
- *     starts cleanly and then turns every request into an HTML 500. The
- *     outer net also puts the failure response back on the recorded path,
- *     so S6 records it like any other response -- before this fix the client
- *     received a response that S6 had no line for at all.
+ *     evaluation itself.
+ *   - Around the whole `dispatch` call in `handleAcsRequest` -- the outer
+ *     net. `dispatch` rethrows anything that is not an
+ *     EnvelopeValidationError, and that rethrow is live: validateEnvelope
+ *     builds its Ajv registry lazily, on the first request rather than at
+ *     boot, so a tree cloned without `--recurse-submodules` starts cleanly
+ *     and then turns every request into an HTML 500. The outer net puts that
+ *     failure response back on the recorded path too, so the envelope log
+ *     holds a line for it like any other response.
  *
- * Two DIFFERENT catches on the dispatch path -- the evaluation catch above and
- * dispatch's own EnvelopeValidationError catch, around `validateEnvelope` --
- * turn a steps/* failure into an honoured ACS `deny` decision via
+ * Two distinct catches on the dispatch path -- the evaluation catch above
+ * and dispatch's own EnvelopeValidationError catch, around `validateEnvelope`
+ * -- turn a steps/* failure into an honoured ACS `deny` decision via
  * denyOnInvalidEnvelope: see the module comment on `dispatch` below. The
  * outer net here is deliberately left untouched: it exists for a `dispatch`
- * rethrow -- a bug in the Guardian itself (e.g. a missing schema directory),
- * not an invalid envelope -- so it stays a bare JSON-RPC error.
+ * rethrow -- a bug in the Guardian itself, such as a missing schema
+ * directory, not an invalid envelope -- so it stays a bare JSON-RPC error.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -83,8 +81,8 @@ import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 
 /**
- * Every snapshot message this Guardian can send an intervention point -- both
- * gates, since V4. Each gate this Guardian learns to assemble adds its own
+ * Every snapshot message this Guardian can send an intervention point -- one
+ * per gate. Each gate this Guardian assembles a snapshot for adds its own
  * point-specific type here.
  *
  * Declared so the bridge seam carries the message rather than erasing it.
@@ -301,20 +299,15 @@ export async function startGuardian({
 
 /**
  * Four phases, in order: read the body under a cap, parse, record the
- * request, dispatch, record the response. The envelope-log writes live here
- * and only here -- `dispatch` below leaves by seven routes now (six `return`s
- * and one rethrow), two of those `return`s being its assembling gates, which
- * hand off to `evaluateStep` and leave by its three (a decision, an honoured
- * deny, a bare error). V1/V2 left six (five `return`s and one rethrow); N27
- * (V3) added two more, not one -- both dispatch's EnvelopeValidationError
- * catch and its evaluation catch gained a second `return`, for the
- * deny-decision case, beside the bare-error `return` each already had; V4
- * then moved the evaluation routes into `evaluateStep`, shared by both gates,
- * and added a second gate that reaches them. The body cap is the one route
- * that leaves before any of that: it refuses ahead of the parse, so an
- * oversize body never becomes a parse failure the host would read as a
- * delivery accident. Writing S6 inside `dispatch` would make totality
- * something a future task has to remember rather than something the
+ * request, dispatch, record the response. The cap refuses ahead of the parse,
+ * so an oversize body is a refusal the host fails closed on rather than a
+ * parse failure it would read as a delivery accident. The envelope-log writes
+ * live here and only here. `dispatch` below leaves by seven routes: six
+ * `return`s and one rethrow. Two of those returns hand off to `evaluateStep`,
+ * which itself leaves by three routes (a decision, an honoured deny, or a
+ * bare error). Writing to the envelope log inside `dispatch` or
+ * `evaluateStep` would make covering every route something a future change
+ * has to remember, rather than something this
  * structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
@@ -539,9 +532,8 @@ async function dispatch(
   //     module that decided whether `params.payload` was validated against that
   //     method's hook schema. Each also narrows the envelope, which is what
   //     lets its assembler take one method's view rather than any request at
-  //     all (PR #10 review): the two snapshots share no member but
-  //     `envelope.budgets`, so there is no one assembler for both and no union
-  //     type to hand around.
+  //     all: the two snapshots share no member but `envelope.budgets`, so
+  //     there is no one assembler for both and no union type to hand around.
   //
   //   - A branch keyed on the resolved point instead would be a fail-open:
   //     mapping.yaml declares six methods with points and this Guardian
@@ -554,7 +546,7 @@ async function dispatch(
     return await evaluateStep(raw, envelope, assemblePreToolCallSnapshot, bridge, mapping);
   }
 
-  // V4's result gate, beside the request gate rather than merged into it.
+  // The result gate, beside the request gate rather than merged into it.
   if (isToolCallResult(envelope)) {
     return await evaluateStep(raw, envelope, assemblePostToolCallSnapshot, bridge, mapping);
   }
@@ -572,8 +564,8 @@ async function dispatch(
  * The half of an assembling branch that is the same whichever gate reached it:
  * assemble, resolve the point, evaluate, map the verdict, answer. One copy,
  * shared by both gates -- not because it is shorter, but because the failure
- * handling below is a project invariant (§6.4, R1.5) rather than a detail of
- * the request gate, and a second copy of it is a second thing to keep true.
+ * handling below is a project invariant (§6.4) rather than a detail of the
+ * request gate, and a second copy of it is a second thing to keep true.
  *
  * Generic in the envelope, and the assembler is a function OF that envelope --
  * `E` and `(envelope: E) => GuardianSnapshot` rather than an
@@ -596,9 +588,8 @@ async function dispatch(
  * the try, so a throw from it lands in the same catch as a throw from AGT.
  *
  * The intervention point comes from mapping.yaml's own `intervention_points`
- * table, not from a literal here (PR #10 review, Critical): that table is what
- * V7's conformance matrix publishes, and a declaration the runtime does not
- * consult is a claim nobody checks. An unresolvable method throws into the
+ * table, not from a literal here: a declaration the runtime does not consult
+ * is a claim nobody checks. An unresolvable method throws into the
  * catch below rather than defaulting to a point -- evaluating the wrong policy
  * and calling the result a decision is the one outcome worse than a reported
  * failure.
@@ -618,14 +609,13 @@ async function evaluateStep<E extends AcsRequestEnvelope>(
 
     return successResponse(envelope.id, finalResult(envelope.params, decision));
   } catch (error) {
-    // Fix wave finding 1 -- see the module-level comment above -- made
-    // this a parseable JSON-RPC error instead of an HTML 500. N27
-    // (denyOnInvalidEnvelope) goes one step further: AGT's evaluation
-    // layer fails CLOSED (R1.5), and this catch is where that failure
-    // surfaces, so it is delivered as an honoured `deny` decision rather
-    // than a bare error, keeping it in §6.4's honoured path. An AGT
-    // EVALUATION failure is a deny; a DELIVERY failure is the host's
-    // negotiated posture, decided elsewhere and never merged with this.
+    // This produces a parseable JSON-RPC error rather than an HTML 500.
+    // denyOnInvalidEnvelope goes one step further: AGT's evaluation layer
+    // fails closed, and this catch is where that failure surfaces, so it is
+    // delivered as an honoured `deny` decision rather than a bare error,
+    // keeping it inside §6.4's honoured path. An AGT evaluation failure is a
+    // deny; a delivery failure is the host's negotiated posture, decided
+    // elsewhere and never merged with this.
     const message = toRepoRelativeMessage(error);
     // The same best-effort id `dispatch` reads for its own failure paths, off
     // the same raw body: a response the client cannot correlate is not a

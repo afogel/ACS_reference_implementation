@@ -210,22 +210,21 @@ export async function negotiateSessionConfig(
       request_id: requestId,
       timestamp: new Date().toISOString(),
       metadata: { agent_id: options.agentId, session_id: options.sessionId },
-      // ClientHello shape (handshake.json's $defs.ClientHello). Not schema-
-      // enforced on this method by the Guardian's own validateEnvelope
-      // (Task 5) today, but supplied honestly rather than left empty.
+      // ClientHello shape (handshake.json's $defs.ClientHello). Not
+      // schema-enforced on this method by the Guardian's own validateEnvelope
+      // today, but supplied honestly rather than left empty.
       //
-      // "Honestly" is the whole point of the field, and V4 (slice #5) is where
-      // it stopped being true and was fixed: this adapter builds BOTH step
-      // envelopes -- `buildEnvelope` has a request-shaped and a result-shaped
-      // hookmap entry, and the shipped Claude Code hookmap maps a hook to each
-      // -- while this list named the request method alone. Under-declaring here
-      // is the direction that breaks the exchange rather than merely
-      // misdescribing it: handshake.json defines the Guardian's
+      // "Honestly" is the whole point of the field: this adapter builds both
+      // step envelopes -- `buildEnvelope` has a request-shaped and a
+      // result-shaped hookmap entry, and the shipped Claude Code hookmap maps
+      // a hook to each -- so this list has to name both methods.
+      // Under-declaring here is the direction that breaks the exchange rather
+      // than merely misdescribing it: handshake.json defines the Guardian's
       // `methods_evaluated` as a "Subset of the client's methods_implemented",
       // so a Guardian that does evaluate result envelopes could not say so
       // without answering with a method this hello never offered.
       //
-      // Deliberately a property of the ADAPTER, not of one deployment's
+      // Deliberately a property of the adapter, not of one deployment's
       // hookmap: it says what this client can produce envelopes for, which is
       // what the field asks. A hookmap that maps fewer hooks emits fewer
       // methods and declares no less -- the Guardian narrows, per the sentence

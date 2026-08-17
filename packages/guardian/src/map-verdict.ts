@@ -45,18 +45,15 @@ type WrapMode = "array";
  * nothing, so `into` is still read from the mapping (not hardcoded) and
  * checked at synthesis time against the values this mapping can express.
  *
- * ONE STEM FOR "WHERE THE REWRITE LANDS" (PR #13 review). The two members'
- * land fields were `policy_target_argument` and `redaction_path` -- two
- * unrelated nouns for one slot, neither of which said it was the slot. They are
- * `into_argument` and `into_path` now, so `into` reads as the discriminant it is
- * and the field beside it says which thing of that shape, in the same words on
- * both rows.
+ * `into` is the discriminant, and the field beside it -- `into_argument` or
+ * `into_path` -- names the same kind of slot on both rows: which thing of
+ * that shape the rewrite lands in.
  *
- * V4 widened this from a single member to two the way that constraint requires
- * -- by adding a member and a CHECKED value for it, never by casting an
- * arbitrary `into` into the output key. `modified_content`, §6.3's third and
- * exclusive shape, is legal ACS and remains inexpressible here, which is the
- * gap the check keeps loud. */
+ * This type expresses exactly two rewrite shapes, each added only together
+ * with a checked value for its `into`, never by casting an arbitrary `into`
+ * into the output key. `modified_content`, §6.3's third and exclusive shape,
+ * is legal ACS and remains inexpressible here, which is the gap the check
+ * keeps loud. */
 type ModificationsRule =
   | {
       from: string;
@@ -180,7 +177,7 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * The $policy_target bound survives as ACS modifications.
  *
  * AGT's transform names the leaf it rewrote by the literal "$policy_target",
- * resolved against the manifest's intervention point FOR THAT POINT. The same
+ * resolved against the manifest's intervention point for that point. The same
  * verdict therefore means two different ACS edits depending on which gate
  * asked: at the request gate $policy_target is a tool argument, which ACS
  * expresses as parameter_overrides keyed by argument name; at the result gate
@@ -203,7 +200,7 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * mapping cannot name, or an `into` the code cannot build would all otherwise
  * become a `modify` the host has nothing to apply -- a rewrite reported as
  * applied while the original is delivered. The Guardian's evaluation catch
- * turns these into an honoured `deny` (§6.4, R1.5).
+ * turns these into an honoured `deny` instead (§6.4).
  *
  * Note what is NOT here: re-applying the substitution. `verdict.transform.value`
  * is already the finished string -- AGT's own rule applies the substitution

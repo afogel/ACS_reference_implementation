@@ -47,9 +47,9 @@ type HookmapHookEntryCommon = {
   tool_name: string;
   /**
    * This hook's own decision -> host-output mapping, consumed by
-   * `renderDecision` (N3) and never by this module.
+   * `renderDecision` and never by this module.
    *
-   * V4: per hook, not per hookmap. One host can expose several gates, and a
+   * Per hook, not per hookmap. One host can expose several gates, and a
    * gate's output shape is a property of the gate: a request gate answers with
    * a permission-style field, a result gate answers by replacing what a step
    * produced, and neither field exists on the other. One block shared by every
@@ -78,7 +78,7 @@ export type HookmapResultHookEntry = HookmapHookEntryCommon & {
 };
 
 /**
- * One hook's mapping onto an ACS method: S1's `hooks.<hookName>` entry.
+ * One hook's mapping onto an ACS method: the hookmap's `hooks.<hookName>` entry.
  *
  * Exactly one of `arguments` and `outputs`, spelled as an exclusive union --
  * each member declaring the other's keys as `?: never` -- rather than as one
@@ -92,7 +92,7 @@ export type HookmapResultHookEntry = HookmapHookEntryCommon & {
 export type HookmapHookEntry = HookmapRequestHookEntry | HookmapResultHookEntry;
 
 /**
- * S1 in full: one entry per hook, each mapping that hook onto an ACS method
+ * The hookmap in full: one entry per hook, each mapping that hook onto an ACS method
  * (consumed here) and onto the output its host reads back (consumed by
  * `renderDecision`, not by this module -- present on the entry type only so a
  * hookmap loaded whole, as `loadHookmap` does, round-trips without loss).
@@ -158,23 +158,22 @@ export type AcsRequestEnvelope = {
 const ACS_VERSION = "0.1.0";
 
 /**
- * EVERY hook's `decisions` block must declare at least `allow` and `deny`
+ * Every hook's `decisions` block must declare at least `allow` and `deny`
  * -- the only two decisions a delivery-failure posture
- * (applyFailurePosture, N6) ever produces -- and every entry each one DOES
- * declare must actually be renderable, not merely present. "Renderable"
+ * (`applyFailurePosture`) ever produces -- and every entry each one
+ * declares must actually be renderable, not merely present. "Renderable"
  * means shaped like render-decision.ts's own `DecisionRenderRule`: a
  * non-null object carrying a non-empty `output` block, every field of which
- * names its own source. Presence alone is not enough to guarantee that --
- * fix round 3 found the gap directly: `allow: null` still satisfies
- * `"allow" in decisions`, and then renderDecision throws on the non-object
- * entry; `allow: {}` also satisfies it and used to render an output whose
- * one field was `undefined`, which `JSON.stringify` then drops entirely --
- * stdout ends up with no decision in it at all, defeating "always a
- * decision on stdout" exactly as surely as a missing entry does, just more
- * quietly.
+ * names its own source. Presence alone is not enough to guarantee that:
+ * `allow: null` still satisfies `"allow" in decisions`, and then
+ * renderDecision throws on the non-object entry; `allow: {}` also satisfies
+ * it and renders an output whose one field is `undefined`, which
+ * `JSON.stringify` then drops entirely -- stdout ends up with no decision in
+ * it at all, defeating "always a decision on stdout" exactly as surely as a
+ * missing entry does, just more quietly.
  *
- * The minimum is applied PER HOOK (V4), because the posture answers a
- * delivery failure at whichever gate suffered it: a hook missing `allow` or
+ * The minimum is applied per hook, because the posture answers a delivery
+ * failure at whichever gate suffered it: a hook missing `allow` or
  * `deny` is a hook whose posture answer cannot be rendered, and one gate
  * having both says nothing about the other. A hook declaring no `decisions`
  * block at all is rejected here for the same reason, named, rather than
@@ -268,7 +267,7 @@ function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
   }
 }
 
-/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
+/** Loads and parses a hookmap YAML file (e.g. this deployment's claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
  * assertRenderableDecisions. */
@@ -285,21 +284,19 @@ export function loadHookmap(path: string): Hookmap {
  * that defines it, not duplicated in every host shim that needs the unwrapped
  * form.
  *
- * TAKES A REQUEST PAYLOAD, AND ONLY A REQUEST PAYLOAD (PR #13 review). It used
- * to take a whole envelope and answer the empty bag for a result one, on the
- * reasoning that a result payload has no arguments and that this is a fact
- * rather than a failure. The fact is true; the empty bag was the problem. Handed
- * to the apply step it made every result-gate `modify` fail closed as
- * `deny(modifications_invalid)` -- a deny where a redaction was asked for, which
- * is the one thing the result gate exists to do -- and it did so silently,
- * because an empty bag is a perfectly good value. `modificationDocumentOf` below
- * is the safe collaborator and the only one apply work goes through.
+ * Takes a request payload, and only a request payload. A result payload has
+ * no arguments, and answering an empty bag for one instead of refusing it
+ * would be a silent hazard: handed to the apply step, an empty bag is a
+ * perfectly good value, so every result-gate `modify` would fail closed as
+ * `deny(modifications_invalid)` -- a deny where a redaction was asked for,
+ * which is the one thing the result gate exists to do. `modificationDocumentOf`
+ * below is the safe collaborator and the only one apply work goes through.
  *
- * So the shape that produced that answer is now unrepresentable rather than
- * discouraged: the parameter is the request payload, `AcsToolCallResultPayload`
- * declares `arguments?: never`, and a caller reaching here with the wrong one
- * does not compile. It is not exported from the package barrel either -- leaving
- * the old verb on the public surface, beside a safe one, is how the next caller
+ * That shape is unrepresentable rather than merely discouraged: the
+ * parameter is the request payload, `AcsToolCallResultPayload` declares
+ * `arguments?: never`, and a caller reaching here with the wrong one does
+ * not compile. It is not exported from the package barrel either -- leaving
+ * this verb on the public surface beside a safe one is how the next caller
  * picks the wrong one.
  */
 function unwrapArguments(payload: AcsToolCallRequestPayload): Record<string, unknown> {
@@ -314,35 +311,33 @@ function unwrapArguments(payload: AcsToolCallRequestPayload): Record<string, unk
  * The ACS-side document a decision's §6.3 `modifications` pointers address --
  * for whichever of the two payload shapes this envelope carries.
  *
- * `modificationDocument`, not `modificationDocument` (PR #13 review): "target" was
- * doing three jobs on one path -- this function, the host-side output location,
- * and §6.3's own pointer targets -- so a reader met the word three times meaning
- * three things. What this answers with is a DOCUMENT: the JSON the pointers are
+ * Named `modificationDocumentOf` rather than `modificationTarget`: "target"
+ * is reserved for §6.3's own pointer targets and for the host-side output
+ * location, so a reader would meet the word three times meaning three
+ * things. What this answers with is a document: the JSON the pointers are
  * resolved against.
  *
- * A request payload's pointers address its ARGUMENTS: `/env/TOKEN` names an
+ * A request payload's pointers address its arguments: `/env/TOKEN` names an
  * argument field, so the document is the unwrapped bag above and the applied
  * result is a tool input the host can run.
  *
- * A result payload's pointers address the PAYLOAD ITSELF: the pointer for the
- * leaf that went out is `/outputs/0/value`, which names nothing inside an
- * arguments bag -- there isn't one at this step, and inventing one was never an
- * option (see `unwrapArguments`'s own note). Handing that function's honest
- * empty bag to the apply step made every result-gate `modify` fail closed as
- * `deny(modifications_invalid)`: not a leak, but a deny where a redaction was
- * asked for, which is the one thing the result gate exists to do. So the
- * document is the payload, and the pointer resolves against exactly the
- * structure the far end evaluated and named.
+ * A result payload's pointers address the payload itself: the pointer for
+ * the leaf that went out is `/outputs/0/value`, which names nothing inside
+ * an arguments bag -- there isn't one at this step, and inventing one was
+ * never an option (see `unwrapArguments`'s own note). So the document is the
+ * payload, and the pointer resolves against exactly the structure the far
+ * end evaluated and named.
  *
- * A shallow copy, never the payload object itself: the apply step returns a new
- * object but reads this one, and an envelope is also what the audit and envelope
- * logs record. Nothing downstream of a decision may reach back into the message
- * that asked for it (Global Constraint 4).
+ * A shallow copy, never the payload object itself: the apply step returns a
+ * new object but reads this one, and an envelope is also what the audit and
+ * envelope logs record. Nothing downstream of a decision may reach back
+ * into the message that asked for it.
  *
- * The applied result is NOT what a result-gate host delivers -- the ACS payload
- * carries one leaf where the host's own output object carries that leaf and its
- * siblings. Projecting the applied document back onto the host's shape is
- * result-output.ts's job, and the reason `HookmapOutputs.within` is declared.
+ * The applied result is not what a result-gate host delivers -- the ACS
+ * payload carries one leaf where the host's own output object carries that
+ * leaf and its siblings. Projecting the applied document back onto the
+ * host's shape is result-output.ts's job, and the reason
+ * `HookmapOutputs.within` is declared.
  */
 export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<string, unknown> {
   const { payload } = envelope.params;
@@ -356,7 +351,7 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
  * The payload half of an envelope, built from whichever of the two shapes the
  * hookmap entry declares.
  *
- * Branches on the entry's SHAPE, never on `acs_method`. The method is a string a
+ * Branches on the entry's shape, never on `acs_method`. The method is a string a
  * hookmap author types; branching on it would make a typo in it silently select
  * a payload shape, and the shape that actually matters is the one the entry's
  * own paths can build. `acs_method` stays what it has always been here: carried
@@ -388,16 +383,14 @@ function buildPayload(
   }
 
   if (argumentsPath !== undefined) {
-    // `arguments` is a SCALAR path, and V4 is what makes getting that wrong
-    // plausible: this entry type now has a sibling `outputs:` whose own paths
-    // are members of a MAP (`from` / `within`), so an author writing
-    // `arguments: {from: $.tool_input}` by analogy is a realistic hookmap
-    // typo rather than a hypothetical one. Unchecked it died inside
-    // `resolvePath` as a bare `TypeError: path.replace is not a function` --
-    // fail-closed, so never a fail-open, but naming neither the hook nor the
-    // member at fault, which every other check in this function does. The
-    // `outputs` branch below is type-checked member by member with
-    // hook-naming throws; this V1-era branch was the one that was not.
+    // `arguments` is a scalar path, while its sibling `outputs:` is a map of
+    // paths (`from` / `within`), which makes an author writing `arguments:
+    // {from: $.tool_input}` by analogy a realistic hookmap typo. Unchecked it
+    // dies inside `resolvePath` as a bare `TypeError: path.replace is not a
+    // function` -- fail-closed, so never a fail-open, but naming neither the
+    // hook nor the member at fault, which every other check in this function
+    // does. The `outputs` branch below is type-checked member by member with
+    // hook-naming throws; this is the one branch that is not.
     if (typeof argumentsPath !== "string") {
       throw new Error(
         `buildEnvelope: hookmap entry for hook "${event}" declares "arguments" as ` +

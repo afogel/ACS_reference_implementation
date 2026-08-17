@@ -7,29 +7,27 @@
  * `within`, and each `from:` under a payload's field map), and this module is
  * how all of them are read.
  *
- * ONE PARSER, BECAUSE THE RESERVED-SEGMENT POLICY IS A PROPERTY OF THE LANGUAGE
- * (PR #13 review). There were two resolvers for this notation:
- * `build-envelope.ts` had one with no reserved-segment guard, and
- * `result-output.ts` had a second one with the guard, whose own comment called
- * itself "the third place in this codebase to need it and the first without".
- * A guard that lives in whichever module last remembered it is a guard the next
- * module will not have -- and the failure it prevents is not a crash. A path
- * ending `__proto__` resolves through INHERITED lookup, so it satisfies every
- * "is it present?" check both sides make and then reads or writes prototype
- * machinery instead of a field the host produced. On the reading side that
- * silently hands `Object.prototype` to a caller expecting a tool's value.
+ * One parser, because the reserved-segment policy is a property of the
+ * language rather than of any one caller. A guard that lived in whichever
+ * module last remembered it would be a guard the next module did not have
+ * -- and the failure it prevents is not a crash. A path ending `__proto__`
+ * resolves through inherited lookup, so it satisfies every "is it present?"
+ * check both sides make and then reads or writes prototype machinery
+ * instead of a field the host produced. On the reading side that silently
+ * hands `Object.prototype` to a caller expecting a tool's value.
  *
  * So the segments are refused here, where the notation is defined, and every
  * reader of it gets the refusal whether or not its author thought about it.
  *
- * PARSED ONCE, NEVER RE-JOINED. `resolveSegments` takes already-split segments
- * and nothing re-joins them into a string to look up again. That is a rule
- * rather than a preference, and result-output.ts's own history is why: a leaf
- * segment of `$raw` was READ as `raw` (a second parse strips the leading `$`)
- * while the replacement PATCHED `$raw`, so a type check inspected one field and
- * the write landed in another. Two parses of one path are two paths.
+ * Parsed once, never re-joined. `resolveSegments` takes already-split
+ * segments and nothing re-joins them into a string to look up again. That is
+ * a rule rather than a preference: a leaf segment of `$raw` parsed a second
+ * time reads as `raw` (a second parse strips the leading `$`), so a version
+ * that re-joined and re-split could type-check one field while patching a
+ * different one under a different name. Two parses of one path are two
+ * paths.
  *
- * R3.2: this module knows a path notation. Nothing about ACS, hosts, or policy.
+ * This module knows a path notation. Nothing about ACS, hosts, or policy.
  */
 
 /**

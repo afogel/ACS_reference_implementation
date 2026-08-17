@@ -152,17 +152,15 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
     expect(out.applied_input).toBeUndefined();
   });
 
-  // V4's C7 legalized this: the ACS result payload's redaction path is
-  // /outputs/0/value, so a Guardian must be able to address an array
-  // element. This test used to pin the opposite -- a blanket refusal of
-  // any multi-segment redaction that descended through an array -- because
-  // a naive write turns ["a","b"] into {"0":"[REDACTED]","1":"b"}, which is
-  // not the edit that was asked for and would reach the host as an object
-  // where it expects a list. The refusal is now conditional on the index
-  // being real (modifications.ts), so this is deliberately rewritten as
-  // the positive case rather than relaxed: checking only `decision` would
-  // pass with the array-safe write path deleted, the same weakness the
-  // comment below calls out for the reserved-segment tests.
+  // The ACS result payload's redaction path is /outputs/0/value, so a
+  // Guardian must be able to address an array element. A naive write turns
+  // ["a","b"] into {"0":"[REDACTED]","1":"b"}, which is not the edit that
+  // was asked for and would reach the host as an object where it expects a
+  // list -- so the refusal is conditional on the index being real
+  // (modifications.ts), and this test is deliberately the positive case
+  // rather than a relaxed one: checking only `decision` would pass with the
+  // array-safe write path deleted, the same weakness the comment below
+  // calls out for the reserved-segment tests.
   it("applies a redaction addressing an array element, and keeps the array an array", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { redactions: [{ path: "/items/0" }] } },
@@ -199,13 +197,12 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   // returned the arguments untouched and still reported `modify`. Same shape as
   // an absent target, one branch over.
   //
-  // AND THE REASON IS NOT THAT THIS APPLY STEP LACKS A MAPPING -- the sentence
-  // this comment used to carry, which the refusal itself no longer says. Both
-  // documents these pointers can address are field-addressed structures, and an
-  // opaque replacement string is a field of neither, so there is no target for it
-  // at EITHER gate. That claim is pinned at both: here for the arguments, and in
-  // the result-gate describe below for the outputs. Pinning it at one gate only
-  // would leave the word "either" resting on nothing.
+  // The reason is not that this apply step lacks a mapping. Both documents
+  // these pointers can address are field-addressed structures, and an opaque
+  // replacement string is a field of neither, so there is no target for it
+  // at either gate. That claim is pinned at both: here for the arguments, and
+  // in the result-gate describe below for the outputs. Pinning it at one gate
+  // only would leave the word "either" resting on nothing.
   it("denies a modify carrying only modified_content, for want of a target in an arguments object", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { modified_content: "echo [REDACTED]" } },
@@ -444,9 +441,9 @@ describe("validateDecision — everything else passes through", () => {
 });
 
 /**
- * V4. At a gate that sees what a step PRODUCED, the applied document still has
+ * At a gate that sees what a step produced, the applied document still has
  * to be projected onto the output object the host already holds -- and that
- * projection happens INSIDE this module's apply step, so a projection that
+ * projection happens inside this module's apply step, so a projection that
  * cannot land is the same `deny` as a rewrite that could not be applied.
  *
  * That placement is the property these tests exist for. Projecting after
@@ -518,22 +515,21 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
     expect(out.applied_output).toBeUndefined();
-    // The reason a human reads, and the defect this pins: `resolveModify` used to
-    // strip the class name for a `ModificationsInvalidError` and keep it for
-    // everything else, so a failed PROJECTION rendered as "guardian's
-    // modifications could not be applied: Error: result-output: ..." -- raw JS
-    // error text in the transcript and in the audit trail, which is the defect
-    // modifications.ts's own header records having fixed once already.
+    // The reason a human reads, and the defect this pins: rendering this
+    // error's `.toString()` instead of its `.message` for a failed
+    // projection would produce "guardian's modifications could not be
+    // applied: Error: result-output: ..." -- raw JS error text in the
+    // transcript and in the audit trail.
     expect(out.reasoning).toContain("guardian's modifications could not be applied: result-output:");
     expect(out.reasoning).not.toContain("Error:");
   });
 
-  // THE DIRECTION THAT IS ACTUALLY REACHABLE, and the reason the comparison in
+  // The direction that is actually reachable, and the reason the comparison in
   // `replacingOutput` cannot be replaced by a claim about ACS's types.
   // `Redaction.replacement?: string` is a TypeScript type on a value that arrives
   // over the wire, and nothing checks it at runtime -- so a Guardian sending a
   // number reaches the projection with a number for a string leaf. The mirror
-  // above (a non-string LEAF, `stdout: 42`) is the one this deployment cannot
+  // above (a non-string leaf, `stdout: 42`) is the one this deployment cannot
   // reach: `Bash`'s stdout is always prose, and a hookmap naming a leaf that is
   // not is refused by `assertOutputIsReplaceable` before a decision is sought.
   // This one needs no hookmap mistake at all, only a Guardian.
@@ -553,17 +549,18 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.reasoning).toContain("is a number where this tool produced a string");
   });
 
-  // THE HOLE IN THE GUARANTEE, and the reason nothing here re-joins segments into
-  // a path to look one up again. The type check used to read its value through
-  // `resolve(container, segments.join("."))`, which re-parses -- and the parse
-  // strips a leading `$`, because a hookmap path may start with one. So a leaf
-  // segment of `$raw` was READ as `raw` while the patch still landed on `$raw`:
-  // the guard inspected one field and the replacement went into another. Both
-  // fields are present below, with different types, which is what makes the
-  // mismatch visible: before the fix this returned a `modify` carrying
-  // `{raw: "prose", $raw: "TOKEN=[REDACTED]"}` -- prose where a boolean was, the
-  // exact shape the host discards while delivering the original, produced by the
-  // check that exists to prevent it.
+  // The hole in the guarantee, and the reason nothing here re-joins segments
+  // into a path to look one up again. A type check that read its value
+  // through `resolve(container, segments.join("."))` would re-parse -- and
+  // the parse strips a leading `$`, because a hookmap path may start with
+  // one. So a leaf segment of `$raw` would read as `raw` while the patch
+  // still landed on `$raw`: the guard would inspect one field and the
+  // replacement would go into another. Both fields are present below, with
+  // different types, which is what makes the mismatch visible: re-joining
+  // and re-parsing would return a `modify` carrying `{raw: "prose", $raw:
+  // "TOKEN=[REDACTED]"}` -- prose where a boolean was, the exact shape the
+  // host discards while delivering the original, produced by the check that
+  // exists to prevent it.
   it("type-checks the field it patches, not one a re-parsed path resolves to", () => {
     const out = validateDecision(REDACT, {
       ...FRESH,
@@ -637,18 +634,18 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.reason_codes).toContain("modifications_invalid");
   });
 
-  // THE ONE THE PROJECTION COULD NOT NOTICE BY FAILING, because it does not
+  // The one the projection could not notice by failing, because it does not
   // fail. `/exit_status` is a field the ACS result payload really has, so §6.3's
   // apply step honours the redaction exactly as written; but the ACS payload
-  // carries ONE leaf of the host's output object, and this rewrite went
+  // carries one leaf of the host's output object, and this rewrite went
   // somewhere else in the payload. The projection then builds a replacement out
   // of the untouched leaf and hands back the object the host already holds --
   // a `modify` reported as applied, an audit line recording a redaction, and the
   // original secret delivered to the model.
   //
-  // Detected by asking whether the rewrite REACHED the leaf this gate projects,
+  // Detected by asking whether the rewrite reached the leaf this gate projects,
   // rather than by comparing the pointer against `/outputs/0/value`: a pointer
-  // comparison has to decide what an ANCESTOR pointer means (`parameter_overrides`
+  // comparison has to decide what an ancestor pointer means (`parameter_overrides`
   // replacing the whole `outputs` array does land) and still cannot say whether
   // an ancestor edit reached the leaf. This asks the question the hazard is
   // actually about -- did what the model reads change -- and it cannot drift from
@@ -780,11 +777,12 @@ describe("validateDecision — the result gate projects the applied document ont
     });
   }
 
-  // The other refusal Task 8 owns, at THIS gate. It is already refused before
-  // any target is consulted (`assertValidModifications`), which is why this pins
-  // the sentence rather than the disposition: the refusal has to be true of the
-  // document these pointers actually address at a gate where the step has
-  // already run, and the earlier wording named an arguments object alone.
+  // The other refusal this gate owns. It is already refused before any
+  // target is consulted (`assertValidModifications`), which is why this pins
+  // the sentence rather than the disposition: the refusal has to be true of
+  // the document these pointers actually address at a gate where the step
+  // has already run, naming the outputs rather than an arguments object
+  // alone.
   it("denies a modified_content result modification, naming the outputs as well as the arguments", () => {
     const out = validateDecision(
       { decision: "modify", reasoning: "r", modifications: { modified_content: "wholesale replacement" } },
@@ -797,7 +795,7 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.reasoning).toContain("the outputs it produced");
     // "no target", not "no mapping in this adapter" -- the fact is about what
     // the two documents a step's pointers address can hold, which is why it is
-    // true at both gates and not only at the one V3 measured.
+    // true at both gates, not only one of them.
     expect(out.reasoning).toContain("no target for it at either gate");
   });
 });

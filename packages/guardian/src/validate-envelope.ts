@@ -123,13 +123,13 @@ export type ToolCallRequestEnvelope = Omit<AcsRequestEnvelope, "method" | "param
 };
 
 /**
- * hooks/tool-call-result.json's payload shape -- V4's second ACS method, the
- * result gate. That schema requires exactly `tool`, `exit_status` and
- * `outputs`: a DIFFERENT member set from the request payload, not the request
- * payload plus extras. There is no `arguments` here and none is invented --
- * the wire cannot supply them at this step, and correlation back to the
- * originating request runs through the optional `request_id_ref` (V6's session
- * chain), not through carrying state forward.
+ * hooks/tool-call-result.json's payload shape -- the result gate's own ACS
+ * method. That schema requires exactly `tool`, `exit_status` and `outputs`: a
+ * different member set from the request payload, not the request payload
+ * plus extras. There is no `arguments` here and none is invented -- the wire
+ * cannot supply them at this step, and correlation back to the originating
+ * request runs through the optional `request_id_ref`, not through carrying
+ * state forward.
  */
 export type ToolCallResultPayload = {
   tool: { name: string; version?: string; provider?: string };
@@ -314,7 +314,7 @@ export function isToolCallRequest(envelope: AcsRequestEnvelope): envelope is Too
 }
 
 /**
- * The second ACS method's own predicate (V4), and the sibling of
+ * The second ACS method's own predicate, and the sibling of
  * `isToolCallRequest` above: same shape, its own method, its own narrow type.
  *
  * One predicate per hook payload, never one predicate answering for two

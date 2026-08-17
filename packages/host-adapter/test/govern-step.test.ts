@@ -7,13 +7,11 @@ import type { ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
 /**
- * `governStep` is the exchange that used to live inside
- * hosts/claude-code/acs-hook.ts, and the reason it moved is that slice V5's
- * second host would otherwise have had to reproduce it -- including the parts
- * where the fail-opens govern-step.ts's own header counts were closed -- the
- * count lives there, once, rather than being restated here to go stale
- * separately. So the properties are pinned HERE, at the
- * collaborator, and not only end to end through one host's subprocess
+ * `governStep` lives outside any host shim, so a second host reuses it
+ * without reproducing its fail-open guarantees -- those are documented once,
+ * in govern-step.ts's own header, rather than restated here to go stale
+ * separately. So the properties are pinned here, at the collaborator, and
+ * not only end to end through one host's subprocess
  * (hosts/claude-code/test/posture.test.ts, which still proves the whole thing
  * against a real Guardian).
  *
@@ -25,7 +23,7 @@ const ON_STEP: HookmapRequestHookEntry = {
   acs_method: "steps/toolCallRequest",
   tool_name: "$.tool_name",
   arguments: "$.tool_input",
-  // V4: a hook's decisions belong to the hook, so this fixture's one gate
+  // A hook's decisions belong to the hook, so this fixture's one gate
   // carries its own block.
   decisions: {
     allow: { output: { outcome: { value: "go" }, note: { from: "reasoning", type: "string" } } },
@@ -179,10 +177,9 @@ describe("governStep — the three failure stages name three different incidents
       sink,
       { config: NEGOTIATED("proceed"), failure: undefined },
       // A hookmap path that does not resolve against this payload:
-      // buildEnvelope throws. This case used to name a hook the hookmap has no
-      // entry for, which V4 moved out of the posture's reach entirely -- see the
-      // test below -- while leaving every other way a request can fail to be
-      // built exactly where it was.
+      // buildEnvelope throws. A hook with no hookmap entry at all is a
+      // different case, entirely outside the posture's reach -- see the test
+      // below.
       { hookmap: { ...hookmap, hooks: { OnStep: { ...ON_STEP, tool_name: "$.no_such_field" } } } },
     );
 
@@ -200,16 +197,9 @@ describe("governStep — the three failure stages name three different incidents
     expect(governed.decision.reasoning).toContain("no decision was ever sought");
   });
 
-  // V4, and the one behaviour the per-hook move deliberately changes -- a
-  // pre-existing fail-open closed, not a reclassification. Every render (the
-  // arriving decision's and the posture's) now goes through the hook's OWN
-  // decisions block, so a hook the hookmap does not map has nothing to express
-  // either answer through. Before the move there was one top-level block, in the
-  // shipped hookmap a PreToolUse-shaped one, so an unmapped hook WAS answered by
-  // the posture -- and that answer was rendered in the wrong gate's shape and
-  // written with exit 0. A deployment that had negotiated `deny` emitted a
-  // permission field at an event that does not read one: the host saw no
-  // decision, the step ran, and the audit said "blocked".
+  // Every render (the arriving decision's and the posture's) goes through the
+  // hook's own decisions block, so a hook the hookmap does not map has
+  // nothing to express either answer through.
   //
   // So it throws before this step is asked about or audited, and the caller
   // answers it the way it answers a hookmap that will not load (exit 2).
@@ -226,11 +216,11 @@ describe("governStep — the three failure stages name three different incidents
     expect(events).toEqual([]);
   });
 
-  // Review finding, and the guard's one real hole: `hookEventName` is
-  // host-supplied -- it arrives on the host's stdin -- and `hooks["toString"]`
-  // resolves to an inherited Object.prototype function, which is not
-  // `undefined`. With a bare index the guard PASSES for a prototype-named event,
-  // buildEnvelope throws (a function is not a hook entry), the posture writes
+  // The guard's one real hole: `hookEventName` is host-supplied -- it
+  // arrives on the host's stdin -- and `hooks["toString"]` resolves to an
+  // inherited Object.prototype function, which is not `undefined`. With a
+  // bare index the guard passes for a prototype-named event, buildEnvelope
+  // throws (a function is not a hook entry), the posture writes
   // `outcome: "proceeded"`, and only then does renderDecision throw -- the exact
   // durable false record the guard exists to prevent, reachable without touching
   // the hookmap at all. Asserted on the audit log rather than only on the throw,
@@ -311,21 +301,21 @@ describe("governStep — the three failure stages name three different incidents
 });
 
 /**
- * THE TWELFTH FAIL-OPEN, from the side that closes it. A `deny` at a result gate
- * withholds by carrying a replacement for the output, and building that
- * replacement can fail: a leaf that is not prose is a leaf no replacement can be
- * expressed for. Asked at the render, that failure arrived with the decision
- * already in hand and landed in the render stage's catch, so the delivery
- * posture answered it -- under `proceed`, the full unredacted output delivered,
- * the Guardian's deny dropped, and an audit entry saying the decision "was
- * honoured". Measured before the fix, with `outputs.from` on a boolean leaf and a
- * Guardian answering `deny`: exit 0, `outcome: "proceeded"`,
- * `failure.kind: "decision_unrenderable"`.
+ * A fail-open closed from the side that prevents it. A `deny` at a result
+ * gate withholds by carrying a replacement for the output, and building that
+ * replacement can fail: a leaf that is not prose is a leaf no replacement can
+ * be expressed for. Asked at the render instead, that failure would arrive
+ * with the decision already in hand and land in the render stage's catch, so
+ * the delivery posture would answer it -- under `proceed`, the full
+ * unredacted output delivered, the Guardian's deny dropped, and an audit
+ * entry saying the decision "was honoured". With `outputs.from` on a boolean
+ * leaf and a Guardian answering `deny`, that route produces exit 0,
+ * `outcome: "proceeded"`, `failure.kind: "decision_unrenderable"`.
  *
- * So it is asked before a decision is sought, and the assertions below are about
- * the ORDER as much as the refusal: a Guardian that was never called and an audit
- * log with nothing in it are what make "no decision was dropped" a property of
- * the control flow rather than of the message.
+ * So it is asked before a decision is sought, and the assertions below are
+ * about the order as much as the refusal: a Guardian that was never called
+ * and an audit log with nothing in it are what make "no decision was
+ * dropped" a property of the control flow rather than of the message.
  */
 describe("governStep — a result gate whose named output no replacement can be built for", () => {
   /** A Guardian that would answer `deny`, and records whether it was ever asked.

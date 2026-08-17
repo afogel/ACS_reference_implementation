@@ -62,13 +62,12 @@ describe("mapVerdict", () => {
     }
   });
 
-  // Fix wave finding 1 -- previously-deferred coverage gap: this throw path
-  // (require_policy_references marked true, but no policy_references could
-  // be synthesized) had no test. It's real: a "warn" verdict with no
-  // `reason` hits it directly, and it's exactly what the Guardian's
-  // evaluation-failure catch (server.test.ts) now has to survive without
-  // turning it into an HTML 500 or a silent decision.
-  it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
+  // This throw path (require_policy_references marked true, but no
+  // policy_references could be synthesized) is real: a "warn" verdict with
+  // no `reason` hits it directly, and it's exactly what the Guardian's
+  // evaluation-failure catch (server.test.ts) has to survive without turning
+  // it into an HTML 500 or a silent decision.
+  it("throws when require_policy_references is set but verdict.reason is empty", () => {
     expect(() => mapVerdict({ decision: "warn" }, m, "pre_tool_call")).toThrow(/require_policy_references/);
   });
 
@@ -219,22 +218,18 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
     ).toBeUndefined();
   });
 
-  // Fix round 2 -- round 1's finding was that `into` was declared, typed,
-  // and read by nobody. Widening `into` to test that directly let a value
-  // the code can't honour type-check and get built, which needed an
-  // `as AcsModifications` cast to compile -- a bad trade. `into` is instead a
-  // closed union of the shapes this mapping can build (two of them as of V4,
-  // one per gate), each widened by adding a CHECKED value and never a cast,
-  // and this test simulates what that cast was covering for: a mapping.yaml
-  // edit that loadMapping's unchecked `as Mapping` would let through
-  // unnoticed. The cast belongs here now -- the test is deliberately standing
-  // in for malformed YAML -- and proves the runtime rejects it loudly instead
-  // of silently misbuilding or disagreeing with the declaration.
+  // `into` is a closed union of the shapes this mapping can build (two of
+  // them, one per gate), each added by widening the union with a checked
+  // value and never by casting an arbitrary value into it. This test
+  // simulates a mapping.yaml edit that loadMapping's unchecked `as Mapping`
+  // would let through unnoticed, standing in for malformed YAML, and proves
+  // the runtime rejects it loudly instead of silently misbuilding or
+  // disagreeing with the declaration.
   //
-  // `modified_content` is the §6.3 shape this deployment does not build: it is
-  // a legal ACS modification and an illegal one HERE, which is exactly the
-  // gap between "the spec permits it" and "this mapping can express it" that
-  // the check exists to keep loud.
+  // `modified_content` is the §6.3 shape this deployment does not build: it
+  // is a legal ACS modification and an illegal one here, which is exactly
+  // the gap between "the spec permits it" and "this mapping can express it"
+  // that the check exists to keep loud.
   it("throws when mapping.yaml declares an into this mapping cannot express", () => {
     const withUnsupportedInto = {
       ...m,
@@ -256,14 +251,14 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
   });
 });
 
-// V4 (slice #5). The same AGT transform has to land in a DIFFERENT ACS
-// modification depending on which gate asked: the request gate rewrites a tool
-// argument (parameter_overrides, keyed by argument name) and the result gate
-// rewrites the result payload's own leaf (a redaction, keyed by JSON pointer).
-// So the synthesis moved out of `field_synthesis` and under each intervention
-// point in mapping.yaml -- the same table resolveInterventionPoint already
+// The same AGT transform has to land in a different ACS modification
+// depending on which gate asked: the request gate rewrites a tool argument
+// (parameter_overrides, keyed by argument name) and the result gate rewrites
+// the result payload's own leaf (a redaction, keyed by JSON pointer). The
+// synthesis lives under each intervention point in mapping.yaml rather than
+// in `field_synthesis` -- the same table resolveInterventionPoint already
 // reads -- and mapVerdict takes the point that decides which.
-describe("mapVerdict — the modifications synthesis is per intervention point (V4)", () => {
+describe("mapVerdict — the modifications synthesis is per intervention point", () => {
   const transformVerdict = {
     decision: "transform",
     reason: "redaction_applied",
@@ -299,28 +294,26 @@ describe("mapVerdict — the modifications synthesis is per intervention point (
 
   // mapping.yaml declares six methods with intervention points and gives two
   // of them a synthesis rule. A `transform` arriving at any of the others is a
-  // verdict this mapping cannot express, and it THROWS -- the Guardian's
-  // evaluation catch then turns that into an honoured `deny` (§6.4, R1.5, the
-  // evaluation-failure domain).
+  // verdict this mapping cannot express, and it throws -- the Guardian's
+  // evaluation catch then turns that into an honoured `deny` (§6.4).
   //
-  // What it must never do is answer with a `modify` carrying no modifications:
-  // §6 requires a MODIFY to carry them, and a MODIFY the host cannot apply is
-  // a rewrite reported as applied while the original is delivered -- the
-  // fail-open class this project has closed eleven times.
+  // What it must never do is answer with a `modify` carrying no
+  // modifications: §6 requires a `modify` to carry them, and one the host
+  // cannot apply is a rewrite reported as applied while the original is
+  // delivered.
   it("throws for a transform at a point with no modifications rule, rather than an empty modify", () => {
-    // Seven points, and THREE distinct kinds of gap, because they do not all
+    // Seven points, and three distinct kinds of gap, because they do not all
     // mean the same thing:
     //   - `input` / `output` / `agent_startup` / `agent_shutdown`: mapped to an
-    //     ACS method, given no synthesis rule. A property of this deployment --
-    //     a later slice could add a rule to any of them.
-    //   - `pre_model_call` / `post_model_call`: `acs_method: null` (D4, V7's red
-    //     cells). A point AGT supports that ACS v0.1.0 has no target for at all,
-    //     so there is nothing for a rule to describe. This is the one kind that
-    //     is a permanent property of the pinned SPEC VERSION rather than of this
-    //     deployment, and the most worth naming: it cannot be closed by writing
-    //     more mapping.
-    //   - `no_such_point`: no row names it. A missing row and a row missing its
-    //     rule reach the same `?.` and must not diverge.
+    //     ACS method, given no synthesis rule. A property of this deployment,
+    //     not of the spec.
+    //   - `pre_model_call` / `post_model_call`: `acs_method: null`. A point
+    //     AGT supports that ACS v0.1.0 has no target for at all, so there is
+    //     nothing for a rule to describe. This is a permanent property of
+    //     the pinned spec version rather than of this deployment, and the
+    //     most worth naming: it cannot be closed by writing more mapping.
+    //   - `no_such_point`: no row names it. A missing row and a row missing
+    //     its rule reach the same `?.` and must not diverge.
     for (const point of [
       "input",
       "output",

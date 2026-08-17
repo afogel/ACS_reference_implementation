@@ -1,10 +1,10 @@
 /**
  * §6.3's `modifications`: what makes one honourable, and what applying it
  * does to the ACS document that actually went out on the wire. Extracted from
- * validate-decision.ts (N7), which now sequences this job rather than owning
- * it.
+ * validate-decision.ts's `validateDecision`, which sequences this job rather
+ * than owning it.
  *
- * WHICH document that is belongs to the caller and never to this module (V4):
+ * Which document that is belongs to the caller and never to this module:
  * the arguments a step was asked to run with at a gate that decides whether it
  * runs, the result payload it produced at a gate that sees what it produced --
  * `modificationDocumentOf` is where the choice is made. Everything here is the same
@@ -26,7 +26,7 @@
  * report a successful `modify` while the original argument -- the
  * un-redacted one -- is what the host actually runs.
  *
- * R3.2: this module knows ACS's `modifications` shape and the ACS document its
+ * This module knows ACS's `modifications` shape and the ACS document its
  * pointers address, nothing else -- no policy-runtime vocabulary, no host
  * vocabulary, and no decision vocabulary either. What an unhonourable `modifications` means for
  * the *decision* is validate-decision.ts's sentence to say, which is why
@@ -300,15 +300,12 @@ export function assertValidModifications(
   // `modify`. Same shape as the empty-pointer and absent-target cases: a rewrite
   // reported as applied that was not applied. Fails closed here instead.
   //
-  // AND THE REASON IS NOT THAT THIS APPLY STEP LACKS A MAPPING. Both documents a
+  // The reason is not that this apply step lacks a mapping. Both documents a
   // step's modifications can address are field-addressed structures -- the
   // arguments it was asked to run with, and the outputs it produced -- and an
   // opaque replacement string is a field of neither, so there is no target for it
   // to be applied at. That is true at both gates and true independently of what
-  // this module can do. §V3's note read "this adapter has no mapping", which was
-  // the narrower claim and the only one one gate could support; V4 measured the
-  // result gate refusing it for the same reason, which is what upgrades the
-  // finding.
+  // this module can do.
   //
   // It is also not a gap in §6.3. `modified_content` is a legal disposition shape,
   // and a step whose payload IS an opaque body -- a document, a prompt, a message
@@ -325,7 +322,7 @@ export function assertValidModifications(
   }
 
   // Every redaction's entry and path is validated here, unconditionally --
-  // whether or not parameter_overrides is present (item 5 above).
+  // whether or not parameter_overrides is present.
   const redactionTargets = (mods.redactions ?? []).map((redaction) =>
     assertValidRedactionPath(assertValidRedactionEntry(redaction).path),
   );
@@ -407,13 +404,10 @@ export function assertValidModifications(
  *
  * Both of the last two claims -- every segment above is a real array index,
  * and nothing reaches the `{}` fallback -- are statements about the current
- * callers, NOT a guarantee about this function. If that assumption ever
+ * callers, not a guarantee about this function. If that assumption ever
  * stopped holding, the array branch's unguarded `Number(head)` is exactly
  * what would turn an unreal segment into a stray numeric-string-keyed write
- * instead of a caught error. An earlier version of this comment made the
- * fallback claim alone while two overlapping redaction paths reached it and
- * produced a partial rewrite reported as applied -- the exact shape this
- * module exists to reject. The fallback stays because this function is
+ * instead of a caught error. The fallback stays because this function is
  * total by construction and a future caller must not be able to make it
  * throw; do not upgrade this note back into a guarantee without a check
  * that earns it.
@@ -444,8 +438,8 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
 
 /**
  * Applies §6.3's `modifications` to `modificationDocument`, returning a new
- * object -- `modificationDocument` is never mutated (Global Constraint 4: a
- * later step reuses the same argument object that went out on the wire).
+ * object -- `modificationDocument` is never mutated, since a later step
+ * reuses the same argument object that went out on the wire.
  * Validates first (`assertValidModifications`, which also checks every
  * target against these same arguments); throws `ModificationsInvalidError`
  * rather than applying anything on a violation.

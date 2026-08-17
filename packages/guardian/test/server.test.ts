@@ -53,8 +53,8 @@ function toolCallEnvelope(command: string, overrides: { id?: number; requestId?:
   );
 }
 
-/** V4 (slice #5): the result gate's envelope, per hooks/tool-call-result.json
- * -- `tool`, `exit_status`, `outputs`, and no `arguments` at all. "Bash" is
+/** The result gate's envelope, per hooks/tool-call-result.json -- `tool`,
+ * `exit_status`, `outputs`, and no `arguments` at all. "Bash" is
  * registered in policy/manifest.yaml, so AGT evaluates the redact rule rather
  * than failing closed on an unknown tool. */
 function resultEnvelope(value: string, overrides: { id?: number; requestId?: string } = {}) {
@@ -1004,8 +1004,8 @@ describe("startGuardian binds loopback only", () => {
     }
   });
 });
-// V4 (slice #5): the second ACS method. Two gated branches, one predicate per
-// assembler -- so this block asserts both directions AND the fall-through. A
+// The second ACS method's gate. Two gated branches, one predicate per
+// assembler -- so this block asserts both directions and the fall-through. A
 // dispatch driven by the resolved intervention point alone, or by a single
 // predicate answering for both methods, passes the first test here and fails
 // the last two: mapping.yaml declares six methods with points and this
@@ -1029,12 +1029,12 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     expect(response.result?.reason_codes).toEqual(["redaction_applied"]);
     expect(response.result?.request_id).toBe(requestId);
 
-    // The pin V4 Task 3 deferred to Task 6, now that mapVerdict takes the
-    // intervention point: the redacted text lands as an ACS REDACTION on the
-    // result payload's own path, not as the request gate's parameter_overrides.
+    // Now that mapVerdict takes the intervention point, the redacted text
+    // lands as an ACS redaction on the result payload's own path, not as
+    // the request gate's parameter_overrides.
     //
-    // THIS IS THE ONLY TEST WHOSE ASSERTION SPANS BOTH DECLARATIONS THAT HAVE
-    // TO AGREE ABOUT THAT PATH, and that is what it is for. policy/manifest.yaml
+    // This is the only test whose assertion spans both declarations that
+    // have to agree about that path, and that is what it is for. policy/manifest.yaml
     // declares the leaf AGT rewrites ($.tool_result.outputs[0].value, its own
     // JSONPath over the snapshot); mapping.yaml declares the ACS pointer the
     // host applies the result to (/outputs/0/value). They address the same leaf

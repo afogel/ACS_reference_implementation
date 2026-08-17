@@ -13,7 +13,7 @@ import { validateDecision } from "../src/validate-decision.ts";
  * permission-style field at all. Nothing in the module under test knows any
  * of it.
  *
- * V4: the `decisions` block lives under the HOOK that asked, so this fixture
+ * The `decisions` block lives under the hook that asked, so this fixture
  * declares one hook and hangs its decisions off it. `renderDecision` is told
  * which hook it is rendering for, because a host with two gates renders a
  * different shape at each -- and it must not be able to answer one gate with
@@ -175,7 +175,7 @@ describe("renderDecision", () => {
     expect(() => renderDecision("BeforeTool", { decision: "allow" }, reserved)).toThrow(/addresses no field/);
   });
 
-  // V4: the lookup is per-hook, so a rule declared for ONE gate must not answer
+  // The lookup is per-hook, so a rule declared for one gate must not answer
   // the other. A hookmap declaring two hooks whose decisions render different
   // shapes is the whole reason the hook name is a parameter, and a lookup that
   // fell back to some other hook's block would render a request-gate permission
@@ -285,9 +285,8 @@ describe("renderDecision", () => {
 });
 
 /**
- * V4. The move's whole risk is a silent change to what `PreToolUse` renders,
- * and these are the exact outputs V1 and V3 pinned, restated against the
- * per-hook lookup: if moving the block changed any of them, this fails first.
+ * These are the exact outputs `PreToolUse` renders, restated against the
+ * per-hook lookup: if that lookup ever changed any of them, this fails first.
  *
  * `renderDecision` returns one flat object -- a dotted path lands under the
  * wrapper, a dotless one beside it -- and the shim adds `hookEventName`, so it
@@ -311,12 +310,12 @@ describe("renderDecision against the shipped hookmap, per hook", () => {
     expect(renderDecision("PreToolUse", result as never, real)).toEqual({ hookSpecificOutput: expected });
   });
 
-  // The reason field is the second half, and the asymmetry it closes is the one
-  // V3 closed for PreToolUse's `modify`: a rewrite is the only decision that
-  // changes what runs while the transcript says nothing. It is worse at this
-  // gate, because what the model reads IS the rewritten text -- without a reason
-  // the model is handed altered output with nothing saying it was altered, and
-  // may take `[REDACTED]` for the command's own answer.
+  // The reason field is the second half: a rewrite is the only decision that
+  // changes what runs while the transcript says nothing, and the same rule
+  // applies to PreToolUse's `modify`. It is worse at this gate, because what
+  // the model reads is the rewritten text -- without a reason the model is
+  // handed altered output with nothing saying it was altered, and may take
+  // `[REDACTED]` for the command's own answer.
   it("renders a PostToolUse modify as updatedToolOutput AND the reason for it, with no permissionDecision", () => {
     const output = renderDecision(
       "PostToolUse",
@@ -332,11 +331,11 @@ describe("renderDecision against the shipped hookmap, per hook", () => {
     });
   });
 
-  // Evidence 3: `block` alone does not suppress anything. Deny at this gate
-  // must ALSO replace the output, or it reports a suppression that did not
-  // happen -- the same "reported but never took effect" shape V3 found. The
-  // dotless `decision`/`reason` paths are what put those two beside the
-  // wrapper rather than inside it.
+  // `block` alone does not suppress anything. Deny at this gate must also
+  // replace the output, or it reports a suppression that did not happen --
+  // a rewrite reported but never taking effect. The dotless
+  // `decision`/`reason` paths are what put those two beside the wrapper
+  // rather than inside it.
   it("renders a PostToolUse deny as block AND a replacing output", () => {
     expect(
       renderDecision(
@@ -355,19 +354,19 @@ describe("renderDecision against the shipped hookmap, per hook", () => {
     });
   });
 
-  // C8. The clean result: nothing to change, so nothing is rendered. The
-  // `allow` entry declares one conditional field, so the RULE is non-empty
-  // (which assertRenderableDecisions still requires) while the OUTPUT is
-  // empty -- and an empty output at this gate means "deliver it unchanged",
-  // which is the honest answer once the tool has already run.
+  // The clean result: nothing to change, so nothing is rendered. The `allow`
+  // entry declares one conditional field, so the rule is non-empty (which
+  // assertRenderableDecisions still requires) while the output is empty --
+  // and an empty output at this gate means "deliver it unchanged", which is
+  // the honest answer once the tool has already run.
   it("renders a plain PostToolUse allow as nothing at all", () => {
     expect(renderDecision("PostToolUse", { decision: "allow" } as never, real)).toEqual({});
   });
 
-  // R1.2, and the symmetry with what V3 fixed for PreToolUse's allow: an
+  // The same requirement PreToolUse's allow answers, symmetrically: an
   // observe-only allow (AGT `warn`) carries a synthesized reasoning, and it
   // has to reach the transcript a human reads. `additionalContext` is the
-  // PostToolUse field for it (present in 2.1.227's schema, Evidence 1).
+  // PostToolUse field for it (present in 2.1.227's schema).
   it("renders an observe-only PostToolUse allow as additionalContext", () => {
     expect(
       renderDecision("PostToolUse", { decision: "allow", reasoning: "token pattern seen, not blocked" } as never, real),

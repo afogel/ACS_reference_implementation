@@ -84,19 +84,20 @@ describe("applyModifications — §6.3", () => {
     expect(Array.isArray((applied as { outputs: unknown }).outputs)).toBe(true);
   });
 
-  // The reason array descent was rejected in V3: a naive setAtPath rewrites
-  // the array as {"0": …}. That is not the edit that was asked for, and it
-  // would reach the host as an object where it expects a list.
+  // The reason array descent is rejected without a real index: a naive
+  // setAtPath rewrites the array as {"0": …}. That is not the edit that was
+  // asked for, and it would reach the host as an object where it expects a
+  // list.
   //
-  // The object path guards Global Constraint 4 (the caller's arguments are
-  // never mutated) twice over -- see "applies a depth-2 redaction..."
-  // above, which checks both the new value AND `original.env !==
-  // result.env`. Until this case, the array path guarded it zero times:
-  // `setAtPath`'s array branch clones with `target.slice()` before
-  // assigning the index, and a version that assigned into `target` itself
-  // would still produce the right VALUE here while silently corrupting the
-  // arguments object a later step reuses -- the exact defect class this
-  // module exists to close, just moved from the write to the clone.
+  // The object path guards that the caller's arguments are never mutated
+  // twice over -- see "applies a depth-2 redaction..." above, which checks
+  // both the new value and `original.env !== result.env`. The array path
+  // guards it here for the first time: `setAtPath`'s array branch clones
+  // with `target.slice()` before assigning the index, and a version that
+  // assigned into `target` itself would still produce the right value here
+  // while silently corrupting the arguments object a later step reuses --
+  // the exact defect class this module exists to close, just moved from
+  // the write to the clone.
   it("keeps an array an array, leaves its siblings alone, and does not mutate the original array", () => {
     const original = { outputs: [{ value: "a" }, { value: "TOKEN=ghp_REALSECRET" }] };
     const applied = applyModifications(original, {

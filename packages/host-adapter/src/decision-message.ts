@@ -49,23 +49,24 @@
 export type AcsDecision = { decision: string } & Record<string, unknown>;
 
 /**
- * An `AcsDecision` after N7 has had its last word on it: §6.3's rewrite applied
- * under the post-validation field name the hookmap renders from, and any expired
- * ask/defer outcome already substituted.
+ * An `AcsDecision` after `validateDecision` has had its last word on it:
+ * §6.3's rewrite applied under the post-validation field name the hookmap
+ * renders from, and any expired ask/defer outcome already substituted.
  *
- * TWO FIELDS, ONE PER GATE, because the two gates rewrite different things. A
- * gate that decides whether a step RUNS carries the applied arguments the host
- * is to run instead (`applied_input`); a gate that sees what a step PRODUCED
+ * Two fields, one per gate, because the two gates rewrite different things. A
+ * gate that decides whether a step runs carries the applied arguments the host
+ * is to run instead (`applied_input`); a gate that sees what a step produced
  * carries the replacing output the host is to deliver instead
  * (`applied_output`). A decision never carries both: which one is present is a
  * property of the hook that asked, and each gate's hookmap entry names the one
  * it renders from.
  *
- * Neither is an ACS wire field. They are what a decision looks like after this
- * side has honoured it -- the post-validation names the hookmap's `from:`
- * declarations point at, so a host renders an applied rewrite rather than the
- * `modifications` object that described it. V1 rendered the latter, and the
- * rewrite was reported and never took effect (R1.6).
+ * Neither is an ACS wire field. They are what a decision looks like after
+ * this side has honoured it -- the post-validation names the hookmap's
+ * `from:` declarations point at, so a host renders an applied rewrite
+ * rather than the `modifications` object that described it. Rendering the
+ * `modifications` object itself would report a rewrite that never actually
+ * took effect.
  */
 export type ValidatedAcsDecision = AcsDecision & {
   applied_input?: Record<string, unknown>;

@@ -197,8 +197,8 @@ describe("applyFailurePosture — a request that was never sent is not a deliver
   it("classifies it as host_configuration, not unknown", () => {
     const { sink, events } = recordingSink();
     applyFailurePosture({
-      // A buildEnvelope failure that can still reach this stage. V4 moved
-      // "hookmap has no entry for hook X" out of the posture's reach entirely
+      // A buildEnvelope failure that can still reach this stage. "hookmap has
+      // no entry for hook X" is out of the posture's reach entirely
       // (governStep throws on it and audits nothing, because the posture's own
       // answer could not be rendered either), so a fixture using that message
       // would be classifying a failure this stage never sees.

@@ -180,19 +180,18 @@ function rawRequestEnvelope(): unknown {
   };
 }
 
-// V4 (slice #5), N23's result-side sibling. Everything here is the
-// post_tool_call half of the pair the PR #10 review's ruling asked for: its
-// own envelope type, its own predicate, its own snapshot type, its own
-// assembler. Nothing in this block reads or widens the pre_tool_call half --
-// the two snapshots share no member but envelope.budgets.
+// The post_tool_call half of the pair: its own envelope type, its own
+// predicate, its own snapshot type, its own assembler. Nothing in this block
+// reads or widens the pre_tool_call half -- the two snapshots share no
+// member but envelope.budgets.
 describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   it("assembles the post-tool snapshot, synthesizing tool_call.name", () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope());
 
     // tool_call.name is synthesized from payload.tool.name. ACS's result
     // payload has no tool_call member of its own, and AGT resolves
-    // tool_name_from BEFORE policy runs -- without this the whole gate fails
-    // closed on every call (Evidence 5, pinned in test/redaction.test.ts).
+    // tool_name_from before policy runs -- without this the whole gate fails
+    // closed on every call, pinned in test/redaction.test.ts.
     expect(snapshot).toEqual({
       envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
       tool_call: { name: "Bash" },
@@ -200,9 +199,10 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
     });
   });
 
-  // C5. The wire cannot supply the arguments at this step, and pretending
-  // otherwise (by carrying the request's args forward) would be inventing
-  // state this slice does not have. Correlation via request_id_ref is V6's.
+  // The wire cannot supply the arguments at this step, and pretending
+  // otherwise, by carrying the request's args forward, would be inventing
+  // state this module does not have. Correlation would run through
+  // request_id_ref, which nothing here reads.
   it("carries no tool_call.args -- the result payload has none to carry", () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope());
 
@@ -211,8 +211,8 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
     expect(Object.keys(snapshot).sort()).toEqual(["envelope", "tool_call", "tool_result"]);
   });
 
-  // The same rule the request side applies to its arguments (C5): AGT reads
-  // raw values -- policy_target "$.tool_result.outputs[0].value" -- and ACS's
+  // The same rule the request side applies to its arguments: AGT reads raw
+  // values -- policy_target "$.tool_result.outputs[0].value" -- and ACS's
   // {value, provenance} wrapper does not survive into the snapshot.
   it("drops each output's provenance, keeping the raw value alone", () => {
     const snapshot = assemblePostToolCallSnapshot(
@@ -224,8 +224,8 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
     expect(snapshot.tool_result.outputs).toEqual([{ value: "TOKEN=ghp_ABCDEF123456" }]);
   });
 
-  // budgets.rego fails closed on a present-but-wrong-typed counter (V1's
-  // C-note), and that hazard is not specific to the request gate.
+  // budgets.rego fails closed on a present-but-wrong-typed counter, and that
+  // hazard is not specific to the request gate.
   it("always emits envelope.budgets with all four counters zeroed, as real zeros", () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope());
 

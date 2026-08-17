@@ -11,27 +11,16 @@
  * own stage directly, rather than a shim re-deriving which stage failed by
  * inspecting boolean flags after something has already gone wrong.
  *
- * That matters more here than it usually would, because this exchange is where
- * TWELVE separate fail-opens were found and closed across four slices, and every
- * one had the same shape: something throws, silently no-ops, or emits an output
- * the host does not recognise, so the tool call runs ungoverned and unaudited.
+ * This is the one place the following properties are guaranteed. Each guards
+ * against the same shape of fail-open -- something throws, silently no-ops, or
+ * emits an output the host does not recognise, so the tool call runs
+ * ungoverned and unaudited -- and each has a test that fails if it reopens:
  *
- * THE COUNT IS STATED HERE AND NOWHERE ELSE, deliberately. It is countable
- * rather than rhetorical -- each one is a distinct route to that shape, each was
- * measured before it was closed, and each has a test that fails if it reopens --
- * and three of the twelve are V4's, which is exactly how a number repeated in
- * two places goes stale in one of them: this header said "nine ... across three
- * slices" while the note at `assertOutputIsReplaceable` below said "the
- * twelfth". Both notes now point back here instead of carrying their own copy.
- *
- * The properties they cost, all of which this function is now the single place
- * to read:
- *
- *   - A decision that ARRIVED always outranks a posture. A response carrying
+ *   - A decision that arrived always outranks a posture. A response carrying
  *     both an `error` and a `result` that names a decision means a decision
  *     arrived. `GuardianClient.requestDecision` is the one place that
  *     judgement is made, and it is made before any posture is consulted.
- *   - An evaluation failure and a DELIVERY failure never merge. A `deny` the
+ *   - An evaluation failure and a delivery failure never merge. A `deny` the
  *     policy runtime produced -- including one it produced because its own
  *     evaluation failed -- is a decision, and travels the decision path. A
  *     silent Guardian or a dead transport is a delivery failure, and gets
@@ -48,10 +37,10 @@
  *     `proceed` that could not be audited is downgraded to `deny`. That is
  *     `applyFailurePosture`'s job, and every path here that has no decision
  *     goes through it -- there is no route to an output that skips it.
- *   - The audit entry names the RIGHT incident. "No request was ever built",
+ *   - The audit entry names the right incident. "No request was ever built",
  *     "a request went out and nothing came back", and "a decision arrived and
  *     this host could not express it" are three different incidents, filed
- *     under three `FailureStage`s. They are told apart by WHERE in this
+ *     under three `FailureStage`s. They are told apart by where in this
  *     function the failure was caught, not by re-reading flags after the fact:
  *     each stage has its own `try`, and each `catch` knows its own stage
  *     because that is the only stage it can be reached from.
@@ -63,10 +52,9 @@
  *     decision itself failed, which `loadHookmap` makes unreachable for a hook
  *     it does map (see `resolveByPosture` below) -- and all three are left as
  *     throws rather than repaired, because half an output is the one thing a
- *     governance hook must never write. The middle one is one of the fail-opens
- *     this header counts, and it is the ORDERING that closes it: asked any later
- *     it arrives with a decision in hand, and the posture answers a question the
- *     decision had already answered.
+ *     governance hook must never write. The middle one is closed by ordering:
+ *     asked any later it arrives with a decision in hand, and the posture
+ *     answers a question the decision had already answered.
  *
  * This module knows ACS and hookmaps, and nothing else: no policy-runtime
  * vocabulary, and no host vocabulary -- it never names a field of the output
@@ -179,8 +167,8 @@ export async function governStep({
   sessionId,
   audit,
 }: GovernStepInput): Promise<GovernedStep> {
-  // V4: every render below -- the arriving decision's and the posture's -- goes
-  // through the hook's OWN decisions block, so a hook this hookmap does not map
+  // Every render below -- the arriving decision's and the posture's -- goes
+  // through the hook's own decisions block, so a hook this hookmap does not map
   // has nothing to express either answer through. Checked before this step is
   // asked about or audited, because the alternative is worse than a throw:
   // letting it reach the posture would write an audit entry recording a
@@ -192,19 +180,11 @@ export async function governStep({
   // same class as a hookmap that will not load, and a caller answers it the same
   // way.
   //
-  // What this closes is not a reclassification, it is a fail-open that predates
-  // the per-hook move. Before it, `renderDecision` read one top-level block --
-  // in this deployment a PreToolUse-shaped one -- so an unmapped hook was
-  // answered by the posture and that answer was RENDERED IN THE WRONG GATE'S
-  // SHAPE and written with exit 0. A deployment that had negotiated `deny`
-  // emitted a permission field at an event that does not read one: the host saw
-  // no decision, the step ran, and the audit log recorded it as blocked.
-  //
   // `hasOwnProperty`, not a bare index: `hookEventName` is host-supplied (it
   // arrives on stdin), and `hooks["toString"]` resolves to an inherited
   // Object.prototype function, which is not `undefined`. A bare index therefore
   // passes this guard for a prototype-named event, `buildEnvelope` throws,
-  // `resolveByPosture` writes `outcome: "proceeded"`, and only THEN does
+  // `resolveByPosture` writes `outcome: "proceeded"`, and only then does
   // `renderDecision` throw -- the exact durable-false-record outcome this guard
   // exists to prevent, reachable without touching the hookmap. Same reasoning as
   // render-decision.ts's RESERVED_SEGMENTS and acs-hook.ts's `expectationFor`.
@@ -217,19 +197,19 @@ export async function governStep({
 
   const timeoutMs = session.config?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
-  // Which KIND of gate this hook is, read off the entry's own SHAPE and never
+  // Which kind of gate this hook is, read off the entry's own shape and never
   // off the event name -- the same rule `buildPayload` states for choosing a
   // payload shape, and for the same reason: an event name is a string a hookmap
   // author types, and branching on one would make a typo in it silently select
   // the wrong behaviour. An entry declaring `outputs` is a gate that sees what a
-  // step PRODUCED, so a decision there is answered by replacing that output;
-  // an entry declaring `arguments` is a gate that decides whether a step RUNS,
+  // step produced, so a decision there is answered by replacing that output;
+  // an entry declaring `arguments` is a gate that decides whether a step runs,
   // and has no output to replace.
   //
   // `?? undefined` because a hookmap is YAML: a key written with nothing after
   // it parses to null, which is a key present and unusable, not a key absent.
   //
-  // A bare index is safe HERE and only here: the guard above has already
+  // A bare index is safe here and only here: the guard above has already
   // established `hookEventName` is an own property of `hooks`, so this cannot
   // resolve to an inherited `Object.prototype` member the way the guard's own
   // lookup could have.
@@ -243,8 +223,9 @@ export async function governStep({
    *
    * One function rather than three call sites, because the three denies that can
    * reach a render here arrive by different routes -- one the policy runtime
-   * sent, one N7 substituted for a rewrite it could not apply, one a negotiated
-   * fail-closed posture produced -- and all three are withholdings. A route that
+   * sent, one `validateDecision` substituted for a rewrite it could not apply,
+   * one a negotiated fail-closed posture produced -- and all three are
+   * withholdings. A route that
    * rendered a block without a replacement would report a withholding that never
    * happened while the original output was delivered, and it would be the same
    * defect whichever route reached it.
@@ -265,8 +246,8 @@ export async function governStep({
    * posture, decided inside `applyFailurePosture`, so nothing here branches on
    * it and nothing here can forget to.
    *
-   * The RENDERING here cannot fail: `loadHookmap` does not merely check that
-   * `allow` and `deny` are present in EVERY hook's `decisions` block, it
+   * The rendering here cannot fail: `loadHookmap` does not merely check that
+   * `allow` and `deny` are present in every hook's `decisions` block, it
    * shape-checks every entry it accepts (`assertRenderableDecisions`), and
    * `applyFailurePosture` never returns any decision but those two -- and the
    * guard at the top of `governStep` has already established that this hook has
@@ -274,7 +255,7 @@ export async function governStep({
    * means the hookmap bypassed the loader -- which is the caller's problem to
    * fail loudly on, not something to paper over.
    *
-   * V4 adds one way this CAN throw, and it is not the rendering: a negotiated
+   * There is one way this can throw beyond the rendering itself: a negotiated
    * fail-closed `deny` at a result gate has to withhold the output, and building
    * the replacement that withholds it can fail (see `replacingOutput`). Exactly
    * one route reaches that, and it is the one route where a posture is consulted
@@ -317,10 +298,10 @@ export async function governStep({
   // shape, is a host-side configuration fault -- so the audit reasoning must not
   // blame a Guardian that was never contacted, which is what this stage records.
   //
-  // A hookmap with no entry for this event used to be listed here and no longer
-  // reaches this stage: the guard at the top of this function throws on it and
-  // audits nothing, because the posture's answer to it could not be rendered
-  // either (V4). Every other way `buildEnvelope` can fail still lands here.
+  // A hookmap with no entry for this event never reaches this stage: the guard
+  // at the top of this function throws on it and audits nothing, because the
+  // posture's answer to it could not be rendered either. Every other way
+  // `buildEnvelope` can fail still lands here.
   let envelope: AcsRequestEnvelope;
   try {
     envelope = buildEnvelope(hookEventName, payload, hookmap);
@@ -329,49 +310,48 @@ export async function governStep({
   }
 
   // Between the two stages, and deliberately in neither: at a gate that sees
-  // what a step PRODUCED, a decision has to be able to REPLACE that output, and
-  // this is where that is established -- once, before anything is asked of a
-  // Guardian and before anything is audited.
+  // what a step produced, a decision has to be able to replace that output,
+  // and this is where that is established -- once, before anything is asked
+  // of a Guardian and before anything is audited.
   //
-  // ONE OF THE FAIL-OPENS THIS MODULE'S HEADER COUNTS, AND IT IS CLOSED BY THIS
-  // ORDERING RATHER THAN BY ANY REPAIR HERE. Building the
-  // replacement is what a `deny` at a result gate withholds WITH (see
-  // `withResultOutput`), and it can fail -- a payload whose named leaf is not
-  // prose is a leaf no replacement can be expressed for at all. Asked at the
-  // render, where it used to be, that failure arrives with a decision already in
-  // hand and lands in the render stage's catch, so the deployment's delivery
-  // posture answers it: under `proceed` the FULL UNREDACTED OUTPUT is delivered,
-  // the Guardian's `deny` is dropped, and the audit entry says the decision "was
-  // honoured". That is both "a decision that ARRIVED always outranks a posture"
-  // (above) and "where it cannot express the edit in the host's shape it fails
-  // closed" made false on one route. Asked HERE there is no decision to drop and
-  // no record to falsify: the hookmap either can express a withholding for this
-  // payload or this deployment stops.
+  // This ordering is what closes a fail-open: building the replacement is
+  // what a `deny` at a result gate withholds with (see `withResultOutput`),
+  // and it can fail -- a payload whose named leaf is not prose is a leaf no
+  // replacement can be expressed for at all. Asked at the render instead,
+  // that failure would arrive with a decision already in hand and land in
+  // the render stage's catch, so the deployment's delivery posture would
+  // answer it: under `proceed` the full unredacted output would be
+  // delivered, the Guardian's `deny` dropped, and the audit entry would say
+  // the decision "was honoured" -- both "a decision that arrived always
+  // outranks a posture" and "where it cannot express the edit in the host's
+  // shape it fails closed" made false on that one route. Asked here there is
+  // no decision to drop and no record to falsify: the hookmap either can
+  // express a withholding for this payload or this deployment stops.
   //
-  // A throw rather than a posture, for the same reason the guard at the top of
-  // this function is one: a hookmap whose declared output this host cannot
-  // replace is a broken deployment, the same class as a hookmap that will not
-  // load, and a caller answers it the same way -- a loud, blocking stop. What
-  // stays with the posture is the OTHER failure: `buildEnvelope` failing above
-  // means the PAYLOAD does not carry what this hook's `outputs` block describes,
-  // which a host may cause legitimately by firing one hook for several tools, so
-  // it remains the deployment's own negotiated question.
+  // A throw rather than a posture, for the same reason the guard at the top
+  // of this function is one: a hookmap whose declared output this host
+  // cannot replace is a broken deployment, the same class as a hookmap that
+  // will not load, and a caller answers it the same way -- a loud, blocking
+  // stop. What stays with the posture is the other failure: `buildEnvelope`
+  // failing above means the payload does not carry what this hook's
+  // `outputs` block describes, which a host may cause legitimately by firing
+  // one hook for several tools, so it remains the deployment's own
+  // negotiated question.
   //
-  // WHAT SEPARATES THEM IS NOT WHOSE FAULT IT IS -- and an earlier version of
-  // this note claimed it was, calling a non-prose leaf "a permanent property of
-  // the tool's own output shape". That does not generalize, and it fails on the
-  // very case the paragraph above cites: for a hook mapped to several tools it is
-  // a property of ONE of them, and this refusal then blocks that tool's calls
-  // rather than the deployment's configuration. The separation is what each
-  // failure leaves this gate able to do. A payload with no such leaf leaves the
-  // gate with no ACS request either -- nothing was asked, so there is a posture's
-  // question to answer and answering it drops no decision. A leaf that is present
-  // and unpatchable leaves the gate able to ask and unable to act on any answer
-  // it gets, and no posture makes it patchable: the only choices there are
-  // stopping before asking, or asking and dropping what comes back. It stops.
-  // Over-blocking on the safe side, deliberately -- including for a decision that
-  // would have been an `allow` -- because the alternative is a policy decision
-  // arriving and being discarded.
+  // What separates them is what each failure leaves this gate able to do,
+  // not whose fault it is -- a non-prose leaf is not a permanent property of
+  // the tool's own output shape, since for a hook mapped to several tools it
+  // is a property of only one of them, and this refusal then blocks that
+  // tool's calls rather than the deployment's configuration. A payload with
+  // no such leaf leaves the gate with no ACS request either -- nothing was
+  // asked, so there is a posture's question to answer and answering it drops
+  // no decision. A leaf that is present and unpatchable leaves the gate able
+  // to ask and unable to act on any answer it gets, and no posture makes it
+  // patchable: the only choices there are stopping before asking, or asking
+  // and dropping what comes back. It stops. Over-blocking on the safe side,
+  // deliberately -- including for a decision that would have been an `allow`
+  // -- because the alternative is a policy decision arriving and being
+  // discarded.
   if (outputLocation !== undefined) {
     try {
       assertOutputIsReplaceable(outputLocation);
@@ -409,9 +389,10 @@ export async function governStep({
       return resolveByPosture(answer.failure, "delivery", envelope);
     }
 
-    // A decision arrived, so no posture may touch this step's outcome. N7 is
-    // the host's own last word on it -- §6.3's rewrite, and any expired
-    // ask/defer outcome -- and it substitutes only decisions, never failures.
+    // A decision arrived, so no posture may touch this step's outcome.
+    // `validateDecision` is the host's own last word on it -- §6.3's
+    // rewrite, and any expired ask/defer outcome -- and it substitutes only
+    // decisions, never failures.
     decision = validateDecision(answer.decision, { elapsedMs, modificationDocument, outputLocation });
   } catch (failure) {
     return resolveByPosture(failure, "delivery", envelope);

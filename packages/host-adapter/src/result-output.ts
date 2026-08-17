@@ -1,35 +1,38 @@
 /**
  * The result gate's replacing output: how a decision about what a step
- * PRODUCED reaches a host in a shape the host will actually accept.
+ * produced reaches a host in a shape the host will actually accept.
  *
- * THE ONE HAZARD THIS MODULE EXISTS FOR. A host that lets a hook replace a
+ * The hazard this module exists for: a host that lets a hook replace a
  * tool's output validates the replacement against that tool's own output
- * schema, and a replacement that does not match it is DISCARDED -- silently,
- * with the ORIGINAL delivered. Verified by hand against the first host wired to
- * this gate: a hook answering with the redacted text alone, as a bare string,
- * produced a warning line on stderr while the model received the real secret.
- * So a redaction is only a redaction if EVERY SIBLING FIELD SURVIVES.
+ * schema, and a replacement that does not match it is discarded silently,
+ * with the original delivered. Verified by hand against the first host wired
+ * to this gate -- a hook answering with the redacted text alone, as a bare
+ * string, produced a warning line on stderr while the model received the
+ * real secret. So a redaction is only a redaction if every sibling field
+ * survives.
  *
- * THE WAY THAT IS ACHIEVED, and there is deliberately only one: patch a CLONE
- * of the object the host handed us, at the path the hookmap named. Never
- * construct a new output object. That symmetry is the whole answer -- the shape
- * is preserved because it was never rebuilt, so a field this adapter has never
- * heard of survives exactly as well as one it has.
+ * The way that is achieved, and there is deliberately only one: patch a
+ * clone of the object the host handed us, at the path the hookmap named.
+ * Never construct a new output object. That symmetry is the whole answer --
+ * the shape is preserved because it was never rebuilt, so a field this
+ * adapter has never heard of survives exactly as well as one it has.
  *
- * WHY THE ACS DOCUMENT IS NOT SIMPLY HANDED BACK. The ACS result payload
- * carries ONE leaf -- `outputs[0].value`, the leaf S1's `outputs.from` named --
- * where the host's own output object carries that leaf and its siblings. §6.3's
- * pointers address the ACS payload (`/outputs/0/value`), and that is what they
- * are applied to; this module then projects the applied leaf back through
- * `outputs.from` into a clone of `outputs.within`. The two notations stay
- * deliberately separate: nothing here reinterprets an ACS pointer as a
- * host-side path, because the agreement that keeps them aligned is a
- * declaration the policy side owns, not a translation this side could check.
+ * The ACS document is not simply handed back, because the ACS result
+ * payload carries one leaf -- `outputs[0].value`, the leaf the hookmap's
+ * `outputs.from` names -- where the host's own output object carries that
+ * leaf and its siblings. §6.3's pointers address the ACS payload
+ * (`/outputs/0/value`), and that is what they are applied to; this module
+ * then projects the applied leaf back through `outputs.from` into a clone of
+ * `outputs.within`. The two notations stay deliberately separate: nothing
+ * here reinterprets an ACS pointer as a host-side path, because the
+ * agreement that keeps them aligned is a declaration the policy side owns,
+ * not a translation this side could check.
  *
- * R3.2: this module knows ACS's decision vocabulary, ACS's result payload
- * shape, and a hookmap's `outputs` block. It names no host field and no policy
- * runtime -- the field names in the object it clones are the host's own, copied
- * without being read, which is exactly what lets a second host reuse it.
+ * This module knows ACS's decision vocabulary, ACS's result payload shape,
+ * and a hookmap's `outputs` block. It names no host field and no policy
+ * runtime -- the field names in the object it clones are the host's own,
+ * copied without being read, which is exactly what lets a second host reuse
+ * it.
  */
 import type { HookmapOutputs } from "./build-envelope.ts";
 import { pathSegments, resolvePath, resolveSegments } from "./hookmap-path.ts";
@@ -43,35 +46,33 @@ import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
  * to look and the payload is what they are resolved against, and a caller
  * holding one without the other could not build a replacement at all.
  *
- * `HostOutputLocation`, not `HostOutputTarget` (PR #13 review). "Target" was
- * doing three jobs on one path -- the ACS document modifications apply to, this
- * host-side pair, and §6.3's own pointer targets -- so a reader met the word
- * three times meaning three things. The ACS side is now
- * `modificationDocumentOf`, this is a LOCATION (where the host keeps the output,
- * and how to address it), and "target" is left to mean what §6.3 means by it.
+ * Named `HostOutputLocation` rather than `HostOutputTarget`: "target" is
+ * reserved for what §6.3's own pointers address, and `modificationDocumentOf`
+ * already names the ACS side. This is a location -- where the host keeps the
+ * output, and how to address it -- not a target.
  */
 export type HostOutputLocation = {
   /** The raw host payload the hook was invoked with. */
   payload: Record<string, unknown>;
-  /** S1's `outputs` block for the hook that asked. */
+  /** The hookmap's `outputs` block for the hook that asked. */
   outputs: HookmapOutputs;
 };
 
 /**
  * What a result-gate `deny` puts in place of the output it withholds.
  *
- * A deny at this gate has to REPLACE the output, not merely report a block:
- * the tool has already run and its result has already formed, so a block on its
- * own injects a reason and suppresses nothing (verified directly -- the model
- * received the real stdout AND the block reason). The replacing output is the
- * half that actually withholds.
+ * A deny at this gate has to replace the output, not merely report a block:
+ * the tool has already run and its result has already formed, so a block on
+ * its own injects a reason and suppresses nothing (verified directly -- the
+ * model received the real stdout and the block reason). The replacing
+ * output is the half that actually withholds.
  *
- * Prose rather than an empty string, and prose that names policy rather than an
- * error: what lands here is read by a model that will otherwise conclude the
- * tool produced nothing and try again. WHY it was withheld travels separately,
- * in whatever field the hookmap points at the decision's own `reasoning` -- one
- * string per job, so a marker a reader might match on never carries text a
- * policy author wrote.
+ * Prose rather than an empty string, and prose that names policy rather than
+ * an error: what lands here is read by a model that will otherwise conclude
+ * the tool produced nothing and try again. Why it was withheld travels
+ * separately, in whatever field the hookmap points at the decision's own
+ * `reasoning` -- one string per job, so a marker a reader might match on
+ * never carries text a policy author wrote.
  */
 export const WITHHELD_OUTPUT = "[OUTPUT WITHHELD BY POLICY]";
 
@@ -91,7 +92,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * replacement from reaching back into the payload the host handed us -- which a
  * later step, the audit sink and the envelope log all still read.
  *
- * Every level must already BE there: unlike §6.3's own apply step this never
+ * Every level must already be there: unlike §6.3's own apply step this never
  * creates one. A path that has to invent a level is describing a field the tool
  * did not produce, and adding one is precisely the shape change that gets a
  * replacement declined and the original delivered. So it throws, and the caller
@@ -139,29 +140,28 @@ function patchedClone(
  *     an object or a list does not, and writing it would produce exactly the
  *     silently-discarded replacement this module exists to prevent.
  *
- *     BOTH DIRECTIONS OF THAT MISMATCH ARE REACHABLE, and the one reachable
- *     HERE is the replacement's, not the leaf's. An earlier version of this note
- *     leaned on "ACS types a redaction's `replacement` as a string" as though
- *     that were enforced: `Redaction.replacement?: string` is a TypeScript type
- *     on a value that arrives over the wire, and nothing checks it at runtime.
- *     A Guardian sending `{path: "/outputs/0/value", replacement: 42}` reaches
- *     this comparison with a number for a string leaf and gets
- *     `deny(modifications_invalid)` -- an arriving decision this gate cannot
- *     carry out, answered as a decision, which is what this comparison is for.
- *     The other direction, a leaf that is not prose, no longer reaches a
- *     decision at all: `assertOutputIsReplaceable` refuses the deployment for it
- *     before one is sought, because a leaf no replacement can be expressed for
- *     is not a decision to answer, it is a hookmap that could not carry one out.
+ *     Both directions of that mismatch are reachable, and the one reachable
+ *     here is the replacement's, not the leaf's. `Redaction.replacement?:
+ *     string` is a TypeScript type on a value that arrives over the wire, and
+ *     nothing checks it at runtime. A Guardian sending `{path:
+ *     "/outputs/0/value", replacement: 42}` reaches this comparison with a
+ *     number for a string leaf and gets `deny(modifications_invalid)` -- an
+ *     arriving decision this gate cannot carry out, answered as a decision,
+ *     which is what this comparison is for. The other direction, a leaf that
+ *     is not prose, no longer reaches a decision at all:
+ *     `assertOutputIsReplaceable` refuses the deployment for it before one is
+ *     sought, because a leaf no replacement can be expressed for is not a
+ *     decision to answer, it is a hookmap that could not carry one out.
  *
- * NONE OF THESE IS ASSUMED AWAY, and the path relation is now checked HERE
- * rather than inherited from `buildEnvelope`'s check on the raw strings. This
+ * None of this is assumed away: the path relation is checked here rather
+ * than inherited from `buildEnvelope`'s check on the raw strings. This
  * function is handed a payload and two paths; "some caller checked" is not a
  * property of a function, and on one live route it is not even true --
- * `resolveByPosture` calls this on the stage-"request" path, where `buildEnvelope`
- * failed and may have failed on exactly that check. What the caller contributes is
- * ORDER, not trust: `assertOutputIsReplaceable` runs every check below before a
- * decision is sought, so no failure here can reach a gate that is already holding
- * one.
+ * `resolveByPosture` calls this on the stage-"request" path, where
+ * `buildEnvelope` failed and may have failed on exactly that check. What the
+ * caller contributes is order, not trust: `assertOutputIsReplaceable` runs
+ * every check below before a decision is sought, so no failure here can
+ * reach a gate that is already holding one.
  */
 export function replacingOutput(location: HostOutputLocation, replacement: unknown): Record<string, unknown> {
   const { payload, outputs } = location;
@@ -173,16 +173,16 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
   const fromSegments = pathSegments(outputs.from);
   const withinSegments = pathSegments(outputs.within);
 
-  // `within`'s segments must BE the leading segments of `from`'s, checked
+  // `within`'s segments must be the leading segments of `from`'s, checked
   // segment-wise on the arrays the patch is actually applied through -- not
   // inferred from a count, and not borrowed from `buildEnvelope`'s check on the
   // raw strings. Those two are equivalent for every path pair this deployment
   // has, which is exactly why the derivation must not depend on it: the leaf's
-  // path is `from` minus `within`, and taking it by LENGTH alone is sound only
+  // path is `from` minus `within`, and taking it by length alone is sound only
   // while the prefix relation happens to hold. `resolveByPosture` calls this
-  // function on the stage-"request" path, where `buildEnvelope` FAILED -- possibly
-  // on that very check -- so "the caller established it" is untrue on the one
-  // route that most needs it to be true.
+  // function on the stage-"request" path, where `buildEnvelope` failed --
+  // possibly on that very check -- so "the caller established it" is untrue on
+  // the one route that most needs it to be true.
   if (!withinSegments.every((segment, index) => fromSegments[index] === segment)) {
     throw new Error(
       `result-output: hookmap paths ${JSON.stringify(outputs.from)} and ${JSON.stringify(outputs.within)} do ` +
@@ -228,34 +228,36 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
 }
 
 /**
- * Throws unless a replacing output can be built for this payload AT ALL --
- * asked, deliberately, by BUILDING one.
+ * Throws unless a replacing output can be built for this payload at all --
+ * asked, deliberately, by building one.
  *
- * WHY THIS IS ASKED BEFORE A DECISION IS SOUGHT, AND NOT WHERE THE
- * REPLACEMENT IS NEEDED. Every precondition `replacingOutput` reports is a
- * property of the payload and the hookmap alone -- an object to clone, a leaf
- * to patch, and a leaf whose own type prose can stand in for -- and not one of
- * them depends on which decision arrives. Asked once a decision is in hand,
- * a hookmap that fails any of them leaves the caller holding a `deny` it cannot
- * carry out, at the one point where the caller's only remaining answer is a
- * delivery-failure posture: `proceed` there delivers the unredacted output and
- * drops the decision, `deny` there blocks with nothing withheld. Both are the
- * shape this module exists to prevent, arrived at from the other side.
+ * This is asked before a decision is sought, rather than where the
+ * replacement is needed, because every precondition `replacingOutput`
+ * reports is a property of the payload and the hookmap alone -- an object to
+ * clone, a leaf to patch, and a leaf whose own type prose can stand in for --
+ * and not one of them depends on which decision arrives. Asked once a
+ * decision is in hand, a hookmap that fails any of them leaves the caller
+ * holding a `deny` it cannot carry out, at the one point where the caller's
+ * only remaining answer is a delivery-failure posture: `proceed` there
+ * delivers the unredacted output and drops the decision, `deny` there blocks
+ * with nothing withheld. Both are the shape this module exists to prevent,
+ * arrived at from the other side.
  *
- * So the question is asked first, where the only answer needed is a loud stop.
- * A hookmap that cannot express a withholding for the payload in hand is a
- * broken deployment, not a policy question -- the same class as a hookmap that
- * will not load -- and nothing has been asked of a policy runtime and nothing
- * has been audited at that point, so there is no decision to drop and no record
- * to falsify.
+ * So the question is asked first, where the only answer needed is a loud
+ * stop. A hookmap that cannot express a withholding for the payload in hand
+ * is a broken deployment, not a policy question -- the same class as a
+ * hookmap that will not load -- and nothing has been asked of a policy
+ * runtime and nothing has been audited at that point, so there is no
+ * decision to drop and no record to falsify.
  *
- * BY BUILDING ONE, rather than by re-stating what building one requires.
- * "A replacement can be built" and "here is what building a replacement needs"
- * are two sentences that can drift, and this check's whole value is that the
- * projection and its precondition cannot come apart. `WITHHELD_OUTPUT` is not a
- * stand-in either: it is the exact value the fail-closed path would have to
- * patch, so what is checked is the very projection that would be performed. The
- * clone is discarded -- the answer is in whether it could be made.
+ * It asks by building one, rather than by re-stating what building one
+ * requires. "A replacement can be built" and "here is what building a
+ * replacement needs" are two sentences that can drift, and this check's
+ * whole value is that the projection and its precondition cannot come apart.
+ * `WITHHELD_OUTPUT` is not a stand-in either: it is the exact value the
+ * fail-closed path would have to patch, so what is checked is the very
+ * projection that would be performed. The clone is discarded -- the answer
+ * is in whether it could be made.
  */
 export function assertOutputIsReplaceable(location: HostOutputLocation): void {
   replacingOutput(location, WITHHELD_OUTPUT);
@@ -265,92 +267,97 @@ export function assertOutputIsReplaceable(location: HostOutputLocation): void {
  * The applied ACS result payload, projected onto the host's own output object:
  * §6.3's rewrite, landed where the host reads it.
  *
- * `projectAppliedOutput`, not `appliedOutput` (PR #13 review). The old name was
- * the FIELD it fills -- `ValidatedAcsDecision.applied_output` -- while the
+ * Named `projectAppliedOutput` rather than `appliedOutput`: the old name was
+ * the field it fills -- `ValidatedAcsDecision.applied_output` -- while the
  * function projects the applied document onto the host's shape and then asks
  * whether the rewrite reached the leaf at all. Its sibling `applyModifications`
- * already means "apply §6.3", so two functions shared a stem while doing
- * different jobs, and neither name said which. The verb here is the projection;
- * the landing check is the question the projection has to answer before it can
- * claim to have landed, which is why it stays inside rather than beside.
+ * already means "apply §6.3", so two functions sharing a stem would do
+ * different jobs without either name saying which. The verb here is the
+ * projection; the landing check is the question the projection has to answer
+ * before it can claim to have landed, which is why it stays inside rather
+ * than beside.
  *
  * The leaf is read back from `outputs[0].value` -- the one place `buildEnvelope`
  * put it, from the same `outputs.from` path this projects it back through. The
  * two halves are symmetric on purpose: one path in the hookmap, one leaf on the
  * wire, one leaf patched back.
  *
- * Called from inside N7's apply step, so a throw here becomes
- * `deny(modifications_invalid)` -- the same answer as a rewrite that could not be
- * applied at all, for the same reason: a rewrite the host cannot land is a
- * rewrite that did not happen (R1.6), and reporting it as applied is the one
+ * Called from inside `resolveModify`'s apply step, so a throw here becomes
+ * `deny(modifications_invalid)` -- the same answer as a rewrite that could
+ * not be applied at all, for the same reason: a rewrite the host cannot land
+ * is a rewrite that did not happen, and reporting it as applied is the one
  * outcome that is worse than denying.
  *
- * AND THE LAST WAY A REWRITE CAN FAIL TO LAND IS BY LANDING SOMEWHERE ELSE,
- * which is the one failure the projection cannot report by failing -- because it
- * does not fail. §6.3's pointers address the whole ACS result payload, and that
- * payload has fields beside the one leaf this gate carries: a redaction of
- * `/exit_status` or `/tool/name`, or an override of `exit_status` or of `tool`
- * wholesale, is honourable, has a real target, and applies exactly as written.
- * (`parameter_overrides` keys are single top-level names, never pointers, so
- * `/tool/name` itself cannot be overridden -- only `tool` as a whole.)
- * `outputs[0].value` then comes back untouched, the projection patches the leaf
- * with the value already there, and the replacement is the object the host is
- * already holding. Measured: the host was handed the tool's own output, secret
- * and all, beside a decision reporting a redaction and an explanation saying so.
+ * The last way a rewrite can fail to land is by landing somewhere else,
+ * which is the one failure the projection cannot report by failing, because
+ * it does not fail. §6.3's pointers address the whole ACS result payload,
+ * and that payload has fields beside the one leaf this gate carries: a
+ * redaction of `/exit_status` or `/tool/name`, or an override of
+ * `exit_status` or of `tool` wholesale, is honourable, has a real target,
+ * and applies exactly as written. (`parameter_overrides` keys are single
+ * top-level names, never pointers, so `/tool/name` itself cannot be
+ * overridden -- only `tool` as a whole.) `outputs[0].value` then comes back
+ * untouched, the projection patches the leaf with the value already there,
+ * and the replacement is the object the host is already holding. Measured:
+ * the host was handed the tool's own output, secret and all, beside a
+ * decision reporting a redaction and an explanation saying so.
  *
- * SO THE QUESTION ASKED HERE IS WHETHER THE REWRITE REACHED THE LEAF, not
- * whether its pointer looked like the leaf's. Comparing pointers would have to
- * decide what an ANCESTOR pointer means -- an override replacing the whole
- * `outputs` array does reach the leaf, and does land (measured) -- and even then
- * it could only say the pointer covers the leaf, never that the value under it
- * changed, which is the half that catches an ancestor override carrying the
- * value already there (also measured). The comparison below asks the
- * projection's own inputs, so it cannot drift from the projection, which is
- * `assertOutputIsReplaceable`'s argument for probing by building rather than by
- * re-stating.
+ * So the question asked here is whether the rewrite reached the leaf, not
+ * whether its pointer looked like the leaf's. Comparing pointers would have
+ * to decide what an ancestor pointer means -- an override replacing the
+ * whole `outputs` array does reach the leaf, and does land (measured) --
+ * and even then it could only say the pointer covers the leaf, never that
+ * the value under it changed, which is the half that catches an ancestor
+ * override carrying the value already there (also measured). The comparison
+ * below asks the projection's own inputs, so it cannot drift from the
+ * projection, which is `assertOutputIsReplaceable`'s argument for probing by
+ * building rather than by re-stating.
  *
- * WHAT IT THEREFORE DOES NOT ASK IS WHETHER *EVERY* MODIFICATION LANDED, and the
- * difference is reachable. It asks about one leaf, so a `modifications` object
- * BUNDLING a leaf edit with a non-leaf one passes: the leaf changed, the non-leaf
- * edit was silently dropped, and the whole `modify` is reported applied.
- * Measured, all four -- a leaf redaction beside a `/exit_status` redaction, beside
- * an `exit_status` override, beside a `/tool/name` redaction, and an `outputs`
- * override carrying a second element that nothing projects. Each of those
- * non-leaf edits ALONE is correctly denied. No secret reaches the model (the leaf
- * redaction did land), so what this leaves is a false audit and transcript
- * record, not an unredacted delivery -- but it is a best-effort partial apply
- * reported as a full one, which modifications.ts's own header forbids, reached
- * one seam later than that header can see. Recorded rather than closed: the check
- * that would close it is per-modification and belongs in the apply step, where
- * both documents and every target are in hand, and it would close the request
- * gate's identical hole at the same time (see validate-decision.ts's own note).
- * `mapVerdict` emits exactly one redaction, so this bundle cannot produce it --
- * the same reachability class as the case this function DOES refuse, which is
- * exactly why neither is left to the bundle's good behaviour.
+ * What it therefore does not ask is whether every modification landed, and
+ * the difference is reachable. It asks about one leaf, so a `modifications`
+ * object bundling a leaf edit with a non-leaf one passes: the leaf changed,
+ * the non-leaf edit was silently dropped, and the whole `modify` is reported
+ * applied. Measured, all four -- a leaf redaction beside a `/exit_status`
+ * redaction, beside an `exit_status` override, beside a `/tool/name`
+ * redaction, and an `outputs` override carrying a second element that
+ * nothing projects. Each of those non-leaf edits alone is correctly denied.
+ * No secret reaches the model, since the leaf redaction did land, so what
+ * this leaves is a false audit and transcript record, not an unredacted
+ * delivery -- but it is a best-effort partial apply reported as a full one,
+ * which modifications.ts's own header forbids, reached one seam later than
+ * that header can see. Recorded rather than closed: the check that would
+ * close it is per-modification and belongs in the apply step, where both
+ * documents and every target are in hand, and it would close the request
+ * gate's identical hole at the same time (see validate-decision.ts's own
+ * note). `mapVerdict` emits exactly one redaction, so this bundle cannot
+ * produce it -- the same reachability class as the case this function does
+ * refuse, which is exactly why neither is left to the bundle's good
+ * behaviour.
  *
- * `===` IS EXACT FOR A PROSE LEAF, AND THAT IS A CALL-SITE INVARIANT, not a
- * property of this function. Every route through `governStep` passes
- * `assertOutputIsReplaceable` -- which refuses a leaf `WITHHELD_OUTPUT` is not
- * the same `typeof` as -- before a decision is sought, so the leaf reaching here
- * is a string and `===` is value equality. Stated as the invariant it is because
- * this module insists elsewhere that "some caller checked" is not a property of a
- * function, and because of what breaking it would cost: for an object leaf `===`
- * becomes REFERENCE equality, so a structurally identical replacement would read
- * as a change and be reported applied -- a fail-open, not merely a weak
- * comparison. Left stated rather than closed, the way `withResultOutput`'s
- * modify-throw is: a host with such a leaf needs this comparison taught about its
- * shape, the same way the projection would need teaching about arrays, and
- * neither is machinery for a case the preflight refuses first.
+ * `===` is exact equality for a prose leaf, and that is a call-site
+ * invariant rather than a property of this function. Every route through
+ * `governStep` passes `assertOutputIsReplaceable` -- which refuses a leaf
+ * `WITHHELD_OUTPUT` is not the same `typeof` as -- before a decision is
+ * sought, so the leaf reaching here is a string and `===` is value equality.
+ * Stated as the invariant it is because this module insists elsewhere that
+ * "some caller checked" is not a property of a function, and because of what
+ * breaking it would cost: for an object leaf `===` becomes reference
+ * equality, so a structurally identical replacement would read as a change
+ * and be reported applied -- a fail-open, not merely a weak comparison. Left
+ * stated rather than closed, the way `withResultOutput`'s modify-throw is: a
+ * host with such a leaf needs this comparison taught about its shape, the
+ * same way the projection would need teaching about arrays, and neither is
+ * machinery for a case the preflight refuses first.
  *
- * WHAT THIS REFUSES THAT A POLICY AUTHOR MIGHT NOT EXPECT: a redaction whose
- * `replacement` is the value the leaf already held. Nothing about it is
- * malformed and its pointer is the right one -- and it is refused anyway,
- * because what this gate can observe is the object the host will be handed, and
- * that object is the one the tool produced. A Guardian that wants the output
- * delivered as produced has `allow` for exactly that; a `modify` this host
- * cannot tell apart from one is not a rewrite it can report as applied. An
- * over-refusal on the safe side, deliberately, and the same side as the
- * preflight's.
+ * What this refuses that a policy author might not expect: a redaction
+ * whose `replacement` is the value the leaf already held. Nothing about it
+ * is malformed and its pointer is the right one -- and it is refused
+ * anyway, because what this gate can observe is the object the host will be
+ * handed, and that object is the one the tool produced. A Guardian that
+ * wants the output delivered as produced has `allow` for exactly that; a
+ * `modify` this host cannot tell apart from one is not a rewrite it can
+ * report as applied. An over-refusal on the safe side, deliberately, and
+ * the same side as the preflight's.
  */
 export function projectAppliedOutput(
   appliedDocument: Record<string, unknown>,
@@ -394,17 +401,17 @@ export function projectAppliedOutput(
  *   - `deny` gains a replacing output. Without it the rendered answer is a block
  *     with an empty wrapper -- a reported withholding that did not happen, while
  *     the secret is delivered. That covers a deny the policy runtime sent, a
- *     deny N7 substituted for a rewrite it could not apply, AND a deny a
- *     negotiated fail-closed posture produced: all three are withholdings, and
- *     one of them arriving unable to withhold would be the same defect by a
- *     different route.
- *   - `modify` is checked, not changed. Its replacement was built by N7's apply
- *     step, and a `modify` reaching a render without one would render an empty
- *     wrapper too -- a rewrite reported and never applied, R1.6's own failure.
- *     Unreachable while `validateDecision` is given this gate's location, which is
- *     why it is a throw and not a repair.
+ *     deny `resolveModify` substituted for a rewrite it could not apply, and a
+ *     deny a negotiated fail-closed posture produced: all three are
+ *     withholdings, and one of them arriving unable to withhold would be the
+ *     same defect by a different route.
+ *   - `modify` is checked, not changed. Its replacement was built by
+ *     `resolveModify`'s apply step, and a `modify` reaching a render without
+ *     one would render an empty wrapper too -- a rewrite reported and never
+ *     applied. Unreachable while `validateDecision` is given this gate's
+ *     location, which is why it is a throw and not a repair.
  *
- *     THE TWO HALVES ARE NOT GUARDED THE SAME WAY, and the asymmetry is worth
+ *     The two halves are not guarded the same way, and the asymmetry is worth
  *     knowing. The deny above cannot fail to build its replacement, structurally:
  *     `assertOutputIsReplaceable` establishes that before any decision is sought.
  *     This one rests on a call-site invariant instead -- that whoever hands this
@@ -412,7 +419,7 @@ export function projectAppliedOutput(
  *     broke, this throw would land in the render stage's catch and a delivery
  *     posture would answer a rewrite, which is exactly the shape the deny half no
  *     longer has. Left stated rather than closed: telling it apart from a
- *     legitimate hookmap gap, which the posture SHOULD answer, needs an error
+ *     legitimate hookmap gap, which the posture should answer, needs an error
  *     class, and that is machinery for a case one call site and one type already
  *     prevent.
  *   - everything else is returned untouched. An `allow` deliberately emits no

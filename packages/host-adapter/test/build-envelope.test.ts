@@ -27,8 +27,8 @@ const preToolUsePayload = {
 // Unread by buildEnvelope, which owns the `acs_method`/path half of a hook
 // entry -- present so a hookmap this file passes around is a whole one. The host
 // field names live in the output paths, which is render-decision.ts's business
-// (and no code's, in the adapter, above the path level). V4: per hook, because
-// the shape a host reads back is a property of the gate.
+// (and no code's, in the adapter, above the path level). Declared per hook,
+// because the shape a host reads back is a property of the gate.
 const PRE_TOOL_USE_DECISIONS = {
   allow: { output: { "hookSpecificOutput.permissionDecision": { value: "allow" } } },
   deny: {
@@ -157,12 +157,11 @@ describe("buildEnvelope", () => {
     expect(toSessionUuid("abc123")).not.toBe(toSessionUuid("xyz789"));
   });
 
-  // Was "PostToolUse" until V4 mapped it. Kept pointed at a hook this fixture
-  // genuinely does not map -- SessionStart is a real Claude Code hook and no
-  // slice wires it -- because the claim is about an UNMAPPED name, and a name
-  // the fixture now maps would go on throwing for an unrelated reason (its
-  // paths not resolving against a PreToolUse payload) while reading as
-  // coverage of this one.
+  // Kept pointed at a hook this fixture genuinely does not map -- SessionStart
+  // is a real Claude Code hook this hookmap does not wire -- because the claim
+  // is about an unmapped name, and a name the fixture now maps would go on
+  // throwing for an unrelated reason (its paths not resolving against a
+  // PreToolUse payload) while reading as coverage of this one.
   it("throws on an unmapped hook name, rather than defaulting or producing a partial envelope", () => {
     expect(() => buildEnvelope("SessionStart", preToolUsePayload, hookmap)).toThrow(/no entry for hook/);
   });
@@ -195,7 +194,7 @@ describe("buildEnvelope", () => {
     expect(() => validateEnvelope(envelope)).not.toThrow();
   });
 
-  describe("loadHookmap — every hook's decisions.allow and decisions.deny must be renderable (V3 fix round 1, item 1)", () => {
+  describe("loadHookmap — every hook's decisions.allow and decisions.deny must be renderable", () => {
     // Guards against the residual case a shim could otherwise only trust:
     // applyFailurePosture never returns anything but "allow" or
     // "deny", so a shim falling back to the posture because the ORIGINAL
@@ -218,7 +217,7 @@ describe("buildEnvelope", () => {
     // The `hooks` half every case below shares, and two renderable entries to
     // build cases out of. Named rather than repeated inline, because after
     // each decision entry gained a full `output` block the inline strings
-    // were longer than the assertions they set up. V4: `decisions` is indented
+    // were longer than the assertions they set up. `decisions` is indented
     // under the hook that owns it, so DECISIONS is its own fragment.
     const HOOKS =
       "host: claude-code\nhooks:\n  PreToolUse:\n    acs_method: steps/toolCallRequest\n    tool_name: $.tool_name\n    arguments: $.tool_input\n";
@@ -250,11 +249,10 @@ describe("buildEnvelope", () => {
       });
     });
 
-    // V4, and the whole point of the block moving: the minimum is per HOOK. A
-    // delivery failure is answered by the posture at whichever gate suffered it,
-    // so a second gate declaring no `deny` is a gate whose fail-closed answer
-    // cannot be rendered -- and the first gate having one says nothing about it.
-    // Before the move there was one block and this case could not exist.
+    // The minimum is applied per hook: a delivery failure is answered by the
+    // posture at whichever gate suffered it, so a second gate declaring no
+    // `deny` is a gate whose fail-closed answer cannot be rendered -- and the
+    // first gate having one says nothing about it.
     it("throws, naming the hook, when a SECOND hook's block is missing deny", () => {
       const secondHook =
         "  PostToolUse:\n    acs_method: steps/toolCallResult\n    tool_name: $.tool_name\n" +
@@ -334,23 +332,20 @@ describe("buildEnvelope", () => {
     });
   });
 
-  // `modificationDocumentOf`, not `unwrapArguments` (PR #13 review). The
-  // unwrapping verb is module-private now and takes a request payload, so the
-  // shape these used to pin -- an envelope with no arguments answered with the
-  // empty bag -- is unrepresentable rather than merely discouraged. What is
-  // public, and what apply work goes through, is the document collaborator.
-  // PR #13 review, Important. The hookmap path language had two resolvers: one
-  // here with no reserved-segment guard, and one in result-output.ts with the
-  // guard, whose own comment called itself "the third place in this codebase to
-  // need it and the first without". They are one collaborator now
-  // (hookmap-path.ts), so the guard is a property of the notation rather than of
-  // whichever module last remembered it.
+  // `modificationDocumentOf` is the public collaborator apply work goes
+  // through. `unwrapArguments` is module-private and takes a request payload
+  // only, so answering an empty bag for an envelope with no arguments is
+  // unrepresentable rather than merely discouraged.
   //
-  // The failure this closes on THIS side is not a crash. `$.tool_input.__proto__`
-  // resolves through INHERITED lookup, so it satisfies every "is it present?"
+  // The hookmap path language's reserved-segment guard lives in one
+  // collaborator (hookmap-path.ts), so it is a property of the notation
+  // itself rather than of whichever module remembers to apply it.
+  //
+  // The failure this closes on this side is not a crash. `$.tool_input.__proto__`
+  // resolves through inherited lookup, so it satisfies every "is it present?"
   // check and answers with `Object.prototype` -- which buildEnvelope then walks
   // as if it were the tool's own argument bag, putting prototype members on the
-  // wire as ACS arguments. Measured before the fix: an envelope whose
+  // wire as ACS arguments. Verified directly: an envelope whose
   // `arguments` carried the prototype's members, sent to a Guardian, and
   // governed as though the tool had asked for them.
   describe("a hookmap path naming a reserved segment", () => {
@@ -406,8 +401,8 @@ describe("buildEnvelope", () => {
     });
 
     it("does not reach back into the envelope it read", () => {
-      // Global Constraint 4: the apply step reads this document, and an
-      // envelope is also what the audit and envelope logs record.
+      // The apply step reads this document, and an envelope is also what
+      // the audit and envelope logs record.
       const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
       const envelope = buildEnvelope("PreToolUse", preToolUsePayload, parsed);
 
@@ -424,7 +419,7 @@ describe("buildEnvelope", () => {
       hook_event_name: "PostToolUse",
       tool_name: "Bash",
       tool_input: { command: "cat .env" },
-      // The real shape, captured from Claude Code 2.1.227 (Evidence 2).
+      // The real shape, captured from Claude Code 2.1.227.
       tool_response: {
         stdout: "TOKEN=ghp_ABCDEF123456",
         stderr: "",
@@ -463,14 +458,14 @@ describe("buildEnvelope", () => {
     });
 
     // The document a result-gate pointer is resolved against is the result
-    // PAYLOAD, never an arguments bag. `/outputs/0/value` names nothing in one,
-    // and there are no arguments at this step -- so answering with the empty
-    // bag, which is what the old `unwrapArguments` did here, made every
-    // result-gate `modify` fail closed as `deny(modifications_invalid)`: a deny
-    // where a redaction was asked for, which is the one thing this gate exists
-    // to do. That branch is now unrepresentable rather than tested against
-    // (PR #13 review): the unwrapping verb takes a request payload and does not
-    // compile for this envelope. This pins the answer that replaced it.
+    // payload, never an arguments bag. `/outputs/0/value` names nothing in
+    // one, and there are no arguments at this step -- so answering with an
+    // empty bag instead would make every result-gate `modify` fail closed as
+    // `deny(modifications_invalid)`: a deny where a redaction was asked for,
+    // which is the one thing this gate exists to do. That shape is
+    // unrepresentable here: `unwrapArguments` takes a request payload and
+    // does not compile for this envelope. This test pins the answer this
+    // module gives instead.
     it("answers with the result payload itself, which is what a result-gate pointer addresses", () => {
       const envelope = buildEnvelope("PostToolUse", payload, hookmap);
 
@@ -481,13 +476,12 @@ describe("buildEnvelope", () => {
       expect(document).not.toBe(envelope.params.payload);
     });
 
-    // Review finding: every case above builds against the hand-written fixture,
-    // so the stanza actually SHIPPED was exercised by nothing. A YAML-level
-    // divergence between the two -- indentation, `exit_status` nested one level
-    // off -- would be invisible until the shim loaded the real file, and this
-    // project has already shipped a hookmap reshape that left one gate reading
-    // the old shape. No `validateEnvelope` here on purpose: it payload-checks
-    // steps/toolCallRequest only, until Task 3 teaches it the result payload.
+    // Every case above builds against the hand-written fixture, so the
+    // stanza actually shipped is exercised by nothing on its own. A
+    // YAML-level divergence between the two -- indentation, `exit_status`
+    // nested one level off -- would be invisible until the shim loaded the
+    // real file. This test builds from the shipped hookmap directly, to
+    // close that gap.
     it("builds the same result payload from the shipped claude-code.hookmap.yaml, not just the fixture", () => {
       const parsed = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
 
@@ -501,8 +495,8 @@ describe("buildEnvelope", () => {
       });
     });
 
-    // Global Constraint 4: a malformed hookmap entry throws, naming the hook.
-    // Never a default method, a default payload shape, or a partial envelope --
+    // A malformed hookmap entry throws, naming the hook. Never a default
+    // method, a default payload shape, or a partial envelope --
     // each of those hands the far end a step described wrongly, and a step
     // described wrongly is one governance cannot see what it is being asked
     // about.
@@ -532,17 +526,14 @@ describe("buildEnvelope", () => {
         expect(() => buildEnvelope("Broken", payload, broken)).toThrow(/"Broken" declares neither/);
       });
 
-      // V4 is what makes this typo plausible, which is why it is pinned now
-      // rather than left as a type the YAML never has to satisfy: the entry
-      // type gained a sibling `outputs:` MAP beside the scalar `arguments:`,
-      // so `arguments: {from: ...}` written by analogy is a realistic hookmap
-      // mistake. Before the check it died inside `resolvePath` as a bare
-      // `TypeError: path.replace is not a function` -- fail-closed, so not a
-      // fail-open, but the only throw in this function that named neither the
-      // hook nor the member at fault. The hook name is asserted explicitly
-      // here, not just the phrase, because three of the tests around this one
-      // originally claimed to name the hook and matched a pattern that did
-      // not.
+      // This typo is plausible because the entry type has a sibling
+      // `outputs:` map beside the scalar `arguments:`, so `arguments: {from:
+      // ...}` written by analogy is a realistic hookmap mistake. Unchecked it
+      // dies inside `resolvePath` as a bare `TypeError: path.replace is not a
+      // function` -- fail-closed, so not a fail-open, but the only throw in
+      // this function that named neither the hook nor the member at fault.
+      // The hook name is asserted explicitly here, not just the phrase,
+      // because the check's whole promise is naming the hook.
       it("throws, naming the hook, when `arguments` is a map rather than a path", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallRequest",
@@ -568,13 +559,13 @@ describe("buildEnvelope", () => {
         );
       });
 
-      // Review finding: `within` was the one declared member nothing checked,
-      // while the type makes it mandatory and Global Constraint 3 makes it
-      // load-bearing. An entry missing it built a clean envelope and the gap
-      // surfaced only at render, where the consequence is the host declining the
-      // replacement and delivering the ORIGINAL, unredacted output -- a
-      // redaction reported and never landed. Same reasoning, and same place, as
-      // assertRenderableDecisions checking what renderDecision will need.
+      // `within` is the one declared member nothing checks structurally,
+      // though the type makes it mandatory and losing it is load-bearing: an
+      // entry missing it builds a clean envelope and the gap surfaces only
+      // at render, where the consequence is the host declining the
+      // replacement and delivering the original, unredacted output -- a
+      // redaction reported and never landed. Same reasoning, and same place,
+      // as assertRenderableDecisions checking what renderDecision will need.
       it("throws, naming the hook, when `outputs` carries no `within` path", () => {
         const broken = withBrokenEntry({
           acs_method: "steps/toolCallResult",

@@ -2,7 +2,7 @@
  * renderDecision turns an ACS decision into the output its host expects --
  * without naming one field of that output anywhere in this module.
  *
- * The hookmap (S1) declares the whole shape. Each hook's own
+ * The hookmap declares the whole shape. Each hook's own
  * `decisions.<decision>` entry carries an `output` block whose keys are dotted
  * paths into the object the host reads, and whose values say where each field's
  * content comes from: a literal (`value:`) or a field of the arriving ACS
@@ -138,7 +138,7 @@ function place(output: HostOutput, path: string, value: unknown): void {
  *
  * `hookEventName` is the name of the hook that asked -- the same string
  * `buildEnvelope` was given -- and it selects the rule, because the shape a
- * host reads back is a property of the GATE, not of the host (V4). One host can
+ * host reads back is a property of the gate, not of the host. One host can
  * expose a gate that decides whether a step runs and a gate that sees what it
  * produced; the first answers with a permission-style field and the second by
  * replacing the output, and neither field exists on the other. A lookup that
