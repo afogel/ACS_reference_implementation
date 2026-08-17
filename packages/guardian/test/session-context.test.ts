@@ -51,17 +51,16 @@ describe("SessionContext — the hash chain", () => {
     expect(context.entries).toEqual([]);
   });
 
-  // `loadSessionContext` returns the chain alone, so intent and provenance
-  // are read off the aggregate the store holds. Two names, two widths,
-  // neither pretending to be the other.
+  // `loadSessionContext` returns the chain alone. Intent and provenance are
+  // read through their own verbs, one record wide each -- there is no reader
+  // that hands over all three at once.
   it("gives an unknown session an empty intent and the seeded labels", () => {
     const store = createMemorySessionContextStore();
-    const state = store.load("never-seen");
-    expect(state.intent).toBeUndefined();
+    expect(store.intent("never-seen")).toBeUndefined();
     // The lattice floor, not `[]`: `emptySessionState` seeds a fresh session
     // at `["public"]`, because AGT's own IFC gate denies a zero-label flow
     // outright.
-    expect(state.provenance.ifc_labels).toEqual(["public"]);
+    expect(store.provenance("never-seen").ifc_labels).toEqual(["public"]);
   });
 });
 
@@ -78,7 +77,7 @@ describe("the store is told its labels, and told nothing else", () => {
   it("leaves every other member of the provenance record alone", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.replaceIfcLabels("sess-a", ["secret"]);
-    const provenance = store.load("sess-a").provenance;
+    const provenance = store.provenance("sess-a");
     expect(provenance.provenance_id).toBe("acs:session:sess-a");
     expect(provenance.origin).toBe("system");
     expect(provenance.source_id).toBe("acs.guardian");
@@ -89,14 +88,14 @@ describe("Intent — immutable baseline per session", () => {
   it("records the first intent it is given", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.setIntent("sess-a", "ship the redaction slice");
-    expect(store.load("sess-a").intent?.text).toBe("ship the redaction slice");
+    expect(store.intent("sess-a")?.text).toBe("ship the redaction slice");
   });
 
   it("ignores every later intent, because the baseline is immutable", () => {
     const store = createMemorySessionContextStore({ now: at("2026-08-14T00:00:00.000Z") });
     store.setIntent("sess-a", "the baseline");
     store.setIntent("sess-a", "something else entirely");
-    expect(store.load("sess-a").intent?.text).toBe("the baseline");
+    expect(store.intent("sess-a")?.text).toBe("the baseline");
   });
 });
 

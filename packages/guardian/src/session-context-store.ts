@@ -3,17 +3,29 @@
  * the verbs that read and write it.
  *
  * `loadSessionContext` and `appendContextEntry` are a matched pair: the
- * reader and the writer of one chain. `loadSessionContext` returns exactly a
- * `SessionContext`; `load` returns the whole `SessionState` the store holds,
- * which is a wider thing with a wider name.
+ * reader and the writer of one chain.
  *
- * The store is told, not asked, about labels: the session's provenance
- * record is reachable only through `replaceIfcLabels` and `sourceLabels`, so
- * no caller has to load a session, spread its provenance record, and write
- * the whole thing back just to change one member. A verb that returned the
- * whole record for a caller to edit and replace would let that caller change
- * `origin` or `source_id` while meaning only to set labels, and would let the
- * code in `ifc-labels.ts` reach into fields it has no business touching.
+ * Three roles, split on one axis: does the Guardian's request path send this
+ * message? `SessionContextStore` is what `evaluateStep` uses and therefore
+ * what a stand-in for it has to answer -- every member of it is sent on a
+ * real step. The other two carry what nothing on that path sends yet.
+ * `SessionIntentStore` is S4, whose ACS wire `intent` object is unread, so
+ * its only senders are tests. `SessionProvenanceReader` is S5's whole record,
+ * of which the request path reads the labels and nothing else. Leaving those
+ * on the live role would make every stand-in answer questions production
+ * never asks, which is a documented affordance dressed up as a collaborator.
+ * The memory store implements all three, so nothing here is deleted or
+ * hidden; it is only off the interface the Guardian depends on until a
+ * request-path caller for it exists.
+ *
+ * Every read is one record wide. There is deliberately no `load` returning a
+ * whole `SessionState`: a verb that hands over the aggregate is the same wide
+ * surface on the way out that `putProvenance` was on the way in, and the
+ * aggregate is the memory store's own business rather than a message anyone
+ * is sent. On the write side the same rule holds and is stronger --
+ * `replaceIfcLabels` is told an array, so it changes labels and cannot
+ * express changing `origin` or `source_id`, and `ifc-labels.ts` cannot reach
+ * fields it has no business touching.
  *
  * `appendLine` is how the Inspector's session-context view sees the chain
  * without importing this package: the Guardian hands the store a line
@@ -26,8 +38,10 @@ import {
   emptySessionState,
   hashEntry,
   type IfcLabels,
+  type Intent,
   type SessionContext,
   type SessionContextEntry,
+  type SessionProvenance,
   type SessionState,
   type SessionStep,
 } from "./session-context.ts";
@@ -39,16 +53,35 @@ export {
   type SessionContext,
   type SessionContextEntry,
   type SessionProvenance,
-  type SessionState,
   type SessionStep,
 } from "./session-context.ts";
 
+/** What the Guardian's request path is told and asks on every step. */
 export interface SessionContextStore {
-  load(sessionId: string): SessionState;
+  context(sessionId: string): SessionContext;
   append(sessionId: string, step: SessionStep): SessionContextEntry;
-  setIntent(sessionId: string, text: string): void;
   replaceIfcLabels(sessionId: string, labels: IfcLabels): void;
   sourceLabels(sessionId: string): IfcLabels;
+}
+
+/**
+ * S4's pair, kept off `SessionContextStore` until something on the request
+ * path writes an intent. `createMemorySessionContextStore` implements it.
+ */
+export interface SessionIntentStore {
+  setIntent(sessionId: string, text: string): void;
+  intent(sessionId: string): Intent | undefined;
+}
+
+/**
+ * S5's whole record. The request path asks only for the labels, through
+ * `SessionContextStore.sourceLabels`, so this reader is what keeps the rest
+ * of the record observable -- specifically that `replaceIfcLabels` leaves
+ * `provenance_id`, `origin` and `source_id` as session birth wrote them.
+ * Without it that invariant would hold only by inspection.
+ */
+export interface SessionProvenanceReader {
+  provenance(sessionId: string): SessionProvenance;
 }
 
 export type CreateMemorySessionContextStoreOptions = {
@@ -64,7 +97,7 @@ export type CreateMemorySessionContextStoreOptions = {
  */
 export function createMemorySessionContextStore(
   options: CreateMemorySessionContextStoreOptions = {},
-): SessionContextStore {
+): SessionContextStore & SessionIntentStore & SessionProvenanceReader {
   const now = options.now ?? (() => new Date());
   const appendLine = options.appendLine;
   const sessions = new Map<string, SessionState>();
@@ -81,8 +114,8 @@ export function createMemorySessionContextStore(
   };
 
   return {
-    load(sessionId) {
-      return read(sessionId);
+    context(sessionId) {
+      return read(sessionId).context;
     },
 
     append(sessionId, step) {
@@ -116,6 +149,10 @@ export function createMemorySessionContextStore(
       sessions.set(sessionId, { ...state, intent: { text, recorded_at: now().toISOString() } });
     },
 
+    intent(sessionId) {
+      return read(sessionId).intent;
+    },
+
     replaceIfcLabels(sessionId, labels) {
       const state = ensure(sessionId);
       // Copied on the way in: the caller's array is the caller's, and a
@@ -137,12 +174,20 @@ export function createMemorySessionContextStore(
       // who casts.
       return [...read(sessionId).provenance.ifc_labels];
     },
+
+    provenance(sessionId) {
+      // Copied like the labels are, and for the same reason: the array inside
+      // this record is the stored one, and handing it out uncopied would let
+      // a reader edit S5 by editing what it was shown.
+      const stored = read(sessionId).provenance;
+      return { ...stored, ifc_labels: [...stored.ifc_labels] };
+    },
   };
 }
 
-/** The chain's reader, paired with `appendContextEntry`: returns the chain alone, not the whole session aggregate. */
+/** The chain's reader, paired with `appendContextEntry`. */
 export function loadSessionContext(store: SessionContextStore, sessionId: string): SessionContext {
-  return store.load(sessionId).context;
+  return store.context(sessionId);
 }
 
 /** Appends one step to this session's hash chain. */

@@ -134,8 +134,12 @@ re-measures against the shipped bundle.
 
 **S3 — the chain, and only the chain.** `packages/guardian/src/session-context.ts`
 declares `SessionContext` as a session id and its entries — S4 and S5 sit beside it on
-`SessionState`, the aggregate the store holds, rather than inside the type named for the
-chain. `loadSessionContext` returns the former; `store.load` returns the latter. The same
+`SessionState`, the aggregate the store holds internally, rather than inside the type
+named for the chain. `loadSessionContext` returns the former; nothing returns the latter.
+Each record has its own reader, one record wide — `context`, `intent`, `provenance`,
+`sourceLabels` — so no caller is handed all three at once, and the three live on roles
+split by whether the request path sends them (`SessionContextStore`, `SessionIntentStore`,
+`SessionProvenanceReader`). The same
 file declares
 `SessionContextEntry`, `GENESIS_HASH` (64 zeros, the `prev_hash` of a session's first
 entry), and `hashEntry`, whose digest covers the predecessor's hash, the session id, the
