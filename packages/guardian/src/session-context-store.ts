@@ -9,20 +9,22 @@
  * message? `SessionContextStore` is what `evaluateStep` uses and therefore
  * what a stand-in for it has to answer -- every member of it is sent on a
  * real step. The other two carry what nothing on that path sends yet.
- * `SessionIntentStore` is S4, whose ACS wire `intent` object is unread, so
- * its only senders are tests. `SessionProvenanceReader` is S5's whole record,
- * of which the request path reads the labels and nothing else. Leaving those
+ * `SessionIntentStore` carries the session's intent, whose ACS wire `intent`
+ * object is unread, so its only senders are tests.
+ * `SessionProvenanceReader` carries the whole provenance record, of which
+ * the request path reads the labels and nothing else. Leaving those
  * on the live role would make every stand-in answer questions production
  * never asks, which is a documented affordance dressed up as a collaborator.
  * The memory store implements all three, so nothing here is deleted or
  * hidden; it is only off the interface the Guardian depends on until a
  * request-path caller for it exists.
  *
- * Every read is one record wide. There is deliberately no `load` returning a
- * whole `SessionState`: a verb that hands over the aggregate is the same wide
- * surface on the way out that `putProvenance` was on the way in, and the
- * aggregate is the memory store's own business rather than a message anyone
- * is sent. On the write side the same rule holds and is stronger --
+ * Every read is one record wide. There is deliberately no reader returning a
+ * whole `SessionState`: handing over the aggregate is as wide a surface on
+ * the way out as handing over a whole record to edit and write back would be
+ * on the way in, and the aggregate is the memory store's own business rather
+ * than a message anyone is sent. On the write side the same rule holds and
+ * is stronger --
  * `replaceIfcLabels` is told an array, so it changes labels and cannot
  * express changing `origin` or `source_id`, and `ifc-labels.ts` cannot reach
  * fields it has no business touching.
@@ -65,8 +67,9 @@ export interface SessionContextStore {
 }
 
 /**
- * S4's pair, kept off `SessionContextStore` until something on the request
- * path writes an intent. `createMemorySessionContextStore` implements it.
+ * The intent pair, kept off `SessionContextStore` until something on the
+ * request path writes an intent. `createMemorySessionContextStore`
+ * implements it.
  */
 export interface SessionIntentStore {
   setIntent(sessionId: string, text: string): void;
@@ -74,7 +77,8 @@ export interface SessionIntentStore {
 }
 
 /**
- * S5's whole record. The request path asks only for the labels, through
+ * The whole provenance record. The request path asks only for the labels,
+ * through
  * `SessionContextStore.sourceLabels`, so this reader is what keeps the rest
  * of the record observable -- specifically that `replaceIfcLabels` leaves
  * `provenance_id`, `origin` and `source_id` as session birth wrote them.
@@ -178,7 +182,7 @@ export function createMemorySessionContextStore(
     provenance(sessionId) {
       // Copied like the labels are, and for the same reason: the array inside
       // this record is the stored one, and handing it out uncopied would let
-      // a reader edit S5 by editing what it was shown.
+      // a reader edit the stored record by editing what it was shown.
       const stored = read(sessionId).provenance;
       return { ...stored, ifc_labels: [...stored.ifc_labels] };
     },

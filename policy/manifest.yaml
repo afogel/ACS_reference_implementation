@@ -9,33 +9,31 @@ policies:
     # "policy/lib" here would join to ".../policy/policy/lib" and every
     # evaluation would hard-fail with runtime_error:policy_invocation_failed
     # (opa: no such file or directory) instead of allow/deny. No leading
-    # "./" either — see C2: OPA's bundle loader mis-derives the data mount
-    # path from a literal "/./ " segment and silently drops data.json.
+    # "./" either: OPA's bundle loader mis-derives the data mount path from
+    # a literal "/./" segment and silently drops data.json, which disables
+    # every rule while still answering allow.
     bundle: lib
     query: data.agt.defaults.verdict
 intervention_points:
   pre_tool_call:
-    # R1.6 -- this leaf's argument name ("command") must agree with
-    # mapping.yaml's intervention_points.pre_tool_call.modifications
-    # .into_argument, which is how AGT's transform ($policy_target)
-    # lands as ACS parameter_overrides. Derived and checked in
-    # test/path-dialects.test.ts, so the agreement is a failing test rather than
-    # a comment asking a reader to compare two files.
+    # This leaf's argument name ("command") must agree with mapping.yaml's
+    # intervention_points.pre_tool_call.modifications.into_argument, which is
+    # how AGT's transform ($policy_target) lands as ACS parameter_overrides.
+    # Derived and checked in test/path-dialects.test.ts, so the agreement is a
+    # failing test rather than a comment asking a reader to compare two files.
     #
-    # That key was under mapping.yaml's field_synthesis until V4 (slice #5),
-    # when the synthesis moved per-intervention-point: the same transform is a
-    # tool-argument override at this gate and a redaction at the result gate,
-    # so it could no longer live in one point-independent table. This is the
-    # FIRST of the two places mapping.yaml and this file touch -- see
-    # post_tool_call below for the second.
+    # That key sits per-intervention-point rather than in one shared table,
+    # because the same transform is a tool-argument override at this gate and
+    # a redaction at the result gate. This is the FIRST of the two places
+    # mapping.yaml and this file touch -- see post_tool_call below for the
+    # second.
     policy_target: "$.tool_call.args.command"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"
     policy:
       id: agt_stock
-  # V4 (slice #5). Additive: nothing evaluates this point until a
-  # steps/toolCallResult envelope arrives, and pre_tool_call above is
-  # unaffected -- pinned by this task's fourth test.
+  # Additive: nothing evaluates this point until a steps/toolCallResult
+  # envelope arrives, and pre_tool_call above is unaffected.
   #
   # The target indexes into the ACS payload's own `outputs` array, which
   # AGT's JSONPath supports directly (verified). `tool_name_from` is
@@ -44,17 +42,15 @@ intervention_points:
   # rule runs, so `assemblePostToolCallSnapshot` synthesizes it from the
   # payload's `tool.name`.
   #
-  # That is N23's result-gate sibling in
+  # That is the result-gate assembler in
   # packages/guardian/src/assemble-snapshot.ts, NOT
   # `assemblePreToolCallSnapshot` beside it: the two are separate functions
   # over separate envelope types, and only the result one can read a
-  # `tool.name` out of a result payload. This comment
-  # named `assembleSnapshot` while the sibling was still unnamed (V4 Task 1),
-  # and a reader following that pointer landed in the pre-tool assembler, where
-  # there is no `tool_result` in sight, and could only conclude the synthesis
-  # was missing.
+  # `tool.name` out of a result payload. A reader sent to the pre-tool
+  # assembler instead finds no `tool_result` in sight, and could only
+  # conclude the synthesis was missing.
   post_tool_call:
-    # R1.6, the result-gate half (V4, slice #5). This leaf must agree with
+    # The result-gate half. This leaf must agree with
     # mapping.yaml's intervention_points.post_tool_call.modifications
     # .into_path, which is how AGT's transform ($policy_target) lands as
     # an ACS redaction: the two address the SAME leaf in two notations --
@@ -65,22 +61,21 @@ intervention_points:
     # into_argument is for the request gate above: change one and the
     # other is wrong, and nothing in either FILE can tell.
     #
-    # test/path-dialects.test.ts is what tells (PR #13 review): it derives the
-    # ACS pointer from this JSONPath and fails if the two stop describing one
-    # leaf, for every point mapping.yaml gives a modifications rule. Before it,
-    # the agreement was three comments telling a reader to go and check another
+    # test/path-dialects.test.ts is what tells: it derives the ACS pointer
+    # from this JSONPath and fails if the two stop describing one leaf, for
+    # every point mapping.yaml gives a modifications rule. Before it, the
+    # agreement was three comments telling a reader to go and check another
     # file, which is a tax every new host or gate multiplies. The end-to-end
-    # test below still matters for what it covers, and it is no longer the only
-    # thing standing between an edit here and a demo that quietly stops
+    # test below still matters for what it covers, and it is no longer the
+    # only thing standing between an edit here and a demo that quietly stops
     # redacting.
     #
-    # That end-to-end test is packages/guardian/test/server.test.ts's result-gate
-    # redaction test: it evaluates through this manifest and asserts the pointer
-    # mapping.yaml supplies comes back on the wire, which makes it the only
-    # test whose assertion spans both halves. Moving this leaf also fails
-    # test/redaction.test.ts's bundle pin and two assemblePostToolCallSnapshot tests
-    # (measured), but those three assert AGT's raw verdict and cannot tell
-    # whether the ACS pointer still names the leaf AGT rewrote.
+    # That end-to-end test is packages/guardian/test/server.test.ts's
+    # result-gate redaction test: it evaluates through this manifest and
+    # asserts the pointer mapping.yaml supplies comes back on the wire, which
+    # makes it the only test whose assertion spans both halves. Moving this
+    # leaf fails other tests too, but those assert AGT's raw verdict and
+    # cannot tell whether the ACS pointer still names the leaf AGT rewrote.
     policy_target: "$.tool_result.outputs[0].value"
     policy_target_kind: tool_result
     tool_name_from: "$.tool_call.name"
@@ -91,27 +86,26 @@ tools:
     type: Tool
     id: run_shell
     security_labels: [shell]
-  # Task 8 addition: an unregistered tool_call.name fails AGT's own
-  # evaluation closed with a generic runtime_error:tool_unknown deny --
-  # discovered by Task 8's real host -> wire -> policy -> host test, which
-  # posts a real Claude Code PreToolUse envelope (tool.name "Bash", per
-  # Task 7's own fixture) through a live Guardian. "run_shell" above is
-  # AGT's own stock example name and stays for the existing bridge/guardian
-  # tests that fixture against it; "Bash" is Claude Code's actual tool name
-  # for shell execution and must be registered too for the real demo (Task
-  # 9) to evaluate real Claude Code payloads rather than fail closed on an
-  # unknown tool before the destructive-command pattern check ever runs.
+  # An unregistered tool_call.name fails AGT's own evaluation closed with a
+  # generic runtime_error:tool_unknown deny, before the destructive-command
+  # pattern check ever runs -- found by posting a real Claude Code
+  # PreToolUse envelope (tool.name "Bash") through a live Guardian.
+  # "run_shell" above is AGT's own stock example name and stays for the
+  # bridge and Guardian tests that fixture against it; "Bash" is Claude
+  # Code's actual tool name for shell execution, so it must be registered
+  # too for a real Claude Code payload to be evaluated rather than denied as
+  # an unknown tool.
   Bash:
     type: Tool
     id: Bash
     security_labels: [shell]
-  # V5 Task 5, fix round 1 (§V5 review, priority item): "bash" (lowercase) is
-  # OpenCode's own real tool name for shell execution -- measured on 1.18.15,
-  # distinct from Claude Code's "Bash" above -- and pre_tool_call's
-  # policy_target is evaluated by AGT before any rule runs, independent of
-  # which tool sent the request: an unregistered tool_call.name fails closed
-  # on runtime_error:tool_unknown, the identical mechanism the "Bash" entry
-  # above exists to avoid for host #1. Additive: registering it changes
+  # "bash" (lowercase) is OpenCode's own real tool name for shell execution
+  # -- measured on 1.18.15, distinct from Claude Code's "Bash" above -- and
+  # pre_tool_call's policy_target is evaluated by AGT before any rule runs,
+  # independent of which tool sent the request: an unregistered
+  # tool_call.name fails closed on runtime_error:tool_unknown, the identical
+  # mechanism the "Bash" entry above exists to avoid for Claude Code.
+  # Additive: registering it changes
   # nothing for any existing caller (measured, suite byte-identical with and
   # without this entry), and security_labels: [shell] is inert under this
   # manifest's own policy/lib/data.json config today -- carried only so
