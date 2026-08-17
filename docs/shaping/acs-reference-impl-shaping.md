@@ -532,7 +532,7 @@ flowchart TB
 | R1.7 — wire posture is negotiated, not hard-coded | N5/N14 negotiate it into S13/S15; N6/N15 apply it and audit every fail-open proceed to S14/S16. ⚠️ **The converse does not yet hold** — V4 measured an audit entry reading `outcome: "proceeded"` for a step the shim then **blocked** (exit 2), because the posture writes before a later seam refuses. "Every proceed is audited" is satisfied; "every audited proceed happened" is not. See §V4's watch-for; the repair is the audit sink's contract, not V4's |
 | R1.8 — mandatory fail-closed cases | N7/N16 |
 | R1.9 — a refusal denies regardless of posture | N6 reads the failure before it reads the posture: `classifyDeliveryFailure` names the refusal, and it resolves to `deny` without consulting S13's `on_decision_failure`. Closes the four codes N27 cannot address a decision to, from the host's own side |
-| R2.5/R2.6 — upstream divergence is a named failure | N45, N46 → N53 → U31 |
+| R2.5/R2.6 — upstream divergence is a named failure | N45, N46 → N53 → U31 names *what moved*, which is R2.6. ⚠️ **R2.5 asks for more than that chain delivers** — "shows up as a **failing case**" is a re-measurement, not a textual diff, and V8 planning found the chain answers only the second. The reachable half is re-asking V7's own schema question of `main`: the policy input the Guardian would send, validated against `main`'s `policy-input.schema.json`, which fails rather than diffs. The unreachable half is re-running the coverage matrix against `main`, since that evaluates through the AGT **Node SDK** and the SDK at `main` is not published to npm. R2.5 is therefore **partly** satisfied by V8; the matrix-against-`main` half is a slice of its own. See §V8 |
 
 ---
 
