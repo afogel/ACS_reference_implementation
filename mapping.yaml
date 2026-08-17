@@ -3,8 +3,8 @@
 # This file is the single source of truth for how an AGT verdict becomes an
 # ACS decision. It is read by two consumers that must never disagree:
 #   1. The runtime (packages/guardian/src/map-verdict.ts), at decision time.
-#   2. The conformance harness (V7), which publishes a machine-checked
-#      ACS↔AGT mapping table from this same file.
+#   2. The conformance harness (packages/conformance), which publishes a
+#      machine-checked ACS-to-AGT mapping table from this same file.
 #
 # Any change to the intervention_points / verdict / field_synthesis tables
 # below is a behavior change for both consumers. mapVerdict must implement
@@ -15,31 +15,32 @@ acs_version: "0.1.0"
 agt_version: "0.3.1-beta"
 
 # ACS intervention points AGT can be wired to. acs_method: null marks a
-# point AGT supports that ACS v0.1.0 has no equivalent for (D4).
+# point AGT supports that ACS v0.1.0 has no equivalent for.
 #
-# READ BY THE RUNTIME, not only by V7 (PR #10 review, Critical). The Guardian
+# READ BY THE RUNTIME, not only by the conformance harness. The Guardian
 # resolves the AGT intervention point for an arriving ACS method out of this
 # table (map-verdict.ts's resolveInterventionPoint, called from server.ts) --
 # it used to hardcode "pre_tool_call" while this table sat here claiming to be
 # the mapping, so the two could disagree and nothing would fail. Changing a
 # row below now changes which policy actually evaluates that method, which is
-# the only condition under which V7's published matrix can be trusted.
+# the only condition under which the published coverage matrix can be
+# trusted.
 #
 # One method must map to at most one point: two rows naming the same
 # acs_method is a throw, not a first-match win.
 #
-# `modifications` is per-point (V4, slice #5) because it is the one part of the
-# synthesis that depends on WHICH payload is being edited: the request gate
-# rewrites a tool argument, the result gate rewrites the result payload's own
-# leaf, and the two are different ACS modification shapes for the same AGT
-# transform. Everything else a verdict becomes is point-independent and stays
-# in field_synthesis below. A point with no `modifications` rule cannot express
-# a transform at all, and mapVerdict throws for one rather than answering with
-# a MODIFY the host has nothing to apply.
+# `modifications` is per-point because it is the one part of the synthesis
+# that depends on WHICH payload is being edited: the request gate rewrites a
+# tool argument, the result gate rewrites the result payload's own leaf, and
+# the two are different ACS modification shapes for the same AGT transform.
+# Everything else a verdict becomes is point-independent and stays in
+# field_synthesis below. A point with no `modifications` rule cannot express a
+# transform at all, and mapVerdict throws for one rather than answering with a
+# MODIFY the host has nothing to apply.
 intervention_points:
   pre_tool_call:
     acs_method: "steps/toolCallRequest"
-    # R1.6 -- AGT's transform verdict carries {path, value}, where path is the
+    # AGT's transform verdict carries {path, value}, where path is the
     # literal "$policy_target": the leaf the manifest's intervention point
     # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
     # as modifications.parameter_overrides keyed by argument name, per
@@ -84,12 +85,12 @@ intervention_points:
   agent_shutdown: { acs_method: "steps/sessionEnd" }
   input: { acs_method: "steps/userMessage" }
   output: { acs_method: "steps/agentResponse" }
-  pre_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
-  post_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
+  pre_model_call: { acs_method: null, note: "no ACS v0.1.0 method carries a model call, so this point is unexpressed at every verdict" }
+  post_model_call: { acs_method: null, note: "no ACS v0.1.0 method carries a model call, so this point is unexpressed at every verdict" }
 
-# AGT decision -> ACS decision. decision values are lowercase on the wire
-# (C7). require_policy_references marks a verdict for which a non-empty
-# policy_references is load-bearing (R1.2): it is what distinguishes an
+# AGT decision -> ACS decision. decision values are lowercase on the wire.
+# require_policy_references marks a verdict for which a non-empty
+# policy_references is load-bearing: it is what distinguishes an
 # observe-only allow (AGT warn) from a clean allow (AGT allow).
 verdicts:
   allow: { decision: allow }
@@ -98,7 +99,7 @@ verdicts:
   escalate: { decision: ask }
   transform: { decision: modify }
 
-# AGT carries no rule_id / reason_codes / reasoning (C6) — its verdict is
+# AGT carries no rule_id / reason_codes / reasoning — its verdict is
 # just {decision, reason, message, transform?, evidence?, result_labels?},
 # where `reason` is a single low-cardinality string and `message` is the
 # human-facing text. ACS's richer fields are synthesized from those two.
@@ -122,4 +123,4 @@ field_synthesis:
       literal: agt_stock
 # modifications is NOT here: it lives under each intervention_points row above,
 # because it is the one field whose synthesis depends on which payload the gate
-# is editing (R1.6). See the two rows there.
+# is editing. See the two rows there.

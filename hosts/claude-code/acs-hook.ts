@@ -231,9 +231,8 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    * Rendering deny as Claude Code's documented `{"decision":"block","reason":…}`
    * was tested directly against 2.1.227: the model received the real stdout AND
    * the block reason. The tool has already run and its result has already
-   * formed, so `block` on its own REPORTS a suppression that did not happen --
-   * the same "reported but never took effect" defect V3 found when V1 copied a
-   * raw `modifications` object into `updatedInput`. Only the replacing output
+   * formed, so `block` on its own REPORTS a suppression that did not happen:
+   * it logs a withholding and performs none. Only the replacing output
    * withholds anything, so a `deny` entry declaring one without the other is a
    * hookmap that would log a withholding while delivering the secret.
    *
@@ -442,7 +441,7 @@ class BlockingConfigurationError extends Error {
  * This shim is host-specific by definition and already names Claude Code
  * freely, so the enum and the path live here and only here.
  *
- * V4: every hook in the hookmap is checked, and a hook with no expectation is a
+ * Every hook in the hookmap is checked, and a hook with no expectation is a
  * throw rather than a skip -- `expectationFor` states why.
  *
  * Raised as a BlockingConfigurationError, so it exits 2 ("blocking error")
