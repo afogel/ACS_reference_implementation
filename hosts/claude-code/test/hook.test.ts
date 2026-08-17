@@ -29,11 +29,10 @@ const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import
 // The shim negotiates a session, persisting it to the session config store,
 // and can audit a fail-open to the audit log; both default to `.acs/...`
 // under the process cwd when unset -- which would otherwise scatter real
-// files into the repo's working tree on every run of this suite. Both tests
-// below share one session id
-// ("abc123"), so the only path either can create is `sessions/abc123.json`
-// under this scratch dir; no audit file is expected, since both tests
-// exercise a decision that actually arrives.
+// files into the repo's working tree on every run of this suite. Every test
+// below shares one session id ("abc123"), so the only path any of them can
+// create is `sessions/abc123.json` under this scratch dir; no audit file is
+// expected, since every test exercises a decision that actually arrives.
 const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-hook-test-"));
 const SESSION_DIR = join(SCRATCH_DIR, "sessions");
 const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
@@ -99,8 +98,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await guardian.close();
-  // Named cleanup, not recursive: the only path either test above can
-  // create is enumerated in the SCRATCH_DIR comment. Removing anything
+  // Named cleanup, not recursive: the only path any test above can create is
+  // enumerated in the SCRATCH_DIR comment. Removing anything
   // unexpected is not this cleanup's job -- an unknown leftover should fail
   // `rmdirSync` loudly rather than be swept away silently.
   const sessionFile = join(SESSION_DIR, "abc123.json");

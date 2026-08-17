@@ -1,11 +1,13 @@
-# S2 -- the ONLY per-host artifact besides the plugin shim (N10).
+# The per-host mapping table for OpenCode: with the plugin shim, the only
+# artifact in this repository specific to this host.
 #
 # Same shape as claude-code.hookmap.yaml, against the same adapter. What differs
-# is entirely data, which is the slice's whole claim.
+# is entirely data, which is the whole claim of adding a second host.
 #
 # Every path below was MEASURED against OpenCode 1.18.15 with a probe plugin,
 # not read off its published types -- where the two disagree, the measurement
-# wins. See Task 3's brief for the measurements themselves.
+# wins. The measurements themselves are recorded inline below, each at the
+# declaration it pins.
 #
 # `reason.text` IS CURRENTLY INERT ON THIS HOST. It is declared at every
 # disposition below because an empty `output` block fails
@@ -14,18 +16,15 @@
 # host reads an explanation back from; the one channel that DOES carry text is
 # the thrown message on a request-gate deny (see `refuse.reason` below). So a
 # rewrite's or a redaction's reasoning has nowhere to land on this host yet.
-# Task 4 either names a real sink for it or keeps it declared-inert
-# deliberately -- this is stated here so it does not silently look wired.
+# It stays declared-inert deliberately -- stated here so it does not silently
+# look wired.
 # SOME THINGS IN THIS FILE ARE NOT FREE CHOICES, and acs-plugin.ts's
 # `assertEntryMatchesGate` refuses this file at load if any of them changes
-# (§V5 review round 3, Task 5, fix rounds 4 and 5 -- each measured as a live
-# fail-open first).
+# -- each of them measured as a live fail-open first.
 #
 # NO COUNT HERE, DELIBERATELY. This heading said "THREE THINGS" while the list
-# below it grew to four, which is the third time a quoted count in this slice
-# went stale on the line that quoted it -- and the second time in this file's
-# own neighbourhood (§V5 review round 3, Task 5, fix rounds 3, 4 and 5). The
-# list is the list; count it by reading it:
+# below it grew to four, and that is not the first quoted count in this file to
+# go stale on the line quoting it. The list is the list; count it by reading it:
 #
 #   - each hook's PAYLOAD SHAPE must match the gate the shim runs it as: the
 #     request hook declares `arguments`, the result hook declares `outputs`,
@@ -41,8 +40,8 @@
 #     runtime is asked about something that is not the tool that ran.
 #     Measured with `tool_name: $.args.command`: the step was governed and
 #     audited normally, `stage: honoured`, while the envelope carried
-#     `payload.tool.name: "rm -rf /"` where this file puts `bash`. (Until §V5
-#     review round 4 this bullet named a different fault: the shim scoped on
+#     `payload.tool.name: "rm -rf /"` where this file puts `bash`. (This
+#     bullet once named a different fault instead: the shim scoped on
 #     `input.tool` while governStep re-derived a name from `tool_name`, and a
 #     divergence made governStep skip a governed step as `ungoverned` with no
 #     Guardian request and no audit entry. The shim now TELLS governStep the
@@ -72,9 +71,8 @@
 # from a hookmap the one thing only it can know.
 #
 # THAT LEAK IS WEAKER THAN THE FAULTS ABOVE ONLY WHILE THE RESULT GATE KEEPS
-# ITS `tools: [bash]`, and this said so without the condition until §V5 review
-# round 3's final whole-branch review. Scoped, the model does see the
-# redaction, so what is lost is the session record rather than the secret.
+# ITS `tools: [bash]`, and the condition matters. Scoped, the model does see
+# the redaction, so what is lost is the session record rather than the secret.
 # Unscoped, that is not what happens: `tools` is absent from the not-free-
 # choices list above, and nothing else pins it either -- `assertEntryMatchesGate`
 # fixes `tool_name`, `outputs.from`, `outputs.within` and each hook's payload
@@ -96,8 +94,8 @@
 # session-record leak above. The check runs over the mirrors a hookmap declared,
 # so a deployment declaring none never fires it -- correctly, by that guard's
 # own design -- and the protection travels with a declaration nothing requires.
-# So the two lines are independent, deleting either is load-clean, and closing
-# either is V6's: acs-plugin.ts's `GateEntryShape` doc comment carries the
+# So the two lines are independent, deleting either is load-clean, and neither
+# is closed here: acs-plugin.ts's `GateEntryShape` doc comment carries the
 # measurements.
 #
 # And every decision name below must be one this shim has an expectation for:
@@ -106,14 +104,13 @@
 host: opencode
 hooks:
   # The request gate. OpenCode hands the plugin `{tool, sessionID, callID}` and a
-  # mutable `{args}`; the shim (Task 4) assembles those into one payload object so
-  # these paths have something to resolve against.
+  # mutable `{args}`; the shim (acs-plugin.ts) assembles those into one payload
+  # object so these paths have something to resolve against.
   #
-  # `tools: [bash]` (§V5 review, Task 5, fix round 1, priority item) --
-  # REVERSING a claim this comment used to make ("No tools: here, and none
-  # belongs here ... it governs everything"). That claim checked only that
-  # THIS gate's own paths ($.tool, $.args) resolve for every tool OpenCode
-  # fires the hook for, which is true and was never the right question.
+  # `tools: [bash]` -- REVERSING a claim this comment used to make ("No tools:
+  # here, and none belongs here ... it governs everything"). That claim checked
+  # only that THIS gate's own paths ($.tool, $.args) resolve for every tool
+  # OpenCode fires the hook for, which is true and was never the right question.
   # policy/manifest.yaml's own pre_tool_call.policy_target is a single fixed
   # target, checked before any authored rule runs, independent of the tool
   # registry; a tool this deployment's manifest has not registered denies
@@ -126,9 +123,9 @@ hooks:
   # (packages/host-adapter/src/govern-step.ts), which `governStep` asks
   # before it builds anything and the shim (acs-plugin.ts) asks one call
   # earlier still -- earlier being where it also saves the session handshake.
-  # §V5 review round 3, Task 2 moved that rule out of the shim: while only
-  # one shim enacted it, a third host would have loaded this line and
-  # governed every tool regardless.
+  # That rule lives in the adapter rather than in the shim: while only a shim
+  # enacted it, a third host would load this line and govern every tool
+  # regardless.
   tool.execute.before:
     acs_method: steps/toolCallRequest
     tool_name: $.tool
@@ -141,17 +138,17 @@ hooks:
       # runs. Throwing is what stops it. (At the RESULT gate below the deny
       # channel is `result` instead, and throwing is the wrong move there --
       # see that entry's own `deny` comment. Said explicitly here because an
-      # unqualified "there is no other" read as a whole-host claim, and the
-      # gate that enforces this file's shape now covers both gates rather than
-      # this one alone -- §V5 review round 3, Task 5.)
+      # unqualified "there is no other" reads as a whole-host claim, and the
+      # gate that enforces this file's shape covers both gates rather than this
+      # one alone.)
       #
-      # `refuse.denied: { value: true }` (§V5 review, fix round 1, Critical 1):
-      # UNCONDITIONAL, beside `refuse.reason`'s own `from:`. A `from:` field
-      # renders NOTHING when the arriving decision does not carry that source,
-      # or carries it as the wrong type (render-decision.ts) -- so `deny`,
-      # `ask` and `defer` below, each built ONLY from `refuse.reason` before
-      # this line existed, could render `{}` on a Guardian's minimal or
-      # malformed decision message. Measured: `{"decision":"deny"}` and
+      # `refuse.denied: { value: true }` is UNCONDITIONAL, beside
+      # `refuse.reason`'s own `from:`. A `from:` field renders NOTHING when the
+      # arriving decision does not carry that source, or carries it as the
+      # wrong type (render-decision.ts) -- so `deny`, `ask` and `defer` below,
+      # each built ONLY from `refuse.reason` before this line existed, could
+      # render `{}` on a Guardian's minimal or malformed decision message.
+      # Measured: `{"decision":"deny"}` and
       # `{"decision":"deny","reasoning":{"code":"R7"}}` both rendered `{}` --
       # this host's applier saw no keys, applied nothing, threw nothing, and
       # the tool ran, indistinguishable from a clean allow. `acs-plugin.ts`'s
@@ -159,9 +156,7 @@ hooks:
       # register a hookmap missing this marker on any of the three; it is
       # declared on all three here so this file passes that gate rather than
       # relying on it to catch an omission. That gate covers the RESULT gate
-      # below too, which it did not when it shipped as
-      # `assertRefusalRendersUnconditionally` -- see this file's own
-      # `tool.execute.after` deny comment (§V5 review round 3, Task 5).
+      # below too -- see this file's own `tool.execute.after` deny comment.
       allow:
         output:
           reason.text: { from: reasoning, type: string }
@@ -170,8 +165,9 @@ hooks:
           refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
       # No native "ask" at this hook -- `permission.ask` is a different event
-      # this slice does not wire -- so ask fails CLOSED, the same least-wrong
-      # mapping V1 made for Claude Code's absent `defer`.
+      # this host mapping does not wire -- so ask fails CLOSED, the same
+      # least-wrong mapping claude-code.hookmap.yaml makes for Claude Code's
+      # absent `defer`.
       ask:
         output:
           refuse.denied: { value: true }
@@ -180,8 +176,7 @@ hooks:
         output:
           refuse.denied: { value: true }
           refuse.reason: { from: reasoning, type: string }
-      # `args: { from: applied_input }` is REQUIRED, not conventional (§V5
-      # review round 3, Task 5, fix round 1, Important 2):
+      # `args: { from: applied_input }` is REQUIRED, not conventional:
       # `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` refuses a request-gate `modify` that
       # declares anything else -- the exact key (a path under it merges one
       # level too deep, landing the whole rewrite bag in a single argument) and
@@ -204,20 +199,18 @@ hooks:
   tool.execute.after:
     acs_method: steps/toolCallResult
     tool_name: $.tool
-    # SCOPED TO bash ONLY, and this is data because host #2 has no matcher to
+    # SCOPED TO bash ONLY, and this is data because OpenCode has no matcher to
     # get it from. OpenCode fires this hook for EVERY tool, and `metadata` is
     # PER-TOOL -- measured on 1.18.15 across four tools: `bash`'s metadata is
     # {exit, output, truncated}, which is what `outputs`/`exit_status` below
     # are shaped for; `read`'s is {display, loaded, preview, truncated} (no
     # `exit`, and `preview` is ITS OWN mirror, not this one); `grep`'s is
-    # {matches, truncated}; an invalid call's is {truncated} alone. Host #1
+    # {matches, truncated}; an invalid call's is {truncated} alone. Claude Code
     # gets this scoping for free from settings.json's anchored `^Bash$`
-    # matcher (§V4: "the exposure is the matcher's to hold rather than the
-    # gate's"); host #2 has no matcher, so the equivalent has to be declared
-    # here instead. "Nothing in the adapter reads `tools` yet" was true of
-    # the task that shipped this line and is not true now: §V5 review round 3,
-    # Task 2 made the adapter both shape-check the list (`loadHookmap`) and
-    # act on it (`governsTool`, asked at the top of `governStep`), which is
+    # matcher -- there, the exposure is the matcher's to hold rather than the
+    # gate's; OpenCode has no matcher, so the equivalent has to be declared
+    # here instead. The adapter both shape-checks the list (`loadHookmap`) and
+    # acts on it (`governsTool`, asked at the top of `governStep`), which is
     # the division `outputs.mirrors` below already had. The shim still asks
     # the same function first -- see the request gate's own comment, above.
     tools: [bash]
@@ -230,8 +223,8 @@ hooks:
       mirrors:
         - $.result.metadata.output
     # A REAL field read, not a literal. Claude Code's PostToolUse payload carries
-    # no exit code, so V4 shipped `{literal: success}` and recorded the gap;
-    # OpenCode's `metadata.exit` supplies one.
+    # no exit code, so claude-code.hookmap.yaml declares `{literal: success}`
+    # and records the gap; OpenCode's `metadata.exit` supplies one.
     exit_status: { from: $.result.metadata.exit }
     decisions:
       allow:
@@ -244,11 +237,11 @@ hooks:
       # copy, so the secret survives on disk however early it is scrubbed.
       # Measured both ways.
       #
-      # `result`, NOT `result.output` (§V5 review, fix round 1, Critical 1):
+      # `result`, NOT `result.output`:
       # `applied_output` is the WHOLE patched clone of the object at
       # `outputs.within` -- `replacingOutput` returns `patchedClone(container,
-      # ...)`, container included, mirror included -- not the leaf alone. Host
-      # #1's own `hookSpecificOutput.updatedToolOutput` is correct by
+      # ...)`, container included, mirror included -- not the leaf alone.
+      # Claude Code's own `hookSpecificOutput.updatedToolOutput` is correct by
       # construction because it genuinely takes the whole payload object; this
       # host's equivalent sink is `result` itself, the same relation the
       # request gate's `args: { from: applied_input }` already has to
@@ -258,19 +251,17 @@ hooks:
       # too deep for OpenCode to ever apply.
       #
       # THE WHOLE LINE IS NOW REFUSED AT LOAD IF IT IS WRONG, RATHER THAN ONLY
-      # DOCUMENTED HERE (§V5 review round 3, Task 5, Critical, and its own fix
-      # round 1). `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` requires
+      # DOCUMENTED HERE. `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` requires
       # `result: { from: applied_output }` EXACTLY -- that key, that source --
       # on every decision this gate declares that withholds anything: `deny`,
       # and `modify`. (`ask`/`defer` are held to a REFUSAL here instead if a
       # hookmap ever declares them at this gate: `withResultOutput` attaches
       # `applied_output` for `deny` alone and returns those two untouched, so
-      # a sink on either renders nothing however correctly it is written --
-      # §V5 review round 3, Task 5, fix round 3. This file declares neither,
-      # so nothing here exercises that branch.) The hook must also declare the
-      # `outputs:` block above: without it governStep builds no output
-      # location, withResultOutput no-ops for EVERY decision, and the sink
-      # below is unfillable by construction.
+      # a sink on either renders nothing however correctly it is written. This
+      # file declares neither, so nothing here exercises that branch.) The hook
+      # must also declare the `outputs:` block above: without it governStep
+      # builds no output location, withResultOutput no-ops for EVERY decision,
+      # and the sink below is unfillable by construction.
       # The shapes it refuses are below, each measured through a live Guardian
       # before it was refused. No count on this line, for the reason this
       # file's own header gives: the list grew and the count did not.

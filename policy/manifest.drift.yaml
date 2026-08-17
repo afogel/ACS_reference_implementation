@@ -1,8 +1,8 @@
-# The V3 drift-demo manifest. Not policy/manifest.yaml (which stays
-# untouched on the ordinary path, per Global Constraint 5): this is a
-# separate, sibling manifest so a deployment that wants no annotator has
-# none, and every existing V1/V2 demo continues to read exactly the
-# manifest it always has.
+# A second manifest whose only purpose is to turn on AGT's stock drift gate,
+# so an observe-only warn verdict is reachable. Not policy/manifest.yaml,
+# which stays untouched: this is a separate, sibling manifest so a deployment
+# that wants no annotator has none, and every demo that reads the ordinary
+# manifest keeps reading exactly the manifest it always has.
 #
 # Same bundle, same query as policy/manifest.yaml -- `bundle: lib` here
 # resolves to this file's own directory (policy/), i.e. the same pinned
@@ -15,11 +15,11 @@
 # `annotations` reaches policy input from exactly one place -- a
 # manifest-declared annotator, dispatched through the SDK's
 # `annotatorDispatcher` (see packages/agt-bridge/src/index.ts). Five other
-# placements were tried against the ACS snapshot during this task's
-# planning and every one was dropped silently; none of them are how
-# `annotations` actually arrives.
+# placements were tried against the ACS snapshot while this was designed and
+# every one was dropped silently; none of them are how `annotations` actually
+# arrives.
 #
-# WHY A HOST-SUPPLIED SCORE, PLAINLY (P4, R4.3) -- this is a fact about ACS
+# WHY A HOST-SUPPLIED SCORE, PLAINLY -- this is a fact about ACS
 # v0.1.0's wire coverage, never a deficiency in AGT: the `steps/toolCallRequest`
 # payload (spec/acs/specification/v0.1.0/hooks/tool-call-request.json) carries
 # `tool`, `operation`, `capability`, `arguments`, `raw_command`, `intent` --
@@ -66,11 +66,11 @@ tools:
     type: Tool
     id: Bash
     security_labels: [shell]
-  # V5 Task 5, fix round 1 -- the identical addition policy/manifest.yaml
-  # gains for the identical reason: OpenCode's own real (lowercase) tool
-  # name, unregistered here, fails every tool call closed on
-  # runtime_error:tool_unknown before pre_tool_call's warn/drift rule ever
-  # runs, the same wall the V3 demo hits without this entry. Additive.
+  # The identical addition policy/manifest.yaml gains for the identical
+  # reason: OpenCode's own real (lowercase) tool name, unregistered here,
+  # fails every tool call closed on runtime_error:tool_unknown before
+  # pre_tool_call's warn/drift rule ever runs -- the same wall the drift
+  # demo hits without this entry. Additive.
   bash:
     type: Tool
     id: bash
