@@ -1,24 +1,20 @@
 /**
- * tailEnvelopeLog (N50) streams S6 -- the Guardian's JSONL envelope log --
- * as it grows, the way `tail -f` does.
+ * tailEnvelopeLog streams the Guardian's JSONL envelope log as it grows, the
+ * way `tail -f` does.
  *
  * This package deliberately imports nothing from `guardian` or from any of
- * its dependencies (global constraint 10). The Inspector reads a file that
- * the Guardian happens to write; it holds no compile-time knowledge of the
- * process that produced it, which is the point of R5.1 -- envelopes are
- * inspectable *on the wire*, not through our own type graph. EnvelopeLogEntry
- * is therefore re-declared here rather than imported. The round-trip test at
- * test/envelope-log-sink-roundtrip.test.ts is what keeps the two declarations in
- * agreement; if they drift, it fails.
+ * its dependencies. The Inspector reads a file that the Guardian happens to
+ * write, and holds no compile-time knowledge of the process that produced
+ * it: envelopes are inspectable on the wire, not through a shared type
+ * graph. `EnvelopeLogEntry` is therefore re-declared here rather than
+ * imported. The round-trip test at test/envelope-log-sink-roundtrip.test.ts
+ * keeps the two declarations in agreement; if they drift, it fails.
  *
- * The names are the artifact's, not the writer's (PR #11 review). This
- * package's public surface used to carry `TapEntry` / `TapDirection` --
- * the Guardian's nickname for its own writing mechanism, on a module whose
- * whole job is reading -- and a bare `TailOptions` that named no log at all.
- * A later slice gives this package a second stream to follow, and the two
- * only read as siblings if each names its own log: `EnvelopeLogEntry` beside
- * that stream's entry type, `TailEnvelopeLogOptions` beside its options type,
- * the way `tailEnvelopeLog` and its twin verb already do.
+ * The names are the artifact's, not the writer's: `EnvelopeLogEntry` and
+ * `TailEnvelopeLogOptions` name the log they describe, not the Guardian's
+ * own writing mechanism, so a second log stream in this package would read
+ * as this one's sibling rather than force a shared, ambiguous vocabulary
+ * between them.
  *
  * Polling rather than fs.watch: appends to a growing file are exactly the
  * case where watch semantics differ most across platforms, and a 120ms poll
@@ -65,7 +61,7 @@ import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
 export type EnvelopeLogDirection = "request" | "response";
 
-/** One line of S6, as written by the Guardian's envelope log sink. */
+/** One line of the envelope log the Guardian writes. */
 export type EnvelopeLogEntry = {
   seq: number;
   recorded_at: string;
@@ -91,16 +87,16 @@ export type TailEnvelopeLogOptions = {
 const NEWLINE = 0x0a;
 
 /**
- * S6 is a plain file on disk; anything can write a line to it that is valid
- * JSON but not a valid EnvelopeLogEntry (a number where recorded_at should be
- * a string, a missing direction, ...). `renderEnvelopeLogEntry`'s `clockOf`
- * calls `.slice` on `recorded_at` unconditionally, so an unchecked cast would
- * let such a line reach the renderer and throw -- inside a `for await` loop,
- * that kills the whole stream. Checked here instead, right after
- * `JSON.parse`, using exactly the fields the renderer depends on.
- * `envelope` is deliberately left unconstrained: it is `unknown` by design
- * (R5.1 -- see the module doc above), not a shape this function's job to
- * police.
+ * The envelope log is a plain file on disk; anything can write a line to it
+ * that is valid JSON but not a valid EnvelopeLogEntry (a number where
+ * recorded_at should be a string, a missing direction, ...).
+ * `renderEnvelopeLogEntry`'s `clockOf` calls `.slice` on `recorded_at`
+ * unconditionally, so an unchecked cast would let such a line reach the
+ * renderer and throw -- inside a `for await` loop, that kills the whole
+ * stream. Checked here instead, right after `JSON.parse`, using exactly the
+ * fields the renderer depends on. `envelope` is deliberately left
+ * unconstrained: it is `unknown` by design, not a shape this function's job
+ * to police.
  */
 function isEnvelopeLogEntryShape(value: unknown): value is EnvelopeLogEntry {
   if (typeof value !== "object" || value === null) {
@@ -178,16 +174,15 @@ export function tailEnvelopeLog({
               // `size`, so any complete line still sitting in `pending`
               // would never be re-scanned -- no later tick has anything new
               // to read. Reporting one bad line must not cost the good ones
-              // behind it (whole-branch review, finding 5).
+              // behind it.
               reportMalformedLine(onMalformedLine, line, error);
             }
           }
         } finally {
           // In the `finally`, not after the loop: an entry already pushed to
           // `ready` must reach the consumer even if the scan above left by a
-          // throw. It used to sit undelivered until some unrelated write --
-          // or the abort -- happened to fire `wake` (whole-branch review,
-          // finding 5).
+          // throw, rather than sit undelivered until some unrelated write or
+          // the abort happens to fire `wake`.
           if (added) {
             wake?.();
           }
@@ -203,10 +198,10 @@ export function tailEnvelopeLog({
       // own.
       //
       // The only route here is a failed read: a caller-supplied
-      // `onMalformedLine` is guarded at its own call site (finding 5), so it
-      // no longer reaches this catch and no longer abandons the rest of a
-      // batch. The tail-envelope-log tests cover this branch through a
-      // deterministic EISDIR rather than through a lost race.
+      // `onMalformedLine` is guarded at its own call site above, so it never
+      // reaches this catch and never abandons the rest of a batch. The
+      // tail-envelope-log tests cover this branch through a deterministic
+      // EISDIR rather than through a lost race.
       warnPollError(error);
     }
   }

@@ -51,10 +51,10 @@ describe("createEnvelopeLogSink (N26) -- S6's JSONL format", () => {
     });
   });
 
-  // Retitled by the whole-branch review (finding 2); the assertion is
-  // unchanged. It has always checked that the JSON value reaches S6
-  // unmodified -- nothing stripped, nothing reordered. "Verbatim" claimed
-  // byte identity, which the sink never had: it is handed `await req.json()`.
+  // Checks that the JSON value reaches the envelope log unmodified --
+  // nothing stripped, nothing reordered. This is not byte identity with the
+  // wire: the sink is handed the already-parsed result of `await
+  // req.json()`.
   it("records the envelope unmodified -- constraint 11, no reformatting or stripping", () => {
     withTempDir((dir) => {
       const path = join(dir, "envelopes.jsonl");
@@ -98,8 +98,8 @@ describe("createEnvelopeLogSink (N26) -- S6's JSONL format", () => {
     });
   });
 
-  // Global constraint 8. This is the whole reason the sink is a module and
-  // not three inline appendFileSync calls.
+  // The whole reason the sink is a module rather than three inline
+  // appendFileSync calls.
   it("never throws when the log path is unwritable, reports once, and goes quiet", () => {
     withTempDir((dir) => {
       const blocker = join(dir, "envelopes.jsonl");

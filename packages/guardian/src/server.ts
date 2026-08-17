@@ -20,13 +20,14 @@
  * The two catches are:
  *   - Inside `dispatch`, around assemblePreToolCallSnapshot, bridge.evaluate
  *     and mapVerdict: the evaluation itself.
- *   - Around the whole `dispatch` call in `handleAcsRequest`, as the outer net.
- *     `dispatch` rethrows anything that is not an EnvelopeValidationError, and
- *     that rethrow is live: validateEnvelope builds its Ajv registry lazily, on
- *     the first request rather than at boot, so a tree cloned without
- *     `--recurse-submodules` starts cleanly and then turns every request into
- *     an HTML 500. The outer net also puts the failure response back on the
- *     tapped path, so the envelope log records it like any other response.
+ *   - Around the whole `dispatch` call in `handleAcsRequest`, as the outer
+ *     net. `dispatch` rethrows anything that is not an
+ *     EnvelopeValidationError, and that rethrow is live: validateEnvelope
+ *     builds its Ajv registry lazily, on the first request rather than at
+ *     boot, so a tree cloned without `--recurse-submodules` starts cleanly
+ *     and then turns every request into an HTML 500. The outer net also
+ *     writes the failure response through the same envelope-log call as any
+ *     other response.
  *
  * Neither catch turns the failure into an ACS `deny` decision: which
  * disposition a Guardian-side failure should carry is a separate question.
@@ -101,59 +102,46 @@ const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url)).replace(/
 const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[/\\\\]|$)[/\\\\]?`, "g");
 
 /**
- * Both catches in this module (the outer net in handleAcsRequest and the
- * evaluation-failure catch in dispatch) surface a real error to the ACS
- * client and, via the envelope log, into S6 -- and a real error's message
+ * Both catches in this module -- the outer net in handleAcsRequest and the
+ * evaluation-failure catch in dispatch -- surface a real error to the ACS
+ * client and, through the envelope log, onto disk. A real error's message
  * (an ENOENT out of a missing schema directory, say) carries this machine's
  * absolute filesystem path, e.g.
  * `/Users/you/.../ACS_reference_implementation/packages/spec/acs/...`.
- * That is diagnostic in a way this demo's value depends on, so the fix is
- * not to replace it with something generic -- it is to remove only the
- * part of it that discloses where this tree sits on disk, leaving the
- * repo-relative remainder (`packages/spec/acs/...`) intact.
+ * That is diagnostic in a way this demo's value depends on, so rather than
+ * replace it with something generic, this function removes only the part
+ * that discloses where this tree sits on disk, leaving the repo-relative
+ * remainder (`packages/spec/acs/...`) intact.
  *
  * Takes the caught value itself, as `unknown`, rather than a pre-extracted
- * string. Both call sites already had to guard with
- * `error instanceof Error ? error.message : String(error)` because a catch
- * clause's binding is `unknown` -- but an earlier version of this helper
- * took that guard's *result* and assumed it was a string, which is true of
- * every message this tree's own code happens to produce, not something
- * `instanceof Error` guarantees: nothing stops `.message` from being
- * reassigned to `undefined`, a number, or anything else after construction.
- * That earlier version threw `TypeError: undefined is not an object
- * (evaluating 'message.replace')` on exactly such an Error -- reachable
- * only from the outer catch, since the inner catch's own throw is itself
- * caught by the outer one, but reachable there with nothing above
- * `handleAcsRequest` to catch it: the unrecorded HTML-500 fail-open this
- * module's header exists to prevent. `String()` on the whole caught value
- * keeps this helper total for any `unknown`, matching what a catch clause
- * can actually hand it.
+ * string, and calls `String()` on the whole thing. `instanceof Error` does
+ * not guarantee `.message` is a string -- nothing stops it from being
+ * reassigned to `undefined`, a number, or anything else after construction
+ * -- and a throw from this function on the outer-net path has nothing above
+ * `handleAcsRequest` to catch it. Staying total for any `unknown`, exactly
+ * what a catch clause can hand it, is what keeps that path from becoming an
+ * unrecorded HTML 500.
  *
- * Exported (unlike this module's other internals -- `dispatch`,
- * `extractId`, `extractMethod`, `errorResponse`) so the anchor behaviour
- * above and this function's totality for non-`Error`, non-string-message,
- * and otherwise-shaped `unknown` values can be asserted directly, rather
- * than only through a real Guardian and an HTTP round trip. The blocking
- * regression this exists to prevent is still covered end to end, separately
- * -- see server.test.ts's `withFakeValidateEnvelopeGuardian` tests.
+ * Exported -- unlike this module's other internals (`dispatch`, `extractId`,
+ * `extractMethod`, `errorResponse`) -- so the redaction above and this
+ * function's totality for non-`Error`, non-string-message, and
+ * otherwise-shaped `unknown` values can be asserted directly, rather than
+ * only through a real Guardian and an HTTP round trip. The same behaviour is
+ * also covered end to end, separately -- see server.test.ts's
+ * `withFakeValidateEnvelopeGuardian` tests.
  *
  * The whole body is wrapped in its own try/catch, including the
  * `instanceof` check -- belt-and-braces, not a reaction to a live bug.
- * Nothing in this tree throws an `Error` whose `.message` is a
+ * Nothing in this tree currently throws an `Error` whose `.message` is a
  * throwing accessor, a value whose `toString`/`valueOf` throws, or a
  * `Proxy` that throws on `get` or on `getPrototypeOf` (which would defeat
  * `instanceof Error` itself, since it walks the prototype chain through
- * `[[GetPrototypeOf]]`, before `String()` below ever runs) -- all four are
- * unreachable from any throw site in this repo today, same as the shape the
- * previous fix in this module closed. They are guarded anyway because
- * "unreachable today" should not be load-bearing for the one function whose
- * entire job is upholding this module's stated contract that nothing
- * escapes the outer net: this project has already found five fail-opens of
- * this shape, the last one introduced by a fix for a minor, and V3 (N27
- * `denyOnInvalidEnvelope`) adds new routes through this exact path. The
- * fallback string names the failure mode rather than guessing at a partial
- * message, since the point is that nothing about the original error could
- * be read at all.
+ * `[[GetPrototypeOf]]`, before `String()` below ever runs). They are guarded
+ * anyway because "unreachable today" should not be load-bearing for the one
+ * function whose entire job is upholding this module's contract that
+ * nothing escapes the outer net. The fallback string names the failure mode
+ * rather than guessing at a partial message, since the point is that
+ * nothing about the original error could be read at all.
  */
 export function toRepoRelativeMessage(error: unknown): string {
   try {
@@ -205,10 +193,10 @@ export type StartGuardianOptions = {
    * handleAcsRequest against a real bridge, without touching the mapping
    * every other consumer reads. Not meant for production use. */
   mappingPath?: string;
-  /** Path to S6, the JSONL envelope log (N26). Omitted means no sink: every
-   * V1 test constructs Guardians freely and a default-on sink would scatter
-   * files through the working tree. `packages/guardian/src/main.ts` -- the
-   * demo path -- passes it. See the plan's decision P3. */
+  /** Path to the JSONL envelope log. Omitted means no sink: tests construct
+   * Guardians freely, and a default-on sink would scatter files through the
+   * working tree. `packages/guardian/src/main.ts` -- the demo path --
+   * passes it. */
   envelopeLogPath?: string;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
@@ -248,18 +236,16 @@ export async function startGuardian({
 
 /**
  * Three phases, in order: parse, record the request, dispatch, record the
- * response. The envelope-log writes live here and only here -- `dispatch`
- * below leaves by six routes (five `return`s and one rethrow) and V3's N27
- * adds a seventh, so writing S6 inside it would make totality something a
- * future task has to remember rather than something the structure
- * guarantees.
+ * response. The envelope-log writes live here and only here: `dispatch`
+ * below leaves by six routes (five `return`s and one rethrow), and future
+ * dispatch outcomes will add more, so writing to the envelope log inside it
+ * would make totality something a future change has to remember rather than
+ * something the structure guarantees.
  *
- * That guarantee is only as good as its coverage of the throwing route, and
- * the whole-branch review's finding 1 found it uncovered: `dispatch`'s
- * rethrow used to leave this function without a response at all, so the
- * client got a Bun.serve HTML 500 that S6 never recorded. The try/catch
- * below closes it -- every route out of `dispatch` now produces a response
- * object, and every response object reaches the envelope log.
+ * That guarantee only holds if every route out of `dispatch` is covered,
+ * including the one that throws: the try/catch below ensures every route
+ * out of `dispatch` produces a response object, and every response object
+ * reaches the envelope log.
  *
  * The sink itself is total (see envelope-log-sink.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
@@ -285,7 +271,7 @@ async function handleAcsRequest(
     return parseError;
   }
 
-  // Decision P5: before validation, so an envelope that fails the schema is
+  // Recorded before validation, so an envelope that fails the schema is
   // visible to the Inspector rather than invisible.
   const method = extractMethod(raw);
   envelopeLog.write("request", raw, method);
@@ -294,10 +280,11 @@ async function handleAcsRequest(
   try {
     response = await dispatch(raw, bridge, mapping);
   } catch (error) {
-    // The outer net (whole-branch review, finding 1). Deliberately a bare
-    // JSON-RPC error, not an ACS `deny`: N27 stays V3's call. What this
-    // buys is that the client can parse the answer at all, and that S6
-    // holds a response line paired with the request line above it.
+    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`
+    // decision -- turning a validation failure into an explicit deny is a
+    // separate concern. What this buys is that the client can parse the
+    // answer at all, and that the envelope log holds a response line paired
+    // with the request line above it.
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }

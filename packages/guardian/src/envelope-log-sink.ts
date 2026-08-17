@@ -1,63 +1,44 @@
 /**
- * createEnvelopeLogSink (N26) writes S6: a JSONL record of every ACS envelope
- * that crosses this Guardian's wire, in both directions. The Envelope
- * Inspector (P4) reads this file and nothing else -- see packages/inspector,
- * which deliberately imports nothing from here.
+ * createEnvelopeLogSink writes a JSONL record of every ACS envelope that
+ * crosses this Guardian's wire, in both directions. The Envelope Inspector
+ * reads this file and nothing else -- see packages/inspector, which
+ * deliberately imports nothing from here.
  *
- * Named for the artifact and the role, not for the mechanism (PR #11's naming
- * review). This used to be the `EnvelopeTap` / `createEnvelopeTap` /
- * `NULL_TAP` / `TapEntry` family: "tap the wire" is how the writer works, not
- * what a reader is looking at. V3 adds the host's audit rail as this rail's
- * sibling -- another total JSONL record of something that crossed a boundary,
- * which the Inspector will tail beside this one -- and two metaphors for one
- * job family would force every reader to translate between a "tap" and a
- * "sink". Naming this side for the log it produces is what makes the pair
- * read as a pair when the second rail lands.
+ * Named for the artifact it produces and the role it plays, not for the
+ * mechanism: it writes a log, it does not "tap a wire".
  *
- * The affordance tables in docs/shaping/ used to label N26
- * `writeEnvelopeTap()`, a function that never existed here in any form; they
- * now say `createEnvelopeLogSink()` -> `sink.write()`, which is what this
- * module exports. The ID is spelled out in this comment so a reader hunting
- * N26 from the slices doc lands here, and so that a future rename has to
- * pass through both places at once.
- *
- * What "records the envelope" means here, precisely (global constraint 11,
- * as corrected by the whole-branch review's finding 2): the sink is handed
- * the JSON *value* the Guardian parsed, and writes it unmodified -- no field
+ * What "records the envelope" means here, precisely: the sink is handed the
+ * JSON *value* the Guardian parsed, and writes it unmodified -- no field
  * stripping, no redaction, no reordering of anything we control. It is not a
- * byte-for-byte copy of the request body, and V2's documentation claimed it
- * was. The parse happens upstream in server.ts (`await req.json()`) and has
- * already collapsed duplicate keys, canonicalised number literals, and
- * hoisted integer-like object keys -- and `arguments` keys are
- * host-controlled, so `{"0": ...}` is a real shape, not a hypothetical.
- * Recording raw bytes instead would make `envelope` a string rather than a
- * JSON value, costing the Inspector its pretty-printing and the round-trip
- * contract test; the accurate sentence is the better trade.
+ * byte-for-byte copy of the request body. The parse happens upstream in
+ * server.ts (`await req.json()`) and has already collapsed duplicate keys,
+ * canonicalised number literals, and hoisted integer-like object keys -- and
+ * `arguments` keys are host-controlled, so `{"0": ...}` is a real shape, not
+ * a hypothetical. Recording raw bytes instead would make `envelope` a string
+ * rather than a JSON value, costing the Inspector its pretty-printing and
+ * the round-trip contract test; the accurate sentence is the better trade.
  *
- * Total by construction (global constraint 8). Every write is wrapped: a
- * failure disables the sink for the process lifetime, reports once, and is
- * never propagated to the caller. The sink sits on the decision path, and
- * V1 shipped three separate fail-opens before they were caught -- an
- * observability feature that can turn a governed tool call into an
- * ungoverned one would be the fourth. Observability degrades; governance
- * does not.
+ * Total by construction. Every write is wrapped: a failure disables the sink
+ * for the process lifetime, reports once, and is never propagated to the
+ * caller. The sink sits on the decision path: an observability feature that
+ * can turn a governed tool call into an ungoverned one is the one failure
+ * mode this module must never have. Observability degrades; governance does
+ * not.
  */
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-/** Which side of the exchange one S6 line recorded. Named after the log, the
- * same way `EnvelopeLogEntry` is, so nothing on this rail carries the
- * writer's own nickname. */
+/** Which side of the exchange one envelope-log line recorded. */
 export type EnvelopeLogDirection = "request" | "response";
 
 /**
- * One line of S6, named for what was recorded rather than for what recorded
- * it. `envelope` is the JSON-RPC object as parsed, unmodified -- request or
- * response -- and every other field is Guardian-side context the wire does
- * not carry: a sequence number so a reader can detect gaps, a timestamp, the
- * direction, the ACS method (JSON-RPC responses carry none, so the Guardian
- * supplies the one it dispatched), and the JSON-RPC id that pairs the two
- * directions.
+ * One line of the envelope log, named for what was recorded rather than for
+ * what recorded it. `envelope` is the JSON-RPC object as parsed, unmodified
+ * -- request or response -- and every other field is Guardian-side context
+ * the wire does not carry: a sequence number so a reader can detect gaps, a
+ * timestamp, the direction, the ACS method (JSON-RPC responses carry none,
+ * so the Guardian supplies the one it dispatched), and the JSON-RPC id that
+ * pairs the two directions.
  */
 export type EnvelopeLogEntry = {
   seq: number;
@@ -68,7 +49,7 @@ export type EnvelopeLogEntry = {
   envelope: unknown;
 };
 
-/** Where S6 lines go: the Guardian-side writer role. */
+/** Where envelope-log lines go: the Guardian-side writer role. */
 export type EnvelopeLogSink = {
   write(direction: EnvelopeLogDirection, envelope: unknown, method: string | null): void;
   readonly path: string | null;
@@ -82,9 +63,9 @@ export type CreateEnvelopeLogSinkOptions = {
   onError?: (error: unknown) => void;
 };
 
-/** The sink a Guardian gets when no envelopeLogPath was configured (P3).
- * Renamed in lockstep with the role it implements, so a composition root
- * disabling observability names the same rail the type does. */
+/** The sink a Guardian gets when no envelope log path was configured: a
+ * composition root disabling observability gets a value of the same
+ * `EnvelopeLogSink` type, not a special case. */
 export const NULL_ENVELOPE_LOG_SINK: EnvelopeLogSink = {
   path: null,
   write(): void {},

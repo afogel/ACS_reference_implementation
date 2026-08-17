@@ -2,28 +2,29 @@
  * Public surface of the guardian package: the governance verbs, and nothing
  * else.
  *
- * S6's writer (N26, ./envelope-log-sink.ts) is deliberately NOT re-exported.
- * Observability is an internal detail of running a Guardian, not part of the
- * vocabulary a consumer of this package speaks -- and a barrel that mixes
- * `startGuardian` / `mapVerdict` with `createEnvelopeLogSink` /
- * `NULL_ENVELOPE_LOG_SINK` / `extractRpcId` / the entry types makes the
- * second look like the first (PR #11 review). The one affordance a consumer
- * actually needs is `envelopeLogPath` on `StartGuardianOptions`, which stays
- * exactly where it was: you tell a Guardian where to write S6, you do not
- * assemble its sink yourself.
+ * The envelope log's writer (`./envelope-log-sink.ts`) is deliberately not
+ * re-exported. Observability is an internal detail of running a Guardian,
+ * not part of the vocabulary a consumer of this package speaks, and a
+ * barrel that mixed `startGuardian` / `mapVerdict` with
+ * `createEnvelopeLogSink` / `NULL_ENVELOPE_LOG_SINK` / `extractRpcId` / the
+ * entry types would make the second look like the first. The one affordance
+ * a consumer actually needs is `envelopeLogPath` on `StartGuardianOptions`,
+ * which stays exactly where it was: you tell a Guardian where to write its
+ * envelope log, you do not assemble the sink yourself.
  *
- * Nothing outside this package imported those names, so this removes a
- * public surface rather than a dependency: `./server.ts` imports the sink
- * directly, and the two test files that exercise N26 on its own
+ * `./server.ts` imports the sink directly, and the two test files that
+ * exercise it on its own
  * (`packages/guardian/test/envelope-log-sink*.test.ts`) import
- * `../src/envelope-log-sink.ts` directly, which is the arrangement they already
- * used. If an external writer of S6 ever becomes a real use case, the
- * honest answer is a narrow subpath export, not putting it back here.
+ * `../src/envelope-log-sink.ts` directly too, so nothing outside this
+ * package needs it re-exported here. If an external writer of the envelope
+ * log ever becomes a real need, the answer is a narrow subpath export, not
+ * putting it back in this barrel.
  *
- * The Inspector is unaffected either way -- it imports NOTHING from this
- * package (R5.1), reads S6 as a file, and re-declares `EnvelopeLogEntry`
- * itself; `test/invariants.test.ts` gates that and
- * `test/envelope-log-sink-roundtrip.test.ts` keeps the two declarations honest.
+ * The Inspector is unaffected either way: it imports nothing from this
+ * package, reads the envelope log purely as a file, and re-declares
+ * `EnvelopeLogEntry` on its own side. `test/invariants.test.ts` enforces
+ * that boundary, and `test/envelope-log-sink-roundtrip.test.ts` keeps the
+ * two declarations honest with each other.
  */
 export { startGuardian, type StartGuardianOptions, type StartedGuardian } from "./server.ts";
 export { buildServerHello, type ServerHello } from "./handshake.ts";

@@ -26,10 +26,11 @@ function response(result: Record<string, unknown>): EnvelopeLogEntry {
   return entry({ envelope: { jsonrpc: "2.0", id: 1, result } });
 }
 
-/** The message renderEnvelopeLogEntry would build for this S6 line, for the
- * badge tests that assert the rendered string end to end. Throws rather than
- * asserting non-null inline, so a line that stopped carrying an outcome fails
- * as itself instead of as a confusing `toBe` diff. */
+/** The message renderEnvelopeLogEntry would build for this envelope-log
+ * line, for the badge tests that assert the rendered string end to end.
+ * Throws rather than asserting non-null inline, so a line that stopped
+ * carrying an outcome fails as itself instead of as a confusing `toBe`
+ * diff. */
 function messageOf(line: EnvelopeLogEntry): OutcomeMessage {
   const message = outcomeMessageOf(line);
   if (message === null) {
@@ -51,8 +52,8 @@ describe("outcomeMessageOf -- what the renderers are told about", () => {
     expect(outcomeMessageOf(response({ negotiated_version: "0.1.0", on_decision_failure: "proceed" }))).toBeNull();
   });
 
-  // The reshape's point (PR #11 review): the badge is handed ACS fields, not
-  // a log row to dig through, so everything it renders is decided here.
+  // The badge is handed ACS fields, not a log row to dig through, so
+  // everything it renders is decided here.
   it("narrows the ACS fields the badge renders, and drops the rest of the envelope", () => {
     expect(
       outcomeMessageOf(
@@ -79,9 +80,9 @@ describe("outcomeMessageOf -- what the renderers are told about", () => {
     });
   });
 
-  // PR #11 review, second pass. The discriminant is the point: a caller can
-  // tell an outcome that IS a decision from one that stood in for the absence
-  // of one without inspecting which fields happen to be present.
+  // The discriminant is the point: a caller can tell an outcome that IS a
+  // decision from one that stood in for the absence of one without
+  // inspecting which fields happen to be present.
   it("discriminates a decision from an error, so nothing has to infer which arm it holds", () => {
     expect(outcomeMessageOf(response({ decision: "allow" }))?.kind).toBe("decision");
     expect(outcomeMessageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: -32010 } } }))?.kind).toBe(
@@ -114,15 +115,13 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badgeFor({ decision: "allow" })).toBe("○ ALLOW");
   });
 
-  // The reason U21 exists, per the slices doc: a policy that fired and let
-  // the action proceed arrives as an ACS `allow` with a non-empty
-  // policy_references, and the badge is what keeps it from being buried.
+  // The reason this badge exists: a policy that fired and let the action
+  // proceed arrives as an ACS `allow` with a non-empty policy_references,
+  // and the badge is what keeps it from being buried.
   //
-  // PR #11 review: the label used to end with the policy runtime's own name
-  // for that case, a disposition ACS does not have. R5.2 keeps this package
-  // clear of policy-runtime vocabulary, and rendered text teaches it more
-  // loudly than an identifier would -- so the label now says only what ACS
-  // says happened, and the last assertion holds the line.
+  // This package carries no policy-runtime vocabulary, so the label says
+  // only what ACS itself reports -- not the policy engine's own name for
+  // the case -- and the last assertion holds that line.
   it("distinguishes an allow that carries policy_references, without naming a disposition ACS lacks", () => {
     const badge = badgeFor({
       decision: "allow",
@@ -137,11 +136,11 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badge).not.toContain("warn");
   });
 
-  // Pins current behaviour (backlog item H): ACS's schemas do not require
-  // `rule_id` on a policy_reference, so this is a real shape, not a
-  // hypothetical one. Dropping to the bare policy_id here is a deliberate
-  // degradation, not a bug -- this test exists so a future change to it is
-  // a decision, not an accident.
+  // Pins current behaviour: ACS's schemas do not require `rule_id` on a
+  // policy_reference, so this is a real shape, not a hypothetical one.
+  // Dropping to the bare policy_id here is a deliberate degradation, not a
+  // bug -- this test exists so a future change to it is a decision, not an
+  // accident.
   it("renders a policy_reference with no rule_id as the bare policy_id", () => {
     const badge = badgeFor({ decision: "deny", policy_references: [{ policy_id: "agt_stock" }] });
 
@@ -154,10 +153,10 @@ describe("renderDecisionBadge (U21)", () => {
     expect(badgeFor({ decision: "defer" })).toBe("◆ DEFER");
   });
 
-  // Renders through `renderOutcome`, which is what the stream renderer calls:
-  // an error reaches `renderRpcError`, never U21's decision badge (PR #11
-  // review, second pass). `renderDecisionBadge` cannot be handed one at all
-  // now -- `DecisionMessage` has no error arm to pass it.
+  // Renders through `renderOutcome`, which is what the stream renderer
+  // calls: an error reaches `renderRpcError`, never the decision badge.
+  // `renderDecisionBadge` cannot be handed one at all -- `DecisionMessage`
+  // has no error arm to pass it.
   it("renders a JSON-RPC error as an error, not as a decision badge", () => {
     const line = renderOutcome(
       messageOf(entry({ envelope: { jsonrpc: "2.0", id: 1, error: { code: -32010, message: "ACS envelope failed" } } })),
@@ -181,11 +180,10 @@ describe("renderDecisionBadge (U21)", () => {
     expect(coloured).toContain("DENY");
   });
 
-  // Backlog item I: with color:true, only the glyph and decision label used
-  // to be painted, so a coloured badge read as one coloured half and one
-  // plain half. The appended segments are painted dim so the whole badge
-  // reads as one unit; color:false stays byte-identical (asserted by the
-  // exact-string tests above, which are unchanged).
+  // With color:true, painting only the glyph and decision label would make
+  // a coloured badge read as one coloured half and one plain half. The
+  // appended segments are painted dim so the whole badge reads as one unit;
+  // color:false stays byte-identical to the exact-string tests above.
   it("paints the appended reason_codes/policy_references segments dim when coloured", () => {
     const coloured = badgeFor(
       {
@@ -233,11 +231,10 @@ describe("renderEnvelopeLogEntry (U20)", () => {
     expect(rendered.split("\n")[0]).toBe("── #3  12:04:31.221  ← RESPONSE  (no method)  (unpaired)");
   });
 
-  // Retitled by the whole-branch review (finding 2) -- the assertions are
-  // unchanged. What this has always checked is that the JSON *value* round
-  // trips: nothing stripped, nothing reordered, only whitespace reshaped.
-  // "Verbatim" claimed more than that, since S6 stores the value the
-  // Guardian parsed rather than the bytes the host sent.
+  // What this checks is that the JSON *value* round trips: nothing stripped,
+  // nothing reordered, only whitespace reshaped. Not that the bytes round trip
+  // -- the envelope log stores the value the Guardian parsed, not the bytes
+  // the host sent.
   it("changes nothing but whitespace -- the envelope value round trips through the renderer", () => {
     const envelope = { jsonrpc: "2.0", id: 1, result: { decision: "allow", nested: { deep: [1, 2] } } };
     const rendered = renderEnvelopeLogEntry(entry({ envelope }));
@@ -246,11 +243,11 @@ describe("renderEnvelopeLogEntry (U20)", () => {
     expect(JSON.parse(rendered.slice(jsonStart))).toEqual(envelope);
   });
 
-  // Whole-branch review, finding 8. `isEnvelopeLogEntryShape` deliberately does not
-  // constrain `envelope`, so a hand-written or truncated S6 line reaches the
-  // renderer with the key missing entirely. `JSON.stringify(undefined)`
-  // returns `undefined`, which `join` would coerce into a blank line
-  // indistinguishable from a real empty body.
+  // `isEnvelopeLogEntryShape` deliberately does not constrain `envelope`, so
+  // a hand-written or truncated log line reaches the renderer with the key
+  // missing entirely. `JSON.stringify(undefined)` returns `undefined`,
+  // which `join` would coerce into a blank line indistinguishable from a
+  // real empty body.
   it("marks an entry whose envelope key is absent, instead of emitting a blank body", () => {
     const withoutEnvelope = {
       seq: 3,

@@ -102,9 +102,9 @@ describe("Guardian envelope log wiring (N26 x N20)", () => {
     });
   });
 
-  // Decision P5. The envelope that fails validation is the most useful
-  // thing an ACS-first reader can see; recording it after the validator is
-  // exactly what would hide it.
+  // The envelope that fails validation is the most useful thing an
+  // ACS-first reader can see; recording it after the validator is exactly
+  // what would hide it.
   it("records a schema-invalid request, then its JSON-RPC error response", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       const bad = toolCallEnvelope("rm -rf /", { id: 12 });
@@ -135,8 +135,8 @@ describe("Guardian envelope log wiring (N26 x N20)", () => {
     });
   });
 
-  // Global constraint 8, end to end: the sink is on the decision path, so
-  // this is the test that says a broken sink cannot become a fail-open.
+  // End to end: the sink is on the decision path, so this is the test that
+  // says a broken sink cannot become a fail-open.
   //
   // No `onError` is passed here, so this exercises the sink's *default*
   // reporter -- a single `console.error` line -- rather than the
@@ -174,7 +174,6 @@ describe("Guardian envelope log wiring (N26 x N20)", () => {
     }
   });
 
-  // Decision P3.
   it("writes nothing when envelopeLogPath is omitted", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-envelope-log-off-"));
     const logPath = join(dir, "envelopes.jsonl");

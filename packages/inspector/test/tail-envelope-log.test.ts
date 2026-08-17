@@ -305,13 +305,11 @@ describe("tailEnvelopeLog (N50)", () => {
     });
   });
 
-  // Whole-branch review, finding 5. `if (added) wake?.()` used to sit after
-  // `onMalformedLine(...)` inside the same `try`, so a reporter that threw
-  // skipped the wake-up entirely: an entry already pushed to `ready` sat
-  // undelivered until some later write -- or the abort -- happened to fire
-  // `wake` for an unrelated reason. Reproduced at 300ms of silence before the
-  // fix. The good line here is written BEFORE the bad one so that `added` is
-  // already true when the throw happens.
+  // `if (added) wake?.()` must run even when a reporter throws mid-scan: an
+  // entry already pushed to `ready` must not sit undelivered until some
+  // later write -- or the abort -- happens to fire `wake` for an unrelated
+  // reason. The good line here is written BEFORE the bad one so that
+  // `added` is already true when the throw happens.
   // A throwing onMalformedLine reaches `reportMalformedLine`'s own catch,
   // which prints one stderr line of its own (`onMalformedLine threw while
   // reporting...`). Spied and silenced so this deliberately-adversarial
@@ -359,11 +357,10 @@ describe("tailEnvelopeLog (N50)", () => {
     });
   });
 
-  // The other half of finding 5: `offset` is already at `size` by the time a
-  // line is scanned, so a batch abandoned mid-scan strands every complete
-  // line still in `pending` -- no later tick has anything new to read, and
-  // they are never re-scanned. Guarding the reporter at its own call site is
-  // what keeps the scan going.
+  // `offset` is already at `size` by the time a line is scanned, so a batch
+  // abandoned mid-scan strands every complete line still in `pending` -- no
+  // later tick has anything new to read, and they are never re-scanned.
+  // Guarding the reporter at its own call site is what keeps the scan going.
   // Same stray-stderr source as the test above: `reportMalformedLine`'s own
   // catch prints when the caller's reporter throws. Spied, silenced, and
   // asserted on for the same reason.
@@ -392,13 +389,12 @@ describe("tailEnvelopeLog (N50)", () => {
     });
   });
 
-  // `poll()`'s outer try/catch was carried through the task loop as "possibly
-  // unreachable, definitely untested". It is reachable, and it does not need
-  // a lost race to get there: pointing the tail at a directory makes
-  // `existsSync` true and `statSync().size` non-zero, so the read is
-  // attempted and `readSync` throws EISDIR every tick. Without the catch,
-  // that throw leaves a bare timer callback and takes the process down.
-  // `poll()`'s outer catch warns on every failed tick (`envelope log poll
+  // `poll()`'s outer try/catch is reachable, and does not need a lost race
+  // to get there: pointing the tail at a directory makes `existsSync` true
+  // and `statSync().size` non-zero, so the read is attempted and `readSync`
+  // throws EISDIR every tick. Without the catch, that throw would leave a
+  // bare timer callback and take the process down. `poll()`'s outer catch
+  // warns on every failed tick (`envelope log poll
   // failed, retrying next tick ...`) -- the "warns and retries" behaviour
   // this test's own name claims. Spied and silenced so the several EISDIR
   // ticks below do not print real stderr into a clean `bun test` run, and
@@ -464,8 +460,8 @@ describe("tailEnvelopeLog (N50)", () => {
     });
   });
 
-  // Backlog item K. `isEnvelopeLogEntryShape` deliberately never constrains
-  // `envelope` -- it is `unknown` by design (R5.1) -- so a line whose
+  // `isEnvelopeLogEntryShape` deliberately never constrains `envelope` -- it
+  // is `unknown` by design -- so a line whose
   // `envelope` is absent, `null`, or a bare string is still a valid
   // EnvelopeLogEntry as far as this function is concerned, and reaches the
   // consumer rather than being reported through `onMalformedLine`. That is

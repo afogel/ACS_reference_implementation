@@ -1,37 +1,26 @@
 /**
- * U20 (envelope stream) and U21 (decision badge).
+ * Renders the two things the Inspector prints: the envelope stream and the
+ * ACS decision badge.
  *
  * Every function here is pure: no clock, no env, no process. The CLI decides
  * whether the terminal wants ANSI and passes `color`; tests assert exact
- * plain strings. Nothing here knows what produced a decision -- the badge
- * reads ACS's own `decision`, `reason_codes`, and `policy_references`
- * fields and nothing else (global constraint 9).
+ * plain strings. The badge reads only ACS's own `decision`, `reason_codes`,
+ * and `policy_references` fields -- nothing here knows what policy runtime
+ * produced a decision.
  *
- * `renderDecisionBadge` is TOLD a decision rather than handed a log row to
- * interrogate (PR #11 review). It used to take an `EnvelopeLogEntry` and dig
- * `entry.envelope.result.decision` out of it, which made "render this
- * decision" read as "ask this log line what it contains" and tied U21 to the
- * one artifact that happens to carry a decision today. The digging now lives
- * in `outcomeMessageOf`, one named translation from an S6 line to the small
- * message the renderers actually need; anything else able to build that
- * message can use them without owning an envelope log.
+ * `renderDecisionBadge` is told a decision rather than handed a log row to
+ * interrogate: `outcomeMessageOf` is the one place that reads an envelope's
+ * shape, translating a log line into the small message the renderers need,
+ * so a caller can build and render that message without owning an envelope
+ * log at all.
  *
- * A DECISION AND AN ERROR ARE TWO OUTCOMES, NOT TWO DECISIONS (PR #11 review,
- * second pass). The message used to be one type called `DecisionMessage` whose
- * second arm was a JSON-RPC error, and both arms went through
- * `renderDecisionBadge` -- so U21, the affordance whose whole job is making an
- * ACS decision legible, was also the thing that rendered responses carrying no
- * decision at all. The slices doc's own watch-for says the opposite in as many
- * words: a schema-invalid envelope "is answered with a JSON-RPC error", and
- * that is deliberately not a decision, because turning Guardian-side failures
- * into honoured ACS denies is N27 and belongs to a later slice. A type and a
- * function that said otherwise taught the reader the thing that slice exists to
- * correct.
- *
- * So the union is `OutcomeMessage`, discriminated, and each arm has its own
- * renderer: `renderDecisionBadge` (U21, decisions only) and `renderRpcError`
- * (a response that carried no decision). `renderOutcome` dispatches, and is
- * what the stream renderer calls.
+ * A decision and an error are two outcomes, not two decisions: a
+ * schema-invalid envelope comes back as a JSON-RPC error, which is
+ * deliberately not the same thing as an ACS `deny`. `OutcomeMessage` is a
+ * discriminated union over the two, with its own renderer per arm --
+ * `renderDecisionBadge` for a decision, `renderRpcError` for a response that
+ * carried none -- and `renderOutcome` dispatches between them for the
+ * stream renderer.
  */
 import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
 
@@ -47,9 +36,9 @@ const DIM = "\u001b[2m";
 export type PolicyReference = { policy_id?: string; policy_version?: string; rule_id?: string };
 
 /**
- * U21's message: what a caller tells the decision badge, already narrowed to
- * the ACS fields it renders. Only ever an actual ACS decision -- see
- * `OutcomeMessage` for why that is now the type's whole content.
+ * What a caller tells the decision badge, already narrowed to the ACS
+ * fields it renders. Only ever an actual ACS decision -- see
+ * `OutcomeMessage` for why this type covers only decisions.
  */
 export type DecisionMessage = {
   decision: string;
@@ -61,8 +50,8 @@ export type DecisionMessage = {
 export type RpcErrorMessage = { code: number | null; message: string };
 
 /**
- * What one S6 response line reports about its step: a decision, or the
- * JSON-RPC error that stood in place of one.
+ * What one envelope-log response line reports about its step: a decision,
+ * or the JSON-RPC error that stood in place of one.
  *
  * A discriminated union rather than one object with an optional `error` beside
  * a `decision`, because a response carries exactly one of them and the other
@@ -121,8 +110,8 @@ function formatReferences(references: PolicyReference[]): string[] {
 }
 
 /**
- * What one S6 line reports, or null when it reports no outcome at all: a
- * request, or a response such as a ServerHello.
+ * What one envelope-log line reports, or null when it reports no outcome at
+ * all: a request, or a response such as a ServerHello.
  *
  * The one place in this module that reads an envelope's shape. It is a
  * translation, not a collaboration -- it turns an artifact into the message the
@@ -159,13 +148,11 @@ export function outcomeMessageOf(entry: EnvelopeLogEntry): OutcomeMessage | null
 /**
  * A response that carried no decision, rendered as the error it was.
  *
- * Its own function rather than an arm of the decision badge (PR #11 review,
- * second pass): what it renders is the absence of a decision, and in this slice
- * that is exactly the boundary the runbook and the slices doc both draw --
- * a schema-invalid envelope comes back as a JSON-RPC error, and N27, which
- * turns Guardian-side failures into honoured ACS denies, is a later slice. The
- * line looks like the badge beside it on purpose; what changed is that no type
- * and no function calls it a decision any more.
+ * Its own function rather than an arm of the decision badge: a
+ * schema-invalid envelope comes back as a JSON-RPC error, which this module
+ * treats as a distinct outcome from an ACS decision, never as an implicit
+ * `deny`. The line looks like the badge beside it on purpose, but no type or
+ * function here calls it a decision.
  */
 export function renderRpcError(message: RpcErrorMessage, options: RenderOptions = {}): string {
   const color = options.color ?? false;
@@ -174,7 +161,7 @@ export function renderRpcError(message: RpcErrorMessage, options: RenderOptions 
   return paint(`✖ ERROR ${code}${text ? `  ${text}` : ""}`, RED, color);
 }
 
-/** U21. Renders the ACS decision it is given. */
+/** Renders the ACS decision it is given. */
 export function renderDecisionBadge(message: DecisionMessage, options: RenderOptions = {}): string {
   const color = options.color ?? false;
 
@@ -188,14 +175,10 @@ export function renderDecisionBadge(message: DecisionMessage, options: RenderOpt
     // A policy fired and the action still proceeded. ACS carries that as
     // `allow` with a non-empty `policy_references`, and rendering it
     // identically to a clean allow is exactly what this badge exists to
-    // prevent (slices doc, section V2).
+    // prevent.
     //
-    // The label used to name the policy runtime's own word for this case,
-    // which ACS does not have -- the comment above it said so in the same
-    // breath. R5.2 exists so this package carries no policy-runtime
-    // vocabulary at all, and a string on screen teaches it more effectively
-    // than an identifier would. What is left is what ACS itself says
-    // happened (PR #11 review).
+    // This package carries no policy-runtime vocabulary: the label says only
+    // what ACS itself reports, not the policy engine's own name for the case.
     head = paint("◐ ALLOW (policy fired)", YELLOW, color);
   } else if (message.decision === "allow") {
     head = paint("○ ALLOW", GREEN, color);
@@ -217,27 +200,26 @@ export function renderDecisionBadge(message: DecisionMessage, options: RenderOpt
   return parts.join("  ");
 }
 
-/** The line one S6 outcome renders as -- U21's badge for a decision, the error
- * line for a response that carried none. One dispatch, so the stream renderer
- * does not have to know the arms apart. */
+/** The line one envelope-log outcome renders as -- the decision badge for a
+ * decision, the error line for a response that carried none. One dispatch,
+ * so the stream renderer does not have to know the arms apart. */
 export function renderOutcome(message: OutcomeMessage, options: RenderOptions = {}): string {
   return message.kind === "decision" ? renderDecisionBadge(message, options) : renderRpcError(message, options);
 }
 
 /**
- * U20. Header line, optional badge line, then the envelope as pretty JSON.
+ * Header line, optional badge line, then the envelope as pretty JSON.
  *
- * What the body shows is the JSON value S6 recorded, printed unmodified:
- * nothing here strips a field, redacts a value, or reorders anything. It is
- * not a byte-for-byte replay of the wire, and this comment used to say it
- * was (whole-branch review, finding 2). The Guardian records `await req.json()`,
- * so the parse has already collapsed duplicate keys, canonicalised number
- * literals (`1.0` -> `1`), and hoisted integer-like object keys ahead of the
- * rest -- and tool argument names are host-controlled, so `arguments` really
- * can carry a key like `"0"`. Storing raw bytes instead would make
- * `entry.envelope` a string rather than a JSON value, which costs the
- * pretty-printing below and the round-trip contract test; an accurate
- * sentence is the better trade.
+ * What the body shows is the JSON value the envelope log recorded, printed
+ * unmodified: nothing here strips a field, redacts a value, or reorders
+ * anything. It is not a byte-for-byte replay of the wire -- the Guardian
+ * records `await req.json()`, so the parse has already collapsed duplicate
+ * keys, canonicalised number literals (`1.0` -> `1`), and hoisted
+ * integer-like object keys ahead of the rest, and tool argument names are
+ * host-controlled, so `arguments` really can carry a key like `"0"`. Storing
+ * raw bytes instead would make `entry.envelope` a string rather than a JSON
+ * value, which costs the pretty-printing below and the round-trip contract
+ * test.
  */
 export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;
@@ -251,9 +233,8 @@ export function renderEnvelopeLogEntry(entry: EnvelopeLogEntry, options: RenderO
   // `JSON.stringify` returns `undefined` -- not a string -- for an entry
   // whose `envelope` key is absent, and `join` would coerce that to an empty
   // line indistinguishable from a real blank body. `isEnvelopeLogEntryShape`
-  // does not require `envelope` (it is `unknown` by design), so a hand-written
-  // or truncated S6 line reaches here without one. Narrowed the way the badge
-  // path above narrows (whole-branch review, finding 8).
+  // does not require `envelope` (it is `unknown` by design), so a
+  // hand-written or truncated envelope-log line can reach here without one.
   const body = JSON.stringify(entry.envelope, null, options.indent ?? 2) ?? "(no envelope recorded)";
 
   return [header, ...(outcome === null ? [] : [outcome]), body].join("\n");

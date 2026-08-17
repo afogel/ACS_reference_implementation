@@ -11,7 +11,7 @@ const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
 
 /** Compiles the ServerHello $def straight out of the pinned handshake.json --
  * not a hand-copied shape -- so this test fails the moment our ServerHello
- * drifts from the schema, per the task's "read the schema yourself" note. */
+ * drifts from the schema. */
 function validateServerHello(candidate: unknown): void {
   const handshakeSchema = JSON.parse(readFileSync(HANDSHAKE_SCHEMA_PATH, "utf8")) as {
     $defs: { ServerHello: Record<string, unknown> };
@@ -147,18 +147,17 @@ describe("startGuardian POST /acs", () => {
   });
 });
 
-// Fix wave finding 1 -- a real fail-open bug: an unhandled throw from
-// assemblePreToolCallSnapshot/bridge.evaluate/mapVerdict inside handleAcsRequest used
-// to escape uncaught, and Bun.serve's default error page for a rejected
-// fetch() is `text/html`, not JSON. guardianClient.post's `res.json()` would
-// then throw a SyntaxError instead of surfacing a JSON-RPC error, and
-// acs-hook.ts's catch-all exits 1 with nothing on stdout -- Claude Code
-// treats that as "the hook never fired" and the tool call proceeds
-// ungoverned. This guards the fix, against a real (not mocked) AGT
-// evaluation -- only mapping.yaml is swapped for a fixture that marks
-// `allow` require_policy_references, so a genuine AGT "allow" verdict for a
-// benign command (which carries no reason/message) makes mapVerdict throw
-// inside handleAcsRequest for real.
+// An unhandled throw from assemblePreToolCallSnapshot, bridge.evaluate, or
+// mapVerdict inside handleAcsRequest must never escape uncaught: Bun.serve's
+// default error page for a rejected fetch() is `text/html`, not JSON, so
+// guardianClient.post's `res.json()` would throw a SyntaxError instead of
+// surfacing a JSON-RPC error, acs-hook.ts's catch-all would exit 1 with
+// nothing on stdout, and Claude Code would read that as "the hook never
+// fired" and let the tool call proceed ungoverned. This test exercises that
+// guard against a real (not mocked) AGT evaluation: only mapping.yaml is
+// swapped for a fixture that marks `allow` require_policy_references, so a
+// genuine AGT "allow" verdict for a benign command (which carries no
+// reason/message) makes mapVerdict throw inside handleAcsRequest for real.
 describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest", () => {
   it("a real mapVerdict throw (require_policy_references unmet) still returns a parseable JSON-RPC error in -32000..-32099, not an HTML 500", async () => {
     const guardian = await startGuardian({
@@ -191,10 +190,10 @@ const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const GUARDIAN_PKG = join(REPO_ROOT, "packages", "guardian");
 
 /**
- * A stable, predictable name rather than an `mkdtempSync` random one
- * (backlog item C). This tree has to live *inside* `packages/guardian/` --
- * not under a repo-wide temp directory -- because it is a relative-path
- * trick: `validate-envelope.ts` resolves its schema root three directories
+ * A stable, predictable name rather than an `mkdtempSync` random one. This
+ * tree has to live *inside* `packages/guardian/` -- not under a repo-wide
+ * temp directory -- because it is a relative-path trick:
+ * `validate-envelope.ts` resolves its schema root three directories
  * up from its own `import.meta.url`, so the copy has to sit at the same
  * depth under `packages/guardian/` for that resolution to land one level
  * short, on purpose (see the doc comment below). Bun's workspace module
@@ -216,9 +215,8 @@ const SCHEMALESS_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-schemaless-scratch");
 
 /**
  * Runs `body` against a Guardian whose `validate-envelope.ts` cannot find the
- * ACS schemas -- the tree-cloned-without-`--recurse-submodules` case, which is
- * what makes the whole-branch review's finding 1 reachable rather than
- * theoretical.
+ * ACS schemas -- the tree-cloned-without-`--recurse-submodules` case, which
+ * is exactly the scenario handleAcsRequest's outer net exists to catch.
  *
  * It is reproduced by *relocation*, not by mocking and not by touching
  * `spec/`. `validate-envelope.ts` derives SCHEMA_ROOT from its own
@@ -237,7 +235,7 @@ const SCHEMALESS_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-schemaless-scratch");
  * disk for that later call go unread. Benign here (every call copies
  * byte-identical source, and this suite's own Ajv registry is never shared
  * with the copy either way), but worth being precise about now that the
- * directory name is fixed rather than fresh per call (backlog item C).
+ * directory name is fixed rather than fresh per call.
  *
  * Deletions here are explicit per file (repo constraint: nothing recursive).
  */
@@ -295,12 +293,10 @@ async function withSchemalessGuardian(
  * tests. Those four all copy the *same* real files every time, so whichever
  * call's module instance Bun's cache happens to answer with behaves
  * identically. These two fake sources differ from each other, and Bun's
- * module cache keys by resolved path: reusing one directory for both meant
- * the second call's `import()` returned the *first* call's already-loaded
- * module -- silently exercising the wrong test double, discovered by this
- * test failing with the first double's behaviour instead of the second's
- * before this was split out. Two names, so each call gets a path Bun has
- * never loaded before.
+ * module cache keys by resolved path: reusing one directory for both would
+ * make the second call's `import()` return the *first* call's
+ * already-loaded module, silently exercising the wrong test double. Two
+ * names, so each call gets a path Bun has never loaded before.
  */
 const UNDEFINED_MESSAGE_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-undefined-message-scratch");
 const THROWING_MESSAGE_ACCESSOR_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-throwing-message-accessor-scratch");
@@ -340,16 +336,15 @@ export function isToolCallRequest(envelope) {
 `;
 
 /**
- * A second test double, for the residual the follow-up review surfaced:
- * `toRepoRelativeMessage`'s own `error instanceof Error ? error.message :
- * error` line can itself throw, if `.message` is an accessor that throws on
- * get -- a case the plain `undefined`-message double above does not
- * exercise, since overwriting `.message` with a value never triggers a
- * getter. `EnvelopeValidationError` is redeclared here for the same reason
- * as the double above.
+ * A second test double, covering the case where `toRepoRelativeMessage`'s
+ * own `error instanceof Error ? error.message : error` line can itself
+ * throw: `.message` as an accessor that throws on get -- which the plain
+ * `undefined`-message double above does not exercise, since overwriting
+ * `.message` with a value never triggers a getter. `EnvelopeValidationError`
+ * is redeclared here for the same reason as the double above.
  *
- * Deliberately *not* the getPrototypeOf-trapping Proxy the review also
- * named. That shape is real and is covered directly, at the unit level,
+ * Deliberately *not* a getPrototypeOf-trapping Proxy. That shape is real and
+ * is covered directly, at the unit level,
  * below -- but it cannot reach `toRepoRelativeMessage` unmutated through
  * this route: `dispatch`'s own `error instanceof EnvelopeValidationError`
  * check runs first, and `instanceof` needs exactly the trapped
@@ -446,15 +441,15 @@ async function withFakeValidateEnvelopeGuardian(
   }
 }
 
-// Whole-branch review, finding 1 -- the fourth fail-open of V1's shape, and
-// the exit the sink's structural-totality claim did not cover. `dispatch`
-// rethrows any non-EnvelopeValidationError, and nothing used to catch it:
-// Bun.serve answers a rejecting fetch() handler with a `text/html` 500,
-// guardian-client's unconditional `res.json()` throws `JSON Parse error:
-// Unrecognized token '<'`, acs-hook.ts's catch-all exits 1 with empty stdout,
-// and Claude Code reads that as "the hook didn't fire" -- the tool call
-// proceeds ungoverned. S6 recorded the request and nothing else, so the
-// Inspector could not even show that a response had been sent.
+// `dispatch` rethrows any non-EnvelopeValidationError, and the outer net in
+// handleAcsRequest is what catches it: an uncaught rethrow would leave
+// Bun.serve answering with its default `text/html` 500, guardian-client's
+// unconditional `res.json()` would throw `JSON Parse error: Unrecognized
+// token '<'`, acs-hook.ts's catch-all would exit 1 with empty stdout, and
+// Claude Code would read that as "the hook didn't fire" and let the tool
+// call proceed ungoverned. Without this net, the envelope log would also
+// record only the request, leaving the Inspector unable to show that a
+// response was ever sent.
 describe("startGuardian POST /acs -- the outer net around dispatch", () => {
   it("answers a throw from validateEnvelope itself with parseable JSON-RPC in -32000..-32099, never an HTML 500", async () => {
     await withSchemalessGuardian(async ({ url }) => {
@@ -479,14 +474,12 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  // Backlog item B. The real ENOENT `withSchemalessGuardian` provokes names
-  // this machine's absolute path in full (`readdirSync` on a schema
-  // directory that does not exist at the relocated copy's resolved path):
-  // before the fix, that absolute path -- this repo's own root, in
-  // particular -- rode straight through to the client and into S6
-  // unredacted. The fix strips only the repo-root prefix, so the
-  // diagnostic remainder (the ENOENT text and the repo-relative path) is
-  // still there for a real reader to use.
+  // The real ENOENT `withSchemalessGuardian` provokes names this machine's
+  // absolute path in full (`readdirSync` on a schema directory that does
+  // not exist at the relocated copy's resolved path). toRepoRelativeMessage
+  // strips only the repo-root prefix from it, so the diagnostic remainder
+  // (the ENOENT text and the repo-relative path) is still there for a real
+  // reader to use, without disclosing where this tree sits on disk.
   it("strips this repo's absolute root out of a real error message before it reaches the client", async () => {
     await withSchemalessGuardian(async ({ url }) => {
       const response = await postAcs(url, toolCallEnvelope("ls -la"));
@@ -522,26 +515,22 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
       const lines = readFileSync(logPath, "utf8").trim().split("\n");
       const entries = lines.map((line) => JSON.parse(line) as { direction: string; rpc_id: unknown });
       expect(entries.map((e) => e.direction)).toEqual(["request", "response"]);
-      // Paired by JSON-RPC id (decision P4), which is what lets the Inspector
-      // show the failure beside the request that caused it.
+      // Paired by JSON-RPC id, which is what lets the Inspector show the
+      // failure beside the request that caused it.
       expect(entries.map((e) => e.rpc_id)).toEqual([11, 11]);
     });
   });
 
-  // Blocking finding from this wave's review. Pre-fix, toRepoRelativeMessage
-  // assumed any `unknown` satisfying `error instanceof Error` also carried a
-  // string `.message` -- true of the real ENOENT the test above forces, but
-  // not something `instanceof Error` guarantees. An Error whose `.message`
-  // has been overwritten to `undefined` throws `TypeError: undefined is not
-  // an object (evaluating 'message.replace')` out of the helper itself --
-  // and unlike the inner catch's own throw (contained by this outer catch),
-  // a throw *from* the outer catch has nothing above `handleAcsRequest` to
-  // catch it: Bun.serve's fetch handler has no try, so it answers with the
-  // unrecorded HTML 500 the module header exists to prevent. Fails against
-  // the pre-fix helper (confirmed by hand before implementing the fix: the
-  // fetch below resolves to an HTML error page, and `res.json()` -- exactly
-  // guardianClient.post's call -- throws a SyntaxError instead of returning
-  // a response).
+  // `instanceof Error` does not guarantee `.message` is a string -- true of
+  // the real ENOENT the test above forces, but not something
+  // toRepoRelativeMessage can assume in general. An Error whose `.message`
+  // has been overwritten to `undefined` would throw `TypeError: undefined
+  // is not an object (evaluating 'message.replace')` out of the helper
+  // itself if it made that assumption -- and unlike the inner catch's own
+  // throw (contained by this outer catch), a throw *from* the outer catch
+  // has nothing above `handleAcsRequest` to catch it: Bun.serve's fetch
+  // handler has no try, so it would answer with the unrecorded HTML 500 the
+  // module header exists to prevent.
   it("does not let a real Error with a non-string .message escape the outer catch as an HTML 500", async () => {
     await withFakeValidateEnvelopeGuardian(UNDEFINED_MESSAGE_SCRATCH_DIR, UNDEFINED_MESSAGE_VALIDATE_ENVELOPE_SOURCE, async ({ url }) => {
       const res = await fetch(url, {
@@ -559,22 +548,20 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
       expect(response.error).toBeDefined();
       expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
       expect(response.error?.code).toBeLessThanOrEqual(-32000);
-      // The pre-fix behaviour this restores: total, coerced to text, rather
-      // than thrown.
+      // Total, coerced to text, rather than thrown.
       expect(response.error?.message).toContain("undefined");
     });
   });
 
-  // Residual the follow-up review surfaced and the coordinator asked closed
-  // anyway: an Error whose `.message` is an accessor that throws on get
-  // defeats `error instanceof Error ? error.message : error` inside
+  // An Error whose `.message` is an accessor that throws on get defeats
+  // `error instanceof Error ? error.message : error` inside
   // toRepoRelativeMessage itself. Unreachable from any real throw site in
   // this repo today -- belt and braces, not a reaction to a live bug (see
   // toRepoRelativeMessage's doc comment) -- but the unit assertions in the
   // describe block below only prove the helper itself is total; this
   // proves the outer net around it still holds when the value it's handed
-  // is this pathological. (The getPrototypeOf-trapping Proxy the review
-  // also named is covered at the unit level only, not here -- see
+  // is this pathological. (A getPrototypeOf-trapping Proxy is covered at
+  // the unit level only, not here -- see
   // THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE's doc comment for
   // why that one specifically cannot reach toRepoRelativeMessage unmutated
   // through dispatch's rethrow route.)
@@ -605,13 +592,12 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
 });
 
 describe("toRepoRelativeMessage", () => {
-  // The regression an earlier review wave found: an earlier version assumed
-  // its argument's `.message` was a string whenever `error instanceof Error`
-  // was true. `instanceof Error` says nothing about what `.message` was
-  // reassigned to after construction, so it wasn't. Exercised directly
-  // (rather than only through withFakeValidateEnvelopeGuardian's HTTP round
-  // trip) so every shape of `unknown` a catch clause can hand it is covered
-  // without standing up a Guardian for each one.
+  // `instanceof Error` says nothing about what `.message` was reassigned to
+  // after construction, so this function must not assume it is a string.
+  // Exercised directly (rather than only through
+  // withFakeValidateEnvelopeGuardian's HTTP round trip) so every shape of
+  // `unknown` a catch clause can hand it is covered without standing up a
+  // Guardian for each one.
   it("never throws, for an Error whose .message is not a string", () => {
     const undefinedMessage = new Error("erased below");
     (undefinedMessage as { message: unknown }).message = undefined;
@@ -633,13 +619,11 @@ describe("toRepoRelativeMessage", () => {
     expect(toRepoRelativeMessage({ some: "object" })).toBe("[object Object]");
   });
 
-  // Follow-up review residual, parked by that review on correct facts
-  // (unreachable from any throw site here today, identical exposure existed
-  // pre-fix, out of that round's scope) and closed anyway: the contract this
-  // function exists to uphold is that nothing escapes the outer net, and
-  // "unreachable today" should not be load-bearing for that (see this
-  // function's doc comment). Four shapes, each defeating a different step
-  // of `String(error instanceof Error ? error.message : error)`:
+  // The contract this function exists to uphold is that nothing escapes the
+  // outer net, and "unreachable today" should not be load-bearing for that
+  // (see this function's doc comment). Four shapes, each defeating a
+  // different step of `String(error instanceof Error ? error.message :
+  // error)`:
   //   - an Error whose `.message` is a throwing accessor
   //   - a value whose `toString`/`valueOf` both throw, so `String()` itself
   //     throws on the non-Error branch
@@ -688,11 +672,11 @@ describe("toRepoRelativeMessage", () => {
     expect(toRepoRelativeMessage(throwingGetPrototypeOfProxy)).toBe("<unprintable error>");
   });
 
-  // This file's own REPO_ROOT (above, line 190) keeps the trailing slash
-  // `fileURLToPath` gives a directory URL -- fine for join()ing against,
-  // but these two tests need the bare root, with nothing after it, to build
-  // "root + separator + subpath" and "root + suffix" strings without
-  // accidentally doubling or misplacing a slash.
+  // This file's own REPO_ROOT keeps the trailing slash `fileURLToPath`
+  // gives a directory URL -- fine for join()ing against, but these two
+  // tests need the bare root, with nothing after it, to build "root +
+  // separator + subpath" and "root + suffix" strings without accidentally
+  // doubling or misplacing a slash.
   const REPO_ROOT_BARE = REPO_ROOT.replace(/[/\\]+$/, "");
 
   it("strips this repo's root, with or without a trailing separator", () => {
@@ -700,12 +684,11 @@ describe("toRepoRelativeMessage", () => {
     expect(toRepoRelativeMessage(new Error(REPO_ROOT_BARE))).toBe("");
   });
 
-  // Recommended fix, same wave: the un-anchored version matched REPO_ROOT as
-  // a bare prefix, so a *sibling* directory whose name merely extends the
-  // root (a `_old` backup clone, say) had its shared prefix stripped too --
-  // not a disclosure of this tree's own location, since it names a
-  // different directory entirely, but a misleading diagnostic that then
-  // reads as if it were a path under this repo.
+  // An un-anchored match on REPO_ROOT as a bare prefix would also strip a
+  // *sibling* directory whose name merely extends the root (a `_old` backup
+  // clone, say) -- not a disclosure of this tree's own location, since it
+  // names a different directory entirely, but a misleading diagnostic that
+  // would then read as if it were a path under this repo.
   it("leaves a sibling directory whose name extends the repo root untouched", () => {
     const siblingPath = `${REPO_ROOT_BARE}_old/packages/spec`;
 
@@ -713,10 +696,9 @@ describe("toRepoRelativeMessage", () => {
   });
 });
 
-// PR #10 review, Critical: mapping.yaml's intervention_points table is what
-// V7's conformance matrix publishes, and the runtime used to hardcode
-// "pre_tool_call" instead of consulting it, so the two could disagree without
-// anything failing.
+// The intervention point comes from mapping.yaml's own `intervention_points`
+// table rather than from a hardcoded "pre_tool_call", so the table cannot
+// drift away from what the runtime actually does without a test catching it.
 describe("startGuardian POST /acs -- the intervention point comes from mapping.yaml", () => {
   it("evaluates the point the table names, not pre_tool_call: a moved row changes the decision", async () => {
     // The fixture answers steps/toolCallRequest with `output`, which
