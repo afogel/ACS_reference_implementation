@@ -9,6 +9,7 @@ export {
 } from "./cells.ts";
 export { resolveExitCode } from "./exit-code.ts";
 export { checkDenyFailsClosed } from "./failure-domains.ts";
+export { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "./fetch-upstream.ts";
 export {
   canonicalIdentity,
   checkEnforcedBinding,
