@@ -66,44 +66,36 @@ real, reported movement looks like. That is what the next section is for.
 ## What a moved surface looks like
 
 Captured separately, against two real clones edited on purpose, and not the state of AGT
-today. The six watched source files were first compared byte for byte
-between the pinned ref and `main` and found identical. The run was then repeated after adding
-one value to `main`'s verdict enum, and again after renaming a watched schema file on `main`.
-Nothing about the watch itself changed between any of these runs — only the clone did.
+today: one clone checked out at the ref `agt.lock` pins
+(`81955d48025c6b11deb3fc9dabf89f74f4145775`), one at `main`, which was at
+`7d0cef5d9820a865c3c19b07bd39ecf7053b58a1` when this was captured. Nothing about the watch
+itself changed between any of the runs below — only the clones did.
+
+The six watched source files were first compared byte for byte between the two clones and
+found identical, so "no watched surface moved" is the truthful answer for these two refs —
+history moved upstream, and none of the watched contract surfaces did:
 
 ```
-Controller check, run after Task 5 committed. Two real shallow clones of
-agent-governance-toolkit: one at agt.lock's pinned ref
-81955d48025c6b11deb3fc9dabf89f74f4145775, one at refs/heads/main, which was
-at 7d0cef5d9820a865c3c19b07bd39ecf7053b58a1 when this was captured.
-
-The six watched source files were compared byte-for-byte between the two
-clones first. All six are identical, so "no watched surface moved" is the
-truthful answer for these two refs -- upstream's history moved, the watched
-contract surfaces did not:
-
   same: policy-engine/spec/schema/manifest.schema.json
   same: policy-engine/spec/schema/wire/policy-input.schema.json
   same: policy-engine/spec/schema/wire/verdict.schema.json
   same: policy-engine/spec/schema/wire/snapshot.schema.json
   same: policy-engine/spec/reserved-reasons.json
   same: policy-engine/policy/lib/agt_default.rego
+```
 
-A watch that answers "nothing moved" proves nothing on its own -- a broken
-watch answers the same way. So the upstream clone's verdict schema was then
-edited to add one enum value, and the run repeated against the same two
-clones. Nothing in the harness was changed between the two runs.
+A watch that answers "nothing moved" proves nothing on its own — a broken watch answers the
+same way. So the run itself was tried next, against the same two clones, unmodified:
 
-=== run against the two clones, unmodified ===
-
+```
 Upstream contract watch: no watched surface moved between the pinned ref and main.
+```
 
-=== the upstream clone's verdict enum, after adding one value ===
+The upstream clone's verdict enum was then edited to add one value — it read `allow, deny,
+warn, escalate, transform, quarantine` afterward — and the run was repeated against the same
+two clones, with nothing about the watch itself changed between the two runs:
 
-allow, deny, warn, escalate, transform, quarantine
-
-=== the same run, against the edited clone ===
-
+```
 Upstream contract watch: 2 fields moved between the pinned ref and main.
 
 verdict.schema.json
@@ -115,33 +107,33 @@ verdict enum
 | field | pinned | main |
 |---|---|---|
 | `/5` | (absent) | "quarantine" |
+```
 
-Three things this establishes, none of them from reading the code:
+Three things this establishes, none of them from reading the code: the watch detects a moved
+enum value and names it — the surface, the field by JSON pointer, and what it was against
+what it is now; a moved value inside a document the watch also reads whole is reported
+twice, once against the document and once against the extracted enum, which is this
+arrangement working as intended and not a duplicate; and the verdict enum at the pinned ref
+really is the five values allow, deny, warn, escalate and transform, matching what this
+project expects there.
 
-1. The watch detects a moved enum value and names it: the surface, the field
-   by JSON pointer, and what it was against what it is now.
-2. A moved value inside a document the watch also reads whole is reported
-   twice -- once against the document, once against the extracted enum. That
-   is the arrangement working as intended, not a duplicate.
-3. The verdict enum at the pinned ref really is the five values allow, deny,
-   warn, escalate and transform, which is what the surfaces table claims.
+A moved enum value is the easy case. The harder one is a surface that is not where it was at
+all — the watch reads every surface by path, so a renamed or relocated file is the loudest
+thing upstream can do. The upstream clone's `verdict.schema.json` was renamed to
+`verdict-v2.schema.json` and the run repeated:
 
-=== a relocated surface, checked after the run learned to report one ===
-
-A moved enum VALUE is the easy case. The harder one is a surface that is not
-where it was at all -- the watch reads it by path, so a renamed or relocated
-file is the loudest thing upstream can do. The upstream clone's
-verdict.schema.json was renamed to verdict-v2.schema.json and the run
-repeated:
-
+```
 Upstream contract watch: could not read main's surfaces -- readSurfaces: expected an AGT surface at policy-engine/spec/schema/wire/verdict.schema.json, and the clone has no such file
+```
 
-Exit code 0. The run names the surface it could not read and which side it
-was reading, and it reports rather than refusing -- so the scheduled job
-publishes the finding instead of dying with the error buried in a raw log.
+Exit code `0`. The run names the surface it could not read and which side it was reading,
+and it reports rather than refusing — so the scheduled job publishes the finding instead of
+dying with the error buried in a raw log.
 
-=== and the moved enum again, with the schema question now asked of main ===
+The rename was undone, leaving only the moved enum from two runs above in place, and the run
+was repeated once more — this time with the schema question also asked of `main`:
 
+```
 Upstream contract watch: 2 fields moved between the pinned ref and main.
 
 verdict.schema.json
@@ -155,11 +147,10 @@ verdict enum
 | `/5` | (absent) | "quarantine" |
 
 Policy-input schema against main: the policy input we send still validates against main (checked at pre_tool_call, post_tool_call).
-
-Exit code 0. Both halves are visible in one run: what moved textually, and
-whether the document this repository sends is still one the contract as it
-stands today would accept.
 ```
+
+Exit code `0`. Both halves are visible in one run: what moved textually, and whether the
+document this repository sends is still one the contract as it stands today would accept.
 
 ## What this file is, and is not
 
