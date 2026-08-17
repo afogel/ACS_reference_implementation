@@ -9,7 +9,7 @@
  * declared contract surface, since a copy of that surface authored here
  * could drift from upstream without this check saying so.
  *
- * `packages/agt-bridge/test/bridge.test.ts:134-140` already asserts the
+ * `packages/agt-bridge/test/bridge.test.ts` already asserts the
  * constructed policy input has exactly the five members
  * `policy-input.schema.json` names (`additionalProperties: false` over
  * `intervention_point`, `policy_target`, `snapshot`, `annotations`, `tool`)

@@ -453,7 +453,7 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
       // res.json() below is exactly guardianClient.post's call: an unhandled
       // rejection reaching Bun.serve's default handler answers with a
       // text/html error page, and res.json() throws a SyntaxError on that
-      // body instead of resolving (see guardian-client.ts:70).
+      // body instead of resolving (see guardian-client.ts's `post`).
       // denyOnInvalidEnvelope turns the parseable error this catch produces
       // into a deny decision when there is a request to address it to,
       // keeping AGT's fail-closed evaluation (the real mapVerdict throw
@@ -1159,9 +1159,10 @@ describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", ()
     // array shape. The array is not a restatement of the literal above: an
     // object keyed "0" fails CLOSED at the host, where applyModifications'
     // non-array guard throws ModificationsInvalidError and validateDecision
-    // answers `deny` (packages/host-adapter/src/modifications.ts:250, tested at
-    // validate-decision.test.ts:214, and measured again for the object-keyed
-    // form specifically). So the wrong shape does NOT reach a host that applies
+    // answers `deny` (see `applyModifications` in
+    // packages/host-adapter/src/modifications.ts, covered by
+    // validate-decision.test.ts and measured again for the object-keyed form
+    // specifically). So the wrong shape does NOT reach a host that applies
     // nothing while reporting a rewrite -- that fail-open is already closed one
     // hop later. What pinning it here buys is catching the wrong shape AT THE
     // SOURCE, as a Guardian bug, instead of as a refused rewrite whose deny a

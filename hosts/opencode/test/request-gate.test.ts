@@ -13,10 +13,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-// Test-only import: stands up a real Guardian, same precedent as
-// hosts/claude-code/test/hook.test.ts:11 and hosts/opencode/test/
-// apply-opencode-output.test.ts's own `renderDecision`-through-the-real-adapter
-// test.
+// Test-only import: stands up a real Guardian, the same arrangement
+// hosts/claude-code/test/hook.test.ts uses, and the same one
+// apply-opencode-output.test.ts uses to render through the real adapter.
 import { startGuardian, type StartedGuardian } from "guardian";
 import {
   buildEnvelope,
@@ -64,7 +63,7 @@ beforeAll(async () => {
   // Read at AcsPlugin's own construction, per hosts/opencode/acs-plugin.ts's
   // own header ("the plugin reads ACS_GUARDIAN_URL when it is constructed") --
   // so this has to be set before AcsPlugin runs, not merely before the hook
-  // fires. Same precedent as hosts/claude-code/test/hook.test.ts:84.
+  // fires. hosts/claude-code/test/hook.test.ts sets it the same way.
   process.env.ACS_GUARDIAN_URL = guardian.url;
   process.env.ACS_AUDIT_LOG = AUDIT_LOG;
 });

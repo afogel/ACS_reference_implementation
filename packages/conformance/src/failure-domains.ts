@@ -15,9 +15,9 @@
  *       `denyOnInvalidEnvelope` (`packages/guardian/src/deny-on-invalid-
  *       envelope.ts`) is what does it, reached from two different catches in
  *       `server.ts` with two different reason codes: `envelope_invalid`
- *       (`dispatch`'s own catch, server.ts:502) and `evaluation_failed`
- *       (`evaluateStep`'s catch, server.ts:664). THE ASSERTIONS BELOW THAT
- *       BELONG TO THIS DOMAIN: `measureDenyColumn` drives one live probe per
+ *       (`dispatch`'s own catch) and `evaluation_failed` (`evaluateStep`'s
+ *       catch). The assertions below that belong to this domain:
+ *       `measureDenyColumn` drives one live probe per
  *       mapped point (never one probe generalised to all of them), and
  *       `assertEvaluationFailsClosed` drives one literal probe of its own, a
  *       `steps/toolCallRequest` whose payload fails
@@ -30,13 +30,12 @@
  *       HOST'S, not the Guardian's: the Guardian never applies a posture, it
  *       only ever answers with a decision or fails to answer at all.
  *       `packages/host-adapter/src/failure-posture.ts`'s `applyFailurePosture`
- *       (failure-posture.ts:233) is what reads `on_decision_failure` off the
- *       stored session config and decides the outcome; `session-config.ts`'s
- *       `isSessionConfig` (session-config.ts:116) is what validates a stored
- *       config carries that field before `applyFailurePosture` can read it.
- *       `hosts/claude-code/acs-hook.ts` calls into this by way of
- *       `governStep` (acs-hook.ts:662) -- it does not apply the posture
- *       itself. It is measured end to end by
+ *       reads `on_decision_failure` off the stored session config and decides
+ *       the outcome; `session-config.ts`'s `isSessionConfig` validates that a
+ *       stored config carries that field before `applyFailurePosture` can read
+ *       it. `hosts/claude-code/acs-hook.ts` calls into this by way of
+ *       `governStep` -- it does not apply the posture itself. It is measured
+ *       end to end by
  *       `hosts/claude-code/test/posture.test.ts` (which drives a stub
  *       Guardian through every delivery-failure shape it can produce -- dead,
  *       timed out, error-without-decision -- against both postures) and is
@@ -70,7 +69,7 @@
  *
  * ONE LIVE PROBE PER MAPPED POINT, never one probe generalised to all of
  * them, because a single hook-payload probe cannot stand in for the other
- * five points: `checkHookPayload` (validate-envelope.ts:359-363) applies a
+ * five points: `checkHookPayload` applies a
  * hook-payload schema only for `steps/toolCallRequest` /
  * `steps/toolCallResult`, so an empty payload never fails validation at all
  * for the other four mapped methods -- they have no hook-payload schema to
@@ -94,7 +93,7 @@ import { AGT_POINTS, type CoverageCell } from "./cells.ts";
 const MAPPING_PATH = "mapping.yaml";
 
 /** server.ts's own code for "well-formed envelope, no handler here"
- * (server.ts:198, `METHOD_NOT_DISPATCHED_CODE`). Read here only to
+ * (`METHOD_NOT_DISPATCHED_CODE` in server.ts). Read here only to
  * recognise a dispatch probe's own answer -- not re-exported, not
  * re-implemented against a guess at the wire shape. */
 const METHOD_NOT_DISPATCHED_CODE = -32011;
@@ -158,7 +157,7 @@ function wellFormedEnvelope(method: string, payload: Record<string, unknown>): R
  * `validateTopLevel` (validate-envelope.ts's FIRST check, against the
  * envelope's general shape), which runs identically before any
  * method-specific branch and before `payload` is ever inspected. Unlike a
- * hook-payload failure (method-gated: validate-envelope.ts:359-363), this
+ * hook-payload failure (method-gated, in `checkHookPayload`), this
  * failure mode genuinely does not depend on which `steps/*` method is named
  * -- which is what licenses `measureDenyColumn` calling this once per mapped
  * point and expecting the same answer each time, a claim this module trusts
@@ -187,7 +186,7 @@ function envelopeMissingMetadata(method: string): Record<string, unknown> {
  * not some other field validate-envelope.ts would also have rejected.
  *
  * Does not, by itself, license any cell. The hook-payload check this probe
- * trips is method-gated (validate-envelope.ts:359-363: only
+ * trips is method-gated (`checkHookPayload` applies it to only
  * `steps/toolCallRequest` / `steps/toolCallResult` get one), so a deny here
  * says nothing about a mapped point with no hook-payload schema at all.
  * `measureDenyColumn` below is what actually resolves the deny column, from
@@ -228,7 +227,7 @@ async function assertEvaluationFailsClosed(guardianUrl: string): Promise<void> {
  * `hooks/session-start.json` (or any schema for a non-tool-call method) is
  * never checked by `validateEnvelope` at all -- `checkHookPayload` is called
  * only for `steps/toolCallRequest` / `steps/toolCallResult`
- * (validate-envelope.ts:359-363) -- so an empty payload here is not invalid;
+ * (`checkHookPayload`) -- so an empty payload here is not invalid;
  * the envelope passes validation whole, and dispatch's own predicates answer
  * `method_not_dispatched`. Contrasted directly with
  * `assertEvaluationFailsClosed`'s identical-shaped probe at
