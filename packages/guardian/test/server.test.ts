@@ -611,10 +611,10 @@ export function validateEnvelope(_input) {
 // exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
 // exactly: unreachable here (validateEnvelope always throws) but a double
 // that lies about behaviour is worse than one that does not compile.
-// getValidator joined the export surface with validate-response.ts
-// (validate-envelope.ts's outbound twin): server.ts calls validateResponse
-// on every response this relocated Guardian builds, and validateResponse
-// imports getValidator from
+// getValidator joined the export surface with check-response.ts
+// (validate-envelope.ts's outbound counterpart): server.ts calls
+// checkResponse on every response this relocated Guardian builds, and
+// checkResponse imports getValidator from
 // this same module path -- so a double omitting it fails to import before
 // dispatch's rethrow route is ever reached. Its stub always reports valid,
 // since these tests are about toRepoRelativeMessage's handling of a
@@ -675,10 +675,10 @@ export function validateEnvelope(_input) {
 // exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
 // exactly: unreachable here (validateEnvelope always throws) but a double
 // that lies about behaviour is worse than one that does not compile.
-// getValidator joined the export surface with validate-response.ts
-// (validate-envelope.ts's outbound twin): server.ts calls validateResponse
-// on every response this relocated Guardian builds, and validateResponse
-// imports getValidator from
+// getValidator joined the export surface with check-response.ts
+// (validate-envelope.ts's outbound counterpart): server.ts calls
+// checkResponse on every response this relocated Guardian builds, and
+// checkResponse imports getValidator from
 // this same module path -- so a double omitting it fails to import before
 // dispatch's rethrow route is ever reached. Its stub always reports valid,
 // since these tests are about toRepoRelativeMessage's handling of a

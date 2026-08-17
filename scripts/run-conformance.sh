@@ -60,4 +60,4 @@ if [ ! -f "$schema_path" ]; then
   exit 1
 fi
 
-UPSTREAM_AGT_CLONE="$tmp_dir" bun run packages/conformance/src/main.ts
+PINNED_AGT_CLONE="$tmp_dir" bun run packages/conformance/src/main.ts
