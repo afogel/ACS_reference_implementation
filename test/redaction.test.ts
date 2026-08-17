@@ -25,10 +25,10 @@ describe("the shipped bundle redacts at the result gate", () => {
     });
   });
 
-  // Evidence 5. AGT resolves `tool_name_from` before policy runs, so a
-  // snapshot with no `tool_call` fails CLOSED rather than evaluating with a
-  // missing name. Pinned because the Guardian synthesizes that member from
-  // the ACS payload (Task 3) and nothing else would notice if it stopped.
+  // AGT resolves `tool_name_from` before policy runs, so a snapshot with no
+  // `tool_call` fails CLOSED rather than evaluating with a missing name.
+  // Pinned because the Guardian synthesizes that member from the ACS payload,
+  // and nothing else would notice if it stopped.
   it("fails closed when the snapshot carries no tool_call", async () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("post_tool_call", {

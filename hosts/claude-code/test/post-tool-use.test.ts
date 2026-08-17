@@ -41,19 +41,16 @@ import { startGuardian, type StartedGuardian } from "guardian";
  * four siblings gone: the exact shape Claude Code discards, so the model would
  * receive the real token.
  *
- * RE-MEASURED as the file grew, because the count is the part of a claim like
- * this that rots. Task 7 recorded "465 pass / 4 fail, three of the four here"
- * against a 470-test suite; every test added since that asserts the whole
- * five-field object is another the mutation fails, so the figure was stale
- * within the same slice. Against 492 tests it is **478 pass / 13 fail, six of
- * them in this file** -- every test here except the `allow` one, which
+ * The count is the part of a claim like this that rots, so it is re-measured
+ * as the file grows: against 492 tests the mutation gives **478 pass / 13
+ * fail, six of them in this file** -- every test here except the `allow` one, which
  * deliberately asserts that no replacement is emitted at all and so has no
  * object to lose siblings from. The other seven are `validate-decision.test.ts`'s
  * projection cases and `govern-step.test.ts`'s preflight case, which assert the
  * same whole object one and two seams earlier.
  *
- * What still does NOT notice, which was Task 7's real point and survives the
- * arithmetic: the per-hook render literals in
+ * What still does NOT notice, and is the real point here: the per-hook render
+ * literals in
  * packages/host-adapter/test/render-decision.test.ts, which assert hand-written
  * `applied_output` fixtures and so cannot tell a projection from a construction.
  */
@@ -61,7 +58,7 @@ const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 
 /**
  * The scratch tree this suite is allowed to touch. The shim negotiates a
- * session (S13) and can audit a fail-open (S14), both of which default under
+ * session and can audit a fail-open, both of which default under
  * the process cwd -- which would scatter real files into the repo on every
  * run. Every test here uses one session id, so `sessions/<id>.json` is the only
  * file any of them can create; an `audit.jsonl` would mean a delivery failure
@@ -327,7 +324,7 @@ describe("the result gate, end to end through the real shim and a real Guardian"
 
   // The two halves composed, which is where a result-gate deny stops being
   // hypothetical: a `modify` whose redaction addresses a field the result
-  // payload does not have cannot be applied, so N7 substitutes
+  // payload does not have cannot be applied, so validateDecision substitutes
   // `deny(modifications_invalid)` -- and THAT deny has to withhold the output
   // too, or a rewrite the host refused becomes an unredacted delivery with a
   // block reason attached. Fail-closed all the way to the bytes on stdout.
@@ -346,12 +343,11 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     expect(parsed.decision).toBe("block");
 
     // THE STATED REASON, not merely that there is one. `reason` is what Claude
-    // Code shows in the transcript and what the audit trail records, and this
-    // assertion used to be `toContain("modifications")` -- which passed while the
-    // sentence read "not present in the arguments this tool call sent". There are
-    // no arguments at a gate where the step has already run, and the pointer that
-    // failed was never about one: a deny is only as useful as its stated reason,
-    // so the reason is pinned rather than the fact of one.
+    // Code shows in the transcript and what the audit trail records. Asserting
+    // merely that the reason mentions "modifications" would pass even while the
+    // sentence talked about arguments this tool call sent -- and there are no
+    // arguments at a gate where the step has already run. A deny is only as
+    // useful as its stated reason, so the reason itself is pinned.
     expect(parsed.reason).toContain('redaction path "/outputs/9/value" addresses "/outputs/9"');
     expect(parsed.reason).toContain("this step's own request or result payload");
     // Nothing in this sentence may name a thing this gate does not have. The

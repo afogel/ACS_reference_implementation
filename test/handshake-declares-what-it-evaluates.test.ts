@@ -111,7 +111,7 @@ async function dispatches(method: string): Promise<boolean> {
     return false;
   }
   if (typeof answer.result?.decision === "string") {
-    // N27 turns a schema failure into an honoured `deny` for any steps/*
+    // The Guardian turns a schema failure into an honoured `deny` for any steps/*
     // method, dispatched or not -- so an envelope_invalid here means this
     // probe's payload no longer satisfies that method's schema, and the
     // measurement would be of validation rather than of dispatch. Fail loudly

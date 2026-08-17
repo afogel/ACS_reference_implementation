@@ -157,7 +157,7 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
     expect(stderr).toBe("");
   });
 
-  // V4, C8, and the half of the wrapper refusal that had to learn the hook. At
+  // The half of the wrapper refusal that had to learn which hook it is at. At
   // PreToolUse an output Claude Code reads no decision from lets the tool call
   // proceed, so this shim refuses to write one -- and that refusal, applied to
   // the result gate, would have exited 2 on EVERY clean tool call. The tool has

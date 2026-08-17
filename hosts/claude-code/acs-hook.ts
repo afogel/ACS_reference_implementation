@@ -135,8 +135,7 @@ const BLOCK = "block";
  * PreToolUse hookSpecificOutput -- the same three claude-code.hookmap.yaml's
  * own header comment names ("Claude Code's PreToolUse hookSpecificOutput
  * only accepts permissionDecision \"allow\" | \"deny\" | \"ask\" (see Claude
- * Code's own hook docs)"). The hookmap says it; until V1's fix wave nothing
- * checked it.
+ * Code's own hook docs)"). The hookmap says it; this set is what checks it.
  */
 const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
 
@@ -153,12 +152,11 @@ function declaredAt(rule: DeclaredRule | undefined, outputPath: string): { value
 
 /**
  * What this shim expects of ONE hook, and why there is a table rather than a
- * single rule (V4).
+ * single rule.
  *
- * Both members below used to be one hook's answer written as every hook's:
- * every decision had to declare a `permissionDecision`, and every rendered
- * output had to carry a wrapper. Claude Code's two gates are not symmetric, and
- * neither assumption survives the second one:
+ * Claude Code's two gates are not symmetric, so neither "every decision
+ * declares a `permissionDecision`" nor "every rendered output carries a
+ * wrapper" holds across both. Each hook states its own answer:
  *
  *   - `PreToolUse` decides whether a step runs, and answers with
  *     `permissionDecision`. An output Claude Code reads no decision from lets
@@ -199,9 +197,9 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
    * success exit code. Same shape as every other fail-open found here -- the
    * host receives no honoured decision and the tool call runs ungoverned.
    *
-   * Two cases this catches that a per-entry `permissionDecision` FIELD check
-   * could not, both of which arrived with S1's generic output shape (V1's own
-   * PR #10 Critical) and both of which are the same bypass by another route:
+   * Two cases this catches that a per-entry `permissionDecision` field check
+   * could not, both of which the hookmap's generic output shape admits, and
+   * both of which are the same bypass by another route:
    *
    *   - An entry declaring no `permissionDecision` path at all. Legal for a hook
    *     whose output has no such field; for this one it renders JSON Claude Code

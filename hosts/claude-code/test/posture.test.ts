@@ -724,7 +724,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   //
   // loadHookmap cannot catch this either: the entry below is perfectly
   // renderable, and which host field a renderable entry has to name is not the
-  // adapter's business (R3.2).
+  // adapter's business.
   it("exits 2 (blocking) on a PostToolUse deny that declares block without a replacing output", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "reports-a-withholding.yaml");
@@ -817,13 +817,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // THE TWELFTH FAIL-OPEN, end to end. A result-gate `deny` withholds by carrying
-  // a replacement for the output, and a leaf that is not prose is a leaf no
-  // replacement can be expressed for. That used to be discovered at the render,
-  // with the decision already in hand, where the delivery posture answered it:
-  // measured at exit 0 with the FULL UNREDACTED tool_response delivered, the
-  // Guardian's deny dropped, and an audit entry saying the decision "was
-  // honoured". The hookmap below is the same shipped file with `outputs.from`
+  // A fail-open, end to end. A result-gate `deny` withholds by carrying a
+  // replacement for the output, and a leaf that is not prose is a leaf no
+  // replacement can be expressed for. Discovering that at the render, with the
+  // decision already in hand, is too late: it exits 0 with the FULL UNREDACTED
+  // tool_response delivered, the Guardian's deny dropped, and an audit entry
+  // saying the decision "was honoured". The hookmap below is the same shipped
+  // file with `outputs.from`
   // moved one field along, from `stdout` to the boolean `interrupted` -- so
   // `buildEnvelope` still builds a clean envelope and a decision would still come
   // back. It is refused before either happens.

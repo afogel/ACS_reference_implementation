@@ -1,6 +1,6 @@
 /**
- * One redacted leaf, three path dialects, and the two that CAN agree by
- * derivation now do (PR #13 review, Important).
+ * One redacted leaf, three path dialects, and the two that can agree by
+ * derivation.
  *
  * A single rewrite is addressed three different ways along its route:
  *
@@ -11,11 +11,10 @@
  *   host  the hookmap's `outputs.from` / `arguments`, addressing the HOST's own
  *         payload (`$.tool_response.stdout`)
  *
- * Their agreement used to be prose: three files, each with a comment telling the
- * reader to go and check another. Every new host or gate multiplies that tax,
- * and a comment is not a check -- moving `policy_target` one field over leaves
- * mapping.yaml describing a leaf nothing targets, and the demo simply stops
- * redacting.
+ * Their agreement is checked here rather than left to prose in three files,
+ * each telling the reader to go and verify another. A comment is not a check:
+ * moving `policy_target` one field over would leave mapping.yaml describing a
+ * leaf nothing targets, and the demo would simply stop redacting.
  *
  * WHAT IS CHECKED HERE, AND WHY IT IS ONLY TWO OF THE THREE. The AGT and ACS
  * dialects address the SAME document -- AGT's snapshot is assembled from the ACS
