@@ -2,21 +2,14 @@
  * The message this Guardian sends back: an ACS final result, as
  * response-envelope.json's `AcsResult` defines it.
  *
- * A NAMED MESSAGE RATHER THAN A RE-BAGGING (PR #10 review, second pass). The
- * inbound half of this seam is method-narrowed -- `validateEnvelope` answers
- * with an `AcsRequestEnvelope` and each gate's predicate narrows it further --
- * while the outbound half was assembled into a bare `Record<string, unknown>`
- * immediately after `mapVerdict` had built a real `AcsDecision`, and handed to
- * `successResponse` as an anonymous dict. So the one direction the Guardian is
- * solely responsible for was the one direction with no type on it: nothing
- * checked that the three envelope fields ACS requires beside the decision were
- * present, or that they were the ones this request carried.
- *
  * Structured as the decision PLUS the correlation fields rather than as a flat
- * list of its own, because that is what it is: §17's result is one ACS decision
- * addressed to one request. Spreading `AcsDecision` in keeps a single source
- * for the decision's own shape (map-verdict.ts), so a field added there cannot
- * fail to be sendable from here.
+ * list of its own, because that is what it is: one ACS decision addressed to
+ * one request. Spreading `AcsDecision` in keeps a single source for the
+ * decision's own shape (map-verdict.ts), so a field added there cannot fail to
+ * be sendable from here. Typing it at all is what makes the outbound half of
+ * this seam as checked as the inbound one, where `validateEnvelope` narrows
+ * each arrival: without it, nothing confirms the envelope fields ACS requires
+ * beside the decision are present and belong to this request.
  *
  * `request_id` is the ACS correlation id from `params.request_id`, NOT the
  * JSON-RPC `id`. The two are equal for every envelope `buildEnvelope` sends,

@@ -16,16 +16,14 @@ type VerdictRule = {
 /** A leaf of field_synthesis that copies a verdict field verbatim. */
 type FieldSource = { source: string };
 /** A leaf of field_synthesis that wraps a scalar verdict field into a
- * single-element array -- the only shape reason_codes' string verdict
- * field (verdict.reason) can take to satisfy ACS's `string[]`. `wrap` is
- * required here (not optional) precisely so there is no third case to
- * handle: a string source is always wrapped, never cast unsound. */
+ * single-element array -- the only shape `verdict.reason` can take to satisfy
+ * ACS's `string[]`. `wrap` is required, not optional, so a string source is
+ * always wrapped and never cast. */
 type WrappedFieldSource = { source: string; wrap: WrapMode };
 type FieldLiteral = { literal: string };
 
-/** The wrap modes this mapping can express. One member today; the point of
- * naming the set is that `applyWrap` below refuses everything outside it
- * rather than silently doing the one thing it knows. */
+/** The wrap modes this mapping can express. Named as a set so `applyWrap`
+ * can refuse everything outside it. */
 type WrapMode = "array";
 
 export type Mapping = {
@@ -48,30 +46,17 @@ export function loadMapping(path: string): Mapping {
 }
 
 /**
- * Resolves an ACS method to the AGT intervention point that answers it, from
- * mapping.yaml's `intervention_points` table -- the same table V7's
- * conformance matrix publishes.
+ * Resolves an ACS method to the AGT intervention point that answers it.
  *
- * This exists because the table used to be a claim nobody checked: the
- * Guardian hardcoded `"pre_tool_call"` at its one call site, so the
- * declaration was documentation V7 was asked to trust while the runtime
- * ignored it (PR #10 review, Critical, twice -- once against the call site
- * and once against the table). The two could disagree without anything
- * failing. Now the runtime reads it, so a wrong row is a wrong decision,
- * which is the only kind of claim a conformance matrix can safely publish.
+ * mapping.yaml lists these the other way round: each entry is keyed by the AGT
+ * intervention point and names the ACS method it answers. This searches that
+ * table backwards, because a request arriving off the wire tells us its ACS
+ * method, and what we need in order to evaluate it is the AGT point.
  *
- * The direction is deliberately method -> point, not point -> method, even
- * though the YAML is keyed the other way: the runtime is handed an ACS method
- * by the wire and needs the AGT point, and inverting a small declaration here
- * is cheaper than duplicating it in the other order.
- *
- * Every failure is a THROW, and none of them is recoverable-by-guessing.
- * Returning a default point, or falling back to `pre_tool_call`, would
- * evaluate the wrong policy and call the result a decision; that is the
- * fail-open this function is shaped to make impossible. What the Guardian
- * does with the throw is its own concern -- at this slice it becomes a
- * JSON-RPC error in the ACS-reserved range, and turning an evaluation failure
- * into an explicit ACS `deny` is N27, scoped to V3.
+ * If the table names no point for the method, or names more than one, this
+ * throws rather than picking one. Falling back to a default would mean
+ * evaluating the wrong policy and then returning that answer as this step's
+ * decision.
  */
 export function resolveInterventionPoint(acsMethod: string, mapping: Mapping): string {
   const table = mapping.intervention_points;
@@ -113,23 +98,13 @@ function readVerdictField(verdict: AgtVerdict, source: { source: string }): unkn
 /**
  * Applies a field_synthesis leaf's declared `wrap` to the string it read.
  *
- * This exists because the declaration used to be one the runtime ignored (PR
- * #10 review, second pass): `wrap: array` was required on the type, written in
- * mapping.yaml, and published by V7's matrix as part of the table -- while
- * `mapVerdict` built `[value]` from a hardcoded literal and never looked. That
- * is the same defect class as the `pre_tool_call` hardcode `resolveInterventionPoint`
- * closed, one table row over: editing the declaration changed nothing, so the
- * mapping could claim a synthesis the code did not perform and nothing would
- * fail.
- *
- * An unrecognised mode is a THROW, and the alternative is worse than a reported
- * failure for the same reason every other failure in this module is. `loadMapping`
- * casts the parsed YAML with `as Mapping` and validates nothing, so `wrap` at
- * runtime is whatever the file says; defaulting an unknown mode to array-wrapping
- * would synthesize a `reason_codes` the mapping did not ask for and hand it to a
- * host as a decision's machine-readable half. The Guardian's evaluation catch
- * turns this into an honoured `deny` (§6.4, R1.5), which is the honest answer to
- * a mapping this code cannot carry out.
+ * An unrecognised mode throws rather than falling back to array-wrapping.
+ * `loadMapping` parses the YAML without validating it, so `wrap` can be
+ * anything the file happens to say; wrapping it anyway would build a
+ * `reason_codes` list the mapping never asked for and hand it to the host as
+ * the machine-readable half of the decision. The Guardian catches the throw
+ * and denies the step instead, which is the honest answer when it cannot carry
+ * out the mapping it was given.
  */
 function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
   if (wrap !== "array") {

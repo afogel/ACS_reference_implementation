@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 // Test-only import: stands up a real Guardian so these tests prove the
 // wire contract for real, not against a hand-copied shape. Never imported
-// by packages/host-adapter/src (R3.2) -- see build-envelope.test.ts for
-// the precedent (Task 7).
+// by packages/host-adapter/src, which must not depend on the Guardian --
+// see build-envelope.test.ts for the same arrangement.
 import { startGuardian, type StartedGuardian } from "guardian";
 import { buildEnvelope, loadHookmap, type Hookmap } from "../src/build-envelope.ts";
 import { createGuardianClient } from "../src/guardian-client.ts";

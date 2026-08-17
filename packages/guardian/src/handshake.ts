@@ -1,36 +1,19 @@
 /**
- * buildServerHello builds the Guardian's ServerHello (N28) -- the answer to
- * `handshake/hello` -- per handshake.json's ServerHello $def
+ * buildServerHello builds the Guardian's answer to `handshake/hello`, per
+ * handshake.json's ServerHello $def
  * (spec/acs/specification/v0.1.0/handshake.json).
  *
- * V1 scope:
- *   - `methods_evaluated` is exactly the set this Guardian actually wires
- *     up, per the V1 watch-for ("only pre_tool_call is wired").
- *   - `on_decision_failure` ships the spec default, "proceed" (fail-open).
- *     D8: V1 only NEGOTIATES and STORES this value on the wire -- applying
- *     the posture (the fail-open audit path, N6/N7) is V3. Nothing here
- *     reads or acts on it beyond returning it.
+ * `build`, not `negotiate`: this function never reads the incoming
+ * ClientHello. The host really does send one, but every field below is a
+ * constant returned unconditionally, so `negotiated_version` and
+ * `selected_transport` are DECLARED by this Guardian rather than agreed
+ * against what the client proposed. Real negotiation -- reading the
+ * ClientHello, picking a mutually supported version and transport, rejecting
+ * what isn't -- is future work; see docs/demos/v1-runbook.md.
  *
- * WHY THIS IS NOT CALLED `handshakeResponder` (PR #10 review, Important, and
- * fix wave finding 7 before it -- honesty, not a scope increase): this
- * function never reads the incoming ClientHello. The client (host-adapter's
- * `negotiateSessionConfig`) genuinely sends one, but every field below is a
- * constant, returned unconditionally. So "negotiated_version" and
- * "selected_transport" are DECLARED by this Guardian, not actually negotiated
- * against what the client proposed, and a name containing "responder" claimed
- * a negotiation the body does not perform. `build<Message>` says exactly what
- * happens: it assembles the one message this side of the handshake owns. That
- * distinction matters in a reference implementation of a wire *contract*.
- * Real negotiation (reading ClientHello, picking a mutually-supported
- * version/transport, rejecting what isn't) is future work, not attempted here
- * -- see the matching note in docs/demos/v1-runbook.md.
- *
- * Naming symmetry with the host side: each side of this exchange now names its
- * own message once, with the same `<verb><Message>` morphology --
- * `buildServerHello` here, `negotiateSessionConfig` in
- * packages/host-adapter/src/handshake.ts. The asymmetry between "build" and
- * "negotiate" is deliberate and is the truth about the code: the host really
- * does perform an exchange, and this side really does return constants.
+ * `methods_evaluated` is exactly the set this Guardian wires up.
+ * `on_decision_failure` ships the spec default, "proceed" (fail-open). This
+ * side only declares it on the wire; nothing here reads or acts on it.
  */
 
 export type ServerHello = {

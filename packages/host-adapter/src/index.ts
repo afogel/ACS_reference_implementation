@@ -1,11 +1,10 @@
 /**
  * Public surface of the host-adapter package (packages/host-adapter).
  *
- * Every host shim (N1 -- Task 9's Claude Code shim, and any later host from
- * slice V5) imports from here, not from individual src files, so this list
- * is the whole contract a shim relies on. R3.2 still binds every file this
- * barrel re-exports: no policy-runtime vocabulary of any kind anywhere
- * under packages/host-adapter/.
+ * Every host shim imports from here rather than from individual src files,
+ * so this list is the whole contract a shim relies on. The package boundary
+ * still binds every file this barrel re-exports: no policy-runtime vocabulary
+ * of any kind anywhere under packages/host-adapter/.
  */
 export {
   buildEnvelope,

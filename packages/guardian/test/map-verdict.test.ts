@@ -19,7 +19,7 @@ describe("mapVerdict", () => {
     expect(d.policy_references?.[0]?.rule_id).toBe("destructive_shell_command_blocked");
   });
 
-  // R1.2 — the whole warn round trip rests on this.
+  // The whole warn round trip rests on this.
   it("maps warn to allow WITH non-empty policy_references", () => {
     const d = mapVerdict({ decision: "warn", reason: "drift_detected", message: "drift 0.8" }, m);
     expect(d.decision).toBe("allow");
@@ -121,7 +121,7 @@ describe("resolveInterventionPoint", () => {
 
   it("never resolves to a row whose acs_method is null", () => {
     // mapping.yaml really does ship two of these: the model-call points have
-    // no ACS v0.1.0 target (D4). A resolver comparing loosely would match a
+    // no ACS v0.1.0 target. A resolver comparing loosely would match a
     // null row and evaluate the wrong intervention point's policy.
     const allNull = {
       ...m,

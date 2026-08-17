@@ -1,17 +1,14 @@
 /**
- * The negotiated session config store (S13): where negotiateSessionConfig (N5)
- * writes this session's config once a session's capability negotiation
- * completes.
+ * The negotiated session config store: where `negotiateSessionConfig` writes
+ * this session's config once capability negotiation completes.
  *
  * `SessionConfig` is the one noun for that stored message, here as in
- * handshake.ts -- "ServerHello" names what the Guardian sent, and appears below
- * only where the subject genuinely is the arrival rather than the stored value
- * (PR #10 review, naming symmetry; see handshake.ts's header for the rule).
+ * handshake.ts. "ServerHello" names what the Guardian sent, and appears below
+ * only where the subject genuinely is the arrival rather than the stored value.
  *
- * V1 SCOPE: storage only. Nothing in this module reads or acts on the
- * stored config -- applying it (falling back to timeout_config when the
- * Guardian is silent, honoring on_decision_failure's fail-open/fail-closed
- * posture) is N6/N7, which belongs to slice V3.
+ * Storage only. Nothing in this module reads or acts on the stored config --
+ * falling back to timeout_config when the Guardian is silent, and honouring
+ * on_decision_failure's fail-open or fail-closed posture, happen elsewhere.
  *
  * A factory rather than a module-level singleton, matching this package's
  * existing style (loadHookmap, buildEnvelope take every dependency as an
@@ -22,9 +19,9 @@
 
 /** The two fields of the Guardian's answer this host actually reads, which is
  * what makes this the stored config rather than a claim about the wire message.
- * Loose on purpose beyond them: a later slice's negotiation may return fields
- * this slice never names -- `Record<string, unknown>` lets those round-trip
- * through the store untouched rather than being silently dropped. */
+ * Loose on purpose beyond them: a Guardian may return fields this host never
+ * names, and `Record<string, unknown>` lets those round-trip through the store
+ * untouched rather than being silently dropped. */
 export type SessionConfig = {
   timeout_config: { default_ms: number; per_method_ms?: Record<string, number> };
   on_decision_failure: "proceed" | "deny";
@@ -33,23 +30,22 @@ export type SessionConfig = {
 export type SessionConfigStore = {
   /** The most recently stored config, or undefined before any handshake completes. */
   get(): SessionConfig | undefined;
-  /** Overwrites the stored config. Called by negotiateSessionConfig (N5) with
-   * the config it validated out of the Guardian's ServerHello. */
+  /** Overwrites the stored config. Called by negotiateSessionConfig with the
+   * config it validated out of the Guardian's ServerHello. */
   set(config: SessionConfig): void;
 };
 
 /**
  * A `SessionConfig` must at minimum carry the two fields this host reads. The
- * predicate exists so `negotiateSessionConfig` (N5) can ASK that question of
- * the Guardian's ServerHello before storing one, instead of casting the
- * arrival into this type and calling it a config (PR #10 review, Important):
- * `as unknown as SessionConfig` made the name a claim nothing checked, which
- * is the same defect as a type named for a validation it does not perform.
+ * predicate exists so `negotiateSessionConfig` can ASK that question of the
+ * Guardian's ServerHello before storing one, rather than casting the arrival
+ * into this type and calling it a config -- a cast would make the name a claim
+ * nothing checked.
  *
  * Deliberately NOT the five fields handshake.json's ServerHello $def requires.
  * This checks what this host needs, so `SessionConfig` is the honest name for
  * what it certifies; naming the stored type after the wire message would
- * over-claim in exactly the way the cast did.
+ * over-claim in exactly the way a cast would.
  */
 export function isSessionConfig(value: unknown): value is SessionConfig {
   if (typeof value !== "object" || value === null) {

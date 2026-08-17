@@ -29,20 +29,21 @@ describe("agt-bridge", () => {
     }
   });
 
-  // Guards Correction C2 — the failure mode this catches is a SILENT fail-open.
+  // The failure mode this catches is a SILENT fail-open: a manifest path
+  // containing "/./" makes OPA drop the bundle's data document.
   it("surfaces the policy config to Rego (guards the ./ bundle-path landmine)", async () => {
     const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("rm -rf /"));
     expect(verdict.decision).not.toBe("allow");
   });
 
-  // Guards Correction C1 — this is why the bridge is Node, not Python.
+  // Why the bridge is Node, not Python.
   //
-  // Asserted against the SDK DIRECTLY, not through `evaluate`. C1 is a claim
+  // Asserted against the SDK DIRECTLY, not through `evaluate`. The claim is
   // about what the Node SDK computes, and `PolicyBridge.evaluate` answers with
-  // a verdict rather than a bag carrying it (PR #10 review, second pass), so
-  // routing this through the bridge would have meant keeping three fields on
-  // every answer that nothing reads in order to assert one of them here. The
-  // subject of the correction is the SDK, so the subject of the test is too --
+  // a verdict rather than a bag carrying it, so routing this through the
+  // bridge would mean keeping three fields on every answer that nothing reads,
+  // just to assert one of them here. The subject of the claim is the SDK, so
+  // the subject of the test is too --
   // which is a stronger test, not a weaker one: it fails if the SDK stops
   // returning distinct identities, where the old one could also fail for a
   // change in this package's own pass-through.

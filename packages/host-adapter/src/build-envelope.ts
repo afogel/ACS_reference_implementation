@@ -1,19 +1,18 @@
 /**
- * buildEnvelope (N2) turns a host's own hook invocation into an ACS v0.1.0
- * request envelope (steps/* methods), driven entirely by a hookmap (S1) --
- * never by host-specific literals baked into this function.
+ * buildEnvelope turns a host's own hook invocation into an ACS v0.1.0 request
+ * envelope (a `steps/*` method), driven entirely by a hookmap -- never by
+ * host-specific literals baked into this function.
  *
- * R3.2: this package knows ACS and hookmaps, nothing else. No file under
- * packages/host-adapter/ may name a policy runtime, its rule language, or
- * its decision vocabulary -- verified mechanically by Task 10's grep gate.
- * This module has no runtime dependency on the Guardian package or the
- * policy-bridge package that sits behind it; it talks to the Guardian
- * over the wire (Task 8), never in-process.
+ * This package knows ACS and hookmaps, nothing else. No file under
+ * packages/host-adapter/ may name a policy runtime, its rule language, or its
+ * decision vocabulary, and a grep gate in the test suite checks that. This
+ * module has no runtime dependency on the Guardian package or the policy
+ * bridge behind it: it talks to the Guardian over the wire, never in-process.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-/** One hook's mapping onto an ACS method: S1's `hooks.<hookName>` entry. */
+/** One hook's mapping onto an ACS method: the hookmap's `hooks.<hookName>` entry. */
 export type HookmapHookEntry = {
   /** The ACS `steps/*` method this hook fires. Never hardcoded here. */
   acs_method: string;
@@ -24,10 +23,10 @@ export type HookmapHookEntry = {
 };
 
 /**
- * S1 in full: hook-name -> ACS method mapping (consumed here) plus
- * decision -> host-output mapping (consumed by Task 8's renderDecision,
- * not by this module -- present on the type only so a hookmap loaded
- * whole, as `loadHookmap` does, round-trips without loss).
+ * A hookmap in full: the hook-name -> ACS method mapping this module consumes,
+ * plus the decision -> host-output mapping renderDecision consumes. The second
+ * is on the type only so that a hookmap loaded whole, as `loadHookmap` does,
+ * round-trips without losing it.
  */
 export type Hookmap = {
   host: string;
@@ -60,16 +59,15 @@ export type AcsRequestEnvelope = {
 
 const ACS_VERSION = "0.1.0";
 
-/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml). */
+/** Loads and parses a hookmap YAML file, e.g. claude-code.hookmap.yaml. */
 export function loadHookmap(path: string): Hookmap {
   return Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
 }
 
 /**
  * Resolves a JSONPath-lite reference (`$.foo.bar`, or `$` alone) against a
- * raw hook payload. Only dotted field access is supported -- every S1
- * path in this slice is a single top-level field, and nothing here needs
- * array indexing or filters.
+ * raw hook payload. Only dotted field access is supported: every hookmap path
+ * is a single top-level field, and nothing here needs array indexing or filters.
  */
 function resolvePath(payload: Record<string, unknown>, path: string): unknown {
   const segments = path.replace(/^\$\.?/, "").split(".").filter(Boolean);

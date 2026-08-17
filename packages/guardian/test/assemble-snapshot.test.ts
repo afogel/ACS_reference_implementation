@@ -49,7 +49,7 @@ describe("assemblePreToolCallSnapshot", () => {
     expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /" });
   });
 
-  // C5 — AGT's stock pattern check reads input.policy_target.value and
+  // AGT's stock pattern check reads input.policy_target.value and
   // requires is_string. A surviving {value:...} wrapper (or a non-string)
   // makes the check silently never fire, and everything is allowed.
   it("keeps tool_call.args.command a STRING, not a nested wrapper or object", () => {
@@ -79,10 +79,9 @@ describe("assemblePreToolCallSnapshot", () => {
     expect(snapshot.tool_call.id).toBe("2c3e4f50-1234-4abc-9def-000000000000");
   });
 
-  // Envelope-only (the V1 watch-for): no S3/S4/S5 reads. Session id, chain
+  // Envelope-only: nothing is read from session state. Session id, chain
   // hash, and every other session-derived key must not survive into the
-  // snapshot -- this is the boundary the later V6 slice will cross, on
-  // purpose, somewhere else.
+  // snapshot.
   it("reads nothing but the envelope: no session-derived key appears anywhere in the output", () => {
     const envelope = makeEnvelope();
 

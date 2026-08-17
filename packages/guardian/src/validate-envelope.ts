@@ -12,11 +12,9 @@
  * module validated only generically can never be read as one whose
  * hook-specific payload was checked.
  *
- * Failure is a THROWN, typed EnvelopeValidationError -- never a returned
- * decision. Turning a rejection into an explicit ACS "deny" decision is
- * N27, which belongs to a later slice (V3). The caller (Task 6, the
- * Guardian server) is responsible for turning a thrown error into a
- * JSON-RPC error response.
+ * Failure is a thrown, typed EnvelopeValidationError -- never a returned
+ * decision. The Guardian server is the caller, and it is responsible for
+ * turning a thrown error into a JSON-RPC error response.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -67,12 +65,9 @@ export type AcsRequestParams = {
  * (packages/host-adapter/src/build-envelope.ts): one wire message, one noun,
  * on both sides of the seam.
  *
- * It used to be called `ToolCallRequestEnvelope` (PR #10 review, Critical,
- * and its naming-symmetry companion): every method was typed as a tool call,
- * so handshake traffic arrived under a name that lied about it, and the
- * consumer's noun was the narrower and more misleading of the two. The
- * tool-call shape now lives in `ToolCallRequestEnvelope` below and is
- * reachable only after the method has been checked.
+ * The narrower tool-call shape lives in `ToolCallRequestEnvelope` below, and
+ * is reachable only once the method has been checked -- so handshake traffic
+ * can never arrive under a name that claims it is a tool call.
  */
 export type AcsRequestEnvelope = {
   jsonrpc: "2.0";
@@ -102,15 +97,14 @@ export type ToolCallRequestPayload = {
  * schema's shape.
  *
  * Reachable only through `isToolCallRequest` below, never returned by
- * `validateEnvelope` directly. That is the whole point: the narrow type is
- * the *conclusion* of a method check, not the type every request is handed
- * back as.
+ * `validateEnvelope` directly: the narrow type is the conclusion of a method
+ * check, not the type every request is handed back as.
  *
- * Spelled with `Omit` rather than an intersection so `params.payload` is
- * exactly `ToolCallRequestPayload`, not `ToolCallRequestPayload &
- * Record<string, unknown>` -- the intersection type-checks but leaves every
- * property lookup resolving against an index signature too, which is how a
- * typo silently becomes `unknown` instead of an error.
+ * Spelled with `Omit` rather than an intersection so that `params.payload` is
+ * exactly `ToolCallRequestPayload`. An intersection would type-check, but it
+ * would leave `Record<string, unknown>`'s index signature in play, so a
+ * mistyped property name would quietly resolve to `unknown` instead of
+ * becoming an error.
  */
 export type ToolCallRequestEnvelope = Omit<AcsRequestEnvelope, "method" | "params"> & {
   method: typeof TOOL_CALL_REQUEST_METHOD;
@@ -119,11 +113,12 @@ export type ToolCallRequestEnvelope = Omit<AcsRequestEnvelope, "method" | "param
 
 /**
  * Thrown when an envelope fails schema validation. `pointer` is the JSON
- * pointer (relative to the envelope root) of the first failing location --
- * synthesized from Ajv's instancePath + missingProperty for `required`
- * failures, since Ajv itself reports those against the parent object, not
- * the missing child -- so a human (or Task 6's JSON-RPC error mapping) can
- * find the offending field without re-deriving it from `errors`.
+ * pointer, relative to the envelope root, of the first failing location, so
+ * that a human -- or the server's JSON-RPC error mapping -- can find the
+ * offending field without re-deriving it from `errors`. For `required`
+ * failures it is synthesized from Ajv's instancePath plus missingProperty,
+ * because Ajv reports those against the parent object rather than the missing
+ * child.
  */
 export class EnvelopeValidationError extends Error {
   readonly pointer: string;
@@ -157,20 +152,19 @@ function listSchemaFiles(dir: string): string[] {
 }
 
 /**
- * Builds one Ajv instance with every v0.1.0 schema registered under its
- * own $id (agbom/, hooks/, inspect/, trace/ included), so the modular
- * $refs between them -- e.g. hooks/tool-call-request.json's
- * argument.provenance ref to "../provenance.json" -- resolve the way the
- * spec authors intended: against $id, not file path. Ajv resolves a
+ * Builds one Ajv instance with every v0.1.0 schema registered under its own
+ * $id -- agbom/, hooks/, inspect/ and trace/ included -- so that the modular
+ * $refs between them resolve against $id rather than file path, the way the
+ * spec authors intended. One such ref is hooks/tool-call-request.json's
+ * argument.provenance pointing at "../provenance.json". Ajv resolves a
  * relative $ref against the referencing schema's own $id as base URI, so
- * registering every schema up front is sufficient; nothing needs
- * inlining or rewriting.
+ * registering everything up front is enough; nothing needs inlining or
+ * rewriting.
  *
- * strict:true is left ON. Every v0.1.0 schema compiles cleanly under it
- * once ajv-formats supplies the "uuid" and "date-time" format validators
- * the schemas declare (Ajv core recognizes no formats on its own, and
- * strict mode would otherwise reject them as unknown) -- verified against
- * all 43 schema files under v0.1.0/. Nothing else needed disabling.
+ * strict:true stays on. Every v0.1.0 schema compiles cleanly under it once
+ * ajv-formats supplies the "uuid" and "date-time" format validators the
+ * schemas declare -- Ajv core recognizes no formats on its own, and strict
+ * mode would otherwise reject them as unknown. Nothing else needed disabling.
  */
 function buildAjv() {
   const ajv = new Ajv2020({ strict: true, allErrors: true });

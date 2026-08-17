@@ -128,9 +128,9 @@ describe("startGuardian POST /acs", () => {
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
   });
 
-  // Scope boundary (N27 is V3, not this task): a Guardian-side validation
-  // failure must surface as a bare JSON-RPC error, never as an explicit ACS
-  // "deny" decision -- see validate-envelope.test.ts's identical guard.
+  // Scope boundary: a Guardian-side validation failure must surface as a bare
+  // JSON-RPC error, never as an explicit ACS "deny" decision -- see
+  // validate-envelope.test.ts's identical guard.
   it("an envelope that fails schema validation returns a JSON-RPC error in -32000..-32099, never a deny decision", async () => {
     const bad = toolCallEnvelope("rm -rf /");
     delete (bad.params as Record<string, unknown>).acs_version;
@@ -176,7 +176,7 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
       expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
       expect(response.error?.code).toBeLessThanOrEqual(-32000);
       // Never a decision -- same scope boundary as the schema-validation
-      // guard above (N27 is V3's call, not this fix's).
+      // guard above.
       expect((response as Record<string, unknown>).decision).toBeUndefined();
     } finally {
       await guardian.close();

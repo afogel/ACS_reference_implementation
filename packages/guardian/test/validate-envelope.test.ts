@@ -101,8 +101,8 @@ describe("validateEnvelope", () => {
     }
   });
 
-  // Scope boundary (N27 is V3, not this task): a rejection is a thrown
-  // error, never a returned {decision: "deny"} object.
+  // Scope boundary: a rejection is a thrown error, never a returned
+  // {decision: "deny"} object.
   it("throws rather than returning a decision object", () => {
     const envelope = makeEnvelope({ omitSessionId: true });
 

@@ -1,34 +1,29 @@
 /**
- * startGuardian (N20) serves the ACS wire boundary: a single JSON-RPC 2.0
- * endpoint, POST /acs. The spec mandates no URL path convention -- "/acs"
- * is this project's own, recorded as such in the slices doc -- so dispatch
- * inside the handler is by the JSON-RPC `method` field, never by URL path.
+ * startGuardian serves the ACS wire boundary: a single JSON-RPC 2.0 endpoint,
+ * POST /acs. The spec mandates no URL path convention -- "/acs" is this
+ * project's own choice -- so dispatch inside the handler is by the JSON-RPC
+ * `method` field, never by URL path.
  *
- * Composes every earlier task, in order, for `steps/toolCallRequest`:
- *   validateEnvelope (Task 5) -> assemblePreToolCallSnapshot (Task 4) ->
- *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot)
- *   (Task 2) -> mapVerdict(verdict, mapping) (Task 3) -> response envelope.
+ * The sequence for `steps/toolCallRequest` is: validateEnvelope ->
+ * assemblePreToolCallSnapshot -> bridge.evaluate at the intervention point
+ * resolveInterventionPoint picked -> mapVerdict -> response envelope.
  *
- * assemblePreToolCallSnapshot / bridge.evaluate / mapVerdict are wrapped in a try/catch
- * (fix wave finding 1): an unhandled throw here -- e.g. mapVerdict's own
- * require_policy_references check, or a genuine AGT runtime error -- would
- * otherwise escape this handler, and Bun.serve's default error page for an
- * unhandled fetch() rejection is `text/html`, not JSON-RPC. The client
- * (packages/host-adapter/src/guardian-client.ts) calls `res.json()`
- * unconditionally, so an HTML body throws a SyntaxError there instead of
- * surfacing a JSON-RPC error -- and hosts/claude-code/acs-hook.ts's catch-all
- * then exits 1 with nothing on stdout, which Claude Code treats as "the hook
- * didn't fire": the tool call proceeds **ungoverned**. That is a fail-open in
- * a governance tool. The catch below only guarantees a well-formed JSON-RPC
- * error reaches the client -- it deliberately does NOT turn the failure into
- * an ACS `deny` decision. That is N27 (denyOnInvalidEnvelope), scoped to V3;
- * deciding what disposition an evaluation failure carries is V3's call, not
- * this fix's.
+ * The middle three run inside a try/catch, and that catch is load-bearing.
+ * Were a throw to escape this handler, Bun.serve would answer with its default
+ * error page, which is HTML rather than JSON-RPC. The host's client calls
+ * res.json() unconditionally, so an HTML body raises a SyntaxError there
+ * instead of surfacing a JSON-RPC error; the hook's catch-all then exits 1
+ * with nothing on stdout, which Claude Code reads as "the hook never fired"
+ * and allows the tool call through ungoverned. That is a fail-open in a
+ * governance tool, so the catch must stay.
  *
- * The bridge (N31: AgentControl.fromPath) and the mapping table are both
- * constructed/loaded exactly once, at startGuardian() call time -- not per
- * request -- since AGT is meant to be built at boot and evaluated
- * statelessly (R6.1).
+ * What the catch guarantees is only that a well-formed JSON-RPC error reaches
+ * the client. It deliberately does not turn the failure into an ACS `deny`:
+ * which disposition an evaluation failure should carry is a separate question.
+ *
+ * The bridge and the mapping table are both built once, when startGuardian is
+ * called, rather than per request -- AGT is meant to be constructed at boot
+ * and evaluated statelessly.
  */
 import { fileURLToPath } from "node:url";
 import { createBridge, type PolicyBridge } from "agt-bridge";
@@ -45,14 +40,13 @@ import { buildServerHello, type ServerHello } from "./handshake.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
- * member at this slice; each gate this Guardian learns to assemble adds its
- * own point-specific type here.
+ * member today; each gate this Guardian learns to assemble adds its own
+ * point-specific type here.
  *
- * Declared so the bridge seam carries the message rather than erasing it (PR
- * #10 review, second pass). `PolicyBridge` is parameterised by the snapshot
- * its holder sends, and this is what this holder sends -- so `bridge.evaluate`
- * below is checked against the assemblers' own output types instead of against
- * "any object at all", which is what `Record<string, unknown>` had made of it.
+ * Declared so the bridge seam carries the message rather than erasing it.
+ * `PolicyBridge` is parameterised by the snapshot its holder sends, and this
+ * is what this holder sends, so the `bridge.evaluate` calls below are checked
+ * against the assemblers' own output types instead of against any object at all.
  */
 type GuardianSnapshot = AgtPreToolCallSnapshot;
 
@@ -69,15 +63,14 @@ const ACS_PATH = "/acs";
  * Guardian", or "evaluation itself failed". Rather than reach for the
  * generic JSON-RPC codes that would otherwise fit (-32602 Invalid params,
  * -32601 Method not found), this module mints three codes from the unused
- * part of the reserved band, keeping every application-level failure inside
- * -32000..-32099 per this task's explicit instruction.
+ * part of the reserved band, so every application-level failure stays inside
+ * -32000..-32099.
  */
 const ENVELOPE_INVALID_CODE = -32010;
 const METHOD_NOT_DISPATCHED_CODE = -32011;
-/** A throw from assemblePreToolCallSnapshot, bridge.evaluate, or mapVerdict -- e.g.
- * mapVerdict's own require_policy_references check, or any AGT runtime
- * error. See fix wave finding 1's comment above handleAcsRequest's
- * tool-call branch for why this must never be dead code. */
+/** A throw from assemblePreToolCallSnapshot, bridge.evaluate, or mapVerdict --
+ * mapVerdict's own require_policy_references check, say, or any AGT runtime
+ * error. The module header explains why this must never become dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
@@ -101,7 +94,7 @@ export type StartGuardianOptions = {
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
 export async function startGuardian({ port, manifestPath, mappingPath }: StartGuardianOptions): Promise<StartedGuardian> {
-  // N31 -- construct the bridge once at boot, not per request.
+  // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
 
@@ -127,9 +120,9 @@ export async function startGuardian({ port, manifestPath, mappingPath }: StartGu
 
 async function handleAcsRequest(
   req: Request,
-  // The role, not `ReturnType<typeof createBridge>` (PR #10 review): this
-  // handler depends on something it can tell to evaluate a snapshot, not on
-  // the shape one factory happens to return.
+  // The role, not `ReturnType<typeof createBridge>`: this handler depends on
+  // something it can tell to evaluate a snapshot, not on the shape one
+  // factory happens to return.
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
@@ -144,11 +137,11 @@ async function handleAcsRequest(
 
   let envelope: AcsRequestEnvelope;
   try {
-    // validateEnvelope (N21) checks the general request-envelope.json shape
-    // for every method, plus -- only for steps/toolCallRequest -- the
-    // hook-specific payload schema. Failure is a THROWN typed error, never
-    // a decision (N27, the deny-on-invalid-envelope affordance, is V3): we
-    // turn it into a bare JSON-RPC error below, not {decision: "deny"}.
+    // validateEnvelope checks the general request-envelope.json shape for
+    // every method, plus -- only for steps/toolCallRequest -- the
+    // hook-specific payload schema. Failure is a thrown typed error, never a
+    // decision: we turn it into a bare JSON-RPC error below, rather than into
+    // {decision: "deny"}.
     envelope = validateEnvelope(raw);
   } catch (error) {
     if (error instanceof EnvelopeValidationError) {
@@ -171,9 +164,8 @@ async function handleAcsRequest(
     try {
       const snapshot = assemblePreToolCallSnapshot(envelope);
       // The intervention point comes from mapping.yaml's own
-      // `intervention_points` table, not from a literal here (PR #10 review,
-      // Critical): that table is what V7's conformance matrix publishes, and
-      // a declaration the runtime does not consult is a claim nobody checks.
+      // `intervention_points` table rather than from a literal here, so the
+      // table cannot drift away from what the runtime actually does.
       // An unresolvable method throws into the catch below rather than
       // defaulting to a point -- evaluating the wrong policy and calling the
       // result a decision is the one outcome worse than a reported failure.
@@ -183,10 +175,9 @@ async function handleAcsRequest(
 
       return successResponse(envelope.id, finalResult(envelope.params, decision));
     } catch (error) {
-      // Fix wave finding 1 -- see the module-level comment above. This is
-      // deliberately a bare JSON-RPC error, not an ACS `deny` decision
-      // (N27 stays V3's call): the fix here is only that the client gets a
-      // parseable envelope back instead of an HTML 500.
+      // See the module header. Deliberately a bare JSON-RPC error rather than
+      // an ACS `deny` decision -- all this guarantees is that the client gets
+      // a parseable envelope back instead of an HTML 500.
       const message = error instanceof Error ? error.message : String(error);
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }

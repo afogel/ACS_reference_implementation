@@ -1,68 +1,43 @@
 /**
- * The Guardian client (N4): the adapter's wire seam. `createGuardianClient`
- * binds one ACS endpoint and returns the role a caller collaborates with.
+ * The Guardian client: the adapter's wire seam. `createGuardianClient` binds
+ * one ACS endpoint and returns the role a caller collaborates with.
  *
- * TWO METHODS, AND WHY THE SECOND EXISTS (PR #10 review, Important). This used
- * to be a one-method namespace returning a raw JSON-RPC response, and the host
- * shim then dug through it: read `.error`, throw if present, cast `.result`
- * into a decision shape and hope. That inspection is where "a decision that
- * arrived outranks anything else" lives, so leaving it in a host shim meant
- * the next host (slice V5) would copy it -- and copying it wrong is a
- * fail-open, because every branch that gets a decision wrong ends with the
- * tool call proceeding ungoverned.
+ * Two methods, because two callers want opposite things from a failure:
  *
- * So `requestDecision` is *told* to fetch the decision for an envelope and
- * answers with a message -- `DecisionOrFailure` -- rather than a bag. It never
- * throws: every way of not getting a decision (a dead transport, an
- * uncorrelated response, a JSON-RPC error, a result naming no decision) is the
- * same one answer, "no decision arrived, and here is what stands in its
- * place". A caller cannot forget to handle one.
+ *   - `requestDecision` never throws. Every way of not getting a decision --
+ *     a dead transport, an uncorrelated response, a JSON-RPC error, a result
+ *     naming no decision -- becomes the same answer, so a caller cannot forget
+ *     to handle one. Getting that wrong is a fail-open, because every branch
+ *     that mishandles a decision ends with the tool call proceeding ungoverned.
+ *   - `post` is the wire primitive underneath it, for the one caller whose
+ *     result is not a decision: the handshake, whose result is a ServerHello
+ *     (handshake.ts). It throws on every delivery failure, which is what that
+ *     caller wants -- a handshake failure is not a step's failure and travels
+ *     separately.
  *
- * `post` stays as the wire primitive underneath it, for the one caller whose
- * method's result is not a decision: the handshake, whose result is a
- * ServerHello (handshake.ts). It throws on every delivery failure, which is
- * what that caller wants -- a handshake failure is not a step's failure and
- * travels separately.
+ * What a host DOES with `decisionArrived: false` -- negotiating and applying a
+ * fail-open or fail-closed posture -- is not decided here.
  *
- * V1 SCOPE: what a host DOES with `decisionArrived: false` is not decided
- * here and is not decided at this slice. Negotiating and applying a
- * fail-open/fail-closed posture is N6/N7, deliberately deferred to V3; the
- * shim's current handling is a placeholder its own header documents as one.
- * This module's contribution is only that the failure arrives as one answer
- * instead of a bag every caller re-interprets.
+ * Correlation: buildEnvelope sets the envelope's top-level `id` equal to
+ * `params.request_id`. `fetch` already pairs one HTTP request with one
+ * response, so the id check below is a defensive assertion against a Guardian
+ * that echoes back the wrong id, not a lookup table for concurrent requests.
  *
- * Correlation note (Task 7 -> Task 8): buildEnvelope sets the envelope's
- * top-level `id` equal to `params.request_id` (a fresh uuid per call).
- * That is sufficient here: `id` is schema-legal as a string (per
- * request-envelope.json, `id` is `oneOf` string/number, with no format
- * constraint of its own), and since `fetch` already pairs this exact HTTP
- * request with this exact HTTP response one-to-one, there is no
- * multiplexing problem to solve. The id check below is a defensive
- * assertion -- it catches a Guardian bug that echoes back the wrong id --
- * not a lookup table matching concurrent in-flight requests. Nothing about
- * Task 7's choice needs to change.
- *
- * R3.2: this module knows JSON-RPC, HTTP and ACS's decision vocabulary,
- * nothing else -- no policy-runtime vocabulary and no host vocabulary. It has
- * no runtime dependency on the Guardian or policy-bridge packages -- it talks
- * to the Guardian only over the wire, at whatever `url` the caller gives.
+ * This module knows JSON-RPC, HTTP and ACS's decision vocabulary, nothing else
+ * -- no policy-runtime vocabulary and no host vocabulary. It has no runtime
+ * dependency on the Guardian or policy-bridge packages: it talks to the
+ * Guardian only over the wire, at whatever `url` the caller gives.
  */
 import type { AcsRequestEnvelope } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
 
 /**
- * The minimal JSON-RPC 2.0 request shape this client sends -- the TRANSPORT
- * shape, used by `post` alone.
+ * The minimal JSON-RPC 2.0 request shape this client sends -- the transport
+ * shape, used by `post` alone, not the shim-facing vocabulary.
  *
  * Loose on `params` on purpose: `post` carries whatever a caller hands it, and
  * its one non-decision caller is the handshake, whose ClientHello params are
  * not an ACS request at all.
- *
- * NOT the shim-facing vocabulary (PR #10 review, second pass). `requestDecision`
- * used to take one of these, so the seam between a producer speaking
- * `AcsRequestEnvelope` and a consumer speaking `AcsDecision` was the one place
- * the ACS noun evaporated and JSON-RPC's took its place. It now takes the ACS
- * request message, and this stays the internal transport type underneath it.
  */
 export type JsonRpcRequest = {
   jsonrpc: "2.0";

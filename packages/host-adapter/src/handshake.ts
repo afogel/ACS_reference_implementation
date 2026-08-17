@@ -1,43 +1,24 @@
 /**
- * N5, the host half of `handshake/hello`: send a ClientHello, keep what comes
- * back as this session's config (S13).
+ * The host half of `handshake/hello`: send a ClientHello, keep what comes back
+ * as this session's config.
  *
- * ONE NAME FOR THE STORED MESSAGE (PR #10 review, Important and naming
- * symmetry). This module speaks `SessionConfig` throughout -- the message a
- * host stores and reads its posture and timeout from -- and not `ServerHello`,
- * which is the Guardian's noun for what it emits
- * (packages/guardian/src/handshake.ts's `buildServerHello`). The two used to be
- * used interchangeably here for the same value, joined by
- * `as unknown as SessionConfig`: a rename dressed as a type, checking nothing.
+ * The stored message is a `SessionConfig`, never a `ServerHello`.
+ * `isSessionConfig` requires the two fields this host actually needs, not the
+ * five handshake.json's ServerHello $def requires, so naming the stored type
+ * after the wire message would over-claim what this host validates.
+ * `ServerHello` stays scoped to one thing: what the Guardian sent, before this
+ * host has confirmed it can use it.
  *
- * `SessionConfig` is the honest name on this side, because `isSessionConfig`
- * requires the two fields this host actually needs, not the five
- * handshake.json's ServerHello $def requires -- so naming the stored type after
- * the wire message would over-claim what this host validates, which is the same
- * defect as a type that claims a check it does not perform. That leaves
- * `ServerHello` a scoped noun rather than a second name for one message, and
- * the scope is exactly one thing: what the Guardian sent, before this host has
- * confirmed it can use it. No stored value, field, or type is called a
- * ServerHello anywhere.
+ * Stores only. Applying the negotiated posture -- falling back to
+ * `timeout_config` when the Guardian is slow or silent, recording a fail-open
+ * audit event per `on_decision_failure: "proceed"` -- happens elsewhere, which
+ * keeps a policy runtime's own evaluation-layer fail-closed behaviour distinct
+ * from wire-delivery failure. This module does not retry, does not time out,
+ * and does not write to an audit sink: it sends one request, stores one response.
  *
- * `negotiateSessionConfig`, not `handshake`: the old name was one of four for a
- * single negotiation (`handshake` / `handshakeResponder` / `SessionConfig` /
- * `ServerHello`), and the least informative of them -- a bare wire verb that
- * said nothing about what the caller gets. This one names the message it
- * produces, matching the `<verb><Message>` shape of the Guardian's own half.
- *
- * V1 SCOPE -- stores only. Applying the negotiated posture (falling back
- * to `timeout_config` when the Guardian is slow or silent; recording a
- * fail-open audit event per `on_decision_failure: "proceed"`) is N6/N7,
- * and belongs to slice V3. That boundary is deliberate: this project keeps
- * a policy runtime's own evaluation-layer fail-closed behaviour distinct
- * from wire-delivery failure, and V3 is where the wire-delivery half
- * lands. This module does not retry, does not time out, and does not
- * write to an audit sink -- it sends one request, stores one response.
- *
- * R3.2: this module knows ACS handshake vocabulary and JSON-RPC, nothing
- * else. It has no runtime dependency on the Guardian package -- it talks
- * to the Guardian only through the client role it is given, over the wire.
+ * This module knows ACS handshake vocabulary and JSON-RPC, nothing else. It has
+ * no runtime dependency on the Guardian package -- it talks to the Guardian
+ * only through the client role it is given, over the wire.
  */
 import { randomUUID } from "node:crypto";
 import type { GuardianClient, JsonRpcRequest } from "./guardian-client.ts";

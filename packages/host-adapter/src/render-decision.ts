@@ -1,8 +1,8 @@
 /**
- * renderDecision (N3) turns an ACS decision into the output its host expects
- * -- without naming one field of that output anywhere in this module.
+ * renderDecision turns an ACS decision into the output its host expects --
+ * without naming one field of that output anywhere in this module.
  *
- * The hookmap (S1) declares the whole shape. Each `decisions.<decision>` entry
+ * The hookmap declares the whole shape. Each `decisions.<decision>` entry
  * carries an `output` block whose keys are dotted paths into the object the
  * host reads, and whose values say where each field's content comes from: a
  * literal (`value:`) or a field of the arriving ACS decision (`from:`, with an
@@ -11,39 +11,27 @@
  * else; the field names, their nesting, and which of them a given decision
  * even has are all data.
  *
- * WHY THIS IS NOT MERELY TIDY (PR #10 review, Critical). The project's claim is
- * that governance integration collapses from M*N to M+N: a host implements ACS
- * once and any conformant policy runtime can govern it. Slice V5's second host
- * is promised *this same module*, unchanged, plus a shim and a hookmap. Until
- * this rewrite that promise was false -- three of one host's field names were
- * baked into these types, and one of them was mandatory, so a second host
- * would have had to fork the adapter or inherit the first host's vocabulary.
- * The hookmap was data-driven; the TypeScript around it was not.
- *
- * Two things the previous shape could not express, and this one can:
- *
- *   - A field that sits OUTSIDE whatever wrapper the host nests its decision
- *     in -- a top-level key alongside it. A path with no dot puts it there.
- *   - A decision that carries no permission-style field at all. Nothing here
- *     is mandatory.
+ * That is what lets one adapter serve many hosts rather than one adapter per
+ * host: a second host gets this module unchanged, plus a shim and a hookmap.
+ * So nothing here is mandatory -- a host with no permission-style field at all
+ * still renders -- and a path with no dot places a field outside whatever
+ * wrapper the host nests its decision in, rather than inside it.
  *
  * The wrapper itself, and the one field that is not a function of the decision
  * (the name of the hook that asked), belong to the host shim: it wraps what
  * this returns. That keeps this module's contract exactly "the output is a
  * function of the decision and the hookmap".
  *
- * The single load-bearing behaviour, unchanged: a `deny` decision's
- * `reasoning` string must reach the human reading the host's transcript. That
- * happens here generically -- `deny`'s hookmap entry names the decision field
- * to copy and the host path to copy it to, and this module copies whatever
- * those two say.
+ * The load-bearing behaviour: a `deny` decision's `reasoning` string must
+ * reach the human reading the host's transcript. It happens generically --
+ * `deny`'s hookmap entry names the decision field to copy and the host path to
+ * copy it to, and this module copies whatever those two say.
  *
- * R3.2: no policy-runtime vocabulary here, and now no host vocabulary either
- * -- test/invariants.test.ts gates both. An observe-only upstream signal has
+ * No policy-runtime vocabulary here and no host vocabulary either;
+ * test/invariants.test.ts gates both. An observe-only upstream signal has
  * already become an ACS `allow` (with policy_references) by the time it
- * reaches this module, per R1.2, and it is dispatched through the exact same
- * `decisions.allow` entry a plain allow is: still one dispatch path, still
- * driven by the hookmap alone.
+ * reaches this module, and dispatches through the same `decisions.allow` entry
+ * a plain allow does.
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
@@ -56,17 +44,15 @@ import type { AcsDecision } from "./decision-message.ts";
 export type HostOutput = Record<string, unknown>;
 
 /**
- * One field of a host output, as S1 declares it: exactly one source, plus an
- * optional type the arriving value must have.
+ * One field of a host output, as the hookmap declares it: exactly one source,
+ * plus an optional type the arriving value must have.
  *
  * `type` is a `typeof` string, and it is not decoration. A host field declared
- * to hold prose ("the reason a human reads") must not be handed an object
- * because some Guardian put one in the decision field it names: the host would
- * either display a shape it cannot render or, worse, reject the whole output
- * as malformed and treat the hook as having produced no decision -- a
- * fail-open, from a decision that arrived perfectly well. A value of the wrong
- * type leaves the field off, which is the same thing that happens when the
- * decision does not carry the field at all.
+ * to hold prose must not be handed an object because some Guardian put one in
+ * the decision field it names: the host would either display a shape it cannot
+ * render or reject the whole output as malformed and treat the hook as having
+ * produced no decision -- a fail-open, from a decision that arrived perfectly
+ * well. A wrong-typed value leaves the field off, exactly as a missing one does.
  */
 type HostOutputField = {
   /** A literal, copied through as-is. Mutually exclusive with `from`. */
@@ -77,7 +63,7 @@ type HostOutputField = {
   type?: string;
 };
 
-/** One decision's hookmap-declared rendering rule (S1's `decisions.<decision>` entry). */
+/** One decision's hookmap-declared rendering rule (its `decisions.<decision>` entry). */
 type DecisionRenderRule = { output: Record<string, HostOutputField> };
 
 /**
