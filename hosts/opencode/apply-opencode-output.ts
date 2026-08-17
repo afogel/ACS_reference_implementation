@@ -119,7 +119,7 @@ function assertNoReservedSegments(value: unknown, label: string): void {
         `"${hit.path}", which addresses prototype machinery rather than a field this applier can merge. A ` +
         `recursive in-place merge (mergeInPlace, above) that touched this key would write through the ` +
         `prototype chain onto Object.prototype itself, global to this whole long-lived plugin process -- ` +
-        `refused rather than merged (§V5 review, fix round 2, Critical).`,
+        `refused rather than merged.`,
     );
   }
 }

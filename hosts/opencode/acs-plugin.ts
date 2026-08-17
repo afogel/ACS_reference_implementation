@@ -493,8 +493,7 @@ function assertDecisionsCanAct(
           `apply nothing and throw nothing, silently. Declaring it is strictly WORSE than leaving it out -- ` +
           `without the entry renderDecision throws, governStep catches that, and the deployment's posture ` +
           `answers it, audited either way. Remove it, or teach this shim the decision (CARRIED_AT_REQUEST_GATE ` +
-          `/ CARRIED_AT_RESULT_GATE, this file) so it can say what the decision may honestly do here (§V5 ` +
-          `review round 3, Task 5, fix round 4, Important 7A).`,
+          `/ CARRIED_AT_RESULT_GATE, this file) so it can say what the decision may honestly do here.`,
       );
     }
   }
@@ -664,8 +663,7 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
       `acs-plugin: ${path}'s "hooks.${hookEventName}" declares no usable "${shape.declares}" (it declares ` +
         `${JSON.stringify(declared)}). This shim's "${hookEventName}" hook is fixed: it assembles the payload ` +
         `itself and hands applyOpenCodeOutput a hardcoded live half, so an entry at this hook has to be the ` +
-        `matching payload shape. Without it, ${shape.mismatchCosts}. Declare "${shape.declares}" on this hook ` +
-        `(§V5 review round 3, Task 5, fix rounds 3 and 4 -- measured).`,
+        `matching payload shape. Without it, ${shape.mismatchCosts}. Declare "${shape.declares}" on this hook.`,
     );
   }
   const forbidden = isPlainObject(entry) ? (entry as Record<string, unknown>)[shape.notDeclares] : undefined;
@@ -676,8 +674,7 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
         `and buildEnvelope read a gate's KIND off the entry's shape and never off the event name -- ` +
         `deliberately, so an event-name typo cannot silently select the wrong behaviour -- while this shim ` +
         `decides it by hook NAME, because its two hook methods hardcode which live half the applier gets. When ` +
-        `the two disagree, ${shape.mismatchCosts}. Remove "${shape.notDeclares}" from this hook (§V5 review ` +
-        `round 3, Task 5, fix round 4 -- measured).`,
+        `the two disagree, ${shape.mismatchCosts}. Remove "${shape.notDeclares}" from this hook.`,
     );
   }
   for (const [fixedPath, required] of shape.fixedPaths) {
@@ -699,7 +696,7 @@ function assertEntryMatchesGate(entry: unknown, path: string, hookEventName: str
           `the policy runtime is asked ABOUT -- so pointing it elsewhere does not withhold the wrong field, it ` +
           `asks the wrong question: measured with "from: $.result.title", the Guardian was handed the tool's ` +
           `own title, answered "allow", and "rm -rf /" was audited as a clean allow and delivered. ` +
-          `Point this at ${JSON.stringify(required)} (§V5 review round 3, Task 5, fix rounds 4 and 5 -- measured).`,
+          `Point this at ${JSON.stringify(required)}.`,
       );
     }
   }
@@ -788,8 +785,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
               `the rewrite as honoured rather than recording that it never landed. EITHER declare ` +
               `'args: { from: applied_input }' so the rewrite lands, OR declare an unconditional refusal ` +
               `('refuse.denied: { value: true }') so this decision blocks the tool instead -- both are honest ` +
-              `outcomes and this gate accepts either; only the silent no-op is refused. Measured (§V5 review ` +
-              `round 3, Task 5, fix rounds 1 and 2).`,
+              `outcomes and this gate accepts either; only the silent no-op is refused.`,
           ),
       );
     },
@@ -849,7 +845,7 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
               `plaintext survives in its session record, but the model never sees the output and that is an ` +
               `honest outcome. Or do not declare ${decisionName} at this hook at all -- an undeclared decision ` +
               `makes renderDecision throw, which governStep answers with this deployment's posture, audited ` +
-              `either way (§V5 review round 3, Task 5, fix round 3, Critical 6a).`,
+              `either way.`,
           ),
         (decisionName, output, sourceField) =>
           new Error(
