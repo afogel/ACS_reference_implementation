@@ -36,7 +36,7 @@ describe("mapVerdict", () => {
     expect(mapVerdict({ decision: "transform", reason: "redacted" }, m).decision).toBe("modify");
   });
 
-  it("emits only lowercase decisions (C7)", () => {
+  it("emits only lowercase decisions", () => {
     for (const dec of ["allow", "deny", "warn", "escalate", "transform"] as const) {
       const out = mapVerdict({ decision: dec, reason: "r" }, m).decision;
       expect(out.toLowerCase()).toBe(out);
@@ -49,7 +49,7 @@ describe("mapVerdict", () => {
   // `reason` hits it directly, and it's exactly what the Guardian's
   // evaluation-failure catch (server.test.ts) now has to survive without
   // turning it into an HTML 500 or a silent decision.
-  it("throws when require_policy_references is set but verdict.reason is empty (R1.2's load-bearing check)", () => {
+  it("throws when require_policy_references is set but verdict.reason is empty", () => {
     expect(() => mapVerdict({ decision: "warn" }, m)).toThrow(/require_policy_references/);
   });
 

@@ -186,8 +186,8 @@ describe("GuardianClient.requestDecision", () => {
   });
 });
 
-describe("negotiateSessionConfig (N5)", () => {
-  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store (S13)", async () => {
+describe("negotiateSessionConfig", () => {
+  it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store", async () => {
     const store = createSessionConfigStore();
     expect(store.get()).toBeUndefined();
 

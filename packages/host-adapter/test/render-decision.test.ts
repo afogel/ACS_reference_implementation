@@ -71,7 +71,7 @@ describe("renderDecision", () => {
     });
   });
 
-  it("a warn-derived allow (allow + non-empty policy_references) still renders as a plain allow -- no separate rendering (R1.2)", () => {
+  it("a warn-derived allow (allow + non-empty policy_references) still renders as a plain allow -- no separate rendering", () => {
     expect(
       renderDecision(
         {
