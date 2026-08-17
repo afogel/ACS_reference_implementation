@@ -31,4 +31,4 @@ const envelopeLogPath = process.env.ACS_ENVELOPE_LOG ?? DEFAULT_ENVELOPE_LOG;
 
 const guardian = await startGuardian({ port, hostname, manifestPath, envelopeLogPath });
 console.log(`Guardian listening at ${guardian.url}`);
-console.log(`Envelope log (S6): ${envelopeLogPath}`);
+console.log(`Envelope log: ${envelopeLogPath}`);

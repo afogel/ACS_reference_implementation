@@ -143,8 +143,8 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R5.2 -- "an ACS-first reader can trace one action end to end without
-   * reading AGT source". The Inspector is that reader's tool, so the claim
+   * An ACS-first reader must be able to trace one action end to end without
+   * reading AGT source. The Inspector is that reader's tool, so the claim
    * is only real if the tool itself knows nothing about AGT and nothing
    * about any particular host: it renders ACS envelopes as data. Both term
    * lists from the two gates above apply to it at once.
@@ -157,13 +157,12 @@ describe("architectural invariants", () => {
       "opa",
       "intervention_point",
       "verdict",
-      // The three AGT VERDICT NAMES, added by PR #11's review response and
-      // the reason it was worth adding them: this gate listed the word
-      // "verdict" but none of the verdicts, so the Inspector shipped a badge
-      // reading `ALLOW (policy fired -- ACS "warn")` with a green suite. ACS
-      // has no `warn` disposition; that string taught a reader AGT's
-      // vocabulary from an ACS-first tool, which is the exact leak R5.2
-      // exists to prevent, and the gate said nothing.
+      // The three AGT verdict names. Listing the word "verdict" without the
+      // verdicts themselves is not enough: it let a badge reading
+      // `ALLOW (policy fired -- ACS "warn")` pass with a green suite. ACS has
+      // no `warn` disposition, so that string taught a reader AGT's
+      // vocabulary from an ACS-first tool -- exactly the leak this gate
+      // exists to prevent.
       //
       // `allow`/`deny`/`ask`/`modify`/`defer` are deliberately NOT here --
       // they are ACS's own dispositions and the Inspector must name them.
@@ -180,10 +179,10 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R5.1 -- envelopes are inspectable *on the wire*. If the Inspector
-   * imported the Guardian's types, "inspectable" would be a claim about our
-   * own type graph instead: any third-party reader of S6 has only the file.
-   * So does this one.
+   * Envelopes are inspectable *on the wire*. If the Inspector imported the
+   * Guardian's types, "inspectable" would be a claim about our own type graph
+   * instead: any third-party reader of the log has only the file, and so does
+   * this one.
    */
   it("the Envelope Inspector imports nothing from the Guardian or the AGT bridge", () => {
     for (const { file, code } of readSourceFiles("packages/inspector/src")) {
@@ -209,8 +208,8 @@ describe("architectural invariants", () => {
  *   import("guardian").EnvelopeLogEntry
  *                                type position -- erased at build, still a
  *                                compile-time dependency on the Guardian's
- *                                type graph, which is exactly what R5.1
- *                                forbids
+ *                                type graph, which is exactly what the gate
+ *                                above forbids
  *   require("guardian")          CJS interop
  *
  * `\(?` covers the parenthesised and unparenthesised forms in one pass, and

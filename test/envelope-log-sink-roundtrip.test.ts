@@ -7,8 +7,8 @@ import { tailEnvelopeLog, type EnvelopeLogEntry } from "../packages/inspector/sr
 import { outcomeMessageOf, renderOutcome, type OutcomeMessage } from "../packages/inspector/src/render.ts";
 
 /**
- * The contract test for S6. The Guardian writes the log; the Inspector
- * declares its own EnvelopeLogEntry and reads it back (global constraint 10).
+ * The contract test for the envelope log. The Guardian writes it; the
+ * Inspector declares its own EnvelopeLogEntry and reads it back.
  * If either side renames a field, adds a required one, or changes a type,
  * this is what fails -- nothing else would, because the two never share a
  * type.
@@ -49,7 +49,7 @@ async function take(
   return out;
 }
 
-describe("S6 round trip: Guardian envelope log sink (N26) -> Inspector tail (N50) -> badge (U21)", () => {
+describe("envelope log round trip: Guardian sink -> Inspector tail -> decision badge", () => {
   it("a denied tool call arrives as a paired request/response the Inspector can render", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-roundtrip-"));
     const logPath = join(dir, "envelopes.jsonl");
@@ -83,10 +83,10 @@ describe("S6 round trip: Guardian envelope log sink (N26) -> Inspector tail (N50
       expect(request?.rpc_id).toBe(77);
       expect(response?.rpc_id).toBe(77);
 
-      // ...and the badge reads a real AGT-backed decision off it. Two steps
-      // now, not one: outcomeMessageOf turns the S6 line into what the step
-      // reported and the renderer renders that message (PR #11 review). Both
-      // halves are exercised here deliberately -- the round trip's claim is
+      // ...and the badge reads a real AGT-backed decision off it. Two steps,
+      // not one: outcomeMessageOf turns the log line into what the step
+      // reported, and the renderer renders that message. Both halves are
+      // exercised here deliberately -- the round trip's claim is
       // that a real Guardian's real output survives all the way to a rendered
       // badge, including that it arrives as a decision rather than an error.
       const message = outcomeMessageOf(response as EnvelopeLogEntry);
