@@ -27,5 +27,15 @@ export {
 export { mergeCells } from "./merge-cells.ts";
 export { checkPolicyInputSchema, PINNED_AGT_CLONE_ENV, type SchemaLegResult } from "./policy-input-schema.ts";
 export { renderCoverageMatrix, renderMappingTable, renderTraceRows, type RenderOptions } from "./render.ts";
+export {
+  asPinned,
+  asUpstream,
+  readSurfaces,
+  SURFACE_NAMES,
+  type PinnedSurfaces,
+  type SurfaceName,
+  type SurfaceSnapshot,
+  type UpstreamSurfaces,
+} from "./surfaces.ts";
 export { checkTracePillar, type TraceRow } from "./trace-pillar.ts";
 export { checkVerdicts, invertVerdicts } from "./verdicts.ts";
