@@ -24,7 +24,7 @@ const evidenceFor = (policyInput: unknown): PolicyBridge => ({
   },
 });
 
-describe("N41 schema leg -- self-skips without the clone, validates against it when present", () => {
+describe("the schema leg -- self-skips without the clone, validates against it when present", () => {
   const originalEnv = process.env[UPSTREAM_AGT_CLONE_ENV];
   afterEach(() => {
     if (originalEnv === undefined) {
@@ -46,9 +46,9 @@ describe("N41 schema leg -- self-skips without the clone, validates against it w
   });
 
   describe("with a fixture clone standing in for the pinned AGT repo", () => {
-    // A throwaway fixture schema, not a copy of AGT's real one (R2.4) --
-    // this describe block tests that the module reads the schema file at
-    // the right path inside the clone and reports Ajv's own verdict on it
+    // A throwaway fixture schema, not a copy of AGT's real one -- this
+    // describe block tests that the module reads the schema file at the
+    // right path inside the clone and reports Ajv's own verdict on it
     // accurately, not that AGT's real contract has any particular shape.
     let clone: string;
     beforeEach(() => {

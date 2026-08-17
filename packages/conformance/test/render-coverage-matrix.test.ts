@@ -3,10 +3,11 @@ import { AGT_POINTS, AGT_VERDICTS, type CoverageCell } from "../src/cells.ts";
 import { mergeCells } from "../src/merge-cells.ts";
 import { renderCoverageMatrix } from "../src/render.ts";
 
-// N42's own warn-column reason (verdicts.ts's WARN_GUARDIAN_ONLY), reproduced
-// here rather than imported: verdicts.ts does not export it, and the point of
-// this fixture is a guardian_only cell shaped the way a real check actually
-// produces one, not an invented reason string.
+// The verdict check's own warn-column reason (verdicts.ts's
+// WARN_GUARDIAN_ONLY), reproduced here rather than imported: verdicts.ts
+// does not export it, and the point of this fixture is a guardian_only cell
+// shaped the way a real check actually produces one, not an invented reason
+// string.
 const WARN_REASON =
   "AGT's only stock warn gate reads input.annotations.drift_score, which reaches the policy input from a " +
   "manifest-declared annotator and never from the snapshot; no ACS v0.1.0 method payload carries a field a " +
@@ -15,7 +16,7 @@ const WARN_REASON =
 const cell = (point: string, verdict: string, status: CoverageCell["status"], reason?: string): CoverageCell =>
   ({ point, verdict, status, measuredBy: ["N41"], ...(reason ? { reason } : {}) }) as CoverageCell;
 
-describe("renderCoverageMatrix -- N47's published table", () => {
+describe("renderCoverageMatrix -- the published coverage matrix", () => {
   // A fully-measured matrix: every cell expressed except the warn column,
   // which is guardian_only with a real reason -- so the render exercises
   // both a bare symbol and a reason-carrying one in the same table.
@@ -39,7 +40,7 @@ describe("renderCoverageMatrix -- N47's published table", () => {
     }
   });
 
-  it("says 'AGT verdicts' in its header -- commitment 1's naming, not 'the five'", () => {
+  it("says 'AGT verdicts' in its header, not 'the five'", () => {
     expect(table).toContain("AGT verdicts");
   });
 
@@ -47,7 +48,7 @@ describe("renderCoverageMatrix -- N47's published table", () => {
     // Scoped to the legend line, and word-bounded: `table.toContain("expressed")`
     // is satisfied by the substring inside "unexpressed" and says nothing
     // about the legend specifically -- it would still pass if "expressed"
-    // vanished from the legend entirely (review round 1, fix 3).
+    // vanished from the legend entirely.
     const legendLine = table.split("\n").find((line) => line.startsWith("Legend:"));
     expect(legendLine).toBeDefined();
     expect(legendLine).toMatch(/\bexpressed\b/);
@@ -56,15 +57,14 @@ describe("renderCoverageMatrix -- N47's published table", () => {
   });
 
   it("renders a guardian_only cell as a footnote marker beside its symbol, with ONE footnote line covering every cell sharing the identical reason", () => {
-    // review round 1, fix 4: `table.toContain(WARN_REASON)` alone would pass
-    // equally if the renderer inlined the full reason into the cell -- the
-    // brief's "a numbered footnote per distinct reason beneath it" was
-    // unasserted, and so was the dedup. This checks both: every warn cell
-    // (guardian_only in this fixture, all sharing WARN_REASON) renders as
-    // "<symbol>[N]" rather than the reason text, every one of them points at
-    // the SAME footnote number, and exactly one footnote line below the
-    // legend carries the reason -- once, not the reason joined against
-    // itself.
+    // `table.toContain(WARN_REASON)` alone would pass equally if the
+    // renderer inlined the full reason into the cell -- a numbered footnote
+    // per distinct reason, and the dedup that goes with it, need their own
+    // assertion. This checks both: every warn cell (guardian_only in this
+    // fixture, all sharing WARN_REASON) renders as "<symbol>[N]" rather than
+    // the reason text, every one of them points at the same footnote
+    // number, and exactly one footnote line below the legend carries the
+    // reason -- once, not the reason joined against itself.
     const warnMarkers = [...table.matchAll(/◐\[(\d+)\]/g)].map((m) => m[1]!);
     expect(warnMarkers).toHaveLength(AGT_POINTS.length);
     expect(new Set(warnMarkers).size).toBe(1);
@@ -113,13 +113,12 @@ describe("renderCoverageMatrix -- N47's published table", () => {
   });
 
   it("throws on a duplicate coordinate rather than letting the last cell silently win", () => {
-    // review round 1, fix 1: the natural misuse is
-    // `renderCoverageMatrix([...n41Cells, ...n42Cells])` in place of
-    // `renderCoverageMatrix(mergeCells(n41Cells, n42Cells))` -- both
-    // typecheck as CoverageCell[], and without this check whichever cell
-    // sorts last at a coordinate would win with no error. If that one said
-    // "expressed", the published matrix would be greener than anything
-    // measured, silently.
+    // The natural misuse is `renderCoverageMatrix([...checkACells,
+    // ...checkBCells])` in place of `renderCoverageMatrix(mergeCells(checkACells,
+    // checkBCells))` -- both typecheck as CoverageCell[], and without this
+    // check whichever cell sorts last at a coordinate would win with no
+    // error. If that one said "expressed", the published matrix would be
+    // greener than anything measured, silently.
     const duplicated: CoverageCell[] = [
       cell("pre_tool_call", "warn", "unexpressed", "should not silently lose"),
       cell("pre_tool_call", "warn", "expressed"),
@@ -131,7 +130,6 @@ describe("renderCoverageMatrix -- N47's published table", () => {
 });
 
 describe("renderCoverageMatrix -- RenderOptions.color is opt-in", () => {
-  // review round 1, fix 6: `options.color` had no test at all.
   it("paints only a guardian_only cell, and stripping the ANSI codes back out recovers exactly the plain render -- alignment survives painting", () => {
     const cells = mergeCells([
       cell("pre_tool_call", "warn", "guardian_only", WARN_REASON),

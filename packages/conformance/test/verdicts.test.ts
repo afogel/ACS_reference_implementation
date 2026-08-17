@@ -6,7 +6,7 @@ import { checkVerdicts, invertVerdicts } from "../src/verdicts.ts";
 const mapping = loadMapping("mapping.yaml");
 
 describe("the inverse is derived from mapping.yaml, not written beside it", () => {
-  it("discriminates warn from allow by the field R1.2 says distinguishes them", () => {
+  it("discriminates warn from allow by the field that distinguishes them on the wire", () => {
     const inverse = invertVerdicts(mapping);
 
     expect(inverse.get("allow|false")).toBe("allow");
@@ -32,7 +32,7 @@ describe("the inverse is derived from mapping.yaml, not written beside it", () =
   });
 });
 
-describe("N42 -- the verdict round trip", () => {
+describe("the verdict round trip", () => {
   const cells = checkVerdicts(mapping);
   const at = (point: string, verdict: string) => cells.find((c) => c.point === point && c.verdict === verdict)!;
 
@@ -82,12 +82,12 @@ describe("N42 -- the verdict round trip", () => {
   });
 
   it("marks every verdict unexpressed at a point ACS v0.1.0 has no wire method for", () => {
-    // pre_model_call and post_model_call carry acs_method: null (D4): no ACS
+    // pre_model_call and post_model_call carry acs_method: null: no ACS
     // method ever resolves to either, so no verdict fired there could reach a
     // wire consumer to round-trip through. mapVerdict does not consult
     // acs_method -- left unguarded, it would answer every non-transform
     // verdict here as if the round trip held, which is the fiction this
-    // guard exists to keep N42 from reporting as fact.
+    // guard exists to keep this check from reporting as fact.
     for (const point of ["pre_model_call", "post_model_call"]) {
       for (const verdict of AGT_VERDICTS) {
         expect(at(point, verdict).status).toBe("unexpressed");

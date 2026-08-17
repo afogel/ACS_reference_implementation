@@ -620,9 +620,10 @@ export function validateEnvelope(_input) {
 // exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
 // exactly: unreachable here (validateEnvelope always throws) but a double
 // that lies about behaviour is worse than one that does not compile.
-// getValidator joined the export surface with validate-response.ts (N21's
-// outbound twin): server.ts calls validateResponse on every response this
-// relocated Guardian builds, and validateResponse imports getValidator from
+// getValidator joined the export surface with validate-response.ts
+// (validate-envelope.ts's outbound twin): server.ts calls validateResponse
+// on every response this relocated Guardian builds, and validateResponse
+// imports getValidator from
 // this same module path -- so a double omitting it fails to import before
 // dispatch's rethrow route is ever reached. Its stub always reports valid,
 // since these tests are about toRepoRelativeMessage's handling of a
@@ -683,9 +684,10 @@ export function validateEnvelope(_input) {
 // exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
 // exactly: unreachable here (validateEnvelope always throws) but a double
 // that lies about behaviour is worse than one that does not compile.
-// getValidator joined the export surface with validate-response.ts (N21's
-// outbound twin): server.ts calls validateResponse on every response this
-// relocated Guardian builds, and validateResponse imports getValidator from
+// getValidator joined the export surface with validate-response.ts
+// (validate-envelope.ts's outbound twin): server.ts calls validateResponse
+// on every response this relocated Guardian builds, and validateResponse
+// imports getValidator from
 // this same module path -- so a double omitting it fails to import before
 // dispatch's rethrow route is ever reached. Its stub always reports valid,
 // since these tests are about toRepoRelativeMessage's handling of a
@@ -1027,10 +1029,11 @@ describe("toRepoRelativeMessage", () => {
   });
 });
 
-// PR #10 review, Critical: mapping.yaml's intervention_points table is what
-// V7 publishes as its mapping table -- not as its coverage matrix, which
-// measures -- and the runtime used to hardcode "pre_tool_call" instead of
-// consulting it, so the two could disagree without anything failing.
+// mapping.yaml's intervention_points table is what the conformance
+// package's mapping table publishes -- not its coverage matrix, which
+// measures. A declaration the runtime does not consult is a claim nobody
+// checks, so this proves the runtime actually reads the table rather than
+// hardcoding a point.
 describe("startGuardian POST /acs -- the intervention point comes from mapping.yaml", () => {
   it("evaluates the point the table names, not pre_tool_call: a moved row changes the decision", async () => {
     // The fixture answers steps/toolCallRequest with `output`, which

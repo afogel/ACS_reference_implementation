@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { loadMapping } from "guardian";
 import { renderMappingTable } from "../src/render.ts";
 
-describe("N48 -- renderMappingTable renders S10 and nothing else", () => {
+describe("renderMappingTable renders the conformance runner's own declaration and nothing else", () => {
   const table = renderMappingTable(loadMapping("mapping.yaml"));
 
   it("names every AGT intervention point mapping.yaml declares, with its ACS method", () => {
@@ -18,7 +18,8 @@ describe("N48 -- renderMappingTable renders S10 and nothing else", () => {
   it("renders AGT's five verdicts against ACS's five dispositions without calling either list 'the five'", () => {
     expect(table).toContain("warn");
     expect(table).toContain("escalate");
-    // R1.2's discriminator is part of the mapping and must be visible in it.
+    // The discriminator that tells warn apart from allow is part of the
+    // mapping and must be visible in it.
     expect(table).toMatch(/warn.*policy_references/s);
   });
 

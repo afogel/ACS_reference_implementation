@@ -1,8 +1,9 @@
 /**
- * N47's merge step, split from rendering: N41-N44 each produce a
- * `CoverageCell` for some or all of the 40 (point, verdict) coordinates
- * `everyCell()` enumerates, and this combines however many of them touched
- * each coordinate into the one cell the matrix reports for it.
+ * The coverage matrix's merge step, split from rendering: the four
+ * contributing checks each produce a `CoverageCell` for some or all of the
+ * 40 (point, verdict) coordinates `everyCell()` enumerates, and this
+ * combines however many of them touched each coordinate into the one cell
+ * the matrix reports for it.
  *
  * THE RULE: the worst status wins -- `unexpressed` beats `guardian_only`
  * beats `expressed` -- and every contributing check is named in
@@ -41,7 +42,7 @@ function coordinateKey(point: string, verdict: string): string {
 /**
  * What this module reads off a contributing cell -- the same fields
  * `CoverageCell` declares, `measuredBy` widened to `readonly string[]`.
- * Every real check (N41-N44) returns a plain `CoverageCell[]`, whose mutable
+ * Every real check returns a plain `CoverageCell[]`, whose mutable
  * `measuredBy: string[]` satisfies this trivially. It also accepts the other
  * legitimate producer of a `CoverageCell`-shaped value: a `const` fixture
  * built with `as const` (this package's own merge-cells.test.ts does exactly
@@ -79,8 +80,9 @@ function mergeCoordinate(point: string, verdict: string, contributions: Contribu
   // before joining: "both reasons are carried" is about two checks giving
   // two DIFFERENT accounts of the same status, so one check's account is not
   // silenced by another's. Two checks landing on byte-identical text is not
-  // that -- N41 and N42 both read `mapping.yaml`'s own `note` for
-  // `pre_model_call`/`post_model_call` and say the same sentence back --
+  // that -- the intervention-point check and the verdict check both read
+  // `mapping.yaml`'s own `note` for `pre_model_call`/`post_model_call` and
+  // say the same sentence back --
   // and joining it against itself would have published a footnote that
   // repeats one account rather than carrying a second one, with
   // `measuredBy` already naming both checks regardless.
@@ -105,10 +107,10 @@ function mergeCoordinate(point: string, verdict: string, contributions: Contribu
 /**
  * Merges any number of checks' cell arrays into the 40 cells the matrix
  * reports, one per `everyCell()` coordinate. A check that returns fewer than
- * 40 cells (N43 and N44 both do -- see their own modules' headers)
- * contributes only to the coordinates it actually measured; every other
- * coordinate is merged from whatever the OTHER checks contributed there, or
- * from nothing at all.
+ * 40 cells (the enforced-identity check and the failure-domains check both
+ * do -- see their own modules' headers) contributes only to the coordinates
+ * it actually measured; every other coordinate is merged from whatever the
+ * other checks contributed there, or from nothing at all.
  */
 export function mergeCells(...contributions: Contribution[][]): CoverageCell[] {
   const byCoordinate = new Map<string, Contribution[]>();

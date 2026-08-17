@@ -1,11 +1,11 @@
 /**
- * N43. Recomputes AGT's action identity instead of taking its word for it,
- * and reports what that identity actually binds to.
+ * Recomputes AGT's action identity instead of taking its word for it, and
+ * reports what that identity actually binds to.
  *
  * MEASURED, not read from AGT's docs: the identity is the SHA-256 of the
  * key-sorted, whitespace-free JSON of the policy input, prefixed "sha256:".
  * `enforced_identity` is the same hash after replacing `policy_target.value`
- * ALONE with `verdict.transform.value` -- the snapshot's own copy of that leaf
+ * alone with `verdict.transform.value` -- the snapshot's own copy of that leaf
  * is not updated. Both reproduce exactly against the pinned SDK.
  *
  * MEASURED AT BOTH TRANSFORM-CAPABLE POINTS, not assumed to agree because one
@@ -18,7 +18,7 @@
  * `policy_target` too, identically to the result gate -- not forced to agree,
  * found to.
  *
- * The second half is the finding, and it is why R1.4's cells resolve
+ * The second half is the finding, and it is why this cell resolves
  * guardian-only rather than expressed. AGT's enforced identity binds to the
  * policy target it rewrote, not to the document the host will execute; making
  * those agree is the adapter's job, and ACS v0.1.0 carries no field to check
@@ -62,12 +62,10 @@ const BOUND_TO_SNAPSHOT =
 
 /** `boundTo === "unattributable"`: a transform WAS reported, both candidates
  * were constructed and hashed, and neither matched -- a comparison that ran
- * and failed. Kept apart from `NO_REWRITE` below on purpose (PR review,
- * round 2): the two used to share one `"neither"` value and this reason
- * string, which is true of this case and false of that one -- no candidate
- * is ever constructed when there is no transform to substitute, so claiming
- * "does not match" a comparison that never ran would be exactly the
- * overclaim the first review round removed one branch over. */
+ * and failed. Kept apart from `NO_REWRITE` below on purpose: no candidate is
+ * ever constructed when there is no transform to substitute, so claiming
+ * "does not match" a comparison that never ran would be an overclaim this
+ * reason string must not make. */
 const BOUND_TO_UNATTRIBUTABLE =
   "AGT's enforced identity does not match a hash of the policy input with policy_target.value replaced by the " +
   "reported transform, nor one with the snapshot leaf policy_target.path addresses replaced the same way -- " +
@@ -124,7 +122,7 @@ export async function checkEnforcedIdentity(
   snapshot: InterventionSnapshot,
 ): Promise<IdentityFinding> {
   if (!AGT_POINTS.includes(point)) {
-    throw new Error(`N43 cannot measure an intervention point AGT does not have: ${JSON.stringify(point)} is not one of ${AGT_POINTS.join(", ")}`);
+    throw new Error(`cannot measure an intervention point AGT does not have: ${JSON.stringify(point)} is not one of ${AGT_POINTS.join(", ")}`);
   }
 
   const evidence = await bridge.evaluateWithEvidence(point, snapshot);
@@ -151,7 +149,7 @@ function policyTargetShape(policyInput: unknown): PolicyInputShape {
   const target = candidate?.policy_target as Partial<PolicyInputShape["policy_target"]> | undefined;
   if (candidate === null || typeof candidate !== "object" || typeof target?.path !== "string" || !("snapshot" in candidate)) {
     throw new Error(
-      `N43 cannot resolve which document AGT's enforced identity binds to: the policy input it reported has ` +
+      `cannot resolve which document AGT's enforced identity binds to: the policy input it reported has ` +
         `no policy_target.path / snapshot pair to substitute into (got ${JSON.stringify(policyInput)})`,
     );
   }
@@ -166,9 +164,9 @@ function policyTargetShape(policyInput: unknown): PolicyInputShape {
  * "$.tool_call.args.command" and "$.tool_result.outputs[0].value".
  *
  * NOT host-adapter's hookmap-path notation. That one is a different dialect,
- * scoped to hookmaps by R3.2 ("this module knows a path notation. Nothing
- * about ACS, hosts, or policy" -- hookmap-path.ts's own comment), and it does
- * not support the array index AGT's result-gate path needs. Reusing it here
+ * deliberately scoped to hookmaps and nothing about ACS, hosts, or policy
+ * (hookmap-path.ts's own comment), and it does not support the array index
+ * AGT's result-gate path needs. Reusing it here
  * would couple this check to a notation owned by a different layer for a
  * different reason; this is AGT's dialect, walked by this check alone.
  */
@@ -179,26 +177,26 @@ function setAtPolicyTargetPath(snapshot: unknown, path: string, value: unknown):
     const name = match?.[1];
     const indices = match?.[2];
     if (name === undefined || indices === undefined) {
-      throw new Error(`N43 cannot walk policy_target.path segment ${JSON.stringify(part)} of ${JSON.stringify(path)}`);
+      throw new Error(`cannot walk policy_target.path segment ${JSON.stringify(part)} of ${JSON.stringify(path)}`);
     }
     segments.push(name);
     for (const index of indices.match(/\d+/g) ?? []) segments.push(Number(index));
   }
   const last = segments.at(-1);
   if (last === undefined) {
-    throw new Error(`N43 cannot walk policy_target.path ${JSON.stringify(path)}: it has no segments`);
+    throw new Error(`cannot walk policy_target.path ${JSON.stringify(path)}: it has no segments`);
   }
 
   let current: unknown = snapshot;
   for (let i = 0; i < segments.length - 1; i++) {
     const segment = segments[i];
     if (segment === undefined || current === null || typeof current !== "object") {
-      throw new Error(`N43 cannot walk policy_target.path ${JSON.stringify(path)}: segment ${i} is not an object in the snapshot`);
+      throw new Error(`cannot walk policy_target.path ${JSON.stringify(path)}: segment ${i} is not an object in the snapshot`);
     }
     current = (current as Record<string | number, unknown>)[segment];
   }
   if (current === null || typeof current !== "object") {
-    throw new Error(`N43 cannot walk policy_target.path ${JSON.stringify(path)}: its parent is not an object in the snapshot`);
+    throw new Error(`cannot walk policy_target.path ${JSON.stringify(path)}: its parent is not an object in the snapshot`);
   }
   (current as Record<string | number, unknown>)[last] = value;
 }
@@ -210,11 +208,11 @@ function setAtPolicyTargetPath(snapshot: unknown, path: string, value: unknown):
  * Four returns, not three collapsed into one: `no_rewrite` short-circuits
  * before either candidate is built (there is nothing to substitute), while
  * `policy_target` / `snapshot` / `unattributable` all construct and hash
- * both candidates and differ only in which, if either, matched. Naming the
- * short-circuit and the ran-and-failed comparison the same thing was PR
- * review round 2's finding: they are different data (one never compared
- * anything, the other compared and found no match), so they get different
- * names and `identityCells` gives each a reason true of only it.
+ * both candidates and differ only in which, if either, matched. The
+ * short-circuit and the ran-and-failed comparison are different data -- one
+ * never compared anything, the other compared and found no match -- so they
+ * get different names, and `identityCells` gives each a reason true of only
+ * it.
  */
 function resolveBinding(evidence: {
   policyInput: unknown;
@@ -235,7 +233,7 @@ function resolveBinding(evidence: {
     // transform value into.
     if (evidence.enforcedIdentity !== evidence.inputIdentity) {
       throw new Error(
-        `N43: AGT reported no transform, but inputIdentity (${evidence.inputIdentity}) and enforcedIdentity ` +
+        `AGT reported no transform, but inputIdentity (${evidence.inputIdentity}) and enforcedIdentity ` +
           `(${evidence.enforcedIdentity}) differ -- the no-rewrite invariant this check measured does not hold`,
       );
     }
@@ -291,7 +289,7 @@ function boundToCell(boundTo: IdentityFinding["boundTo"]): { status: CellStatus;
  * repeated across all of them -- `unattributable` and `no_rewrite` look
  * alike (neither names a document) but are not the same claim: one says a
  * comparison ran and found no match, the other says no comparison was
- * possible, and conflating them was PR review round 2's finding.
+ * possible, and conflating them would misstate both.
  */
 export function identityCells(finding: IdentityFinding): CoverageCell[] {
   if (!finding.recomputed) {

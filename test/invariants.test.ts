@@ -477,14 +477,13 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * slices/v7/README.md, commitment 3: Detail C once wired a single
-   * `renderMatrix()` to what are now three renderers -- N47's coverage
-   * matrix, N52's trace rows, and V8's N53 upstream diff. `render.ts`'s own
-   * module header records why that name is retired: a coverage claim
-   * rendered by the same function as everything else beside it is a
-   * coverage claim whose subject is whatever was rendered. This gate is
-   * what keeps that retirement mechanical rather than a sentence someone can
-   * quietly stop reading.
+   * A single `renderMatrix()` wired to what are now separate renderers --
+   * the coverage matrix, the trace-pillar rows, and eventually an
+   * upstream-diff renderer -- is retired for good. `render.ts`'s own module
+   * header records why: a coverage claim rendered by the same function as
+   * everything else beside it is a coverage claim whose subject is whatever
+   * was rendered. This gate is what keeps that retirement mechanical rather
+   * than a sentence someone can quietly stop reading.
    *
    * `readSourceFiles` strips comments and excludes `test/` before this runs,
    * so the gate cannot fire on `render.ts`'s own header explaining the split

@@ -1,12 +1,13 @@
 /**
- * N21's outbound twin, and the gap it closes was §V7's to find: inbound
+ * This module is validateEnvelope's outbound twin. It closes a gap: inbound
  * requests are compiled against three schemas (request-envelope.json and,
  * method-gated, the two hook payload schemas -- all 43 are registered so
  * `$ref`s resolve, but only those three are ever compiled) and responses
  * were hand-built objects checked by nothing. A conformance harness
  * publishing a matrix over that wire would have been measuring a format
  * that was never itself contract-checked -- which weakens exactly the claim
- * C2 exists to prove.
+ * the coverage matrix exists to prove: that ACS v0.1.0's expressiveness
+ * against AGT is checked case by case, not merely asserted.
  *
  * THREE ANSWERS, NOT TWO, and the third is a measured fact about v0.1.0
  * rather than a hedge. `response-envelope.json` declares `result` as an
@@ -16,13 +17,13 @@
  * to call a correct response invalid or skip it in silence. `unexpressible`
  * says which. server.ts reports it on the same stderr line shape as an
  * invalid response -- naming the method and this reason -- so the answer is
- * recorded rather than computed and dropped; it is NOT written into S6, the
+ * recorded rather than computed and dropped; it is not written into the
  * envelope log (`envelope-log-sink.ts`). That entry's shape
- * (`EnvelopeLogEntry`) is another slice's decision to widen, and the
- * Inspector already reads it -- carrying a validation result onto that wire,
- * so the Inspector could render it directly instead of an operator reading
- * stderr, is future work this module does not attempt. V7's matrix carries
- * the same cell.
+ * (`EnvelopeLogEntry`) is left narrower on purpose, and the Inspector
+ * already reads it -- carrying a validation result onto that wire, so the
+ * Inspector could render it directly instead of an operator reading stderr,
+ * is future work this module does not attempt. The conformance package's
+ * coverage matrix carries the same cell.
  *
  * REPORTS, NEVER THROWS, and never alters the response. This runs on the
  * decision path; a validator that could turn a governed tool call into an

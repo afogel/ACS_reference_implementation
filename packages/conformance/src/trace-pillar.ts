@@ -1,12 +1,12 @@
 /**
- * N49. Whether a downstream consumer of the ACS v0.1.0 wire -- reading
- * nothing this Guardian keeps process-local -- could emit each required
- * Trace-pillar attribute `trace/otel-mapping.json` names. This is a CHECK,
- * not an exporter: nothing here is named `exportTrace`, `traceExporter` or
- * `emitSpan` (`slices/v7/README.md`, commitment 4). Its render half,
- * `renderTraceRows`, lives in `render.ts` -- that file's own PURE header is
- * why: `render.ts`'s only imports are `import type`, so it structurally
- * cannot read a file, and this module is where the reading happens instead.
+ * Whether a downstream consumer of the ACS v0.1.0 wire -- reading nothing
+ * this Guardian keeps process-local -- could emit each required Trace-pillar
+ * attribute `trace/otel-mapping.json` names. This is a check, not an
+ * exporter: nothing here is named `exportTrace`, `traceExporter` or
+ * `emitSpan`. Its render half, `renderTraceRows`, lives in `render.ts` --
+ * that file's own module header is why: `render.ts`'s only imports are
+ * `import type`, so it structurally cannot read a file, and this module is
+ * where the reading happens instead.
  *
  * `otel-mapping.json` is a JSON **Schema**, not a data file -- its data
  * lives inside `default` keys, three places:
@@ -24,18 +24,18 @@
  * SCOPE: the six ACS methods `mapping.yaml`'s `intervention_points` table
  * gives an `acs_method` (`steps/toolCallRequest`, `steps/toolCallResult`,
  * `steps/sessionStart`, `steps/sessionEnd`, `steps/userMessage`,
- * `steps/agentResponse`) -- R5.3 is about what THIS implementation claims,
- * and it can only claim or decline the Trace pillar for the methods it
- * evaluates. `otel-mapping.json` declares eighteen; the other twelve
- * (`steps/agentTrigger`, `steps/knowledgeRetrieval`, `steps/memoryStore`,
+ * `steps/agentResponse`). This implementation can only claim or decline the
+ * Trace pillar for the methods it evaluates. `otel-mapping.json` declares
+ * eighteen; the other twelve (`steps/agentTrigger`,
+ * `steps/knowledgeRetrieval`, `steps/memoryStore`,
  * `steps/memoryContextRetrieval`, `steps/turnStart`, `steps/turnEnd`,
  * `steps/preCompact`, `steps/postCompact`, `steps/subagentStart`,
  * `steps/subagentStop`, `agbom/snapshot`, `agbom/changed`) are out of scope
  * for the same reason `mapping.yaml` never reaches them. The six are frozen
  * here rather than re-read from `mapping.yaml`: this module's interface
- * consumes nothing from earlier tasks, so the scope is a stated design fact
- * (which methods this Guardian evaluates), not something re-derived from a
- * file this check would otherwise have to import.
+ * consumes nothing else, so the scope is a stated design fact (which methods
+ * this Guardian evaluates), not something re-derived from a file this check
+ * would otherwise have to import.
  *
  * THE RULE: a row is emittable only when its field is PRESENT and REQUIRED
  * in the v0.1.0 schema that would carry it. An optional field means a
@@ -386,11 +386,10 @@ export function checkTracePillar(): TraceRow[] {
   const DECISION_SPAN = "acs.decision";
 
   /** Where each `decision_event` attribute lives on `AcsResult`. Explicit,
-   * not derived from the attribute name (review round 1, Important 1): a
-   * mechanical `"acs.".length` slice reproduced the facts file's own wrong
-   * answer for four of these six, because `acs.evaluator`, `acs.confidence`,
-   * `acs.evaluator_version` and `acs.model_id` are NOT siblings of
-   * `AcsResult.decision` -- they live one level deeper, at
+   * not derived from the attribute name: a mechanical `"acs.".length` slice
+   * would be wrong for four of these six, because `acs.evaluator`,
+   * `acs.confidence`, `acs.evaluator_version` and `acs.model_id` are not
+   * siblings of `AcsResult.decision` -- they live one level deeper, at
    * `AcsResult.metadata.<name>` (verified by reading
    * `response-envelope.json`: `AcsResult.properties.metadata.properties`
    * lists all four; `AcsResult.required` and `metadata`'s own `required`

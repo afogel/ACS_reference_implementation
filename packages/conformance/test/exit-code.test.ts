@@ -5,9 +5,9 @@ import { resolveExitCode } from "../src/exit-code.ts";
 import { checkInterventionPoints } from "../src/intervention-points.ts";
 import { loadMapping } from "guardian";
 
-describe("N40 -- resolveExitCode: a red cell is resolved, a hole is not", () => {
-  it("is 0 for the real mapping.yaml's own N41 cells alone -- every coordinate is resolved (red or not), never a hole", () => {
-    // N41 (checkInterventionPoints) always returns exactly 40 cells (one per
+describe("resolveExitCode -- a red cell is resolved, a hole is not", () => {
+  it("is 0 for the real mapping.yaml's own intervention-point cells alone -- every coordinate is resolved (red or not), never a hole", () => {
+    // checkInterventionPoints always returns exactly 40 cells (one per
     // everyCell() coordinate, see intervention-points.ts's own function) --
     // merged alone, that already leaves no coordinate untouched, so this is
     // the real, structural reason `bun run conformance` always exits 0 today
@@ -44,10 +44,11 @@ describe("N40 -- resolveExitCode: a red cell is resolved, a hole is not", () => 
   });
 
   it("is non-zero when even one of the 40 coordinates has no contribution, the rest fully resolved", () => {
-    // The (input, allow) coordinate's own N41 cell is stripped out of the
-    // contribution array BEFORE merging -- so mergeCells sees zero
-    // contributions there (its own hole branch) while every other of the 39
-    // coordinates still merges from a real, resolved N41 cell.
+    // The (input, allow) coordinate's own intervention-point cell is
+    // stripped out of the contribution array before merging -- so
+    // mergeCells sees zero contributions there (its own hole branch) while
+    // every other of the 39 coordinates still merges from a real, resolved
+    // intervention-point cell.
     const mapping = loadMapping("mapping.yaml");
     const n41 = checkInterventionPoints(mapping).filter(
       (cell) => !(cell.point === "input" && cell.verdict === "allow"),

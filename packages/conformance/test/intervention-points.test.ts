@@ -20,7 +20,7 @@ describe("the axes come from AGT, not from us", () => {
   });
 });
 
-describe("N41 -- the intervention-point round trip", () => {
+describe("the intervention-point round trip", () => {
   const cells = checkInterventionPoints(mapping);
 
   it("produces one cell per point per verdict, and no others", () => {
@@ -50,7 +50,7 @@ describe("N41 -- the intervention-point round trip", () => {
 
   it("fails the round trip when a row's acs_method resolves back to a different point", () => {
     // Two rows naming one method: resolveInterventionPoint throws rather than
-    // picking by YAML key order, and N41 records that as unexpressed rather
+    // picking by YAML key order, and this check records that as unexpressed rather
     // than letting the throw escape and take the whole matrix with it.
     const ambiguous = {
       ...mapping,

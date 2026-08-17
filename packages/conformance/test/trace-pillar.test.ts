@@ -16,7 +16,7 @@ function only(attribute: string): TraceRow {
   return matches[0]!;
 }
 
-describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema files at runtime", () => {
+describe("checkTracePillar resolves every row against the v0.1.0 schema files at runtime", () => {
   it("gen_ai.tool.name is emittable on both spans that require it -- `tool.name` is required in both hook payloads that carry it", () => {
     const toolName = rows.filter((r) => r.attribute === "gen_ai.tool.name");
     // steps/toolCallRequest's gen_ai.tool.call and steps/toolCallResult's gen_ai.tool.result.
@@ -95,18 +95,15 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
   });
 
   it("emittableByWireConsumer is false wherever wireSource is null -- an invariant of buildRow, currently unexercised by real data", () => {
-    // Corrected from the facts file's original error (review round 1,
-    // Important 1): every one of these 17 rows turned out to resolve
-    // against a DECLARED response-envelope.json or provenance.json
-    // property once the four decision-metadata sites were fixed to walk
-    // into AcsResult.metadata -- v0.1.0 declares every field
-    // otel-mapping.json names in scope here, it just does not make most of
-    // the decision-event ones required. So `wireSource === null` currently
-    // holds for zero of the 17 rows -- asserted explicitly (not merely
-    // assumed) so this test cannot pass by accident, and the invariant
-    // stays checked because buildRow's "no such property" branch is still
-    // real, reachable code (N52's renderer has its own synthetic-row test
-    // for exactly that branch, below).
+    // Every one of these 17 rows resolves against a declared
+    // response-envelope.json or provenance.json property -- v0.1.0 declares
+    // every field otel-mapping.json names in scope here, it just does not
+    // make most of the decision-event ones required. So `wireSource === null`
+    // currently holds for zero of the 17 rows -- asserted explicitly (not
+    // merely assumed) so this test cannot pass by accident, and the
+    // invariant stays checked because buildRow's "no such property" branch
+    // is still real, reachable code (the renderer has its own synthetic-row
+    // test for exactly that branch, below).
     const noWireSource = rows.filter((r) => r.wireSource === null);
     expect(noWireSource).toHaveLength(0);
     for (const row of noWireSource) {
@@ -155,7 +152,7 @@ describe("N49 -- checkTracePillar resolves every row against the v0.1.0 schema f
   });
 });
 
-describe("N52 -- renderTraceRows", () => {
+describe("renderTraceRows", () => {
   it("is a pure function of the rows it is handed -- rendering twice produces the same string", () => {
     expect(renderTraceRows(rows)).toBe(renderTraceRows(rows));
   });

@@ -1,19 +1,19 @@
 /**
- * N42. AGT verdict -> ACS decision -> AGT verdict, at every intervention
- * point, asserting the verdict that comes back is the one that went in.
+ * AGT verdict -> ACS decision -> AGT verdict, at every intervention point,
+ * asserting the verdict that comes back is the one that went in.
  *
  * The forward leg is `mapVerdict`, the runtime's own -- so this measures what
  * the Guardian does rather than what mapping.yaml says it should. The reverse
- * leg is DERIVED from the same declaration by `invertVerdicts` below, and
+ * leg is derived from the same declaration by `invertVerdicts` below, and
  * that is the part worth stating: an inverse written by hand here would agree
  * with mapping.yaml because the same hand wrote both, and would go on
  * agreeing after mapping.yaml changed. A round trip through two independent
  * spellings of one table is not a round trip.
  *
  * The mapping is not injective. `allow` and `warn` both become ACS `allow`,
- * and R1.2 names the discriminator: `warn` is allow with a NON-EMPTY
- * `policy_references`. But mapVerdict synthesizes policy_references from
- * verdict.reason for ANY decision that carries one (map-verdict.ts,
+ * discriminated by whether `policy_references` is non-empty: `warn` is allow
+ * with a non-empty one. But mapVerdict synthesizes policy_references from
+ * verdict.reason for any decision that carries one (map-verdict.ts,
  * unconditionally) -- not only where require_policy_references is declared.
  * A real, reason-carrying `deny` or `escalate` (policy/lib/agt_default.rego
  * synthesizes a `pattern_reason`, defaulting to "pattern_blocked", for deny)
@@ -24,18 +24,17 @@
  * verdict to the same ACS decision -- `allow`'s group today -- and keys
  * every other decision by itself.
  *
- * `defer` has no AGT verdict behind it at all (§V3) and therefore never
- * appears here: this walks AGT's five, not ACS's.
+ * `defer` has no AGT verdict behind it at all and therefore never appears
+ * here: this walks AGT's five, not ACS's.
  */
 import { mapVerdict, type AcsDecision, type Mapping } from "guardian";
 import type { AgtVerdict } from "agt-bridge";
 import { everyCell, type CoverageCell } from "./cells.ts";
 
-/** The `warn` column's own reason, measured in §V3 and recorded at risk row 11.
- * Attached to `warn` at every point with a non-null acs_method (six of the
- * eight), because the fact it states -- no v0.1.0 method payload carries a
- * field a drift score could be derived from -- holds at all six, not only
- * the request gate. */
+/** The `warn` column's own reason. Attached to `warn` at every point with a
+ * non-null acs_method (six of the eight), because the fact it states -- no
+ * v0.1.0 method payload carries a field a drift score could be derived from
+ * -- holds at all six, not only the request gate. */
 const WARN_GUARDIAN_ONLY =
   "AGT's only stock warn gate reads input.annotations.drift_score, which reaches the policy input from a " +
   "manifest-declared annotator and never from the snapshot; no ACS v0.1.0 method payload carries a field a " +
@@ -109,13 +108,14 @@ function roundTrip(
   // mapVerdict does not consult acs_method -- it answers "what ACS decision
   // would this AGT verdict become AT this point", which is a real question
   // for a point mapping.yaml wires to a method and a fiction for one it does
-  // not. pre_model_call and post_model_call carry acs_method: null (D4): no
-  // ACS method ever resolves to either (resolveInterventionPoint has nothing
-  // to return), so no verdict fired there could reach a wire consumer to
+  // not. pre_model_call and post_model_call carry acs_method: null: no ACS
+  // method ever resolves to either (resolveInterventionPoint has nothing to
+  // return), so no verdict fired there could reach a wire consumer to
   // round-trip through. Left unguarded, mapVerdict would answer every
   // non-transform verdict at these points as if the round trip held --
   // reporting a round trip the runtime is never asked to perform -- so this
-  // reads the same row N41 reads and stops before asking the question.
+  // reads the same row the intervention-point check reads and stops before
+  // asking the question.
   const row = mapping.intervention_points[point];
   if (row === undefined) {
     return {
@@ -143,8 +143,7 @@ function roundTrip(
   // what field_synthesis.reason_codes and .policy_references both read, and
   // `transform` is what the modifications rule reads. A probe that gave a
   // verdict a field its stock emitter does not send would measure this
-  // harness's own construction instead of the table -- the exact failure
-  // mode commitment 5 exists to prevent.
+  // harness's own construction instead of the table.
   const agt: AgtVerdict = {
     decision: verdict as AgtVerdict["decision"],
     ...(verdict === "allow" ? { result_labels: ["probe"] } : { reason: "conformance_probe" }),

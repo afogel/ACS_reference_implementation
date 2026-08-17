@@ -12,7 +12,7 @@ const REDACTABLE = {
   input: { ifc: { source_labels: ["public"] } },
 };
 
-describe("N43 -- recomputing AGT's identity rather than believing it", () => {
+describe("recomputing AGT's identity rather than believing it", () => {
   it("reproduces the identity of a policy input AGT hashed", async () => {
     const finding = await checkEnforcedIdentity(bridge, "post_tool_call", REDACTABLE);
 
@@ -105,7 +105,7 @@ describe("N43 -- recomputing AGT's identity rather than believing it", () => {
   });
 });
 
-describe("N43 -- the request gate, measured rather than assumed to match the result gate", () => {
+describe("the request gate, measured rather than assumed to match the result gate", () => {
   // Same mechanism as REDACTABLE above, at the other of mapping.yaml's two
   // `modifications` rows: policy/lib/agt_default.rego's redact_verdict reads
   // input.policy_target.value regardless of intervention_point, and
@@ -142,7 +142,7 @@ describe("N43 -- the request gate, measured rather than assumed to match the res
   });
 });
 
-describe("N43 -- boundTo's four outcomes, each measured with synthetic evidence and asserted against its own reason", () => {
+describe("boundTo's four outcomes, each measured with synthetic evidence and asserted against its own reason", () => {
   // resolveBinding's parameter is a structural type (policyInput,
   // inputIdentity, enforcedIdentity, verdict.transform?), so reaching every
   // branch does not need the real bridge -- only a stand-in whose
@@ -152,8 +152,8 @@ describe("N43 -- boundTo's four outcomes, each measured with synthetic evidence 
   // it); "snapshot", "unattributable" and "no_rewrite" are real, distinct
   // code paths that no real-bridge fixture drives, so this is the only place
   // their reason strings are checked against what actually produced them
-  // rather than against the one origin a reader had in mind while writing it
-  // (PR review, round 2).
+  // rather than against the one origin a reader had in mind while writing
+  // it.
   const SYNTHETIC_INPUT = {
     policy_target: { path: "$.tool_result.outputs[0].value", value: "before" },
     snapshot: { tool_result: { outputs: [{ value: "before" }] } },

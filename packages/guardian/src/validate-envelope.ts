@@ -229,8 +229,8 @@ function buildAjv() {
 let ajv: ReturnType<typeof buildAjv> | undefined;
 
 /**
- * Exported so validate-response.ts (N21's outbound twin) can look up
- * response-envelope.json's validator through the SAME lazily-built Ajv
+ * Exported so validate-response.ts, this module's outbound twin, can look up
+ * response-envelope.json's validator through the same lazily-built Ajv
  * instance this module builds for the inbound side, rather than
  * constructing a second registry that loads the same 43 schema files from
  * the same SCHEMA_ROOT a second time. Sharing the instance, not just the

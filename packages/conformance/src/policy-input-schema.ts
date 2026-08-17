@@ -1,14 +1,13 @@
 /**
- * N41's SCHEMA leg -- the piece the plan's own slice accounting deferred to
- * this task ("schema leg on the pinned-clone path, Task 9"). `checkInterven-
- * tionPoints` (intervention-points.ts) measures whether mapping.yaml's
- * declared method round-trips through the runtime's own resolver; this
- * measures a different question about the same table -- whether the policy
- * input the Guardian actually constructs on the way there is a document AGT
- * itself would accept, checked against AGT's OWN `policy-input.schema.json`
- * rather than a hand-written mirror of it kept in this repo (R2.4: couple
- * only to a declared contract surface, and a copy of that surface authored
- * here could drift from upstream without this check saying so).
+ * The intervention-point check's schema leg. `checkInterventionPoints`
+ * (intervention-points.ts) measures whether mapping.yaml's declared method
+ * round-trips through the runtime's own resolver; this measures a different
+ * question about the same table -- whether the policy input the Guardian
+ * actually constructs on the way there is a document AGT itself would
+ * accept, checked against AGT's own `policy-input.schema.json` rather than a
+ * hand-written mirror of it kept in this repo. This check couples only to a
+ * declared contract surface, since a copy of that surface authored here
+ * could drift from upstream without this check saying so.
  *
  * `packages/agt-bridge/test/bridge.test.ts:134-140` already asserts the
  * constructed policy input has exactly the five members
@@ -21,17 +20,17 @@
  * `pre_tool_call` and `post_tool_call` -- the only two AGT intervention
  * points this codebase has a real snapshot assembler for at all
  * (`packages/guardian/src/assemble-snapshot.ts`'s `assemblePreToolCall-
- * Snapshot` / `assemblePostToolCallSnapshot`), and the same two N43 measures
- * for the identical reason. "The policy input the Guardian would send" is
- * only a real question at these two; AGT's other six points have no snapshot
- * shape anywhere in this codebase to construct one for, and inventing a
- * plausible-looking one here would measure this harness's own guess rather
- * than the Guardian's real behaviour -- the exact failure mode commitment 5
- * exists to prevent (see e.g. verdicts.ts's own header on the same point).
+ * Snapshot` / `assemblePostToolCallSnapshot`), and the same two points the
+ * enforced-identity check measures for the identical reason. "The policy
+ * input the Guardian would send" is only a real question at these two; AGT's
+ * other six points have no snapshot shape anywhere in this codebase to
+ * construct one for, and inventing a plausible-looking one here would
+ * measure this harness's own guess rather than the Guardian's real
+ * behaviour (see e.g. verdicts.ts's own header on the same point).
  *
- * DOES NOT FETCH. Mirrors `scripts/verify-pin.sh`'s own pattern exactly
- * (facts file): a shell script (`scripts/run-conformance.sh`) clones AGT at
- * the pinned ref into a scratch temp dir and hands the path in by
+ * DOES NOT FETCH. Mirrors `scripts/verify-pin.sh`'s own pattern exactly: a
+ * shell script (`scripts/run-conformance.sh`) clones AGT at the pinned ref
+ * into a scratch temp dir and hands the path in by
  * `UPSTREAM_AGT_CLONE`; this module self-skips -- returns `{ran: false}`,
  * never throws -- when that variable is absent, so `bun test` (which never
  * sets it) always exercises every check that does not need the network and
@@ -57,15 +56,15 @@ import type { InterventionSnapshot, PolicyBridge } from "agt-bridge";
  * name in this file to reproduce the leg locally. */
 export const UPSTREAM_AGT_CLONE_ENV = "UPSTREAM_AGT_CLONE";
 
-/** Confirmed present at `agt.lock`'s pinned ref (facts file). Relative to the
- * clone root `UPSTREAM_AGT_CLONE` names. */
+/** Confirmed present at `agt.lock`'s pinned ref. Relative to the clone root
+ * `UPSTREAM_AGT_CLONE` names. */
 const SCHEMA_RELATIVE_PATH = "policy-engine/spec/schema/wire/policy-input.schema.json";
 
 /** Representative snapshots at the two points this leg covers -- the same
  * REDACTABLE / REDACTABLE_COMMAND shapes `test/identity.test.ts` drives
  * through the real bridge for the identical reason: real fixtures that
- * exercise AGT's transform path, not minimal stubs shaped by this check
- * (commitment 5). Order is this module's own reporting order. */
+ * exercise AGT's transform path, not minimal stubs shaped by this check.
+ * Order is this module's own reporting order. */
 const PROBE_SNAPSHOTS: [point: "pre_tool_call" | "post_tool_call", snapshot: InterventionSnapshot][] = [
   [
     "pre_tool_call",
@@ -132,7 +131,7 @@ export async function checkPolicyInputSchema(bridge: PolicyBridge): Promise<Sche
     const evidence = await bridge.evaluateWithEvidence(point, snapshot);
     if (!validate(evidence.policyInput)) {
       throw new Error(
-        `N41 schema leg: the policy input the Guardian would send at "${point}" failed AGT's own ` +
+        `schema leg: the policy input the Guardian would send at "${point}" failed AGT's own ` +
           `policy-input.schema.json (${SCHEMA_RELATIVE_PATH}) -- ${JSON.stringify(validate.errors)}`,
       );
     }

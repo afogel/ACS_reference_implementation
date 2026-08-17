@@ -501,8 +501,9 @@ async function handleAcsRequest(
   const validation = validateResponse(response);
   try {
     // Reported, not thrown, and the response is sent unchanged either way:
-    // see validate-response.ts. This is the outbound half of N21, and it
-    // must not be able to turn a governed step into an ungoverned one.
+    // see validate-response.ts. This is the outbound counterpart to
+    // validateEnvelope's inbound checking, and it must not be able to turn a
+    // governed step into an ungoverned one.
     //
     // "not confirmed to satisfy", not "fails": `validation.message` is true
     // under two different causes -- a real schema violation, or
@@ -752,8 +753,8 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
  * from AGT.
  *
  * The intervention point comes from mapping.yaml's own `intervention_points`
- * table, not from a literal here (PR #10 review, Critical): that table is what
- * V7 publishes as its mapping table -- never as its coverage matrix, which
+ * table, not from a literal here: that table is what the conformance
+ * package's mapping table publishes -- never its coverage matrix, which
  * measures rather than declares -- and a declaration the runtime does not
  * consult is a claim nobody checks. An unresolvable method throws into the
  * catch below rather than defaulting to a point -- evaluating the wrong policy

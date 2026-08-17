@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { UPSTREAM_AGT_CLONE_ENV } from "../src/policy-input-schema.ts";
 import { main } from "../src/main.ts";
 
-describe("N40 -- the runner, in-process, with the schema leg disabled (no network)", () => {
+describe("the conformance runner, in-process, with the schema leg disabled (no network)", () => {
   const originalEnv = process.env[UPSTREAM_AGT_CLONE_ENV];
   afterEach(() => {
     if (originalEnv === undefined) {
@@ -17,11 +17,11 @@ describe("N40 -- the runner, in-process, with the schema leg disabled (no networ
 
     const run = await main();
 
-    // U32 mapping table (N48).
+    // The mapping table.
     expect(run.output).toContain("AGT intervention point -> ACS v0.1.0 method (mapping.yaml: intervention_points)");
-    // U30 coverage matrix (N47).
+    // The coverage matrix.
     expect(run.output).toContain("AGT intervention point (rows) x AGT verdicts (columns)");
-    // U33 trace rows (N52).
+    // The trace-pillar rows.
     expect(run.output).toContain("Trace pillar (trace/otel-mapping.json)");
 
     expect(run.cells).toHaveLength(40);
@@ -40,8 +40,8 @@ describe("N40 -- the runner, in-process, with the schema leg disabled (no networ
       expect(run.output).toContain(leg);
     }
 
-    // §V7's whole point: every one of the 40 coordinates is RESOLVED (some
-    // red), which is exactly the case the exit-status rule reads as success.
+    // Every one of the 40 coordinates is resolved (some red), which is
+    // exactly the case the exit-status rule reads as success.
     expect(run.exitCode).toBe(0);
   });
 

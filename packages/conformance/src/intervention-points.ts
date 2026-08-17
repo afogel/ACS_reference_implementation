@@ -1,13 +1,12 @@
 /**
- * N41. For each of AGT's eight intervention points: does `mapping.yaml` give
- * it an ACS method, and does the runtime resolve that method back to this
- * same point?
+ * For each of AGT's eight intervention points: does `mapping.yaml` give it
+ * an ACS method, and does the runtime resolve that method back to this same
+ * point?
  *
  * Both halves matter, and the second is the one worth having. The table could
- * name a method for every point and still be a declaration nobody checked --
- * which is what it was until the PR #10 review found the Guardian hardcoding
- * `pre_tool_call` beside it. So this calls `resolveInterventionPoint`, the
- * runtime's own resolver, rather than reading the table a second way here.
+ * name a method for every point and still be a declaration nobody checked.
+ * So this calls `resolveInterventionPoint`, the runtime's own resolver,
+ * rather than reading the table a second way here.
  *
  * A point with no ACS method is `unexpressed` for all five of its verdicts,
  * carrying the reason mapping.yaml's own row states. A resolver THROW is also

@@ -38,12 +38,12 @@ describe("mergeCells -- the worst status wins and every check is named", () => {
     }
   });
 
-  // Review round 1, fix 2: N41 and N42 both read the SAME mapping.yaml note
-  // back for pre_model_call/post_model_call (both fall back to `row.note` on
-  // a null acs_method), so two checks landing on this coordinate carry
-  // byte-identical text, not two accounts. Joining it against itself would
-  // publish "X; X" -- this is the real shape, reproduced directly rather than
-  // invented.
+  // The intervention-point check and the verdict check both read the same
+  // mapping.yaml note back for pre_model_call/post_model_call (both fall
+  // back to `row.note` on a null acs_method), so two checks landing on this
+  // coordinate carry byte-identical text, not two accounts. Joining it
+  // against itself would publish "X; X" -- this is the real shape,
+  // reproduced directly rather than invented.
   it("dedupes identical reasons rather than joining one check's account against itself", () => {
     const merged = mergeCells(
       [cell("pre_model_call", "deny", "unexpressed", "N41", "no ACS v0.1.0 target — D4, V7 red cell")],

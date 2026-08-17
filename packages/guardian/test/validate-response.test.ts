@@ -4,13 +4,13 @@ import { validateResponse } from "../src/validate-response.ts";
 // A real UUID, not a readable placeholder: response-envelope.json's
 // AcsResult.request_id is `format: "uuid"`, and this field is what the
 // Guardian actually sends -- finalResult (acs-result.ts) copies it straight
-// from `params.request_id`, which validateEnvelope (N21) already confirmed
+// from `params.request_id`, which validateEnvelope already confirmed
 // matches this same format before any response exists to build. The same
 // placeholder UUID validate-envelope.test.ts already uses for the inbound
 // side, reused here rather than a second one invented for the outbound side.
 const PLACEHOLDER_REQUEST_ID = "8f14e45f-ceea-467e-bd5f-1d4d9a4e0c8f";
 
-describe("validateResponse -- N21's outbound twin", () => {
+describe("validateResponse -- validateEnvelope's outbound twin", () => {
   it("accepts a decision response the Guardian actually builds", () => {
     expect(
       validateResponse({
@@ -30,10 +30,10 @@ describe("validateResponse -- N21's outbound twin", () => {
     const outcome = validateResponse({
       jsonrpc: "2.0",
       id: "rpc-1",
-      // request_id is the placeholder UUID here too, not the review round 1
-      // fixture's non-UUID literal: with that literal, this test passed for
-      // the wrong reason -- errors[0] was the request_id format failure, not
-      // the decision enum failure, so the assertion below would hold
+      // request_id is the placeholder UUID here too, not a non-UUID literal:
+      // with a non-UUID request_id, this test would pass for the wrong
+      // reason -- errors[0] would be the request_id format failure, not the
+      // decision enum failure, so the assertion below would hold
       // identically if "warn" became a legal ACS decision tomorrow. A valid
       // request_id isolates the one field this test is actually about.
       result: { type: "final", acs_version: "0.1.0", request_id: PLACEHOLDER_REQUEST_ID, decision: "warn" },

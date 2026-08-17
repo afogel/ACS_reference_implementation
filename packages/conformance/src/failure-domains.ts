@@ -1,28 +1,29 @@
 /**
- * N44. The last of the four checks feeding N47's merge, and the only one
- * that drives a live Guardian over HTTP rather than calling `mapVerdict` or
- * `resolveInterventionPoint` in-process -- a check that constructed its own
- * failure in-process would be measuring its own construction, not the wire
- * boundary Global Constraint 1 is about.
+ * The last of the four checks that feed the coverage-matrix merge, and the
+ * only one that drives a live Guardian over HTTP rather than calling
+ * `mapVerdict` or `resolveInterventionPoint` in-process -- a check that
+ * constructed its own failure in-process would be measuring its own
+ * construction, not the wire boundary that keeps the two failure domains
+ * below apart.
  *
  * TWO FAILURE DOMAINS, kept apart here exactly as `deny-on-invalid-envelope.ts`
  * keeps them apart at the point that answers them:
  *
- *   (1) AGT'S EVALUATION LAYER FAILS CLOSED (R1.5, §6.4). An envelope that
- *       fails schema validation, or whose evaluation throws, arrives as an
+ *   (1) AGT'S EVALUATION LAYER FAILS CLOSED (§6.4). An envelope that fails
+ *       schema validation, or whose evaluation throws, arrives as an
  *       honoured ACS `deny` decision -- never a bare JSON-RPC error.
- *       `denyOnInvalidEnvelope` (N27, `packages/guardian/src/deny-on-invalid-
+ *       `denyOnInvalidEnvelope` (`packages/guardian/src/deny-on-invalid-
  *       envelope.ts`) is what does it, reached from two different catches in
  *       `server.ts` with two different reason codes: `envelope_invalid`
  *       (`dispatch`'s own catch, server.ts:502) and `evaluation_failed`
  *       (`evaluateStep`'s catch, server.ts:664). THE ASSERTIONS BELOW THAT
- *       BELONG TO THIS DOMAIN: `measureDenyColumn` drives one live probe PER
- *       mapped point (never one probe generalised to all of them -- review
- *       round 1, Important 1, below), and `assertEvaluationFailsClosed`
- *       drives the brief's own literal probe, a `steps/toolCallRequest`
- *       whose payload fails `hooks/tool-call-request.json`.
+ *       BELONG TO THIS DOMAIN: `measureDenyColumn` drives one live probe per
+ *       mapped point (never one probe generalised to all of them), and
+ *       `assertEvaluationFailsClosed` drives one literal probe of its own, a
+ *       `steps/toolCallRequest` whose payload fails
+ *       `hooks/tool-call-request.json`.
  *
- *   (2) WIRE DELIVERY FAILURE APPLIES THE NEGOTIATED POSTURE (R1.7). When no
+ *   (2) WIRE DELIVERY FAILURE APPLIES THE NEGOTIATED POSTURE. When no
  *       decision arrives at all -- the Guardian is unreachable, times out, or
  *       answers with an error and no `result` -- a `proceed` deployment
  *       proceeds and audits, a `deny` deployment blocks. THIS HALF IS THE
@@ -39,7 +40,7 @@
  *       `hosts/claude-code/test/posture.test.ts` (which drives a stub
  *       Guardian through every delivery-failure shape it can produce -- dead,
  *       timed out, error-without-decision -- against both postures) and is
- *       REFERENCED here rather than re-driven: constructing a second copy of
+ *       referenced here rather than re-driven: constructing a second copy of
  *       that suite inside a Guardian-only check would test the host's own
  *       code from a package that has no host in it.
  *
@@ -52,43 +53,40 @@
  * check posts an envelope naming a method `mapping.yaml` gives no row
  * to at all, and records that it comes back `method_not_dispatched` rather
  * than being swallowed into domain (1)'s deny-on-failure path -- proving the
- * two stay apart, not resolving any cell about it. What this check does NOT
+ * two stay apart, not resolving any cell about it. What this check does not
  * do: `mapping.yaml` gives an `acs_method` to six intervention points, and
  * this Guardian dispatches two (`handshake.ts`'s `METHODS_EVALUATED`); the
  * other four answer `method_not_dispatched` too, live, but that is a
- * DIFFERENT fact -- a mapped-but-undispatched method, not an unmapped one --
+ * different fact -- a mapped-but-undispatched method, not an unmapped one --
  * and this check does not resolve a cell for it or draw a matrix-level
- * conclusion from it. That fact is carried forward to Task 7 (the merge) and
- * Task 10 (the declaration). `assertHookPayloadFailureIsUndispatchedElsewhere`
- * below measures the SAME boundary from validation's own side rather than
- * dispatch's: the hook-payload schemas `validateEnvelope` checks a payload
- * against are gated on the identical two method literals `METHODS_EVALUATED`
- * names, in a different file, so an empty payload is invalid only where this
- * Guardian also dispatches -- one seam, seen from validation and from
- * dispatch.
+ * conclusion from it; the coverage-matrix merge and the published
+ * declaration carry that fact forward instead.
+ * `assertHookPayloadFailureIsUndispatchedElsewhere` below measures the same
+ * boundary from validation's own side rather than dispatch's: the
+ * hook-payload schemas `validateEnvelope` checks a payload against are gated
+ * on the identical two method literals `METHODS_EVALUATED` names, in a
+ * different file, so an empty payload is invalid only where this Guardian
+ * also dispatches -- one seam, seen from validation and from dispatch.
  *
- * REVIEW ROUND 1, IMPORTANT 1. An earlier version of this file ran ONE
- * hook-payload probe at `steps/toolCallRequest` and argued its result to all
- * six mapped points, on the claim that `isStepMethod` (server.ts:499-501,
- * gating whether `denyOnInvalidEnvelope` is reached at all) runs "before any
- * method-specific routing." That is true of `isStepMethod` itself, and false
- * of the reason the probe's OWN failure was reachable: `checkHookPayload`
- * (validate-envelope.ts:359-363) applies a hook-payload schema only for
- * `steps/toolCallRequest` / `steps/toolCallResult`, so an empty payload never
- * fails validation at all for the other four mapped methods -- they have no
- * hook-payload schema to fail, the envelope passes, and dispatch answers
- * `method_not_dispatched`, not a deny. Measured live: `steps/toolCallRequest`
- * and `steps/toolCallResult` return `decision=deny` for an empty payload;
+ * ONE LIVE PROBE PER MAPPED POINT, never one probe generalised to all of
+ * them, because a single hook-payload probe cannot stand in for the other
+ * five points: `checkHookPayload` (validate-envelope.ts:359-363) applies a
+ * hook-payload schema only for `steps/toolCallRequest` /
+ * `steps/toolCallResult`, so an empty payload never fails validation at all
+ * for the other four mapped methods -- they have no hook-payload schema to
+ * fail, the envelope passes, and dispatch answers `method_not_dispatched`,
+ * not a deny. Measured live: `steps/toolCallRequest` and
+ * `steps/toolCallResult` return `decision=deny` for an empty payload;
  * `steps/sessionStart`, `steps/sessionEnd`, `steps/userMessage`,
- * `steps/agentResponse` each return a JSON-RPC error, code -32011. The
- * argument was refuted by the same shape of probe it was written to license.
- * `measureDenyColumn` below replaces it: one live probe per mapped point,
- * using a GENERIC `request-envelope.json` failure (a missing `params.metadata`)
- * rather than the method-gated hook-payload one -- `validateTopLevel`
- * (validate-envelope.ts's first check) is not method-gated, so this failure
- * mode genuinely does reach `isStepMethod`'s gate identically for all six.
- * No cell in this file is resolved by an argument about routing any more;
- * each is resolved by a probe naming the point it is a cell about.
+ * `steps/agentResponse` each return a JSON-RPC error, code -32011.
+ * `measureDenyColumn` below is what actually resolves the deny column: one
+ * live probe per mapped point, using a generic `request-envelope.json`
+ * failure (a missing `params.metadata`) rather than the method-gated
+ * hook-payload one -- `validateTopLevel` (validate-envelope.ts's first
+ * check) is not method-gated, so this failure mode genuinely does reach
+ * `isStepMethod`'s gate identically for all six. Each cell in this file is
+ * resolved by a probe naming the point it is a cell about, never by an
+ * argument about routing.
  */
 import { loadMapping, type Mapping } from "guardian";
 import { AGT_POINTS, type CoverageCell } from "./cells.ts";
@@ -122,9 +120,9 @@ type DenyProbeResponse = { result?: { decision?: string; reason_codes?: string[]
 type DispatchProbeResponse = { result?: unknown; error?: { code?: number; message?: string } };
 
 /** Domain (1)'s reason, attached to every `deny` cell `measureDenyColumn`
- * resolves `expressed`. States what was measured AT THIS POINT, not a
+ * resolves `expressed`. States what was measured at this point, not a
  * general claim about the specification or an inference from a different
- * point's probe (review round 1, Important 1). */
+ * point's probe. */
 const DENY_EXPRESSED_REASON =
   "AGT's evaluation layer fails closed (R1.5, §6.4): an otherwise well-formed envelope missing a required " +
   "request-envelope.json field (params.metadata) arrives as an honoured ACS deny decision at this point, never " +
@@ -163,11 +161,8 @@ function wellFormedEnvelope(method: string, payload: Record<string, unknown>): R
  * hook-payload failure (method-gated: validate-envelope.ts:359-363), this
  * failure mode genuinely does not depend on which `steps/*` method is named
  * -- which is what licenses `measureDenyColumn` calling this once per mapped
- * point and expecting the same answer each time (review round 1, Important
- * 1: an argument to this effect was wrong when it was about the
- * hook-payload check instead; it is not wrong about this one, and this
- * module trusts it only because each call is itself measured, not merely
- * asserted).
+ * point and expecting the same answer each time, a claim this module trusts
+ * only because each call is itself measured, not merely asserted.
  */
 function envelopeMissingMetadata(method: string): Record<string, unknown> {
   const id = crypto.randomUUID();
@@ -185,26 +180,23 @@ function envelopeMissingMetadata(method: string): Record<string, unknown> {
 }
 
 /**
- * Domain (1)'s own probe, exactly as the brief's Step 3 specifies: a
- * `steps/toolCallRequest` whose payload is empty, which fails
- * `hooks/tool-call-request.json` (it requires `tool` and `arguments`) while
- * the envelope around it is otherwise schema-valid -- so the failure this
- * probe measures is the hook-payload check specifically, not some other
- * field validate-envelope.ts would also have rejected.
+ * The domain (1) probe: a `steps/toolCallRequest` whose payload is empty,
+ * which fails `hooks/tool-call-request.json` (it requires `tool` and
+ * `arguments`) while the envelope around it is otherwise schema-valid -- so
+ * the failure this probe measures is the hook-payload check specifically,
+ * not some other field validate-envelope.ts would also have rejected.
  *
- * DOES NOT, BY ITSELF, LICENSE ANY CELL (review round 1, Important 1). The
- * hook-payload check this probe trips is method-gated
- * (validate-envelope.ts:359-363: only `steps/toolCallRequest` /
- * `steps/toolCallResult` get one), so a deny here says nothing about a
- * mapped point with no hook-payload schema at all. `measureDenyColumn` below
- * is what actually resolves the deny column now, from six independent
- * probes using a different, genuinely method-independent failure mode. This
- * function stays because the brief's Step 3 names this exact probe, and
- * because it is the base case `assertHookPayloadFailureIsUndispatchedElsewhere`
- * contrasts against.
+ * Does not, by itself, license any cell. The hook-payload check this probe
+ * trips is method-gated (validate-envelope.ts:359-363: only
+ * `steps/toolCallRequest` / `steps/toolCallResult` get one), so a deny here
+ * says nothing about a mapped point with no hook-payload schema at all.
+ * `measureDenyColumn` below is what actually resolves the deny column, from
+ * six independent probes using a different, genuinely method-independent
+ * failure mode. This function stays because it is the base case
+ * `assertHookPayloadFailureIsUndispatchedElsewhere` contrasts against.
  *
- * A THROW here, not a resolved `unexpressed` cell: a Guardian that answers
- * this probe with anything but an honoured deny has R1.5's fail-closed
+ * A throw here, not a resolved `unexpressed` cell: a Guardian that answers
+ * this probe with anything but an honoured deny has the fail-closed
  * guarantee broken at the request gate specifically -- not "expressed
  * differently", broken -- and publishing a matrix cell that claims otherwise
  * would be worse than a failed check.
@@ -219,20 +211,19 @@ async function assertEvaluationFailsClosed(guardianUrl: string): Promise<void> {
 
   if (body.error !== undefined || body.result?.decision !== "deny") {
     throw new Error(
-      `N44: a steps/toolCallRequest whose payload fails hooks/tool-call-request.json did not arrive as an ` +
-        `honoured ACS deny -- got ${JSON.stringify(body)}. R1.5's fail-closed guarantee does not hold against ` +
+      `a steps/toolCallRequest whose payload fails hooks/tool-call-request.json did not arrive as an ` +
+        `honoured ACS deny -- got ${JSON.stringify(body)}. The fail-closed guarantee does not hold against ` +
         `this Guardian.`,
     );
   }
 }
 
 /**
- * The hook-payload finding (review round 1, Important 1: "record the
- * hook-payload finding... state it as the measured fact it is"). Posts the
- * SAME shape as `assertEvaluationFailsClosed` -- an empty payload -- at
+ * The hook-payload finding. Posts the same shape as
+ * `assertEvaluationFailsClosed` -- an empty payload -- at
  * `UNDISPATCHED_MAPPED_METHOD`, a method mapping.yaml maps to a point
  * (`agent_startup`) but this Guardian does not dispatch, and asserts the
- * answer is `method_not_dispatched`, NOT a deny.
+ * answer is `method_not_dispatched`, not a deny.
  *
  * `hooks/session-start.json` (or any schema for a non-tool-call method) is
  * never checked by `validateEnvelope` at all -- `checkHookPayload` is called
@@ -262,7 +253,7 @@ async function assertHookPayloadFailureIsUndispatchedElsewhere(guardianUrl: stri
 
   if (body.error?.code !== METHOD_NOT_DISPATCHED_CODE) {
     throw new Error(
-      `N44: ${JSON.stringify(UNDISPATCHED_MAPPED_METHOD)} with an empty payload -- invalid only at the two ` +
+      `${JSON.stringify(UNDISPATCHED_MAPPED_METHOD)} with an empty payload -- invalid only at the two ` +
         `hook-payload-checked methods -- answered ${JSON.stringify(body)} instead of method_not_dispatched. The ` +
         `hook-payload/dispatch coincidence this probe measures does not hold against this Guardian.`,
     );
@@ -287,7 +278,7 @@ async function assertUnmappedMethodIsUndispatched(guardianUrl: string): Promise<
 
   if (body.error?.code !== METHOD_NOT_DISPATCHED_CODE) {
     throw new Error(
-      `N44: ${JSON.stringify(UNMAPPED_METHOD)}, a method mapping.yaml gives no intervention-point row to, ` +
+      `${JSON.stringify(UNMAPPED_METHOD)}, a method mapping.yaml gives no intervention-point row to, ` +
         `answered ${JSON.stringify(body)} instead of method_not_dispatched -- domain (1)'s deny-on-failure path ` +
         `has started answering for a method this Guardian does not dispatch, which this check exists to catch.`,
     );
@@ -295,18 +286,18 @@ async function assertUnmappedMethodIsUndispatched(guardianUrl: string): Promise<
 }
 
 /**
- * The deny column's real resolution (review round 1, Important 1): one live
- * probe PER mapped point, none of them standing in for another. For each
- * point mapping.yaml gives an ACS method to, posts `envelopeMissingMetadata`
- * naming that point's own method, asserts the answer is an honoured deny,
- * and resolves that point's `deny` cell `expressed` from that measurement
- * alone. `pre_model_call` / `post_model_call` get no cell here, deliberately,
- * not an `unexpressed` one: no ACS method ever resolves to either (D4), so
- * there is no wire message this check could fail-close in the first place,
- * and a cell about them is N41's to resolve (it already does, for every
- * verdict including `deny`) -- not this check's to restate.
+ * The deny column's real resolution: one live probe per mapped point, none
+ * of them standing in for another. For each point mapping.yaml gives an ACS
+ * method to, posts `envelopeMissingMetadata` naming that point's own method,
+ * asserts the answer is an honoured deny, and resolves that point's `deny`
+ * cell `expressed` from that measurement alone. `pre_model_call` /
+ * `post_model_call` get no cell here, deliberately, not an `unexpressed`
+ * one: no ACS method ever resolves to either, so there is no wire message
+ * this check could fail-close in the first place, and a cell about them is
+ * `checkInterventionPoints`'s to resolve (it already does, for every verdict
+ * including `deny`) -- not this check's to restate.
  *
- * A THROW on the first point whose probe does not come back deny, naming
+ * A throw on the first point whose probe does not come back deny, naming
  * which point and method failed -- the same reasoning as
  * `assertEvaluationFailsClosed`: a broken guarantee at one point is not a
  * cell to mark differently, it is a check that must not publish a cell
@@ -330,8 +321,8 @@ async function measureDenyColumn(guardianUrl: string, mapping: Mapping): Promise
 
     if (body.error !== undefined || body.result?.decision !== "deny") {
       throw new Error(
-        `N44: a ${JSON.stringify(method)} envelope (AGT point ${JSON.stringify(point)}) missing params.metadata ` +
-          `did not arrive as an honoured ACS deny -- got ${JSON.stringify(body)}. R1.5's fail-closed guarantee ` +
+        `a ${JSON.stringify(method)} envelope (AGT point ${JSON.stringify(point)}) missing params.metadata ` +
+          `did not arrive as an honoured ACS deny -- got ${JSON.stringify(body)}. The fail-closed guarantee ` +
           `does not hold at this point against this Guardian.`,
       );
     }
@@ -341,17 +332,17 @@ async function measureDenyColumn(guardianUrl: string, mapping: Mapping): Promise
 }
 
 /**
- * N44. Drives `guardianUrl` with four KINDS of probe (this module's header),
- * nine wire posts in all, and returns `measureDenyColumn`'s six
+ * Drives `guardianUrl` with four kinds of probe (this module's header), nine
+ * wire posts in all, and returns `measureDenyColumn`'s six
  * independently-measured cells -- one post per mapped method, which is the
  * whole point: this column is measured six times, never measured once and
  * generalised. The other three probe kinds assert invariants this check
- * depends on and resolve no cell
- * of their own: `assertEvaluationFailsClosed` is the brief's literal
- * hook-payload probe, `assertHookPayloadFailureIsUndispatchedElsewhere`
- * measures the hook-payload/dispatch coincidence, and
- * `assertUnmappedMethodIsUndispatched` measures the third boundary against a
- * method mapping.yaml does not map at all.
+ * depends on and resolve no cell of their own: `assertEvaluationFailsClosed`
+ * is its own literal hook-payload probe,
+ * `assertHookPayloadFailureIsUndispatchedElsewhere` measures the
+ * hook-payload/dispatch coincidence, and `assertUnmappedMethodIsUndispatched`
+ * measures the third boundary against a method mapping.yaml does not map at
+ * all.
  */
 export async function checkFailureDomains(guardianUrl: string): Promise<CoverageCell[]> {
   const mapping = loadMapping(MAPPING_PATH);
