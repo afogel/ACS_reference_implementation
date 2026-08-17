@@ -8,6 +8,7 @@ export {
   type MappingTable,
 } from "./cells.ts";
 export { resolveExitCode } from "./exit-code.ts";
+export { diffSurfaces, type SurfaceDiff } from "./diff-surfaces.ts";
 export { checkDenyFailsClosed } from "./failure-domains.ts";
 export { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "./fetch-upstream.ts";
 export {
