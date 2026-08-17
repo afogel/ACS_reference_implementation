@@ -40,5 +40,6 @@ export {
   type SurfaceSnapshot,
   type UpstreamSurfaces,
 } from "./surfaces.ts";
+export { checkToolsAgainstRegistry, renderToolsRegistryReport, type UnregisteredTool } from "./tools-registry.ts";
 export { checkTracePillar, type TraceRow } from "./trace-pillar.ts";
 export { checkVerdicts, invertVerdicts } from "./verdicts.ts";

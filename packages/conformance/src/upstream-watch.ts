@@ -1,11 +1,56 @@
+import { readFileSync } from "node:fs";
 import { createBridge } from "agt-bridge";
 import { diffSurfaces, type SurfaceDiff } from "./diff-surfaces.ts";
 import { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "./fetch-upstream.ts";
 import { checkPolicyInputSchemaAt, PINNED_AGT_CLONE_ENV } from "./policy-input-schema.ts";
 import { renderUpstreamDiff } from "./render-upstream-diff.ts";
 import { asPinned, readSurfaces, type PinnedSurfaces, type UpstreamSurfaces } from "./surfaces.ts";
+import { checkToolsAgainstRegistry, renderToolsRegistryReport } from "./tools-registry.ts";
 
 const MANIFEST_PATH = "policy/manifest.yaml";
+
+/** The two hookmaps this deployment ships, read the same cwd-relative way
+ * `main.ts` reads `MANIFEST_PATH` -- both callers of this module run from
+ * the repository root. */
+const HOOKMAP_PATHS = ["hosts/claude-code/claude-code.hookmap.yaml", "hosts/opencode/opencode.hookmap.yaml"] as const;
+
+/**
+ * Reads a hookmap only as far as `checkToolsAgainstRegistry` needs: its own
+ * path and each hook's `tools` entry. This does not call `loadHookmap`
+ * (host-adapter/src/build-envelope.ts), which validates a great deal more
+ * about a hookmap than its `tools` lists -- a hookmap that fails that wider
+ * validation for a reason this section does not measure must not stop this
+ * section from reporting on the other hookmap.
+ */
+function readHookmapTools(path: string): { path: string; hooks: Record<string, { tools?: unknown }> } {
+  const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { hooks?: Record<string, { tools?: unknown }> };
+  return { path, hooks: raw.hooks ?? {} };
+}
+
+/** The policy manifest's own tool registry: the keys of its top-level
+ * `tools:` mapping, one entry per name a host actually dispatches. */
+function readManifestToolRegistry(path: string): string[] {
+  const raw = Bun.YAML.parse(readFileSync(path, "utf8")) as { tools?: Record<string, unknown> };
+  return Object.keys(raw.tools ?? {});
+}
+
+/**
+ * The third reported section, beside the surface-read failure and the
+ * schema question above: reads the two shipped hookmaps and the policy
+ * manifest's tool registry and renders what `checkToolsAgainstRegistry`
+ * finds. A missing, unreadable or unparseable file is caught here and
+ * rendered as a line naming what went wrong, never propagated -- this
+ * function does not throw.
+ */
+function renderToolsRegistrySection(): string {
+  try {
+    const hookmaps = HOOKMAP_PATHS.map(readHookmapTools);
+    const registry = readManifestToolRegistry(MANIFEST_PATH);
+    return renderToolsRegistryReport(checkToolsAgainstRegistry(hookmaps, registry));
+  } catch (error) {
+    return `Hookmap tools against the policy manifest: could not read -- ${(error as Error).message}`;
+  }
+}
 
 /**
  * What re-asking the policy-input schema question of `main` answers, beside
@@ -49,7 +94,8 @@ function renderSchemaAgainstMain(result: SchemaAgainstMainChecked): string {
 /**
  * Assembles the run: reads the pinned side, fetches the upstream side, hands
  * both to the differ, re-asks the policy-input schema question of the
- * upstream clone, and renders what came back.
+ * upstream clone, checks this deployment's own hookmaps against its own
+ * policy manifest, and renders what came back.
  *
  * The pinned side is read HERE rather than inside the differ, so the differ
  * has no store to reach for and no ref to resolve -- it is told two snapshots
@@ -76,8 +122,17 @@ function renderSchemaAgainstMain(result: SchemaAgainstMainChecked): string {
  * The schema re-check is handled the same way for the same reason: it keeps
  * its own shipped behaviour of throwing on a genuine validation failure, and
  * that throw is caught here and rendered as a failure line rather than
- * allowed to escape. This slice reports; it never refuses, and nothing here
- * fails a build.
+ * allowed to escape.
+ *
+ * The hookmap tools-against-registry section is the third report of the same
+ * kind, and it needs neither clone: it reads this deployment's own hookmaps
+ * and its own policy manifest off the working directory, so it is computed
+ * once the run has gotten this far rather than gated on either clone being
+ * present. `renderToolsRegistrySection` catches its own read and parse
+ * failures and never throws, for the identical reason the two checks above
+ * it are caught rather than left to propagate.
+ *
+ * This slice reports; it never refuses, and nothing here fails a build.
  */
 export async function runUpstreamWatch(
   env: Record<string, string | undefined> = process.env,
@@ -124,7 +179,13 @@ export async function runUpstreamWatch(
     schemaAgainstMain = { checked: true, ok: false, reason: (error as Error).message };
   }
 
-  const output = [renderUpstreamDiff(diffs), "", renderSchemaAgainstMain(schemaAgainstMain)].join("\n");
+  const output = [
+    renderUpstreamDiff(diffs),
+    "",
+    renderSchemaAgainstMain(schemaAgainstMain),
+    "",
+    renderToolsRegistrySection(),
+  ].join("\n");
   return { ran: true, diffs, schemaAgainstMain, output };
 }
 
