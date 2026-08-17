@@ -7,8 +7,8 @@ export {
   type CoverageMatrix,
   type MappingTable,
 } from "./cells.ts";
-export { resolveExitCode } from "./exit-code.ts";
 export { diffSurfaces, type SurfaceDiff } from "./diff-surfaces.ts";
+export { resolveExitCode } from "./exit-code.ts";
 export { checkDenyFailsClosed } from "./failure-domains.ts";
 export { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "./fetch-upstream.ts";
 export {
@@ -29,6 +29,7 @@ export {
 export { mergeCells } from "./merge-cells.ts";
 export { checkPolicyInputSchema, PINNED_AGT_CLONE_ENV, type SchemaLegResult } from "./policy-input-schema.ts";
 export { renderCoverageMatrix, renderMappingTable, renderTraceRows, type RenderOptions } from "./render.ts";
+export { renderUpstreamDiff } from "./render-upstream-diff.ts";
 export {
   asPinned,
   asUpstream,
