@@ -263,7 +263,8 @@ So the finding is: **a downstream consumer of the ACS wire cannot emit a conform
 only the Guardian can, from process-local knowledge the contract does not carry.
 
 Three independent findings in this slice's own measurement share a related shape, and are
-stated here as one, per `docs/shaping/acs-reference-impl-slices.md:531`: the `warn` column
+stated here as one, per §V7's ⚠️ *"A cell therefore has three answers"* note in
+`docs/shaping/acs-reference-impl-slices.md`: the `warn` column
 (AGT's only stock warn gate reads `input.annotations.drift_score`, and no ACS v0.1.0 method
 payload carries a field that score could be derived from), the six Trace-pillar rows above,
 and R1.4's identity (commitment 6 above — `packages/conformance/src/identity.ts` measures
@@ -278,7 +279,8 @@ carry the evidence for it** — a downstream consumer can read what was decided,
 neither reproduce it nor bind it to what executed.
 
 The v0.2 fork this raises is published here, not resolved, per
-`docs/shaping/acs-reference-impl-slices.md:529`: adding `enforced_identity` to `AcsResult` is
+§V7's ⚠️ *"The v0.2 fork, and why 'add a field' is not the whole proposal"* note in
+`docs/shaping/acs-reference-impl-slices.md`: adding `enforced_identity` to `AcsResult` is
 necessary and not sufficient, because the host applies ACS `modifications` to the **ACS**
 payload while AGT hashed its **policy input** — two documents, two vocabularies. v0.2 needs
 either **(a)** an identity computed over a canonicalization of the *ACS* action the host will
