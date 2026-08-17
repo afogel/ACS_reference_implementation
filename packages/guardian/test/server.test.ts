@@ -498,7 +498,7 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  it("carries no decision -- N27 is V3, so a Guardian-side failure is an error, not a synthesized deny", async () => {
+  it("carries no decision -- a Guardian-side failure is an error here, not a synthesized deny", async () => {
     await withSchemalessGuardian(async ({ url }) => {
       const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
 
@@ -508,7 +508,7 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  it("records both the request and the response, so S6 has no unrecorded exit", async () => {
+  it("records both the request and the response, so the envelope log has no unrecorded exit", async () => {
     await withSchemalessGuardian(async ({ url, logPath }) => {
       await postAcs(url, toolCallEnvelope("ls -la", { id: 11 }));
 

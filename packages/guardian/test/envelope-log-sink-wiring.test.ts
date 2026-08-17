@@ -75,7 +75,7 @@ async function postRaw(url: string, body: string): Promise<unknown> {
 
 const logIn = (dir: string) => join(dir, "envelopes.jsonl");
 
-describe("Guardian envelope log wiring (N26 x N20)", () => {
+describe("Guardian envelope log wiring", () => {
   it("records one request and one response per exchange, paired by rpc_id", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       await postRaw(url, JSON.stringify(toolCallEnvelope("rm -rf /", { id: 11 })));

@@ -91,7 +91,7 @@ describe("outcomeMessageOf -- what the renderers are told about", () => {
   });
 });
 
-describe("renderDecisionBadge (U21)", () => {
+describe("renderDecisionBadge", () => {
   // The renderer needs no envelope log at all now: anything that can build
   // the message can use the badge.
   it("renders a message built by hand, with no log entry anywhere in sight", () => {
@@ -199,7 +199,7 @@ describe("renderDecisionBadge (U21)", () => {
   });
 });
 
-describe("renderEnvelopeLogEntry (U20)", () => {
+describe("renderEnvelopeLogEntry", () => {
   it("renders a request as a header line plus pretty JSON, with no badge", () => {
     const rendered = renderEnvelopeLogEntry(
       entry({

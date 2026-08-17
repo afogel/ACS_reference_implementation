@@ -36,7 +36,7 @@ function readEntries(path: string): EnvelopeLogEntry[] {
 const REQUEST = { jsonrpc: "2.0", method: "steps/toolCallRequest", id: 7, params: { acs_version: "0.1.0" } };
 const RESPONSE = { jsonrpc: "2.0", id: 7, result: { decision: "deny" } };
 
-describe("createEnvelopeLogSink (N26) -- S6's JSONL format", () => {
+describe("createEnvelopeLogSink -- the envelope log's JSONL format", () => {
   it("writes one line per call, with a monotonic seq starting at 1", () => {
     withTempDir((dir) => {
       const path = join(dir, "envelopes.jsonl");
@@ -55,7 +55,7 @@ describe("createEnvelopeLogSink (N26) -- S6's JSONL format", () => {
   // nothing stripped, nothing reordered. This is not byte identity with the
   // wire: the sink is handed the already-parsed result of `await
   // req.json()`.
-  it("records the envelope unmodified -- constraint 11, no reformatting or stripping", () => {
+  it("records the envelope unmodified -- no reformatting or stripping", () => {
     withTempDir((dir) => {
       const path = join(dir, "envelopes.jsonl");
       createEnvelopeLogSink({ path }).write("request", REQUEST, "steps/toolCallRequest");

@@ -55,7 +55,7 @@ function withTempDir(run: (dir: string, path: string) => Promise<void>): Promise
   });
 }
 
-describe("tailEnvelopeLog (N50)", () => {
+describe("tailEnvelopeLog", () => {
   it("yields entries appended after the tail starts, skipping what was already there", async () => {
     await withTempDir(async (_dir, path) => {
       writeFileSync(path, entryLine(1, "request"));
