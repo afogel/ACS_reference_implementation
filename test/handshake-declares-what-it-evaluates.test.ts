@@ -9,7 +9,7 @@ import {
 } from "host-adapter";
 
 /**
- * THE HANDSHAKE HAS TO DESCRIBE THE GUARDIAN THAT SENT IT.
+ * The handshake has to describe the Guardian that sent it.
  *
  * `methods_evaluated` is not documentation. handshake.json defines it as the
  * "Subset of the client's methods_implemented that this Guardian will actually
@@ -20,17 +20,15 @@ import {
  *
  * So the two failure directions are not symmetric in kind, only in badness:
  *
- *   - UNDER-DECLARING tells a conformant host to ignore a gate that is really
- *     enforcing. This is the one that actually happened. V4 wired
- *     `steps/toolCallResult` -- the slice's whole point, a redaction gate --
- *     while the ServerHello went on naming `steps/toolCallRequest` alone under
- *     a comment reading "only intervention point wired in V1". This host never
- *     reads the field, which is exactly why nothing noticed for a whole slice.
- *   - OVER-DECLARING claims enforcement that does not exist, which a host is
- *     entitled to rely on. Nothing has done it yet, and it is the direction a
- *     "just add the method to the list" fix invites next time.
+ *   - Under-declaring tells a conformant host to ignore a gate that is
+ *     really enforcing -- the more dangerous direction, and the harder one
+ *     to notice, since a host that never reads the field has no way to see
+ *     the gap.
+ *   - Over-declaring claims enforcement that does not exist, which a host is
+ *     entitled to rely on. It is the direction a "just add the method to the
+ *     list" fix invites.
  *
- * WHY THIS IS A TEST RATHER THAN A DERIVED CONSTANT. What must hold is a
+ * This is a test rather than a derived constant because what must hold is a
  * property of the running Guardian: it declares exactly what it dispatches.
  * Dispatch is two predicate-gated branches in server.ts, deliberately not a
  * table -- that module argues at length that a table keyed on the resolved
@@ -38,10 +36,10 @@ import {
  * assembler and answer with a well-formed verdict for the wrong policy. There
  * is no expression `buildServerHello` could evaluate to learn "what server.ts
  * branches on". Deriving the list from, say, validate-envelope's method
- * constants would pin something NARROWER -- that a predicate exists -- and
+ * constants would pin something narrower -- that a predicate exists -- and
  * leave both failures above reachable: a predicate with no branch would
  * over-declare, and a branch is what makes a method evaluated. So the
- * declaration stays a literal and the RELATIONSHIP is measured, by asking a
+ * declaration stays a literal and the relationship is measured, by asking a
  * live Guardian which methods it answers for.
  */
 
@@ -64,7 +62,7 @@ afterAll(async () => {
 
 /**
  * A payload that satisfies whatever schema `validateEnvelope` applies to this
- * method, so the probe below measures DISPATCH rather than validation. Only the
+ * method, so the probe below measures dispatch rather than validation. Only the
  * two dispatched methods have a hook payload schema today; every other method
  * is checked against the generic request-envelope shape alone, which an empty
  * object satisfies. If that stops being true the probe says so by name rather

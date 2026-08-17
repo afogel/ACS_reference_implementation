@@ -24,11 +24,11 @@ const preToolUsePayload = {
   tool_input: { command: "rm -rf /", description: "clean up" },
 };
 
-// Unread by buildEnvelope, which owns the `acs_method`/path half of a hook
-// entry -- present so a hookmap this file passes around is a whole one. The host
-// field names live in the output paths, which is render-decision.ts's business
-// (and no code's, in the adapter, above the path level). Declared per hook,
-// because the shape a host reads back is a property of the gate.
+// Unread by buildEnvelope, which owns only the `acs_method`/path half of a
+// hook entry -- present so the hookmap fixture passed around in this file is
+// a complete one. The host field names inside `output` are render-decision.ts's
+// business, declared per hook because the shape a host reads back is a
+// property of the gate.
 const PRE_TOOL_USE_DECISIONS = {
   allow: { output: { "hookSpecificOutput.permissionDecision": { value: "allow" } } },
   deny: {
@@ -86,9 +86,9 @@ describe("buildEnvelope", () => {
   it("produces an envelope that validates against the real ACS v0.1.0 request-envelope + tool-call-request schemas", () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload, hookmap);
 
-    // guardian's own validateEnvelope -- imported here, in the
-    // TEST file only, so the runtime adapter stays dependency-free while
-    // this proves the two sides genuinely agree on the wire format.
+    // guardian's own validateEnvelope, imported here in the test file only
+    // so the runtime adapter stays dependency-free, while this proves the
+    // two sides genuinely agree on the wire format.
     expect(() => validateEnvelope(envelope)).not.toThrow();
   });
 
@@ -101,11 +101,11 @@ describe("buildEnvelope", () => {
   it("wraps each tool_input argument as {value: ...} per ACS", () => {
     const envelope = buildEnvelope("PreToolUse", preToolUsePayload, hookmap);
 
-    // `arguments?.` because `params.payload` is now the union of the two ACS
-    // payload shapes and only the request member has an `arguments` bag at all
-    // -- the optional access IS the claim that this envelope carries that
-    // member, since an envelope carrying the result shape reads `undefined`
-    // here and fails both assertions.
+    // `arguments?.` because `params.payload` is the union of the two ACS
+    // payload shapes and only the request member has an `arguments` bag at
+    // all. The optional access is the claim that this envelope carries that
+    // member: an envelope carrying the result shape reads `undefined` here
+    // and fails both assertions.
     expect(envelope.params.payload.arguments?.command).toEqual({ value: "rm -rf /" });
     expect(envelope.params.payload.arguments?.description).toEqual({ value: "clean up" });
   });
@@ -157,11 +157,10 @@ describe("buildEnvelope", () => {
     expect(toSessionUuid("abc123")).not.toBe(toSessionUuid("xyz789"));
   });
 
-  // Kept pointed at a hook this fixture genuinely does not map -- SessionStart
-  // is a real Claude Code hook this hookmap does not wire -- because the claim
-  // is about an unmapped name, and a name the fixture now maps would go on
-  // throwing for an unrelated reason (its paths not resolving against a
-  // PreToolUse payload) while reading as coverage of this one.
+  // SessionStart is a real Claude Code hook this hookmap does not wire. The
+  // claim under test is about an unmapped name; a name the fixture did map
+  // would throw for an unrelated reason (its paths not resolving against a
+  // PreToolUse payload) while reading as coverage of this case.
   it("throws on an unmapped hook name, rather than defaulting or producing a partial envelope", () => {
     expect(() => buildEnvelope("SessionStart", preToolUsePayload, hookmap)).toThrow(/no entry for hook/);
   });
@@ -195,13 +194,12 @@ describe("buildEnvelope", () => {
   });
 
   describe("loadHookmap — every hook's decisions.allow and decisions.deny must be renderable", () => {
-    // Guards against the residual case a shim could otherwise only trust:
-    // applyFailurePosture never returns anything but "allow" or
-    // "deny", so a shim falling back to the posture because the ORIGINAL
-    // decision could not be rendered needs the posture's own output to be
-    // guaranteed renderable too, or the fallback itself can throw. Enforced
-    // once, at load time, so every hookmap this project ships is checked
-    // the same way, not trusted by convention.
+    // applyFailurePosture never returns anything but "allow" or "deny", so a
+    // shim falling back to the posture because the original decision could
+    // not be rendered needs the posture's own output to be guaranteed
+    // renderable too, or the fallback itself can throw. Enforced once, at
+    // load time, so every hookmap this project ships is checked the same
+    // way, not trusted by convention.
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-"));
       const path = join(dir, "hookmap.yaml");
@@ -215,10 +213,10 @@ describe("buildEnvelope", () => {
     }
 
     // The `hooks` half every case below shares, and two renderable entries to
-    // build cases out of. Named rather than repeated inline, because after
-    // each decision entry gained a full `output` block the inline strings
-    // were longer than the assertions they set up. `decisions` is indented
-    // under the hook that owns it, so DECISIONS is its own fragment.
+    // build cases out of. Named rather than repeated inline, because the
+    // inline strings are longer than the assertions they set up. `decisions`
+    // is indented under the hook that owns it, so DECISIONS is its own
+    // fragment.
     const HOOKS =
       "host: claude-code\nhooks:\n  PreToolUse:\n    acs_method: steps/toolCallRequest\n    tool_name: $.tool_name\n    arguments: $.tool_input\n";
     const DECISIONS = "    decisions:\n";
@@ -288,14 +286,14 @@ describe("buildEnvelope", () => {
       });
     });
 
-    // Fix round 3: presence alone let both of these through. `allow: null`
-    // satisfies `"allow" in decisions` but is not an entry renderDecision can
-    // read an output block off -- it would throw at render time, past every
-    // guard, exiting 1 with empty stdout (a third route to the fail-open
-    // this project exists to remove). `allow: {}` also satisfies presence,
-    // and would render an output whose one field was `undefined`, which
-    // JSON.stringify drops -- stdout would carry a wrapper with no decision
-    // in it at all. Both must be rejected at load time instead.
+    // Presence alone lets both of these through. `allow: null` satisfies
+    // `"allow" in decisions` but is not an entry renderDecision can read an
+    // output block off -- it would throw at render time, past every guard,
+    // exiting 1 with empty stdout, which is a fail-open this project exists
+    // to prevent. `allow: {}` also satisfies presence, and would render an
+    // output whose one field was `undefined`, which JSON.stringify drops --
+    // stdout would carry a wrapper with no decision in it at all. Both must
+    // be rejected at load time instead.
     it("throws when allow is present but not an object (null)", () => {
       withHookmapFile(`${HOOKS}${DECISIONS}      allow: null\n${DENY}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(/decisions\.allow/);
@@ -303,12 +301,12 @@ describe("buildEnvelope", () => {
     });
 
     // The claim this test makes is the one the adapter is allowed to make:
-    // an entry that renders NOTHING is rejected. Which host field a
+    // an entry that renders nothing is rejected. Which host field a
     // renderable entry has to name is not this module's business -- it
-    // knows nothing about any particular host's field names -- and the
+    // knows nothing about any particular host's field names. The
     // `permissionDecision`-specific check lives in the shim's own gate
-    // (assertHostAcceptsEveryDecision, hosts/claude-code/acs-hook.ts), where
-    // hosts/claude-code/test/posture.test.ts exercises it end to end.
+    // (assertHostAcceptsEveryDecision, hosts/claude-code/acs-hook.ts),
+    // exercised end to end by hosts/claude-code/test/posture.test.ts.
     it("throws when allow is an object but declares no output block", () => {
       withHookmapFile(`${HOOKS}${DECISIONS}      allow: {}\n${DENY}`, (path) => {
         expect(() => loadHookmap(path)).toThrow(
@@ -317,12 +315,11 @@ describe("buildEnvelope", () => {
       });
     });
 
-    it("throws when a THIRD entry (not allow or deny) is malformed -- every declared entry is checked", () => {
-      // Malformed the second way an entry can be, now that entries carry an
-      // output block: the block is there and non-empty, but its one field
-      // names neither a literal `value` nor a `from` to copy -- a hookmap typo
-      // that would render `modify` as an output missing the field its author
-      // believes is there.
+    it("throws when a third entry (not allow or deny) is malformed -- every declared entry is checked", () => {
+      // Malformed a second way an entry can be: the block is there and
+      // non-empty, but its one field names neither a literal `value` nor a
+      // `from` to copy -- a hookmap typo that would render `modify` as an
+      // output missing the field its author believes is there.
       withHookmapFile(
         `${HOOKS}${DECISIONS}${ALLOW}${DENY}      modify: { output: { hookSpecificOutput.updatedInput: { type: string } } }\n`,
         (path) => {
@@ -336,7 +333,7 @@ describe("buildEnvelope", () => {
   // through. `unwrapArguments` is module-private and takes a request payload
   // only, so answering an empty bag for an envelope with no arguments is
   // unrepresentable rather than merely discouraged.
-  describe("loadHookmap — outputs.mirrors is validated at load time too (§V5 review, Important 1)", () => {
+  describe("loadHookmap — outputs.mirrors is validated at load time too", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-mirrors-"));
       const path = join(dir, "hookmap.yaml");
@@ -640,12 +637,13 @@ describe("buildEnvelope", () => {
       });
 
       // The other half of what makes `within` usable, and the half a
-      // present-and-non-empty check cannot see: the two paths have to describe
-      // ONE leaf inside ONE object, because the replacement is a clone of that
-      // object patched at that leaf. An entry whose paths point into different
-      // objects satisfies both checks above, builds a clean envelope, and gets a
-      // correct decision back -- and the gap surfaces at the one moment it
-      // matters, as a replacement the host declines and an original delivered.
+      // present-and-non-empty check cannot see: the two paths have to
+      // describe a single leaf inside a single object, because the
+      // replacement is a clone of that object patched at that leaf. An entry
+      // whose paths point into different objects satisfies both checks
+      // above, builds a clean envelope, and gets a correct decision back --
+      // and the gap surfaces at the one moment it matters, as a replacement
+      // the host declines and an original delivered.
       it.each([
         ["names a leaf outside `within`", "$.tool_input.command"],
         ["names `within` itself, so there is no leaf to patch", "$.tool_response"],
@@ -663,14 +661,12 @@ describe("buildEnvelope", () => {
         );
       });
 
-      // `outputs.mirrors` is deliberately NOT covered here (§V5 review,
-      // Important 1, fix round 2). `buildEnvelope` no longer validates it at
-      // all -- a malformed `mirrors` reaching this function is a hookmap that
-      // should never have loaded, and asserting that here would test a
-      // behaviour this function no longer has. See the
-      // "loadHookmap -- outputs.mirrors is validated at load time too"
-      // describe block below for the check's new (and only) home, and that
-      // block's own comment for why living only here was the fault.
+      // `outputs.mirrors` is deliberately not covered here. `buildEnvelope`
+      // does not validate it at all -- a malformed `mirrors` reaching this
+      // function is a hookmap that should never have loaded, and asserting
+      // that here would test a behaviour this function does not have. See
+      // the "loadHookmap -- outputs.mirrors is validated at load time too"
+      // describe block below for that check.
 
       it("throws, naming the hook, when `exit_status` names neither a literal nor a path", () => {
         const broken = withBrokenEntry({
@@ -679,9 +675,8 @@ describe("buildEnvelope", () => {
           outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
         });
 
-        // §V5 review, fix round 1, Minor 2: the message now names BOTH legal
-        // forms -- before this fix a `from`-shaped typo (`fromm:`, say) was
-        // told to add a literal, which was never the actual fix for it.
+        // The message names both legal forms, so a `from`-shaped typo
+        // (`fromm:`, say) is not told to add a literal instead.
         expect(() => buildEnvelope("Broken", payload, broken)).toThrow(
           /hook "Broken" declares "outputs" without a non-empty "exit_status\.literal" or "exit_status\.from"/,
         );
@@ -702,19 +697,18 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * V5 (slice #6, Task 3): `exit_status` learns a second form. V4 shipped only
-   * `HookmapLiteral` because Claude Code's PostToolUse payload carries no exit
-   * code -- `PostToolUse` fires for the success case only, so `{literal: success}`
-   * was the whole truth, not a gap papered over. Host #2's result gate reports a
-   * real `metadata.exit` number, so the hookmap now can name a PATH instead of a
-   * constant. `"0 means success"` is a fact about process exit codes, decided
-   * once here rather than per-host, which is why the mapping lives in this
-   * function rather than in host #2's hookmap.
+   * `exit_status` has two forms. Claude Code's PostToolUse payload carries no
+   * exit code -- `PostToolUse` fires for the success case only, so
+   * `{literal: success}` is the whole truth for that host, not a gap papered
+   * over. opencode's result gate reports a real `metadata.exit` number, so the
+   * hookmap can also name a path instead of a constant. `"0 means success"` is
+   * a fact about process exit codes, decided once here rather than per-host,
+   * which is why the mapping lives in this function rather than in opencode's
+   * hookmap.
    */
-  describe("exit_status: field-read form (V5, host #2)", () => {
-    // Mirrors host #2's own tool.execute.after entry (Task 3's
-    // opencode.hookmap.yaml) closely enough to exercise the new form, without
-    // depending on that file existing yet.
+  describe("exit_status: field-read form (opencode)", () => {
+    // Mirrors opencode's own tool.execute.after entry closely enough to
+    // exercise this form.
     function fieldReadHookmap(exitStatus: unknown): Hookmap {
       return {
         host: "opencode",
@@ -781,18 +775,17 @@ describe("buildEnvelope", () => {
       );
     });
 
-    // §V5 review, fix round 1, Minor 1 introduced this refusal; fix round 2,
-    // Important 1 MOVED it to `loadHookmap` (see the "loadHookmap --
+    // This refusal lives in `loadHookmap` (see the "loadHookmap --
     // hooks.<name>.exit_status is validated at load time" describe block
-    // below) for the same reason `outputs.mirrors`' own check lives there and
-    // not in `buildPayload`: a throw reachable only from `buildEnvelope` is
-    // caught by `governStep` and answered with the deployment's negotiated
-    // posture, which can be `proceed` -- measured, under that posture, as the
-    // tool's output delivered UNGOVERNED. `buildEnvelope` itself no longer
-    // refuses this shape at all -- proven directly, so a future re-addition
-    // of the per-invocation check does not silently duplicate this one
-    // without anyone noticing the two had drifted (the same proof the
-    // mirrors describe block makes for its own check).
+    // below), for the same reason `outputs.mirrors`'s own check lives there
+    // and not in `buildPayload`: a throw reachable only from `buildEnvelope`
+    // is caught by `governStep` and answered with the deployment's
+    // negotiated posture, which can be `proceed` -- meaning the tool's
+    // output would be delivered ungoverned. This test proves `buildEnvelope`
+    // itself no longer refuses this shape at all, so a future re-addition of
+    // the per-invocation check will not silently duplicate the load-time one
+    // without being noticed (the same proof the mirrors describe block makes
+    // for its own check).
     it("buildEnvelope itself no longer refuses a both-forms `exit_status` -- only loadHookmap does", () => {
       const envelope = buildEnvelope(
         "tool.execute.after",
@@ -805,14 +798,15 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * §V5 review, fix round 2, Important 1: fix round 1's both-forms refusal
-   * lived inside `exitStatusOf`, reached only from `buildEnvelope` --
-   * measured, under the deployment's negotiated `proceed` posture, as the
-   * tool's output delivered UNGOVERNED rather than refused. A both-forms
-   * entry needs no payload to detect, exactly like `outputs.mirrors` and
-   * `tools`, so it is a load-time hard stop here instead.
+   * A both-forms `exit_status` entry needs no payload to detect, exactly
+   * like `outputs.mirrors` and `tools`, so it is refused as a load-time hard
+   * stop here rather than only inside `exitStatusOf` at `buildEnvelope` time
+   * -- a throw reachable only from `buildEnvelope` would be caught by
+   * `governStep` and answered with the deployment's negotiated posture,
+   * which can be `proceed`, delivering the tool's output ungoverned rather
+   * than refused.
    */
-  describe("loadHookmap — hooks.<name>.exit_status is validated at load time (§V5 review, fix round 2, Important 1)", () => {
+  describe("loadHookmap — hooks.<name>.exit_status is validated at load time", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-exit-status-"));
       const path = join(dir, "hookmap.yaml");
@@ -857,24 +851,22 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * §V5 review, fix round 2, Important 2, NARROWED in §V5 review, Task 5, fix
-   * round 1 (priority item): the request gate still cannot be given an
-   * `outputs` declaration -- it builds no result payload for one to
-   * describe -- but it CAN now declare `tools`, reversing what this describe
-   * block used to pin. See `HookmapHookEntryCommon.tools`'s own doc comment
-   * (build-envelope.ts) for the measurement that reversed it: a request
-   * gate's own paths resolving for every tool is not the same fact as a
-   * deployment's policy configuration being able to evaluate one, and the
-   * shipped configuration denies every unregistered tool unconditionally,
-   * before any authored rule runs.
+   * The request gate cannot be given an `outputs` declaration -- it builds
+   * no result payload for one to describe -- but it can declare `tools`. See
+   * `HookmapHookEntryCommon.tools`'s own doc comment (build-envelope.ts): a
+   * request gate's own paths resolving for every tool is not the same fact
+   * as a deployment's policy configuration being able to evaluate one, and
+   * the shipped configuration denies every unregistered tool
+   * unconditionally, before any authored rule runs.
    *
    * `outputs?: never`/`exit_status?: never` on `HookmapRequestHookEntry` say
    * the `outputs` half at the type level, but a hookmap arrives as
    * `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks against
-   * parsed YAML. Measured: an entry declaring `arguments` alongside
-   * `outputs` loaded clean before this fix existed.
+   * parsed YAML. This describe block is the runtime check that closes that
+   * gap: an entry declaring `arguments` alongside `outputs` would otherwise
+   * load clean.
    */
-  describe("loadHookmap — the request gate's own scoping rule (§V5 review, fix round 2 / Task 5 fix round 1)", () => {
+  describe("loadHookmap — the request gate's own scoping rule", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-request-scope-"));
       const path = join(dir, "hookmap.yaml");
@@ -927,16 +919,16 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * §V5 review, fix round 1, Important 1: host #2's result gate fires for
-   * every tool with no matcher, and `metadata` is per-tool -- so the gate
-   * has to declare which tool its own `outputs`/`exit_status` paths are
-   * actually shaped for. This task ships the SHAPE check only, at the same
-   * load-time seam `assertMirrorsWellFormed` uses and for the identical
-   * reason: a hookmap that cannot express its own scope must not get to
-   * govern a step via a posture-answered `buildEnvelope` throw. Nothing in
-   * this module reads `tools` yet -- Task 6 wires the shim to honour it.
+   * opencode's result gate fires for every tool with no matcher, and
+   * `metadata` is per-tool, so the gate has to declare which tool its own
+   * `outputs`/`exit_status` paths are actually shaped for. This is the shape
+   * check only, at the same load-time seam `assertMirrorsWellFormed` uses
+   * and for the identical reason: a hookmap that cannot express its own
+   * scope must not get to govern a step via a posture-answered
+   * `buildEnvelope` throw. Nothing in this module reads `tools` itself; the
+   * shim honouring it lives in govern-step.ts.
    */
-  describe("loadHookmap — hooks.<name>.tools is validated at load time (§V5 review, fix round 1, Important 1)", () => {
+  describe("loadHookmap — hooks.<name>.tools is validated at load time", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-tools-"));
       const path = join(dir, "hookmap.yaml");
@@ -997,24 +989,18 @@ describe("buildEnvelope", () => {
   });
 
   /**
-   * §V5 review round 3, Important: `assertToolsWellFormed`, above, already
-   * treats a bare `tools:` line (YAML's own parse for it is `null` -- a key
-   * present and unusable, not a key absent) as "no tools declared", but only
-   * inside its own local variable. Before this fix, the `Hookmap` object
-   * `loadHookmap` actually returned still carried `tools: null` on that
-   * entry, so every CONSUMER had to repeat the same `?? undefined` dance --
-   * host #2's own shim did, and its doc comment recorded the crash
-   * (`TypeError: null is not an object`) that happened when an earlier
-   * version read `tools !== undefined` instead. `normalizeTools`
-   * (build-envelope.ts) closes that: `loadHookmap` now hands back a hookmap
-   * whose entries never carry a present-but-`null` `tools`, so a caller
-   * reading `tools === undefined` -- the natural, un-defensive reading --
-   * gets the right answer. `governsTool` (govern-step.ts, Task 2 of the same
-   * review round) is now that caller, for both hosts and for `governStep`
-   * itself, and it is written the un-defensive way this normalisation is what
-   * makes correct.
+   * `assertToolsWellFormed`, above, already treats a bare `tools:` line
+   * (YAML parses it as `null` -- a key present and unusable, not a key
+   * absent) as "no tools declared", but only inside its own local variable.
+   * `normalizeTools` (build-envelope.ts) makes that true of the returned
+   * object too: `loadHookmap` hands back a hookmap whose entries never carry
+   * a present-but-`null` `tools`, so a caller can read `tools === undefined`
+   * directly rather than defensively -- reading `tools !== undefined`
+   * instead would still crash on a literal `null`. `governsTool`
+   * (govern-step.ts) is that caller, for both hosts and for `governStep`
+   * itself.
    */
-  describe("loadHookmap — a present-but-null `tools` normalises to absent (§V5 review round 3, Important)", () => {
+  describe("loadHookmap — a present-but-null `tools` normalises to absent", () => {
     function withHookmapFile(content: string, fn: (path: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), "acs-hookmap-tools-normalise-"));
       const path = join(dir, "hookmap.yaml");
@@ -1045,8 +1031,8 @@ describe("buildEnvelope", () => {
         expect(loaded.hooks.PostToolUse?.tools).toBeUndefined();
         // `toBeUndefined()` alone would also pass for a key present and set
         // to literal `undefined` -- impossible from parsed YAML, but this
-        // pins the stronger claim the brief asks for: the key itself is
-        // OMITTED, not merely read back as `undefined`.
+        // pins the stronger claim: the key itself is omitted, not merely
+        // read back as `undefined`.
         expect(Object.prototype.hasOwnProperty.call(loaded.hooks.PostToolUse, "tools")).toBe(false);
       });
     });
@@ -1062,11 +1048,9 @@ describe("buildEnvelope", () => {
       });
     });
 
-    // The existing malformed-`tools` throw tests (sibling describe block,
-    // above) are unaffected by this change -- they run before
-    // `normalizeTools` is ever reached (loadHookmap calls it last, after
-    // every check has passed) and continue to throw the same messages.
-    // Not re-asserted here; this comment records that they were re-run, not
-    // rewritten, for this task.
+    // The malformed-`tools` throw tests above (sibling describe block) are
+    // unaffected by normalization: they run before `normalizeTools` is ever
+    // reached, since `loadHookmap` calls it last, after every check has
+    // passed.
   });
 });

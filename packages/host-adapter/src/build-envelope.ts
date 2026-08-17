@@ -24,11 +24,11 @@ export type HookmapLiteral = { literal: string };
 /**
  * An exit status read from the payload rather than fixed by the hookmap.
  *
- * V5 (slice #6): Claude Code's PostToolUse fires only for the success case,
- * so `HookmapLiteral` was the whole truth for host #1, not a gap. Host #2's
- * result gate reports a real `metadata.exit` number instead, so `exit_status`
- * needs a PATH here, resolved the same way `outputs.from` is -- against the
- * raw hook payload, at the same seam.
+ * Claude Code's PostToolUse hook fires only for the success case, so
+ * `HookmapLiteral` is the whole truth there. OpenCode's result gate instead
+ * reports a real `metadata.exit` number, so `exit_status` needs a path here,
+ * resolved the same way `outputs.from` is -- against the raw hook payload, at
+ * the same seam.
  */
 export type HookmapFieldRead = { from: string };
 
@@ -41,7 +41,7 @@ export type HookmapOutputs = {
    * `from` must be `within` plus at least one further segment, which
    * `buildPayload` checks. Declared here and read by the projection side
    * (result-output.ts), not by this module: a decision replacing the output is
-   * patched into a CLONE of that object, so every sibling field the host put
+   * patched into a clone of that object, so every sibling field the host put
    * beside the leaf survives the round trip. A replacement missing one of them
    * is a shape the host may decline, and a declined replacement delivers the
    * original -- which is why the whole object is named, not just the leaf that
@@ -49,16 +49,16 @@ export type HookmapOutputs = {
    */
   within: string;
   /**
-   * Further paths inside `within` that hold their OWN COPY of the leaf, and
+   * Further paths inside `within` that hold their own copy of the leaf, and
    * must receive the same replacement.
    *
-   * V4's discipline is to patch a clone so every sibling survives, and on a host
-   * whose siblings are unrelated fields that is exactly right. Measured on host
-   * #2: one sibling MIRRORS the leaf, so preserving it preserves the secret --
-   * a redaction that is clean, warns about nothing, is genuinely invisible to
-   * the model, and leaves the plaintext in the host's own session record. The
-   * property that makes the clone safe is the property that leaks, so the
-   * hookmap has to say where the copies are; nothing here could infer it.
+   * Patching a clone preserves every sibling field, which is right when the
+   * siblings are unrelated fields -- but on OpenCode one sibling mirrors the
+   * leaf, so preserving it unchanged would preserve the secret too: a
+   * redaction that is clean, warns about nothing, is invisible to the model,
+   * and leaves the plaintext in the host's own session record. The property
+   * that makes the clone safe is the property that leaks, so the hookmap has
+   * to say where the copies are; nothing here could infer it.
    */
   mirrors?: string[];
 };
@@ -84,56 +84,48 @@ type HookmapHookEntryCommon = {
    */
   decisions?: Record<string, unknown>;
   /**
-   * The tool names THIS gate governs. Undeclared (`undefined`) means "every
-   * tool" -- matching host #1's own hookmap, which needs no scoping at all
-   * because its own settings.json matcher (`^Bash$`) already provides it,
+   * The tool names this gate governs. Undeclared (`undefined`) means "every
+   * tool" -- matching Claude Code's own hookmap, which needs no scoping at
+   * all because its settings.json matcher (`^Bash$`) already provides it,
    * for both of its gates.
    *
-   * COMMON TO BOTH ENTRY KINDS, unlike `arguments`/`outputs`/`exit_status`
-   * (moved here from `HookmapResultHookEntry` alone in §V5 review, Task 5,
-   * fix round 1, priority item): scoping which tools a gate governs is
-   * orthogonal to which payload shape that gate builds, and host #2 needs it
-   * at BOTH gates, for two different reasons.
+   * Common to both entry kinds, not just the result-gate shape: scoping
+   * which tools a gate governs is orthogonal to which payload shape that
+   * gate builds, and OpenCode needs it at both gates, for two different
+   * reasons.
    *
-   *   - The RESULT gate (`tool.execute.after`) needs it because its own
-   *     `outputs`/`exit_status` paths are shaped per tool: host #2's hooks
+   *   - The result gate (`tool.execute.after`) needs it because its own
+   *     `outputs`/`exit_status` paths are shaped per tool: OpenCode's hooks
    *     fire for every tool with no matcher, and the raw payload field those
-   *     paths read is a DIFFERENT shape per tool (measured on OpenCode
-   *     1.18.15: only `bash` carries the fields `outputs`/`exit_status`
-   *     below are written for; other tools carry an unrelated shape those
-   *     paths were never meant to read). A path that does not resolve for
-   *     the arriving tool is a hookmap fault this gate must not try to
-   *     govern with.
-   *   - The REQUEST gate (`tool.execute.before`) needs it for a different
-   *     reason, found only after this field was scoped to the result gate
-   *     alone: this gate's own `$.` paths resolving for every tool was
-   *     mistaken for "so it governs every tool" -- but resolving THIS
-   *     module's paths and resolving a deployment's own policy configuration
-   *     are different questions. A deployment's policy configuration
-   *     (policy/manifest.yaml, outside this package) can bind its
-   *     evaluation to a single fixed target, checked before any of that
-   *     deployment's own authored rules run; a tool call this deployment
-   *     never registered, or whose arguments that fixed target does not
-   *     resolve against, is refused there by the shape mismatch alone, never
-   *     by an authored rule. Measured against this repo's own shipped
-   *     configuration: every tool but the names it registers denies,
-   *     unconditionally, before a rule is ever consulted -- and it registers
-   *     three (`run_shell`, AGT's own stock example name; `Bash`, host #1's;
-   *     `bash`, host #2's), not the one an earlier version of this sentence
-   *     claimed. Asking a
-   *     deployment configured that way is not wrong, but the answer it gives
-   *     is a configuration mismatch reported as if it were governance.
-   *     `tools` here lets a host shim decline to ask at all for a tool its
-   *     own deployment cannot express a target for.
+   *     paths read is a different shape per tool (only `bash` carries the
+   *     fields `outputs`/`exit_status` below are written for; other tools
+   *     carry an unrelated shape those paths were never meant to read). A
+   *     path that does not resolve for the arriving tool is a hookmap fault
+   *     this gate must not try to govern with.
+   *   - The request gate (`tool.execute.before`) needs it for a different
+   *     reason: resolving this module's own `$.` paths for every tool a host
+   *     fires the hook for is not the same question as whether a
+   *     deployment's own policy configuration can evaluate one. A
+   *     deployment's policy configuration (policy/manifest.yaml, outside
+   *     this package) can bind its evaluation to a single fixed target,
+   *     checked before any of that deployment's own authored rules run; a
+   *     tool call this deployment never registered, or whose arguments that
+   *     fixed target does not resolve against, is refused there by the shape
+   *     mismatch alone, never by an authored rule. Against this repo's own
+   *     shipped configuration, every tool but the names it registers denies,
+   *     unconditionally, before a rule is ever consulted -- it registers
+   *     three (`run_shell`, AGT's own stock example name; `Bash`, Claude
+   *     Code's; `bash`, OpenCode's). Asking a deployment configured that way
+   *     is not wrong, but the answer it gives is a configuration mismatch
+   *     reported as if it were governance. `tools` here lets a host shim
+   *     decline to ask at all for a tool its own deployment cannot express a
+   *     target for.
    *
-   * Whether a given invocation's tool is actually IN this list is
+   * Whether a given invocation's tool is actually in this list is
    * `governsTool`'s question (govern-step.ts), never this module's --
-   * `assertToolsWellFormed` (below) checks only the SHAPE. That division is
-   * `outputs.mirrors`'s exactly: declared here, checked here, acted on in the
-   * module whose job the acting is. It USED TO BE "the host shim's concern
-   * (each gate honouring it)", which is what §V5 review round 3, Task 2
-   * changed: a rule stated in this field's own doc comment and enacted only
-   * in one host's shim is a rule the next host loads and does not apply.
+   * `assertToolsWellFormed` (below) checks only the shape. That division is
+   * the same one `outputs.mirrors` has: declared and shape-checked here,
+   * acted on in the module whose job the acting is.
    */
   tools?: string[];
 };
@@ -239,48 +231,43 @@ export type AcsRequestEnvelope = {
 const ACS_VERSION = "0.1.0";
 
 /**
- * Every hook's `decisions` block must declare at least `allow` and `deny`
- * -- the only two decisions a delivery-failure posture
- * (`applyFailurePosture`) ever produces -- and every entry each one
- * declares must actually be renderable, not merely present. "Renderable"
- * means shaped like render-decision.ts's own `DecisionRenderRule`: a
- * non-null object carrying a non-empty `output` block, every field of which
- * names its own source. Presence alone is not enough to guarantee that:
- * `allow: null` still satisfies `"allow" in decisions`, and then
- * renderDecision throws on the non-object entry; `allow: {}` also satisfies
- * it and renders an output whose one field is `undefined`, which
- * `JSON.stringify` then drops entirely -- stdout ends up with no decision in
- * it at all, defeating "always a decision on stdout" exactly as surely as a
- * missing entry does, just more quietly.
+ * Every hook's `decisions` block must declare at least `allow` and `deny` --
+ * the only two decisions a delivery-failure posture (`applyFailurePosture`)
+ * ever produces -- and every entry it declares must actually be renderable,
+ * not merely present. "Renderable" means shaped like render-decision.ts's own
+ * `DecisionRenderRule`: a non-null object carrying a non-empty `output` block,
+ * every field of which names its own source. Presence alone does not
+ * guarantee that: `allow: null` still satisfies `"allow" in decisions`, and
+ * then `renderDecision` throws on the non-object entry; `allow: {}` also
+ * satisfies it and renders an output whose one field is `undefined`, which
+ * `JSON.stringify` drops entirely -- stdout ends up with no decision in it at
+ * all, defeating "always a decision on stdout" exactly as surely as a missing
+ * entry does, just more quietly.
  *
  * The minimum is applied per hook, because the posture answers a delivery
- * failure at whichever gate suffered it: a hook missing `allow` or
- * `deny` is a hook whose posture answer cannot be rendered, and one gate
- * having both says nothing about the other. A hook declaring no `decisions`
- * block at all is rejected here for the same reason, named, rather than
- * discovered by the first step that gate ever governs.
+ * failure at whichever gate suffered it: a hook missing `allow` or `deny` is
+ * a hook whose posture answer cannot be rendered, and one gate having both
+ * says nothing about the other.
  *
  * Every declared entry is checked here, not only `allow` and `deny`: a
  * malformed `modify` (or `ask`, or `defer`) entry would otherwise only
  * surface when a Guardian actually returns that decision, and by then the
- * throw lands inside the shim's own catch, gets treated as a delivery
- * failure, and the posture answers it as a fail-open proceed -- an
- * arriving policy decision silently degraded into the exact bypass this
- * project exists to remove. Checking every entry at load time closes that
- * before it can happen, for the cost of one loop.
+ * throw lands inside the caller's own catch, gets treated as a delivery
+ * failure, and the posture answers it as a fail-open proceed -- an arriving
+ * policy decision silently degraded into the exact bypass this project
+ * exists to remove. Checking every entry at load time closes that for the
+ * cost of one loop.
  *
- * What this actually guarantees, once it passes: every entry `loadHookmap`
- * accepted is renderable. That is what lets a caller's own fallback render
- * of `applyFailurePosture`'s "allow"/"deny" output be trusted never to
- * throw -- not because `allow` and `deny` merely exist, but because
- * existing here means shape-checked here.
- *
- * What "shape-checked" means is the hookmap's own declarative output shape:
- * an entry carries a non-empty `output` block, and every
- * field in it names either a literal `value` or a non-empty `from`. It is
- * deliberately not a check for any particular host field -- this module names
- * none, and test/invariants.test.ts gates that -- so the check is that the
- * rule is renderable, not that it renders anything in particular.
+ * What this guarantees, once it passes, is that every entry `loadHookmap`
+ * accepted is renderable -- so a caller's fallback render of
+ * `applyFailurePosture`'s "allow"/"deny" output can be trusted never to
+ * throw, because existing here means shape-checked here. "Shape-checked"
+ * means the hookmap's own declarative output shape: a non-empty `output`
+ * block whose every field names either a literal `value` or a non-empty
+ * `from`. It is deliberately not a check for any particular host field --
+ * this module names none, and test/invariants.test.ts gates that -- so the
+ * check is that the rule is renderable, not that it renders anything in
+ * particular.
  */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -382,21 +369,20 @@ function assertMirrorsWellFormed(hookmap: Hookmap, path: string): void {
 }
 
 /**
- * Rejects a hookmap entry whose `tools` is malformed, AT LOAD TIME -- the
+ * Rejects a hookmap entry whose `tools` is malformed, at load time -- the
  * same seam `assertMirrorsWellFormed` uses, and for the identical reason: a
  * throw reached only from `buildEnvelope`/`buildPayload` is caught by
- * `governStep` and answered with the deployment's NEGOTIATED delivery
+ * `governStep` and answered with the deployment's negotiated delivery
  * posture, which can be `proceed`. A hookmap that provably cannot scope its
  * own result gate must not get to govern a step anyway; it has to be a hard
  * stop here, before `governStep` is ever reached.
  *
- * §V5 review, fix round 1, Important 1. This check is the SHAPE check only
- * -- `tools`, when present, is a non-empty list of non-empty strings.
- * Whether a given invocation's tool is actually IN that list is
- * `governsTool`'s question (govern-step.ts, since §V5 review round 3, Task
- * 2), and each host shim asks the same function one call earlier: nothing in
- * this module reads `tools` for either purpose, the same division
- * `outputs.mirrors` has between this file (shape) and result-output.ts (use).
+ * This check is the shape check only -- `tools`, when present, is a
+ * non-empty list of non-empty strings. Whether a given invocation's tool is
+ * actually in that list is `governsTool`'s question (govern-step.ts), and
+ * each host shim asks the same function one call earlier: nothing in this
+ * module reads `tools` for either purpose, the same division `outputs.mirrors`
+ * has between this file (shape) and result-output.ts (use).
  */
 function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
@@ -424,26 +410,17 @@ function assertToolsWellFormed(hookmap: Hookmap, path: string): void {
 }
 
 /**
- * Rejects a hookmap entry whose `exit_status` declares BOTH `literal` and
- * `from`, AT LOAD TIME -- the same seam `assertMirrorsWellFormed` and
+ * Rejects a hookmap entry whose `exit_status` declares both `literal` and
+ * `from`, at load time -- the same seam `assertMirrorsWellFormed` and
  * `assertToolsWellFormed` use, and for the identical reason: a throw reached
  * only from `exitStatusOf` (via `buildPayload`/`buildEnvelope`) is caught by
- * `governStep` and answered with the deployment's NEGOTIATED delivery
- * posture, which can be `proceed`.
+ * `governStep` and answered with the deployment's negotiated delivery
+ * posture, which can be `proceed` -- so a hookmap declaring both forms could
+ * otherwise reach a step ungoverned rather than refused. A both-forms entry
+ * needs no payload to detect; it is visible from the hookmap alone, exactly
+ * like `mirrors` and `tools`, so it belongs at this load-time seam.
  *
- * §V5 review, fix round 2, Important 1. Fix round 1's own refusal for this
- * shape landed inside `exitStatusOf` -- reachable only through that payload-
- * dependent seam. Measured with a both-forms hookmap under
- * `on_decision_failure: proceed`: `stage: request | decision: allow |
- * outcome: proceeded` -- the tool's output delivered UNGOVERNED. BEFORE fix
- * round 1's refusal existed, that same hookmap was governed with a WRONG
- * exit_status, which was the defect fix round 1 closed. As placed, the fix
- * traded "governed on a lie" for "not governed at all" under the default
- * posture -- the worse of the two. A both-forms entry needs no payload to
- * detect; it is visible from the hookmap alone, exactly like `mirrors` and
- * `tools`, so it belongs at this load-time seam instead.
- *
- * `exitStatusOf` keeps its OWN runtime throw for the one case that genuinely
+ * `exitStatusOf` keeps its own runtime throw for the one case that genuinely
  * cannot move here: an unresolvable `from` path, which needs a specific
  * invocation's payload to even ask the question.
  */
@@ -466,58 +443,30 @@ function assertExitStatusNotBothForms(hookmap: Hookmap, path: string): void {
 
 /**
  * Rejects a hookmap entry that declares `arguments` (a request-gate shape)
- * and ALSO declares `outputs` (a result gate's own output/mirror
- * declaration), AT LOAD TIME.
+ * and also declares `outputs` (a result gate's own output/mirror
+ * declaration), at load time.
  *
- * NAMED `assertRequestGateDeclaresNoOutputs`, not `assertRequestGateUnscopable`
- * (§V5 review round 3, Important). The old name described the state this
- * function left BEHIND, not the one it produced: after Task 5's own
- * narrowing (next paragraph), the shipped request gate IS scoped --
- * `tools: [bash]` on `opencode.hookmap.yaml`'s `tool.execute.before` entry
- * -- so a name built on "unscopable" taught a reader that this adapter
- * forbids scoping a request gate at all, and that reader would go on to
- * delete `tools: [bash]` from the shipped hookmap, or skip the tool check
- * this function has nothing to do with, on the strength of a claim this
- * function stopped making. What survives the rename, unchanged, is the one
- * thing left in the new name: this function refuses a request-gate entry
- * that also declares `outputs`, and nothing about `tools`.
+ * A request gate may also declare `tools`, for the same reason a result
+ * gate can: to decline asking at all for a tool its own deployment cannot
+ * express a policy target for, rather than asking and reporting a
+ * configuration mismatch as if it were governance (see
+ * `HookmapHookEntryCommon.tools`'s own doc comment).
  *
- * §V5 review, fix round 2, Important 2, NARROWED in §V5 review, Task 5, fix
- * round 1 (priority item). This used to refuse a request-gate entry that
- * also declared `tools` -- on the theory that the request gate is the one
- * gate that MUST govern every tool, so a `tools:` narrowing it could only be
- * a fail-open in waiting. MEASURED WRONG: that theory checked only that
- * THIS module's own `$.` paths (`$.tool`, `$.args`) resolve for every tool a
- * host fires the hook for, never that a deployment's own policy
- * configuration can evaluate one. A deployment's policy configuration
- * (policy/manifest.yaml, outside this package) can bind its evaluation to a
- * single fixed target, checked before any of that deployment's own authored
- * rules run -- so a request gate with no `tools` list does not govern every
- * tool, it asks a configuration that refuses every tool it was never told
- * about, unconditionally, before an authored rule is ever consulted (see
- * `HookmapHookEntryCommon.tools`'s own doc comment for the measurement). The
- * request gate MAY now declare `tools`, for exactly the reason the result
- * gate always could: to decline asking at all for a tool its own deployment
- * cannot express a target for, rather than asking and reporting a
- * configuration mismatch as if it were governance.
- *
- * `outputs` stays refused here, unchanged, and for its own, unrelated
- * reason: `HookmapRequestHookEntry` types it `?: never` -- but a hookmap
- * arrives as `Bun.YAML.parse(...) as Hookmap`, a cast TypeScript never checks
- * against parsed YAML, so that promise binds nothing at runtime. Measured:
- * an entry declaring `arguments` alongside `outputs` (with `mirrors` nested
- * inside it) loaded clean before this check existed, and round-tripped the
- * extra field untouched. A request gate builds no result payload, so it has
- * nothing an output/mirror declaration could describe; refused here, at the
- * same load-time seam as `assertToolsWellFormed` and
+ * `outputs` is refused here for an unrelated reason: `HookmapRequestHookEntry`
+ * types it `?: never`, but a hookmap arrives as `Bun.YAML.parse(...) as
+ * Hookmap`, a cast TypeScript never checks against the parsed YAML, so that
+ * type promise binds nothing at runtime -- an entry declaring `arguments`
+ * alongside `outputs` loads clean and round-trips the extra field untouched
+ * unless something checks for it. A request gate builds no result payload,
+ * so it has nothing an output/mirror declaration could describe; refused
+ * here, at the same load-time seam as `assertToolsWellFormed` and
  * `assertExitStatusNotBothForms`, rather than left to `buildPayload`'s own
- * pre-existing (and unremoved) "declares both" check, which only catches it
- * through the posture-answered seam every check above this one closes.
+ * "declares both" check, which only catches it through the posture-answered
+ * seam every check above this one closes.
  *
- * `exit_status` is deliberately NOT covered here: an entry declaring
+ * `exit_status` is deliberately not covered here: an entry declaring
  * `arguments` alongside `exit_status` alone (no `outputs`) is inert --
- * `buildPayload`'s `arguments` branch never looks at `exit_status`. Out of
- * this review's two Important findings; not that task's to close.
+ * `buildPayload`'s `arguments` branch never looks at `exit_status`.
  */
 function assertRequestGateDeclaresNoOutputs(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
@@ -540,39 +489,27 @@ function assertRequestGateDeclaresNoOutputs(hookmap: Hookmap, path: string): voi
 }
 
 /**
- * Rewrites every entry whose `tools` key is present-but-`null` to OMIT the
+ * Rewrites every entry whose `tools` key is present-but-`null` to omit the
  * key instead, and returns the result as a fresh `Hookmap` -- never a
  * mutation of the object `Bun.YAML.parse` produced.
  *
- * §V5 review round 3, Important. `assertToolsWellFormed`, above, already
- * treats a bare `tools:` line (YAML's own parse for it is `null`: a key
- * present and unusable, not a key absent) the same as no `tools` declared at
- * all -- but only inside its own local `rawTools = entry.tools ?? undefined`,
- * which is thrown away the moment that function returns. The `Hookmap` this
- * function's caller (`loadHookmap`) handed back still carried `tools: null`
- * on that entry, so every CONSUMER had to repeat the same `?? undefined`
- * dance to read a well-formed role rather than the YAML parse tree
- * `loadHookmap` actually returned. The consumer that did exactly that was
- * host #2's own `isGovernedTool`, whose doc comment recorded what reading
- * `tools !== undefined` instead produced: `TypeError: null is not an object`,
- * thrown on every call to a gate whose hookmap entry declares a bare
- * `tools:`. That function is gone as of Task 2 of the same review round, and
- * its successor (`governsTool`, govern-step.ts) carries no such
- * compensation -- which is this function's whole point, one round later than
- * the crash that motivated it. This is a REPRESENTATION change, not a semantic
- * one -- `tools: null` and no `tools` key mean the same thing, "every tool"
- * (`HookmapHookEntryCommon.tools`'s own doc comment) -- so it does not touch
- * what `assertToolsWellFormed` already decided is well-formed; it only stops
- * asking every future caller to decide, again, that `null` here means
- * "absent".
+ * A bare `tools:` line parses to `null` in YAML: a key present and unusable,
+ * not a key absent. `tools: null` and no `tools` key mean the same thing,
+ * "every tool" (see `HookmapHookEntryCommon.tools`), so normalising one into
+ * the other is a representation change, not a semantic one -- it does not
+ * touch what `assertToolsWellFormed` already decided is well-formed. What it
+ * buys is that every consumer of the returned `Hookmap` can read `tools`
+ * with a plain `=== undefined` check rather than each having to repeat a `??
+ * undefined` dance to treat `null` the same way; a consumer that checks
+ * `tools !== undefined` instead reads a bare `tools:` as a declared list and
+ * throws a raw `TypeError` calling `.includes()` on `null`.
  *
- * Called LAST, after every load-time check above it -- `assertToolsWellFormed`
+ * Called last, after every load-time check above it -- `assertToolsWellFormed`
  * included -- so nothing upstream of this function loses sight of the
  * hookmap exactly as `Bun.YAML.parse` produced it. Rewriting the entry
  * before those checks ran would have hidden the very shape
  * `assertToolsWellFormed` exists to inspect from the one function that
- * inspects it; running this after, on a fresh copy, keeps every existing
- * check seeing what it already sees today.
+ * inspects it.
  */
 function normalizeTools(hookmap: Hookmap): Hookmap {
   const hooks: Record<string, HookmapHookEntry> = {};
@@ -594,7 +531,7 @@ function normalizeTools(hookmap: Hookmap): Hookmap {
   return { ...hookmap, hooks };
 }
 
-/** Loads and parses a hookmap YAML file (e.g. S1's claude-code.hookmap.yaml).
+/** Loads and parses a hookmap YAML file (e.g. claude-code.hookmap.yaml).
  * Throws if any hook's `decisions` block is absent or missing `allow` or
  * `deny`, or if any declared entry is not a renderable rule -- see
  * assertRenderableDecisions. Also throws if any entry's `outputs.mirrors` is
@@ -605,9 +542,9 @@ function normalizeTools(hookmap: Hookmap): Hookmap {
  * Also throws if a request-gate entry (one declaring `arguments`) also
  * declares `outputs` -- see assertRequestGateDeclaresNoOutputs.
  *
- * Returns a NORMALISED `Hookmap`, not the raw parse tree `Bun.YAML.parse`
+ * Returns a normalised `Hookmap`, not the raw parse tree `Bun.YAML.parse`
  * produced: an entry whose `tools` key is present-but-`null` comes back with
- * the key OMITTED instead -- see normalizeTools, run last, once every check
+ * the key omitted instead -- see normalizeTools, run last, once every check
  * above has passed. */
 export function loadHookmap(path: string): Hookmap {
   const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
@@ -696,26 +633,18 @@ export function modificationDocumentOf(envelope: AcsRequestEnvelope): Record<str
  * A host that reports a numeric exit code is mapped here, in the adapter,
  * rather than in the hookmap: the hookmap is data, and "0 means success" is a
  * fact about process exit codes, not a per-host choice. A host whose gate
- * genuinely cannot fail (Claude Code's PostToolUse) keeps V4's literal form,
- * handled by the same function so `buildPayload` has one call site for
- * either.
+ * genuinely cannot fail (Claude Code's PostToolUse) uses the literal form
+ * instead, handled by the same function so `buildPayload` has one call site
+ * for either.
  *
- * §V5 review, fix round 1, Minor 1: an entry naming BOTH a non-empty `literal`
- * and a non-empty `from` used to silently prefer `literal` -- the one shape
- * `buildPayload` refuses everywhere else in this file ("an entry names
- * exactly one payload shape"). A stale literal left beside a newly added path
- * would report every step `success` regardless of what the path actually
- * resolves to, and say nothing. Refused -- but not here any more (§V5 review,
- * fix round 2, Important 1): see `assertExitStatusNotBothForms`, run from
- * `loadHookmap`, for where that refusal lives now and why.
+ * An entry naming both a non-empty `literal` and a non-empty `from` is
+ * refused before this function ever runs -- see `assertExitStatusNotBothForms`,
+ * run from `loadHookmap` -- rather than here, so this function only ever sees
+ * one legal form or neither.
  *
  * The malformed/absent case -- neither a non-empty `literal` nor a non-empty
- * `from` -- throws V4's own pinned message, reworded (Minor 2) to name both
- * legal forms: a `from`-shaped typo (`fromm:`, say) used to be told to add a
- * literal, which is not the fix for it. Left at THIS seam, unlike the
- * both-forms case: a pre-existing gap (same class as `outputs.from`'s and
- * `outputs.within`'s own misplaced checks, noted where they live in
- * `buildPayload`), not one this review's two Important findings named.
+ * `from` -- throws naming both legal forms, so a `from`-shaped typo (`fromm:`,
+ * say) is not told to add a literal instead, which would not be the fix for it.
  */
 function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<string, unknown>): string {
   const hasLiteral =
@@ -723,16 +652,9 @@ function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<str
   const hasFrom =
     isPlainObject(rawExitStatus) && typeof rawExitStatus.from === "string" && rawExitStatus.from.length > 0;
 
-  // The both-forms case used to throw HERE (§V5 review, fix round 1, Minor 1)
-  // -- moved to `assertExitStatusNotBothForms`, run from `loadHookmap` (§V5
-  // review, fix round 2, Important 1). A throw reached only from this
-  // function is caught by `governStep` and answered with the deployment's
-  // NEGOTIATED delivery posture, which can be `proceed`; measured with a
-  // both-forms hookmap under that posture: `outcome: proceeded`, the tool's
-  // output delivered UNGOVERNED. A both-forms entry needs no payload to
-  // detect -- it is visible from the hookmap alone, exactly like `mirrors`
-  // and `tools` -- so, like them, it is a load-time hard stop instead. See
-  // that function's own doc comment for the measured before/after.
+  // The both-forms case is refused earlier, at load time -- see
+  // `assertExitStatusNotBothForms`'s own doc comment for why it belongs
+  // there rather than here.
   if (hasLiteral) {
     return (rawExitStatus as { literal: string }).literal;
   }
@@ -762,8 +684,8 @@ function exitStatusOf(event: string, rawExitStatus: unknown, payload: Record<str
  * Branches on the entry's shape, never on `acs_method`. The method is a string a
  * hookmap author types; branching on it would make a typo in it silently select
  * a payload shape, and the shape that actually matters is the one the entry's
- * own paths can build. `acs_method` stays what it has always been here: carried
- * onto the envelope verbatim, never read.
+ * own paths can build. `acs_method` is carried onto the envelope verbatim,
+ * never read here.
  *
  * An entry declaring both keys, or neither, names no single payload shape and
  * throws with the hook named. There is deliberately no default and no partial
@@ -836,7 +758,7 @@ function buildPayload(
     // side can apply a replacement through it" cannot come apart. An entry
     // naming `from` and no `within` builds a clean envelope and a correct
     // decision comes back, and the gap surfaces only at render -- where a
-    // replacement carrying the named leaf ALONE is a shape a host may decline,
+    // replacement carrying the named leaf alone is a shape a host may decline,
     // and a declined replacement means the original output is delivered. A
     // redaction that does not land is a failure, not a partial success, so an
     // entry missing `within` is malformed and says so here, where a hookmap
@@ -851,7 +773,7 @@ function buildPayload(
     }
 
     // And the two paths have to describe one leaf inside one object, which is
-    // the whole premise of patching a clone: `from` must name a field UNDER
+    // the whole premise of patching a clone: `from` must name a field under
     // `within`. Checked here, beside the check above and for the same stated
     // reason -- so that "buildEnvelope accepted this entry" and "the projection
     // side can patch a replacement through it" cannot come apart. An entry
@@ -868,19 +790,16 @@ function buildPayload(
       );
     }
 
-    // `outputs.mirrors`, if this entry declares any, is deliberately NOT
-    // validated here (§V5 review, Important 1, fix round 2 -- this function
-    // used to check it, and that was the fault). A throw from THIS function
-    // is caught by `governStep` and answered with the deployment's
-    // NEGOTIATED delivery posture, which can be `proceed` -- so a hookmap
-    // fault refused only here can still govern the step it describes, which
-    // is precisely the class of hookmap fault this whole file exists to stop
-    // BEFORE that becomes possible. `assertMirrorsWellFormed`, run from
-    // `loadHookmap` before this function is ever reached in the real
-    // deployment path, is where that refusal now lives -- see its own doc
-    // comment for the measured before/after. `from` and `within`, immediately
-    // above, have the identical misplacement and are pre-existing; not moved
-    // by this task.
+    // `outputs.mirrors`, if this entry declares any, is deliberately not
+    // validated here. A throw from this function is caught by `governStep`
+    // and answered with the deployment's negotiated delivery posture, which
+    // can be `proceed` -- so a hookmap fault refused only here could still
+    // govern the step it describes, which is precisely the class of hookmap
+    // fault this whole file exists to stop before it becomes possible.
+    // `assertMirrorsWellFormed`, run from `loadHookmap` before this function
+    // is ever reached in the real deployment path, is where that refusal
+    // lives instead. `from` and `within`, immediately above, carry the
+    // identical hazard and are still only checked here, not at load time.
     const exitStatus = exitStatusOf(event, entry.exit_status, payload);
 
     const value = resolvePath(payload, from);

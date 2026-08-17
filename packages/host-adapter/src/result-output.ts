@@ -129,17 +129,17 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * True when some leaf of `container` is `value`, walking plain objects and
  * arrays and comparing every leaf it bottoms out at. Used by `replacingOutput`
  * to ask, of the fully-patched replacement, whether the value it just withheld
- * still SURVIVES somewhere the leaf patch never touched -- a sibling that
+ * still survives somewhere the leaf patch never touched -- a sibling that
  * mirrors the leaf rather than one that merely sits beside it.
  *
- * WHOLE VALUES, NEVER A SUBSTRING SCAN. An earlier draft of this check
- * serialised the replacement and asked whether it CONTAINED the original's
- * serialisation. That is wrong in both directions, and one of them is
- * catastrophic: an empty-string leaf serialises to `""`, whose interior is the
- * empty string, and every replacement contains that -- so a tool that produced
- * no output would have had every result withheld. Comparing whole values by
- * `===` at each leaf has no such degenerate case, and it is the same equality
- * `projectAppliedOutput`'s own landing check already uses for a prose leaf.
+ * This compares whole values, never a substring: serialising the replacement
+ * and asking whether it contains the original's serialisation would be wrong
+ * in both directions, and one of them is catastrophic -- an empty-string leaf
+ * serialises to `""`, whose interior is the empty string, and every
+ * replacement contains that, so a tool that produced no output would have
+ * had every result withheld. Comparing whole values by `===` at each leaf has
+ * no such degenerate case, and it is the same equality `projectAppliedOutput`'s
+ * own landing check already uses for a prose leaf.
  */
 function holdsValue(container: unknown, value: unknown): boolean {
   if (isPlainObject(container)) {
@@ -160,14 +160,13 @@ function holdsValue(container: unknown, value: unknown): boolean {
  * own redaction/override types across a boundary that has none today. Three
  * lines is cheaper than a new cross-module dependency for this module to own.
  *
- * Used to refuse an overlapping leaf/mirror pair BEFORE any patch is
+ * Used to refuse an overlapping leaf/mirror pair before any patch is
  * applied, so the refusal is the same regardless of which path a hookmap
- * author happened to list first -- see `replacingOutput`'s own note on why
- * that matters (§V5 review, Important 2): patching a descendant then an
- * ancestor silently collapses the descendant's edit, while the reverse order
- * throws a confusing, unrelated "no object to descend through" error from
- * `patchedClone`. Neither is this check's job to rely on; this asks the
- * question directly, before either can happen.
+ * author happened to list first: patching a descendant then an ancestor
+ * would silently collapse the descendant's edit, while the reverse order
+ * would throw a confusing, unrelated "no object to descend through" error
+ * from `patchedClone`. Neither is this check's job to rely on; this asks
+ * the question directly, before either can happen.
  */
 function pathsOverlap(a: string[], b: string[]): boolean {
   const shorter = a.length <= b.length ? a : b;
@@ -178,7 +177,7 @@ function pathsOverlap(a: string[], b: string[]): boolean {
 /**
  * `document` with its ACS-side projected leaf (`outputs[0].value`, the same
  * one `projectAppliedOutput` reads back) replaced by a constant, so two
- * documents differing ONLY at that leaf serialise identically. Used to ask
+ * documents differing only at that leaf serialise identically. Used to ask
  * "did anything besides the leaf change" without naming what changed --
  * `JSON.stringify` on the result does that.
  *
@@ -337,7 +336,7 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     );
   }
 
-  // Every declared mirror, VALIDATED IN FULL before any patch is applied --
+  // Every declared mirror, validated in full before any patch is applied --
   // inside `within`, a real field inside it (not `within` itself), disjoint
   // from the leaf and from every other declared mirror, present in the
   // payload, and the same `typeof` as `replacement`. See this function's own
@@ -389,9 +388,10 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
 
   // Existence and type, checked and discarded -- neither value is threaded
   // any further. What each mirror actually holds after patching is asked
-  // again, directly, by POST-CONDITION 1 below (the "did it land" check);
-  // the ONLY thing this loop's own result needs to leave behind is that
-  // every mirror passed, which the loop itself already enforces by throwing.
+  // again, directly, by the first post-condition below (the "did it land"
+  // check); the only thing this loop's own result needs to leave behind is
+  // that every mirror passed, which the loop itself already enforces by
+  // throwing.
   for (const { mirror, relative } of mirrors) {
     const mirrorOriginal = resolveSegments(container, relative);
     if (mirrorOriginal === undefined) {
@@ -411,7 +411,7 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     }
   }
 
-  // The writes: the leaf first, then every declared mirror into the SAME
+  // The writes: the leaf first, then every declared mirror into the same
   // clone -- so a container with two copies of the leaf ends the loop with
   // neither copy left standing. Every pair above is already known disjoint,
   // so the order among the mirrors themselves cannot change the result.
@@ -420,9 +420,9 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     patched = patchedClone(patched, entry.relative, replacement, entry.mirror);
   }
 
-  // POST-CONDITION 1: every declared mirror actually holds `replacement` now
-  // -- see this function's own doc comment for why this is asked directly
-  // rather than trusted from the write above.
+  // The first post-condition: every declared mirror actually holds
+  // `replacement` now -- see this function's own doc comment for why this is
+  // asked directly rather than trusted from the write above.
   for (const entry of mirrors) {
     const landed = resolveSegments(patched, entry.relative);
     if (landed !== replacement) {
@@ -434,10 +434,10 @@ export function replacingOutput(location: HostOutputLocation, replacement: unkno
     }
   }
 
-  // POST-CONDITION 2, ONLY WHEN AT LEAST ONE MIRROR IS DECLARED: see this
-  // function's own doc comment for why the scan is gated this way, and why
-  // the leaf AND every declared mirror -- not the leaf alone -- are excluded
-  // from it by a sentinel no real value can equal.
+  // The second post-condition, run only when at least one mirror is
+  // declared: see this function's own doc comment for why the scan is gated
+  // this way, and why the leaf and every declared mirror -- not the leaf
+  // alone -- are excluded from it by a sentinel no real value can equal.
   if (mirrors.length > 0) {
     const EXCLUDED = Symbol("result-output: leaf or declared mirror, not an undeclared duplicate");
     let masked = patchedClone(patched, segments, EXCLUDED, outputs.from);
@@ -621,8 +621,8 @@ export function projectAppliedOutput(
     );
   }
 
-  // THE BUNDLE CHECK (§V5). The leaf landed -- the check above would already
-  // have refused otherwise -- so ask whether anything ELSE about the document
+  // The bundle check: the leaf landed -- the check above would already have
+  // refused otherwise -- so ask whether anything else about the document
   // changed too, by comparing both documents with that one projected leaf
   // subtracted out. Anything left over is a modification that changed its own
   // target (`applyModifications`'s own post-condition already refused the
@@ -694,7 +694,7 @@ export function projectAppliedOutput(
  *     all: the output is delivered as the tool produced it, and an unnecessary
  *     replacement is a chance to get the shape wrong for no benefit.
  *
- * `location` is `undefined` at a gate that decides whether a step RUNS. Nothing is
+ * `location` is `undefined` at a gate that decides whether a step runs. Nothing is
  * withheld there -- the step's own output does not exist yet -- so every decision
  * passes through, including the `ask` that gate can genuinely put to a human.
  */

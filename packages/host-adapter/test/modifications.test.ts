@@ -22,12 +22,11 @@ describe("applyModifications — §6.3", () => {
     expect(original).toEqual({ command: "keep me" });
   });
 
-  // Fix round 1, item 3: the only multi-segment path used elsewhere in this
-  // suite ("/env/TOKEN") sits in a disjointness test that denies, so it
-  // never reaches the apply loop -- setAtPath's recursive clone was correct
-  // on trace but unexercised. This applies a depth-2 redaction for real and
-  // checks both halves: the new value, and that the nested object it
-  // descended into is left alone -- the half a shallow clone would break.
+  // The only multi-segment path used elsewhere in this suite ("/env/TOKEN")
+  // sits in a disjointness test that denies, so it never reaches the apply
+  // loop. This applies a depth-2 redaction for real and checks both halves:
+  // the new value, and that the nested object it descended into is left
+  // alone -- the half a shallow clone would break.
   it("applies a depth-2 redaction without mutating the nested object it descends into", () => {
     const original = { env: { TOKEN: "secret", OTHER: "keep" } };
     const result = applyModifications(original, { redactions: [{ path: "/env/TOKEN" }] });
@@ -42,15 +41,15 @@ describe("applyModifications — §6.3", () => {
       .toThrow(ModificationsInvalidError);
   });
 
-  // Fix round 1, item 4: same rule as validateDecision's test above, at the
-  // applyModifications level directly.
+  // The same rule as validateDecision's own test for this, pinned here at
+  // the applyModifications level directly.
   it("throws on a redaction with an empty path", () => {
     expect(() => applyModifications(ARGS, { redactions: [{ path: "" }] })).toThrow(ModificationsInvalidError);
     expect(() => applyModifications(ARGS, { redactions: [{ path: "/" }] })).toThrow(ModificationsInvalidError);
   });
 
-  // Fix round 1, item 5: a missing/non-string path must fail closed with a
-  // clean ModificationsInvalidError, not a bare JS error surfaced from deep
+  // A missing/non-string path must fail closed with a clean
+  // ModificationsInvalidError, not a bare JS error surfaced from deep
   // inside the apply loop -- regardless of whether parameter_overrides is
   // also present.
   it("throws a clean ModificationsInvalidError on a missing or non-string redaction path, not raw JS error text", () => {
@@ -136,7 +135,7 @@ describe("applyModifications — §6.3", () => {
   // arrays own "length", so a bare existence check would accept it as a
   // target. Left unguarded, `setAtPath` would compute `Number("length")` ->
   // `NaN`, write the replacement to the string key "NaN", and
-  // applyModifications would return successfully with the ORIGINAL value
+  // applyModifications would return successfully with the original value
   // still sitting at index 0 -- a reported-as-applied modify that redacted
   // nothing, the worst defect class this project exists to catch.
   it("rejects the array's own \"length\" property rather than treating it as a target", () => {
@@ -170,38 +169,36 @@ describe("applyModifications — §6.3", () => {
   });
 });
 
-// Reserved-segment coverage AT THIS LEVEL, directly against `applyModifications`
+// Reserved-segment coverage at this level, directly against `applyModifications`
 // -- the deny-with-reasoning shape for the identical checks is already pinned
-// through `validateDecision` (validate-decision.test.ts), but nothing here
-// exercised `applyModifications` itself against a reserved redaction path or
-// override key until now (§V5 review round 3, Task 3). `isReservedSegment`
-// is imported (`reserved-segments.ts`), the one shared predicate every
-// former module-private copy of the name list now draws from -- see that
-// module's own header.
+// through `validateDecision` (validate-decision.test.ts), but nothing else
+// here exercises `applyModifications` itself against a reserved redaction
+// path or override key. `isReservedSegment` is imported
+// (`reserved-segments.ts`), the one shared predicate every module-private
+// copy of the name list now draws from -- see that module's own header.
 //
-// ASSERTS THE MESSAGE, NOT ONLY THE CLASS (§V5 review round 3, Task 3, fix
-// round 1, Important 1). `ARGS` (line 4) owns none of `__proto__`,
-// `constructor`, or `prototype`, so a version of these six tests that only
-// checked `.toThrow(ModificationsInvalidError)` passed for the WRONG reason:
-// `assertTargetExists` (below the reserved check, in source order) throws
-// that identical error class for an absent target regardless of whether the
-// reserved-segment check ever ran -- measured, with `RESERVED_SEGMENTS`
-// emptied entirely, this file's suite still passed 26/26. The message text
-// is what discriminates the two: a reserved-segment refusal contains `names
-// the reserved segment "<name>"`; an absent-target refusal contains `is not
-// present in the ACS document` instead, naming neither of the three names.
-// Regex-matched against the FULL segment name, not merely a substring, so a
-// looser check that fired on any of the three could not silently cover for
-// the others.
+// These tests assert the message, not only the error class. `ARGS` (line 4)
+// owns none of `__proto__`, `constructor`, or `prototype`, so a version of
+// these six tests that only checked `.toThrow(ModificationsInvalidError)`
+// would pass for the wrong reason: `assertTargetExists` (below the reserved
+// check, in source order) throws that identical error class for an absent
+// target regardless of whether the reserved-segment check ever ran -- with
+// `RESERVED_SEGMENTS` emptied entirely, this file's suite still passes. The
+// message text is what discriminates the two: a reserved-segment refusal
+// contains `names the reserved segment "<name>"`; an absent-target refusal
+// contains `is not present in the ACS document` instead, naming neither of
+// the three names. Regex-matched against the full segment name, not merely a
+// substring, so a looser check that fired on any of the three could not
+// silently cover for the others.
 describe("reserved segments -- redaction paths and parameter_overrides keys", () => {
   for (const segment of ["__proto__", "constructor", "prototype"]) {
-    it(`throws for a redaction path naming "${segment}" BECAUSE it is reserved, not because the target is absent`, () => {
+    it(`throws for a redaction path naming "${segment}" because it is reserved, not because the target is absent`, () => {
       expect(() => applyModifications(ARGS, { redactions: [{ path: `/${segment}` }] })).toThrow(
         new RegExp(`names the reserved segment "${segment}"`),
       );
     });
 
-    it(`throws for a parameter_overrides key naming "${segment}" BECAUSE it is reserved, not because the target is absent`, () => {
+    it(`throws for a parameter_overrides key naming "${segment}" because it is reserved, not because the target is absent`, () => {
       expect(() => applyModifications(ARGS, { parameter_overrides: { [segment]: "y" } })).toThrow(
         new RegExp(`names the reserved segment "${segment}"`),
       );

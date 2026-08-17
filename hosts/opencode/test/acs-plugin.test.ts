@@ -8,14 +8,13 @@
  * shape (hookmap.test.ts), refuses to register a hookmap
  * `assertHostAcceptsEveryDecision` would otherwise let govern nothing.
  *
- * TWO GATES' WORTH, since §V5 review round 3, Task 5. The request-gate half
- * (§V5 review, fix round 1, Critical 1; closed as a pin gap in fix round 2)
- * is a `deny`/`ask`/`defer` that can render empty and therefore cannot refuse.
- * The result-gate half is a `deny`/`modify` that declares no `result` sink and
- * therefore cannot withhold -- the fail-open itself is measured, on the real
- * chain against a live Guardian, in result-gate.test.ts's own "a result-gate
- * decision the hookmap gives no way to withhold with" block; what is pinned
- * HERE is that such a hookmap never registers.
+ * Both gates are covered. The request-gate half is a `deny`/`ask`/`defer`
+ * that can render empty and therefore cannot refuse. The result-gate half is
+ * a `deny`/`modify` that declares no `result` sink and therefore cannot
+ * withhold -- the fail-open itself is measured, on the real chain against a
+ * live Guardian, in result-gate.test.ts's own "a result-gate decision the
+ * hookmap gives no way to withhold with" block; what is pinned here is that
+ * such a hookmap never registers.
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -37,7 +36,7 @@ async function runPlugin(hookmapPath: string): Promise<void> {
   const previous = process.env.ACS_HOOKMAP_PATH;
   process.env.ACS_HOOKMAP_PATH = hookmapPath;
   try {
-    // AcsPlugin's own FACTORY reads neither of its own two parameters
+    // AcsPlugin's own factory reads neither of its own two parameters
     // (PluginInput, PluginOptions) -- true regardless of which of its
     // returned gate hooks are wired -- so a placeholder satisfies the
     // `Plugin` type without needing a real PluginInput.
@@ -63,10 +62,10 @@ describe("AcsPlugin's load-time gate", () => {
   it("refuses to register a hookmap whose request-gate deny declares only a conditional (from:) output field", async () => {
     const hookmapPath = join(SCRATCH_DIR, "from-only-deny.yaml");
     // The real hookmap's request gate with refuse.denied's unconditional
-    // value: sibling removed -- deny is built ONLY from refuse.reason, a
-    // from: field, exactly the shape that measured `{}` before this gate
-    // existed (this function's own doc comment, and opencode.hookmap.yaml's
-    // header, both record the measurement).
+    // value: sibling removed -- deny is built only from refuse.reason, a
+    // from: field, exactly the shape measured to render `{}` when nothing
+    // enforces otherwise (this function's own doc comment, and
+    // opencode.hookmap.yaml's header, both record the measurement).
     writeFileSync(
       hookmapPath,
       "host: opencode\n" +
@@ -89,18 +88,15 @@ describe("AcsPlugin's load-time gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.deny/);
   });
 
-  // §V5 final whole-branch review, F1 -- BLOCKS: "the fifteenth fail-open,
-  // inside the gate built to close the fourteenth". Before this fix, the gate
-  // accepted any deny/ask/defer entry with at least one `{value: ...}` field
-  // ANYWHERE in its output block, not only under `refuse` -- the one key
+  // The gate refuses any deny/ask/defer entry with a `{value: ...}` field
+  // anywhere in its output block other than under `refuse` -- the one key
   // `applyOpenCodeOutput` (apply-opencode-output.ts) actually throws on. Both
-  // reproductions below were measured LIVE, before this fix, against the
-  // real `AcsPlugin`, `applyOpenCodeOutput`, `loadHookmap`, and a stub Guardian
-  // returning a genuine `{"decision":"deny"}`: the hookmap loaded cleanly,
-  // `tool.execute.before` returned normally with no throw, `live.args` was
-  // untouched, and no audit entry was written -- Task 4's Critical, byte for
-  // byte, through the gate meant to close it.
-  it("refuses to register a hookmap whose deny declares an unconditional value: field OUTSIDE refuse (reason.text)", async () => {
+  // reproductions below were measured live against the real `AcsPlugin`,
+  // `applyOpenCodeOutput`, `loadHookmap`, and a stub Guardian returning a
+  // genuine `{"decision":"deny"}`: without this gate, the hookmap loads
+  // cleanly, `tool.execute.before` returns normally with no throw,
+  // `live.args` is untouched, and no audit entry is written.
+  it("refuses to register a hookmap whose deny declares an unconditional value: field outside refuse (reason.text)", async () => {
     const hookmapPath = join(SCRATCH_DIR, "value-outside-refuse-reason.yaml");
     // The author "answers" this gate at the wrong key: reason.text is
     // unconditional, but applyOpenCodeOutput never reads reason to throw -- it
@@ -129,11 +125,11 @@ describe("AcsPlugin's load-time gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/decisions\.deny/);
   });
 
-  it("refuses to register a hookmap whose deny declares an unconditional value: field OUTSIDE refuse (args, with a rewrite attached)", async () => {
+  it("refuses to register a hookmap whose deny declares an unconditional value: field outside refuse (args, with a rewrite attached)", async () => {
     const hookmapPath = join(SCRATCH_DIR, "value-outside-refuse-args.yaml");
     // Same hole, with a rewrite riding along: args merges onto live.args
     // regardless of whether refuse ever renders, so this variant both fails
-    // to refuse AND applies an unrelated argument rewrite.
+    // to refuse and applies an unrelated argument rewrite.
     writeFileSync(
       hookmapPath,
       "host: opencode\n" +
@@ -159,14 +155,15 @@ describe("AcsPlugin's load-time gate", () => {
 });
 
 /**
- * THE RESULT-GATE HALF (§V5 review round 3, Task 5, Critical) -- the gate that
- * holds the secret, and the one `assertRefusalRendersUnconditionally` skipped
- * entirely because it only ever looked at entries declaring `arguments`.
+ * The result-gate half -- the gate that holds the secret, and the one
+ * `assertRefusalRendersUnconditionally` skipped entirely because it only ever
+ * looked at entries declaring `arguments`.
  *
- * The fail-open these refuse is NOT assumed here: result-gate.test.ts measures
- * it end to end, against a live Guardian, with `AcsPlugin` deliberately out of
- * the path so the gate cannot hide it. These tests pin the other half -- that
- * a hookmap of that class never registers in the first place.
+ * The fail-open these refuse is not assumed here: result-gate.test.ts
+ * measures it end to end, against a live Guardian, with `AcsPlugin`
+ * deliberately out of the path so the gate cannot hide it. These tests pin
+ * the other half -- that a hookmap of that class never registers in the
+ * first place.
  */
 describe("AcsPlugin's load-time gate, at the result gate", () => {
   // The shipped result gate, minus the one line that lands a withholding.
@@ -202,16 +199,16 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "          result: { from: applied_output }\n",
     );
     // Names the file, the hook, the decision, and what to add -- the same
-    // four the request-gate half's message names -- plus, since §V5 review
-    // round 3, Task 5, fix round 1, the paths this decision DOES declare, so
-    // a near-miss is legible rather than merely refused.
+    // four the request-gate half's message names -- plus the paths this
+    // decision does declare, so a near-miss is legible rather than merely
+    // refused.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/\["reason\.text"\]/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-deny-without-a-sink\.yaml/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/hooks\.tool\.execute\.after\.decisions\.deny/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/EITHER declare 'result: \{ from: applied_output \}'/);
-    // Both honest outcomes named, since §V5 review round 3, Task 5, fix
-    // round 2 -- the gate accepts either, so the message must offer both.
+    // Both honest outcomes named -- the gate accepts either, so the message
+    // must offer both.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/OR declare an unconditional refusal/);
   });
 
@@ -232,7 +229,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
   });
 
   it("refuses a result-gate deny that names the leaf (result.output) instead of the container", async () => {
-    // Not an "already covered by the other test" duplicate: this hookmap DOES
+    // Not an "already covered by the other test" duplicate: this hookmap does
     // declare a path whose leading segment is `result`, so a gate written the
     // way the request-gate half is written -- leading segment, not exact key
     // -- would accept it. Measured (result-gate.test.ts): it merges the whole
@@ -250,19 +247,17 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "          result: { from: applied_output }\n",
     );
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no "result" output field at all/);
-    // The near-miss made legible: the message prints the path that LOOKS like
+    // The near-miss made legible: the message prints the path that looks like
     // the sink.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/"result\.output"/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/NOT a leaf under it/);
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 1, CRITICAL 1 -- this task's own
-  // Critical, surviving through the gate built to close it. The first version
-  // of the rule asked only whether the key `result` was PRESENT, never what it
-  // SOURCED, so this hookmap loaded clean. Measured on the real chain
-  // (result-gate.test.ts): a real deny renders no `result` key at all, applies
-  // nothing, throws nothing, and `rm -rf /` is delivered in the leaf AND the
-  // mirror.
+  // A rule that checked only whether the key `result` is present, never what
+  // it is sourced from, would load this hookmap clean. Measured on the real
+  // chain (result-gate.test.ts): a real deny renders no `result` key at all,
+  // applies nothing, throws nothing, and `rm -rf /` is delivered in the leaf
+  // and the mirror.
   it("refuses a result-gate deny declaring result sourced from applied_input -- the right key, the wrong field", async () => {
     const hookmapPath = join(SCRATCH_DIR, "result-deny-wrong-source.yaml");
     writeFileSync(
@@ -276,7 +271,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
         "        output:\n" +
         "          result: { from: applied_output }\n",
     );
-    // The wrong-source message is NOT the absent-key one: it prints the
+    // The wrong-source message is not the absent-key one: it prints the
     // declared field object verbatim, so the near-miss is visible.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/does not source it from "applied_output"/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/\{"from":"applied_input"\}/);
@@ -304,18 +299,17 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/renders that LITERAL and never reads "from" at all/);
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 1, IMPORTANT 1 -- `ask`/`defer`
-  // DECLARED at this gate were unchecked. Not declaring them is the safe state
-  // (renderDecision throws, posture-answered, audited); declaring one without a
-  // sink is silent delivery. Measured in result-gate.test.ts.
+  // `ask`/`defer`, when declared at this gate, are checked too. Not declaring
+  // them is the safe state (renderDecision throws, posture-answered,
+  // audited); declaring one without a sink is silent delivery. Measured in
+  // result-gate.test.ts.
   //
-  // WHAT THIS DECISION IS HELD TO CHANGED IN FIX ROUND 3 (Critical 6a), and the
-  // message changed with it: fix round 1 demanded a `result` sink here, which
-  // `withResultOutput` can never fill for `ask`/`defer` -- so the requirement is
-  // now an unconditional refusal, the same one the request gate's own three get.
-  // The HAZARD this test pins is unchanged: a declared `ask` with only
-  // `reason.text` is refused, and it is refused for having no honest shape at
-  // all rather than for missing one particular key.
+  // The requirement here is an unconditional refusal, not a `result` sink:
+  // `withResultOutput` can never fill one for `ask`/`defer` -- it attaches
+  // `applied_output` for `deny` alone -- so the same refusal requirement the
+  // request gate's own three decisions get applies here too. The hazard this
+  // test pins: a declared `ask` with only `reason.text` is refused for having
+  // no honest shape at all, not merely for missing one particular key.
   it.each(["ask", "defer"] as const)(
     "refuses a result-gate %s that declares no sink -- declared-but-unlandable, not merely undeclared",
     async (decisionName) => {
@@ -342,14 +336,12 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     },
   );
 
-  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6a -- the variant this
-  // gate itself MANDATED. Fix round 1 required a `result` sink on `ask`/`defer`
-  // without checking that `withResultOutput` can ever fill one for them. It
-  // cannot: it attaches `applied_output` for `deny` alone and returns `ask`/
-  // `defer` untouched. Measured (result-gate.test.ts): the mandated declaration
-  // renders no `result` key and delivers the secret in leaf and mirror.
+  // A hookmap that declares a `result` sink on `ask`/`defer` anyway --
+  // `withResultOutput` still cannot fill it, so this must be refused for the
+  // same reason. Measured (result-gate.test.ts): the declaration renders no
+  // `result` key and delivers the secret in leaf and mirror.
   it.each(["ask", "defer"] as const)(
-    "refuses a result-gate %s declaring the sink fix round 1 mandated -- withResultOutput never fills it",
+    "refuses a result-gate %s declaring a result sink -- withResultOutput never fills it",
     async (decisionName) => {
       const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-mandated-sink.yaml`);
       writeFileSync(
@@ -365,7 +357,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
           "        output:\n" +
           "          result: { from: applied_output }\n",
       );
-      // Refused for the RIGHT reason: not "you named the wrong key" -- the key
+      // Refused for the right reason: not "you named the wrong key" -- the key
       // is right -- but "nothing ever arrives for you to put in it".
       await expect(runPlugin(hookmapPath)).rejects.toThrow(/that is the ONLY shape open to it/);
       await expect(runPlugin(hookmapPath)).rejects.toThrow(/attaches "applied_output" for "deny" alone/);
@@ -395,9 +387,8 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     },
   );
 
-  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6b -- the same
-  // unsatisfiable-by-construction fault reached from the ENTRY, and this one
-  // hits `deny`.
+  // The same unsatisfiable-by-construction fault reached from the entry, and
+  // this one hits `deny`.
   it("refuses a result hook that declares no outputs block -- every sink there is unfillable by construction", async () => {
     const hookmapPath = join(SCRATCH_DIR, "result-hook-without-outputs.yaml");
     // A perfectly-declared sink on a `deny`. The entry is what is wrong: it
@@ -421,17 +412,16 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     );
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/declares no usable "outputs"/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/withResultOutput .* returns every decision untouched/);
-    // Blames the ENTRY, not the correctly-declared decision.
+    // Blames the entry, not the correctly-declared decision.
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/"hooks\.tool\.execute\.after" declares no usable/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/result-hook-without-outputs\.yaml/);
   });
 
   it("still asks nothing of an ask/defer the hookmap does not declare at all", async () => {
-    // The half of the old reasoning that was correct and stays correct: a
-    // decision the hookmap never declares has nothing here to check.
-    // `renderDecision` throws on an arriving one, `governStep` catches it, and
-    // the deployment's posture answers it -- audited either way. This is the
-    // shipped file's own shape, and it must keep loading.
+    // A decision the hookmap never declares has nothing here to check.
+    // `renderDecision` throws on an arriving one, `governStep` catches it,
+    // and the deployment's posture answers it -- audited either way. This is
+    // the shipped file's own shape, and it must keep loading.
     const hookmapPath = join(SCRATCH_DIR, "result-gate-no-ask-no-defer.yaml");
     writeFileSync(
       hookmapPath,
@@ -446,10 +436,10 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- `declaresSinkFrom`
-  // checked what the sink NAMED, never whether the declaration could RENDER.
-  // Both shapes below name `result` and name `applied_output`, and both were
-  // measured (result-gate.test.ts) to deliver the secret in leaf and mirror.
+  // `declaresSinkFrom` checks what the sink is named, not whether the
+  // declaration can actually render. Both shapes below name `result` and
+  // name `applied_output`, and both were measured (result-gate.test.ts) to
+  // deliver the secret in leaf and mirror.
   it("refuses a result-gate deny whose sink declares type: string -- applied_output is an object, so it never renders", async () => {
     const hookmapPath = join(SCRATCH_DIR, "result-deny-type-string.yaml");
     writeFileSync(
@@ -469,8 +459,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
 
   it("refuses a result-gate deny whose sink declares a literal BESIDE the right from:", async () => {
     // renderDecision checks for `value` first and never reads `from`, so this
-    // renders `{"result":{}}` -- a key present, nothing landed. The shape that
-    // falsified this gate's own comment claiming a literal was already refused.
+    // renders `{"result":{}}` -- a key present, nothing landed.
     const hookmapPath = join(SCRATCH_DIR, "result-deny-value-beside-from.yaml");
     writeFileSync(
       hookmapPath,
@@ -487,8 +476,8 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
 
   it("accepts a result-gate sink declaring type: object -- the one type that can match", async () => {
     // Not over-refusal by accident: `type` is a typeof filter and
-    // `applied_output` IS an object, so this declaration renders exactly as the
-    // untyped one does.
+    // `applied_output` is an object, so this declaration renders exactly as
+    // the untyped one does.
     const hookmapPath = join(SCRATCH_DIR, "result-deny-type-object.yaml");
     writeFileSync(
       hookmapPath,
@@ -503,13 +492,13 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 2, MINOR (over-refusal) -- the gate's
-  // rule is "land it OR unconditionally refuse it", because both are honest
-  // outcomes and only the silent no-op is not. On this host over-refusal is not
-  // free: a load-time throw leaves the plugin UNLOADED and the session
-  // completely ungoverned, which is strictly worse than a conservative mapping
-  // this gate did not anticipate. The throw itself is measured in
-  // result-gate.test.ts -- these hookmaps stop the tool, they do not no-op.
+  // The gate's rule is "land it or unconditionally refuse it", because both
+  // are honest outcomes and only the silent no-op is not. On this host
+  // over-refusal is not free: a load-time throw leaves the plugin unloaded
+  // and the session completely ungoverned, which is strictly worse than a
+  // conservative mapping this gate did not anticipate. The throw itself is
+  // measured in result-gate.test.ts -- these hookmaps stop the tool, they do
+  // not no-op.
   it.each(["deny", "modify", "ask", "defer"] as const)(
     "accepts a result-gate %s mapped to an unconditional refusal instead of a replacement",
     async (decisionName) => {
@@ -525,7 +514,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
 
   it("accepts a result gate that declares the sink on both deny and modify", async () => {
     // The shape the shipped hookmap uses, in isolation from it -- so this
-    // gate's ACCEPT case is pinned by something other than "the shipped file
+    // gate's accept case is pinned by something other than "the shipped file
     // happens to pass", which the first test in this file already covers.
     const hookmapPath = join(SCRATCH_DIR, "result-gate-with-both-sinks.yaml");
     writeFileSync(
@@ -545,11 +534,10 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
 });
 
 /**
- * THE REQUEST GATE'S `modify` RULE (§V5 review round 3, Task 5, fix round 1,
- * Important 2) -- its own rule, not the refusal rule its `deny`/`ask`/`defer`
- * siblings get: a `modify` asked for the step to RUN, rewritten, so what it
- * needs is a sink for the rewrite, exactly as a result-gate `deny` needs one
- * for the withholding.
+ * The request gate's `modify` rule -- its own rule, not the refusal rule its
+ * `deny`/`ask`/`defer` siblings get: a `modify` asks for the step to run,
+ * rewritten, so what it needs is a sink for the rewrite, exactly as a
+ * result-gate `deny` needs one for the withholding.
  *
  * The fail-open is measured in request-gate.test.ts, against a live Guardian,
  * with `AcsPlugin` out of the path -- including the part that makes it worse
@@ -632,10 +620,9 @@ describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
   });
 
   it("accepts a modify mapped to an unconditional refusal -- blocking the tool is more conservative than rewriting it", async () => {
-    // §V5 review round 3, Task 5, fix round 2, Minor. Measured in
-    // request-gate.test.ts: this mapping THROWS before the tool runs and
-    // applies nothing -- an honest outcome, and the shipped hookmap's own idiom
-    // for `ask`/`defer` at this very gate.
+    // Measured in request-gate.test.ts: this mapping throws before the tool
+    // runs and applies nothing -- an honest outcome, and the shipped
+    // hookmap's own idiom for `ask`/`defer` at this very gate.
     const hookmapPath = join(SCRATCH_DIR, "request-modify-as-refusal.yaml");
     writeFileSync(
       hookmapPath,
@@ -669,12 +656,12 @@ describe("AcsPlugin's load-time gate, for a request-gate modify", () => {
 });
 
 /**
- * §V5 review round 3, Task 5, FIX ROUND 4 -- the entry-shape and fixed-path
- * rules, which apply to BOTH gates and are therefore their own block.
+ * The entry-shape and fixed-path rules apply to both gates and are therefore
+ * their own block.
  *
- * Every fail-open they close was measured first, routed around `AcsPlugin`, in
- * request-gate.test.ts and result-gate.test.ts. See `GateEntryShape`'s own doc
- * comment (acs-plugin.ts) for each one.
+ * Every fail-open they close was measured first, routed around `AcsPlugin`,
+ * in request-gate.test.ts and result-gate.test.ts. See `GateEntryShape`'s own
+ * doc comment (acs-plugin.ts) for each one.
  */
 describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () => {
   const REQUEST_DECISIONS =
@@ -694,9 +681,10 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     "        output:\n" +
     "          result: { from: applied_output }\n";
 
-  // CRITICAL 7B -- a request hook declaring `outputs:` gets an output location,
-  // so `resolveModify` fills `applied_output` and the `args` sink this gate
-  // demands is unfillable. Measured: stage "honoured", rewrite landed nowhere.
+  // A request hook declaring `outputs:` gets an output location, so
+  // `resolveModify` fills `applied_output` and the `args` sink this gate
+  // demands is unfillable. Measured: stage "honoured", rewrite landed
+  // nowhere.
   it("refuses a request hook declaring outputs: instead of arguments:", async () => {
     const hookmapPath = join(SCRATCH_DIR, "request-hook-with-outputs.yaml");
     writeFileSync(
@@ -716,7 +704,7 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/fills "applied_output" instead of "applied_input"/);
   });
 
-  it("refuses a request hook declaring BOTH arguments: and outputs:", async () => {
+  it("refuses a request hook declaring both arguments: and outputs:", async () => {
     // `assertRequestGateDeclaresNoOutputs` (build-envelope.ts) already refuses
     // this one upstream -- asserted here so the two checks' division stays
     // visible, and so this gate's own coverage does not depend on which fires
@@ -751,9 +739,9 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     "    exit_status: { from: $.result.metadata.exit }\n" +
     RESULT_DECISIONS;
 
-  // CRITICAL 7D -- `outputs.within` must name the object this shim hands the
-  // applier. Each case below leaves `outputs.from` CORRECT, so the failure is
-  // attributable to `within` alone.
+  // `outputs.within` must name the object this shim hands the applier. Each
+  // case below leaves `outputs.from` correct, so the failure is attributable
+  // to `within` alone.
   it.each(["$", "$.result.metadata"] as const)(
     "refuses a result hook whose outputs.within is %s rather than $.result",
     async (within) => {
@@ -764,33 +752,32 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     },
   );
 
-  // A `from` OUTSIDE a correct `within` -- the pair round 5's `outputs.from`
-  // rule is the only thing that refuses. Deliberately not
-  // `from: $.result.output` / `within: $.result.metadata`, which an earlier
-  // version of this test used: round 4's `within` rule already refuses that
-  // one, so it demonstrated nothing about round 5 (it still passes with the
-  // `outputs.from` entry removed).
+  // The `outputs.from` rule is the only thing that refuses a `from` outside
+  // a correct `within`. Deliberately not `from: $.result.output` / `within:
+  // $.result.metadata`: the `within` rule alone already refuses that
+  // combination, so it would demonstrate nothing about the `outputs.from`
+  // rule specifically (it still passes with the `outputs.from` entry
+  // removed).
   //
-  // WHAT THIS MOVES, stated as measured rather than as the stronger claim an
-  // earlier comment made. Without the `outputs.from` rule this hookmap loads,
-  // and `buildEnvelope` then fails at stage "request" -- which is a failure
-  // whose OUTCOME DEPENDS ON THE NEGOTIATED POSTURE. Under this deployment's
-  // fail-closed posture `replacingOutput` throws out of `governStep`; under a
-  // `proceed` posture it is an audited ungoverned delivery. With the rule, it
-  // is refused at load and neither happens.
-  it("refuses a from OUTSIDE a correct within at LOAD -- the pair only round 5's outputs.from rule catches", async () => {
+  // Without the `outputs.from` rule this hookmap loads, and `buildEnvelope`
+  // then fails at stage "request" -- a failure whose outcome depends on the
+  // negotiated posture. Under this deployment's fail-closed posture,
+  // `replacingOutput` throws out of `governStep`; under a `proceed` posture
+  // it is an audited ungoverned delivery. With the rule, it is refused at
+  // load and neither happens.
+  it("refuses a from outside a correct within at load -- only the outputs.from rule catches this", async () => {
     const hookmapPath = join(SCRATCH_DIR, "result-from-outside-within.yaml");
     writeFileSync(hookmapPath, resultHook("$.tool", "$.result"));
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/outputs\.from" is "\$\.tool"/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/the value the policy runtime is asked ABOUT/);
   });
 
-  // CRITICAL, FIX ROUND 5 -- VARIANT 8. `outputs.from` is the leaf that goes ON
-  // THE WIRE as this step's `outputs[0].value`, so pointing it elsewhere does
-  // not withhold the wrong field: it asks the policy runtime about a different
-  // value, which it then answers correctly. Measured (result-gate.test.ts):
-  // envelope carries the tool's own title, decision `allow`, `stage:
-  // "honoured"`, and `rm -rf /` delivered in leaf and mirror.
+  // `outputs.from` is the leaf that goes on the wire as this step's
+  // `outputs[0].value`, so pointing it elsewhere does not withhold the wrong
+  // field: it asks the policy runtime about a different value, which it then
+  // answers correctly. Measured (result-gate.test.ts): envelope carries the
+  // tool's own title, decision `allow`, `stage: "honoured"`, and `rm -rf /`
+  // delivered in leaf and mirror.
   it.each(["$.result.title", "$.result.metadata.output"] as const)(
     "refuses a result hook whose outputs.from is %s rather than $.result.output",
     async (from) => {
@@ -810,17 +797,16 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
     await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
   });
 
-  // 7E -- NOT on the review's list. It was first measured as a SCOPING
-  // divergence: the shim and `governStep` asked `governsTool` with different
-  // arguments, and `governStep` skipped a governed tool as "ungoverned" with
-  // no Guardian request and no audit entry. §V5 review round 4 closed that in
-  // the adapter (`governStep` is TOLD the scoped tool), and this gate stays
-  // for the fault that remains -- re-measured with `tool_name:
-  // $.args.command` and the tool told: the step is governed and audited
-  // normally while the envelope carries `payload.tool.name: "rm -rf /"`, so
-  // the policy runtime is asked about a tool this deployment never
-  // registered. Same family as 8, and only this file can say which field the
-  // shim feeds.
+  // Measured first as a scoping divergence: the shim and `governStep` asked
+  // `governsTool` with different arguments, so `governStep` skipped a
+  // governed tool as "ungoverned" with no Guardian request and no audit
+  // entry. That divergence is closed in the adapter now (`governStep` is
+  // told the scoped tool), and this gate stays for the fault that remains --
+  // re-measured with `tool_name: $.args.command` and the tool told: the step
+  // is governed and audited normally while the envelope carries
+  // `payload.tool.name: "rm -rf /"`, so the policy runtime is asked about a
+  // tool this deployment never registered. Only this file can say which
+  // field the shim feeds.
   it.each(["tool.execute.before", "tool.execute.after"] as const)(
     "refuses a %s entry whose tool_name points away from $.tool",
     async (hookEventName) => {
@@ -865,11 +851,11 @@ describe("AcsPlugin's load-time gate, on the entry's own shape and paths", () =>
 });
 
 /**
- * IMPORTANT 7A -- a DECLARED decision name outside the gate's tables was
- * silently unchecked, because the enforcement loop iterated the TABLE rather
- * than the hookmap. Measured in request-gate.test.ts: declaring the inert entry
- * is strictly worse than leaving it out, because without it `renderDecision`
- * throws and the posture answers it, audited.
+ * The enforcement loop iterates the table, not the hookmap, so a declared
+ * decision name outside the gate's tables is refused rather than silently
+ * passed through. Measured in request-gate.test.ts: declaring the inert
+ * entry is strictly worse than leaving it out, because without it
+ * `renderDecision` throws and the posture answers it, audited.
  */
 describe("AcsPlugin's load-time gate, for a decision name it has no expectation for", () => {
   it.each(["block", "Deny", "warn"] as const)(
@@ -929,7 +915,7 @@ describe("AcsPlugin's load-time gate, for a decision name it has no expectation 
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/has no expectation for at this gate/);
   });
 
-  it("still accepts every decision name the tables DO know, and allow", async () => {
+  it("still accepts every decision name the tables do know, and allow", async () => {
     // The accept case, so the throw above cannot pass by refusing everything.
     const hookmapPath = join(SCRATCH_DIR, "request-all-known-decisions.yaml");
     writeFileSync(
@@ -962,9 +948,9 @@ describe("AcsPlugin's load-time gate, for a decision name it has no expectation 
 });
 
 /**
- * A HOOK THE TABLE HAS NO ENTRY FOR IS A THROW, NOT A SKIP -- the rule
+ * A hook the table has no entry for is a throw, not a skip -- the rule
  * `expectationFor` states in hosts/claude-code/acs-hook.ts, adopted here for
- * the same reason and one more (§V5 review round 3, Task 5).
+ * the same reason and one more.
  */
 describe("AcsPlugin's load-time gate, for a hook it has no expectation for", () => {
   it("refuses a hookmap mapping a hook this shim never registers", async () => {

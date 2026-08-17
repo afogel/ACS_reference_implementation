@@ -431,7 +431,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
     }
   });
 
-  // `await res.json()` sits INSIDE the try that maps a TimeoutError onto
+  // `await res.json()` sits inside the try that maps a TimeoutError onto
   // GuardianTimeoutError, so a Guardian whose headers beat the timeout while
   // its body does not is still classified as `timeout`, not
   // `error_without_decision`. §6.4 defines a decision failure by the
@@ -527,7 +527,7 @@ describe("negotiateSessionConfig", () => {
 });
 
 // Storing an unusable ServerHello without checking it would be harmless for
-// READS -- `get()` re-validates, so a junk file returns undefined -- but the
+// reads -- `get()` re-validates, so a junk file returns undefined -- but the
 // consequence nothing would surface is that every `get()` afterwards returns
 // undefined, so every hook re-handshakes, forever, while the deployment runs
 // on the ACS default rather than the posture its Guardian keeps declaring.
@@ -691,7 +691,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   });
 
   // `set()` throws, `get()` stays undefined, and the posture the
-  // Guardian just declared has to reach THIS step anyway -- otherwise a
+  // Guardian just declared has to reach this step anyway -- otherwise a
   // deployment that asked to fail closed fails open on the very step whose
   // posture it negotiated, and does so on every hook, forever.
   it("applies a config it could not store to the step that negotiated it, and still reports the failure", async () => {
@@ -725,7 +725,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
     const resolved = await resolveVia("http://127.0.0.1:1/acs", store);
     expect(resolved.config).toBeUndefined();
     expect(resolved.failure).toBeInstanceOf(Error);
-    // NOT a member of the not-stored family: nothing arrived, so nothing was
+    // Not a member of the not-stored family: nothing arrived, so nothing was
     // negotiated, and `classifySessionFailure` files it as `handshake_failed`.
     expect(resolved.failure).not.toBeInstanceOf(SessionConfigNotStoredError);
   });

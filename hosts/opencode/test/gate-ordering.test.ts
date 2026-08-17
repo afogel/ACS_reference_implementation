@@ -1,46 +1,43 @@
 /**
- * THE ORDER OF THE ONE EXCHANGE BOTH GATES RUN (§V5 review round 3, Task 6).
+ * The order of the one exchange both gates run.
  *
- * `"tool.execute.before"` and `"tool.execute.after"` used to carry a copy each
- * of the same seven moves; they are one function now (`runExchange`, acs-plugin.ts),
- * and the two hook methods are edges that name their event and assemble their
- * own payload. Merging them removed the risk that the two copies drift out of
- * step. It introduced a different one: a single later edit to `runExchange` now
- * reorders BOTH gates at once, silently, and every step of that order is there
- * for a measured reason.
+ * `"tool.execute.before"` and `"tool.execute.after"` share one function,
+ * `runExchange` (acs-plugin.ts); the two hook methods are edges that name
+ * their event and assemble their own payload. A single edit to `runExchange`
+ * reorders both gates at once, silently, and every step of that order is
+ * there for a measured reason.
  *
- * So this file pins the order itself, as behaviour, from OUTSIDE the plugin --
+ * So this file pins the order itself, as behaviour, from outside the plugin --
  * the same three faults asked at both gates, each one arranged so that only one
  * ordering can produce the observed answer:
  *
- *   - `assertUsableTool` FIRST, ahead of the `tools` check: asked with a
- *     malformed `tool` AND an unusable `sessionID` at once, so the message says
+ *   - `assertUsableTool` first, ahead of the `tools` check: asked with a
+ *     malformed `tool` and an unusable `sessionID` at once, so the message says
  *     which of the two checks ran first. `Array.prototype.includes` answers a
  *     silent `false` for a malformed needle, so a `tools` check that ran first
- *     would return cleanly instead -- the exact fail-open §V5 review, Task 5,
- *     fix round 2, Important 2 measured and closed.
- *   - `governsTool`'s early return BEFORE `assertUsableSessionId`: an
+ *     would return cleanly instead -- the exact fail-open this ordering closes.
+ *   - `governsTool`'s early return before `assertUsableSessionId`: an
  *     out-of-scope tool with an unusable `sessionID`. A clean return proves the
  *     skip is ahead of the session validation (and, with the `fetch` spy, ahead
  *     of the handshake); a throw about `sessionID` would prove it is not.
- *   - `assertUsableSessionId` BEFORE `resolveSessionConfig`/`governStep`: a
- *     GOVERNED tool with the same unusable `sessionID`, which must throw
+ *   - `assertUsableSessionId` before `resolveSessionConfig`/`governStep`: a
+ *     governed tool with the same unusable `sessionID`, which must throw
  *     without a single request going out. `buildEnvelope` throws on a missing
  *     `session_id` too, but that throw lands in `governStep`'s stage-"request"
  *     catch and is answered by the negotiated posture, where a `proceed` is an
  *     ungoverned step -- so "it throws eventually" is not what is being pinned
  *     here; "it throws before anything is asked" is.
  *
- * NO LIVE GUARDIAN, DELIBERATELY, and the `fetch` spy is why: every case below
+ * No live Guardian is stood up, and the `fetch` spy is why: every case below
  * is supposed to end before the first request. Standing one up would make the
  * suite slower and the assertion weaker -- a case that wrongly proceeded would
  * then get an answer rather than being caught not asking.
  *
  * Per-gate coverage of the individual faults already exists (request-gate.test.ts
  * and result-gate.test.ts each pin their own `tool`/`sessionID`/`tools`
- * behaviour). What is new here is the ORDER between them, asked identically at
- * both gates -- which is what a shared `runExchange` makes a single property rather
- * than two.
+ * behaviour). This file adds the order between them, asked identically at
+ * both gates -- which is what a shared `runExchange` makes a single property
+ * rather than two.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -48,7 +45,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AcsPlugin } from "../acs-plugin.ts";
 
-// "bash" is the tool opencode.hookmap.yaml scopes BOTH gates to (`tools:
+// "bash" is the tool opencode.hookmap.yaml scopes both gates to (`tools:
 // [bash]`), and "read" is one of the real OpenCode tool names measured beside
 // it that neither gate lists -- the same pair request-gate.test.ts and
 // result-gate.test.ts use for their own skip tests.
@@ -66,14 +63,14 @@ beforeAll(() => {
   process.env.ACS_AUDIT_LOG = AUDIT_LOG;
 });
 
-// PER TEST, NOT PER FILE, so "no audit entry" is a claim about THIS case and
-// not about whichever case ran before it. Measured while checking that the
-// three assertions below actually catch a reordering: with the sessionID check
-// moved past the handshake, the one case that then reaches `governStep` writes
-// an entry -- and every LATER test's `existsSync` assertion failed too, on a
-// path the reordering never touched. Four failures, two of them naming nothing
-// about the defect. The claim is worth asserting; the coupling is not part of
-// it (§V5 review round 3, Task 6, fix round 1, Minor 3).
+// Cleared per test, not per file, so "no audit entry" is a claim about this
+// case and not about whichever case ran before it. Measured while checking
+// that the three assertions below actually catch a reordering: with the
+// sessionID check moved past the handshake, the one case that then reaches
+// `governStep` writes an entry -- and every later test's `existsSync`
+// assertion failed too, on a path the reordering never touched. Four
+// failures, two of them naming nothing about the defect. The claim is worth
+// asserting; the coupling is not part of it.
 beforeEach(() => {
   rmSync(AUDIT_LOG, { force: true });
 });
@@ -136,7 +133,7 @@ for (const gate of GATES) {
       const fetchSpy = spyOn(globalThis, "fetch");
       try {
         // Both faults at once. A `tools` check that ran first would read
-        // `undefined` as "not in this gate's list" and return CLEANLY; a
+        // `undefined` as "not in this gate's list" and return cleanly; a
         // sessionID check that ran first would name the session id.
         let thrown: unknown;
         try {
@@ -169,7 +166,7 @@ for (const gate of GATES) {
       const fetchSpy = spyOn(globalThis, "fetch");
       try {
         // An unusable sessionID beside an out-of-scope tool: the clean return
-        // is only possible if the `tools` skip runs BEFORE
+        // is only possible if the `tools` skip runs before
         // `assertUsableSessionId`, which is what makes an ungoverned tool cost
         // no session validation and no handshake round trip.
         await expect(gate.fire(hooks, UNLISTED_TOOL, "", live)).resolves.toBeUndefined();

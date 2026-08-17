@@ -14,7 +14,7 @@
  * both, because those are read by a human in an audit trail.
  *
  * A `modify` whose `modifications` cannot be applied exactly as written is a
- * DENY at the caller, never a best-effort partial apply and never a
+ * deny at the caller, never a best-effort partial apply and never a
  * reported-but-unapplied one. This module's half of that contract is to throw
  * rather than return something half-done. That covers §6.3's composition
  * rules (`modified_content` combined with structured edits, or a `redactions`
@@ -40,7 +40,7 @@ import { isReservedSegment } from "./reserved-segments.ts";
  * rules, an entry of the wrong shape, or a target that is not in the
  * arguments the Guardian saw. In every case the Guardian's intent cannot be
  * carried out as written, so the caller (`validateDecision`) turns this into
- * a DENY rather than applying part of it, or applying nothing while
+ * a deny rather than applying part of it, or applying nothing while
  * reporting success. */
 export class ModificationsInvalidError extends Error {
   constructor(reason: string) {
@@ -81,15 +81,16 @@ function pointerSegments(pointer: string): string[] {
  * numeric segment descends into an array by index, everything else is a
  * plain-object field lookup. Answers `undefined` at the first level that has
  * neither, rather than throwing -- callers of this function are reading a
- * value that has already been shown to exist (§V5's post-condition below
- * only ever calls it with a target `assertTargetExists` accepted), and its
- * only two callers there compare two `undefined`s as equal on purpose.
+ * value that has already been shown to exist (the post-condition in
+ * `applyModifications` below only ever calls it with a target
+ * `assertTargetExists` accepted), and its only two callers there compare two
+ * `undefined`s as equal on purpose.
  *
- * NOT `hookmap-path.ts`'s `resolveSegments`, on purpose, despite the
+ * Not `hookmap-path.ts`'s `resolveSegments`, on purpose, despite the
  * identical shape (`(root, segments) -> unknown`). That one resolves a
  * hookmap's own path notation, which is dot-only and never addresses an
  * array element by design (see its header) -- so it answers `undefined` for
- * ANY segment that lands on an array, array element or not. §6.3's pointers
+ * any segment that lands on an array, array element or not. §6.3's pointers
  * routinely do address one (`/outputs/0/value`), and importing that resolver
  * here would have made every array-descending target compare as unchanged
  * regardless of whether it was, turning the post-condition below into a
@@ -130,81 +131,59 @@ function segmentsOverlap(a: string[], b: string[]): boolean {
  * rather than a tool-call argument. None of these three names a field a
  * tool call actually has, so a modification aiming at one is another
  * silent no-op `modify` -- guarded here in one line, for `redactions[].path`
- * and `parameter_overrides`' own KEYS, both of which this module inspects
+ * and `parameter_overrides`' own keys, both of which this module inspects
  * directly.
  *
- * `isReservedSegment` (imported, `reserved-segments.ts`) replaces what used
- * to be one of several module-private copies of the same three names --
- * `hookmap-path.ts` and `render-decision.ts` each kept their own too, and
- * `hosts/opencode/apply-opencode-output.ts` kept a further one, a HOST'S own
- * source carrying a shared package's security invariant because the package
- * had no shared definition to export (§V5 review round 3, Task 3,
- * "duplication vs wrong abstraction"). It is now the one predicate every
- * one of those files imports instead -- see its own doc comment for why the
- * underlying name list stays a module-private `Set` rather than being
- * exported itself (fix round 1, Minor 1).
+ * `isReservedSegment` (imported, `reserved-segments.ts`) is the one shared
+ * definition of the three names -- also imported by `hookmap-path.ts`,
+ * `render-decision.ts`, and any host applier that recurses into a rendered
+ * value -- rather than a module-private copy kept here too. See that file's
+ * own doc comment for why the underlying name list stays a module-private
+ * `Set` rather than being exported itself.
  *
- * THIS MODULE'S OWN CHECK STAYS LOCAL, THOUGH -- unlike the name list, the
- * check below is not shared with `apply-opencode-output.ts`'s, because the two
- * check different things. `assertNoReservedSegments` here takes NAMES
- * already in hand -- a redaction path already split into segments, or one
- * override object's own top-level keys -- and asks "is this name reserved",
- * the same structural job `hookmap-path.ts`'s `pathSegments` and
- * `render-decision.ts`'s `place` do against their own path notations. It is
- * not a walk into an arbitrarily nested VALUE, so it is not
- * `reserved-segments.ts`'s exported `findReservedKey` (that walker is for a
- * caller examining a value it is about to trust as a whole, at any depth --
- * see its own doc comment) with a shorter argument list; it is the other
- * job, staying separate for the identical reason PR #13's review response
- * gave for keeping `render-decision.ts`'s path check out of a shared
- * resolver: folding a name check into a value walker "would have merged two
- * path languages rather than de-duplicating one".
+ * This module's own check stays local, though, unlike the name list: the
+ * check below is not shared with a host applier's, because the two check
+ * different things. `assertNoReservedSegments` here takes names already in
+ * hand -- a redaction path already split into segments, or one override
+ * object's own top-level keys -- and asks "is this name reserved", the same
+ * structural job `hookmap-path.ts`'s `pathSegments` and `render-decision.ts`'s
+ * `place` do against their own path notations. It is not a walk into an
+ * arbitrarily nested value, so it is not `reserved-segments.ts`'s exported
+ * `findReservedKey` (that walker is for a caller examining a value it is
+ * about to trust as a whole, at any depth) with a shorter argument list; it
+ * is the other job, staying separate because folding a name check into a
+ * value walker would merge two different jobs rather than de-duplicate one.
  *
- * WHAT IS STILL TRUE, IN ISOLATION: `setAtPath` (below) assigns into a
- * fresh clone of the caller's arguments at every level it descends through,
- * never into a shared prototype -- a `modify` applied through THIS module
- * alone cannot pollute anything global, on any host, today or previously.
+ * `setAtPath` (below) assigns into a fresh clone of the caller's arguments
+ * at every level it descends through, never into a shared prototype, so a
+ * `modify` applied through this module alone cannot pollute anything
+ * global. That guarantee has a real edge, though: this guard checks
+ * `redactions[].path` and `parameter_overrides`' keys, but never the value
+ * an override entry carries, which arrives verbatim off the Guardian's own
+ * wire. Parsed through `JSON.parse` rather than built with object-literal
+ * syntax, an object-valued override can carry an ordinary own key literally
+ * named `__proto__` -- `JSON.parse` never sets the real `[[Prototype]]`
+ * link, only a same-named data property -- and this module passes that
+ * value through to `applied_input`/`applied_output` unexamined, since it
+ * walks the ACS document's own structure and not an arriving decision's
+ * arbitrary nesting. That is safe as long as every consumer only ever
+ * assigns the value shallowly, and it stops being safe for a host applier
+ * whose own merge recurses into a rendered value in place: reading a
+ * reserved key off a plain object with no own `__proto__` resolves through
+ * the prototype chain to `Object.prototype` itself, so a recursive write
+ * through it is global to that host's whole long-lived process, for a value
+ * this module let through untouched.
  *
- * WHAT STOPPED BEING TRUE, AND WHY (§V5 review, fix round 2, Critical). This
- * comment used to read "no global pollution is reachable today" as a
- * system-wide claim, on the strength of the paragraph above -- true of
- * `setAtPath` in isolation, but never a claim this module could make about
- * every host built on it. This guard checks `redactions[].path` and
- * `parameter_overrides`' KEYS; it never checks the VALUE an override entry
- * carries, which arrives verbatim off the Guardian's own wire (see
- * `applyModifications`'s own comment on `setAtPath`'s stable-serialisation
- * claim, which draws the identical distinction for the identical reason).
- * Parsed through `JSON.parse` rather than built with object-literal syntax,
- * an object-valued override can carry an ordinary OWN key literally named
- * `__proto__` -- `JSON.parse` never sets the real `[[Prototype]]` link, only
- * a same-named data property -- and this module passes that value through to
- * `applied_input`/`applied_output` unexamined (R3.2: it walks the ACS
- * document's own structure, not an arriving decision's arbitrary nesting).
- * That was always true of this module. It stopped being the whole story the
- * moment a SECOND host existed whose own applier reads a rendered value back
- * through the JavaScript prototype chain rather than only ever assigning it
- * shallowly: `hosts/opencode/apply-opencode-output.ts`'s `mergeInPlace` recurses
- * into any field present on both sides as a plain object, and reading
- * `target["__proto__"]` on a plain object with no OWN `__proto__` resolves
- * through the chain to `Object.prototype` itself -- so the recursive call
- * that follows writes through it, global to that host's whole long-lived
- * plugin process, for a value this module let through untouched.
- *
- * WHERE THE GUARD THAT CLOSES IT NOW LIVES: `reserved-segments.ts`'s
- * exported `findReservedKey`, called from every host applier that recurses
- * into a rendered value the way `apply-opencode-output.ts`'s `mergeInPlace`
- * does (`apply-opencode-output.ts`'s own `applyOpenCodeOutput`, pass 1, over the
- * rendered `args`/`result` value as a whole tree, before its recursive merge
- * ever runs on it -- see that file's own doc comment). Not
- * `hosts/opencode/`'s own source, any longer: a shared package pointing at
- * one host's file for a security invariant was the wrong abstraction, and
- * the walker now lives beside the name list, in this package, for whichever
- * host applier needs it to import. This module still may not host
- * that guard itself: closing this gap means recursing into a VALUE this
- * module never builds -- the rendered `args`/`result` a host applier merges
- * onto its own live objects -- which is a fact about what a host's applier
- * does with a value after this module has already returned it, not about
- * anything `applyModifications` or `setAtPath` do.
+ * The guard that closes that gap is `reserved-segments.ts`'s exported
+ * `findReservedKey`, called by every host applier that recurses into a
+ * rendered value in place, over the whole rendered value as a tree, before
+ * its own recursive merge ever runs on it (see that host applier's own doc
+ * comment). This module cannot host that guard itself: closing the gap
+ * means recursing into a value this module never builds -- the rendered
+ * `args`/`result` a host applier merges onto its own live objects -- which
+ * is a fact about what a host's applier does with a value after this module
+ * has already returned it, not about anything `applyModifications` or
+ * `setAtPath` do.
  */
 function assertNoReservedSegments(segments: string[], label: string): void {
   for (const segment of segments) {
@@ -241,14 +220,14 @@ function isArrayIndex(segment: string, length: number): boolean {
  * Walks `segments` through the ACS document that actually went out on the wire
  * and throws unless every segment names a field that is really there.
  *
- * WHICH document is the caller's to say (`modificationDocumentOf`): the arguments a
- * step was asked to run with at a gate that decides whether it runs, the result
- * payload it produced at a gate that sees what it produced. The refusal below
- * names neither, and that is deliberate rather than vague -- this text is
- * rendered as the deny's stated reason and written to the audit trail, and at the
- * result gate the sentence it used to carry ("not present in the arguments this
- * tool call sent") named a thing that does not exist at that gate for a pointer
- * that was never about one.
+ * Which document this is belongs to the caller (`modificationDocumentOf`):
+ * the arguments a step was asked to run with at a gate that decides whether
+ * it runs, the result payload it produced at a gate that sees what it
+ * produced. The refusal below names neither, and that is deliberate rather
+ * than vague: this text is rendered as the deny's stated reason and written
+ * to the audit trail, and naming "the arguments this tool call sent"
+ * specifically would misdescribe the result gate, where the pointer was
+ * never about one.
  *
  * This is the absent-target half of the same defect the empty-pointer check
  * below closes, and it is the one that mattered in practice: `setAtPath` has
@@ -455,7 +434,7 @@ export function assertValidModifications(
     }
   }
 
-  // Two redactions must be disjoint from EACH OTHER as well. §6.3 spells out
+  // Two redactions must be disjoint from each other as well. §6.3 spells out
   // only the redaction-vs-override rule, but the reason it gives -- that
   // overlapping edits have no apply order the Guardian can observe -- applies
   // identically here, and the consequence of not checking is the same
@@ -559,39 +538,38 @@ function setAtPath(target: unknown, segments: string[], value: unknown): unknown
  * -- a valid `modifications` reaching the apply loops below is always the
  * structured-edit shape, with every target already known to exist.
  *
- * THE POST-CONDITION BELOW is what closes the request-gate hole V4 measured
- * and recorded rather than closing (§V4, §V5): a `modify` whose
- * `parameter_overrides` sets an argument to the value it already held, or
- * whose redaction replaces one with itself, used to apply cleanly and return
- * an `applied_input` identical to what went out on the wire -- the policy
- * said rewrite, nothing was rewritten, and the audit trail said the decision
- * was honoured. Asked here, gate-agnostically, rather than "did the whole
+ * The post-condition below closes a request-gate hole: without it, a `modify`
+ * whose `parameter_overrides` sets an argument to the value it already held,
+ * or whose redaction replaces one with itself, applies cleanly and returns an
+ * `applied_input` identical to what went out on the wire -- the policy said
+ * rewrite, nothing was rewritten, and the audit trail says the decision was
+ * honoured. Asked here, gate-agnostically, rather than "did the whole
  * document change" at either gate: a document-level check would miss a
  * no-op target bundled beside a real one, and a request payload has no
  * single leaf the way a result payload does, so there is no narrower
  * question to ask there instead.
  *
- * IT ALSO SUBSUMES THE SINGLE-TARGET FORM of `projectAppliedOutput`'s own
+ * It also subsumes the single-target form of `projectAppliedOutput`'s own
  * landing check at the result gate (a redaction or override whose only
  * target is the one leaf that gate projects, replaced with the value
  * already there) -- this function now refuses that before the projection is
  * ever attempted, which is why that check's docstring is worded as a
  * fallback rather than the first word on it.
  *
- * WHAT IT DOES NOT CLOSE is the result gate's OTHER hole: a `modify`
+ * What it does not close is the result gate's other hole: a `modify`
  * bundling a leaf edit that changes its own target with a non-leaf edit
- * that ALSO changes its own target, where the leaf edit lands and the
+ * that also changes its own target, where the leaf edit lands and the
  * non-leaf one is silently unobservable because nothing beyond that one
  * leaf is ever projected onto the host's output object. Every target in
  * such a bundle genuinely changes -- this function's own question, asked
  * per target, answers "yes" to each of them -- so there is nothing for a
  * document-agnostic check to catch here; telling a target that changed but
- * did not LAND apart from one that changed and did needs to know which
+ * did not land apart from one that changed and did needs to know which
  * target is the leaf, which is gate-specific knowledge this module does not
- * have and R3.2 does not let it acquire. That closing is
- * `projectAppliedOutput`'s own, in `result-output.ts`, which already knows
- * the leaf and now also asks whether anything ELSE about the document
- * changed alongside it.
+ * have (this module knows ACS's `modifications` shape and the document its
+ * pointers address, nothing else). That closing is `projectAppliedOutput`'s
+ * own, in `result-output.ts`, which already knows the leaf and now also
+ * asks whether anything else about the document changed alongside it.
  */
 export function applyModifications(
   modificationDocument: Record<string, unknown>,
@@ -633,35 +611,36 @@ export function applyModifications(
   // array, where `===` is reference equality and a structurally identical
   // replacement would read as a change.
   //
-  // WHAT THE STABLE-SERIALISATION CLAIM COVERS, AND WHAT IT DOES NOT.
-  // `modificationDocument` and `result` are both built by spreads from the
-  // same source (here, and in `setAtPath`'s own clone-per-level), so every
-  // CONTAINER this walks through -- everything besides the target's own
-  // value -- keeps the key order it already had, on both sides. The VALUE AT
-  // THE TARGET is not covered by that: for a redaction's `replacement` or a
-  // `parameter_overrides` entry, that value arrives verbatim from the
-  // Guardian's own JSON, in whatever key order it was written, never derived
-  // from `modificationDocument`'s -- there is nothing here to keep stable.
+  // The stable-serialisation this relies on covers containers, not the
+  // value at the target. `modificationDocument` and `result` are both built
+  // by spreads from the same source (here, and in `setAtPath`'s own
+  // clone-per-level), so every container this walks through -- everything
+  // besides the target's own value -- keeps the key order it already had,
+  // on both sides. The value at the target is not covered by that: for a
+  // redaction's `replacement` or a `parameter_overrides` entry, that value
+  // arrives verbatim from the Guardian's own JSON, in whatever key order it
+  // was written, never derived from `modificationDocument`'s -- there is
+  // nothing here to keep stable.
   //
-  // THE RESIDUAL THIS LEAVES: an object-valued replacement whose keys are
+  // That leaves a residual: an object-valued replacement whose keys are
   // permuted from the original's, but is otherwise identical, reads as
-  // CHANGED. `parameter_overrides: {env: {B: 2, A: 1}}` against
+  // changed. `parameter_overrides: {env: {B: 2, A: 1}}` against
   // `{env: {A: 1, B: 2}}` is semantically a no-op and this check does not
   // catch it -- a narrowed remainder of the defect class this post-condition
-  // exists to close (the prior behaviour missed every no-change
-  // modification; this misses only a permuted-key one). NOT a guarantee
-  // about this function, only about what reaches it today (`setAtPath`'s own
-  // note above makes the same distinction, for the same reason): this
-  // deployment's policy runtime synthesizes `parameter_overrides` bound to a
-  // single named argument rather than emitting an arbitrary Guardian-authored
-  // object there, so an object-valued override is not something it produces
-  // -- the same reachability class as the cases this check does refuse, and
-  // the same reason those were still worth guarding. Canonicalising key
-  // order would close it, and is deliberately not done here: that is a
-  // behaviour change with its own hazards, for a case nothing reachable
-  // needs closed.
+  // exists to close (the earlier behaviour missed every no-change
+  // modification; this misses only a permuted-key one). This is not a
+  // guarantee about this function, only about what reaches it today
+  // (`setAtPath`'s own note above makes the same distinction, for the same
+  // reason): this deployment's policy runtime synthesizes
+  // `parameter_overrides` bound to a single named argument rather than
+  // emitting an arbitrary Guardian-authored object there, so an object-valued
+  // override is not something it produces -- the same reachability class as
+  // the cases this check does refuse, and the same reason those were still
+  // worth guarding. Canonicalising key order would close it, and is
+  // deliberately not done here: that is a behaviour change with its own
+  // hazards, for a case nothing reachable needs closed.
   //
-  // A replacement EQUAL to the value already there is refused too, not only
+  // A replacement equal to the value already there is refused too, not only
   // a replacement that resolves to the identical reference. That is the
   // ruling on what a legitimately no-change `modifications` means, and it is
   // this project's own precedent: `projectAppliedOutput` already refuses the

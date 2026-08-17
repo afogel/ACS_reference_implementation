@@ -115,7 +115,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   });
 
   // The hazard this guards against: if unchecked, the decision would stay
-  // `modify`, `applied_input` would carry BOTH the invented key and the
+  // `modify`, `applied_input` would carry both the invented key and the
   // untouched original, the hookmap would render `permissionDecision: allow`
   // with that updatedInput, and the host would run the original
   // un-redacted command -- while reporting the rewrite as applied. Nothing
@@ -172,7 +172,7 @@ describe("validateDecision — malformed modifications fail closed (§6.3)", () 
   });
 
   // The reasoning is asserted, not just the deny: an absent-target check
-  // alone already denies all three of these (none is an OWN property of an
+  // alone already denies all three of these (none is an own property of an
   // arguments object), so a test that only checked `decision` would pass with
   // this guard deleted -- blind to the thing it exists to pin.
   for (const segment of ["__proto__", "constructor", "prototype"]) {
@@ -277,11 +277,11 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     expect(out.decision).toBe("deny");
   });
 
-  // Every other ASK test here produces the same verdict
+  // Every other `ask` test here produces the same verdict
   // whether or not the timeout_seconds -> ms conversion happens at all
   // (1s/2000ms reads "expired" either way; 60s/10ms reads "not expired"
   // either way), so the `* 1000` was unverified. timeout_seconds: 1 is
-  // 1000ms; elapsedMs: 500 is under that and so correctly NOT expired --
+  // 1000ms; elapsedMs: 500 is under that and so correctly not expired --
   // but if the conversion were dropped (comparing 500 against the bare
   // "1"), this would wrongly read as expired. Kept as its own case so a
   // future "simplification" that drops the multiply cannot pass unnoticed.
@@ -298,7 +298,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
   });
 
   // Pins the exact boundary (strict `>`, per the module's own comment) so a
-  // regression to `>=` would fail here even though every other ASK test
+  // regression to `>=` would fail here even though every other `ask` test
   // above sits far past the boundary.
   // timeout_seconds: 1 -> timeoutMs 1000. Below, exactly at, and just past.
   it("expires an ask strictly after its timeout, not at or before it", () => {
@@ -330,7 +330,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     // 50 is read as milliseconds, not, say, mistakenly multiplied up as if
     // it were seconds (which would put the timeout at 50000ms and make 500
     // read as not-expired instead). No separate conversion case needed here
-    // the way ASK needed one above.
+    // the way `ask` needed one above.
     expect(
       validateDecision({ decision: "defer", reasoning: "r", defer_details: details }, { elapsedMs: 500, modificationDocument: ARGS })
         .decision,
@@ -390,7 +390,7 @@ describe("validateDecision — ASK and DEFER expiry", () => {
     });
   });
 
-  // DEFER's own boundary, pinned the same way as ASK's above.
+  // `defer`'s own boundary, pinned the same way as `ask`'s above.
   // resolution_timeout_ms: 50 -- below, exactly at, and just past.
   it("expires a defer strictly after its resolution_timeout_ms, not at or before it", () => {
     const deferDetails = { reason: "low_confidence", resolution_method: "timeout", resolution_timeout_ms: 50 };
@@ -461,7 +461,7 @@ describe("validateDecision — the result gate projects the applied document ont
     outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
   };
   /** The result payload the pointer below addresses -- what `modificationDocument`
-   * answers for a result envelope, and NOT an arguments bag. */
+   * answers for a result envelope, and not an arguments bag. */
   const RESULT_DOCUMENT = { tool: { name: "Bash" }, exit_status: "success", outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] };
   const REDACT = {
     decision: "modify",
@@ -477,7 +477,7 @@ describe("validateDecision — the result gate projects the applied document ont
     });
 
     expect(out.decision).toBe("modify");
-    // The whole object: a replacement carrying the redacted leaf ALONE is the
+    // The whole object: a replacement carrying the redacted leaf alone is the
     // shape the host silently discards, delivering the original.
     expect(out.applied_output).toEqual({
       stdout: "TOKEN=[REDACTED]",
@@ -485,7 +485,7 @@ describe("validateDecision — the result gate projects the applied document ont
       interrupted: false,
       isImage: false,
     });
-    // `applied_input` is the OTHER gate's field. A decision carries one or the
+    // `applied_input` is the other gate's field. A decision carries one or the
     // other, never both: an arguments bag is a tool input and a projected output
     // object is a tool result, and a host renders from the one its gate names.
     expect(out.applied_input).toBeUndefined();
@@ -499,7 +499,7 @@ describe("validateDecision — the result gate projects the applied document ont
 
   // The fail-closed case, and the reason `replacingOutput` compares types at
   // all: the host validates a replacement against the tool's own output schema
-  // and delivers the ORIGINAL when it does not match. Prose in place of a number
+  // and delivers the original when it does not match. Prose in place of a number
   // is exactly that mismatch, so writing it would withhold nothing and redact
   // nothing -- while the decision reported a rewrite.
   it("denies, rather than throwing, when the replacement is not a shape the host's own leaf admits", () => {
@@ -581,7 +581,7 @@ describe("validateDecision — the result gate projects the applied document ont
   // The path relation, checked on the segment arrays the patch is applied through
   // rather than inferred from their lengths. `buildEnvelope` checks the raw strings
   // and refuses this pair -- but `resolveByPosture` calls the projection on the
-  // stage-"request" path, where `buildEnvelope` FAILED and may have failed on
+  // stage-"request" path, where `buildEnvelope` failed and may have failed on
   // exactly this check, so the projection cannot borrow it.
   it("refuses a path pair where `within` is not a leading part of `from`", () => {
     const out = validateDecision(REDACT, {
@@ -599,7 +599,7 @@ describe("validateDecision — the result gate projects the applied document ont
   });
 
   // The reserved-segment guard, which is the third place in this codebase to need
-  // one. `$.tool_response.__proto__` resolves through INHERITED lookup, so it
+  // one. `$.tool_response.__proto__` resolves through inherited lookup, so it
   // satisfies every check both sides make, and `clone["__proto__"] = x` would set
   // a prototype instead of creating a field -- a clone identical to the payload,
   // and a decision reporting an applied rewrite that changed nothing. Refused by
@@ -681,12 +681,11 @@ describe("validateDecision — the result gate projects the applied document ont
   // rewrite this host can report. An over-refusal, deliberately, on the same
   // side as `assertOutputIsReplaceable`'s.
   //
-  // CAUGHT ONE SEAM EARLIER NOW (§V5): this redaction's own target
-  // (`/outputs/0/value`) is a no-op on the ACS document itself, so
-  // `applyModifications`'s post-condition (modifications.ts) refuses it before
-  // `projectAppliedOutput` -- and its own landing check, whose refusal this test
-  // used to pin -- is ever reached. The ruling this test demonstrates is
-  // unchanged; only which check states it is.
+  // This redaction's own target (`/outputs/0/value`) is a no-op on the ACS
+  // document itself, so `applyModifications`'s post-condition
+  // (modifications.ts) refuses it before `projectAppliedOutput` -- and its
+  // own landing check -- is ever reached. The ruling this test demonstrates
+  // is the same regardless of which check states it.
   it("denies a redaction that replaces the leaf with the value it already had", () => {
     const out = validateDecision(
       {
@@ -700,7 +699,7 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(out.decision).toBe("deny");
     expect(out.reason_codes).toContain("modifications_invalid");
     expect(out.applied_output).toBeUndefined();
-    // THE CLAUSE, not merely the disposition. This test is the only evidence for
+    // The clause, not merely the disposition. This test is the only evidence for
     // the second half of the refusal's sentence, and without this assertion that
     // half could be deleted with the whole suite still passing -- so the test
     // would pass for a reason other than the one its name claims.
@@ -711,7 +710,7 @@ describe("validateDecision — the result gate projects the applied document ont
   // The ancestor pointer, which is why this refusal asks whether the rewrite
   // reached the leaf rather than comparing the pointer against `/outputs/0/value`.
   // `parameter_overrides` replacing the whole `outputs` array is an ancestor of
-  // the leaf and genuinely LANDS -- a strict pointer comparison would refuse it,
+  // the leaf and genuinely lands -- a strict pointer comparison would refuse it,
   // and one admitting ancestors would then have to allow the identical-value
   // version below, which does not land. Only asking the value can do both.
   it("applies an ancestor override that reaches the leaf, and denies the one that does not change it", () => {
@@ -743,21 +742,22 @@ describe("validateDecision — the result gate projects the applied document ont
     expect(unchanged.reason_codes).toContain("modifications_invalid");
   });
 
-  // CLOSED BY V5, and the test says so. The landing check asks about one leaf,
-  // so a `modifications` object bundling a leaf edit with a non-leaf one used to
-  // pass: the leaf changed, the non-leaf edit was silently dropped, and the
-  // whole `modify` was reported applied. Each of these non-leaf edits ALONE is
-  // denied by the cases above -- it was the bundling that hid it.
+  // The landing check asks about one leaf, so a `modifications` object
+  // bundling a leaf edit with a non-leaf one is a hazard: without the bundle
+  // check below, the leaf would change, the non-leaf edit would be silently
+  // dropped, and the whole `modify` would be reported applied. Each of these
+  // non-leaf edits alone is denied by the cases above -- it is the bundling
+  // that would hide it.
   //
-  // `projectAppliedOutput`'s bundle check (result-output.ts, §V5) now catches
-  // every one of these: the leaf still lands, so the landing check above stays
-  // silent, but comparing both documents with that one leaf subtracted out finds
-  // the non-leaf edit every time. No secret ever reached the model here (the
-  // leaf redaction did land) -- what V4 recorded was a false audit and
-  // transcript record, a best-effort partial apply reported as a full one, and
-  // that is what closes now. `mapVerdict` emits exactly one redaction, so
-  // nothing in this deployment produces the shape either way; the test still
-  // pins the adapter's own behaviour rather than leaving it to that.
+  // `projectAppliedOutput`'s bundle check (result-output.ts) catches every
+  // one of these: the leaf still lands, so the landing check above stays
+  // silent, but comparing both documents with that one leaf subtracted out
+  // finds the non-leaf edit every time. No secret ever reaches the model
+  // here (the leaf redaction does land) -- what this closes is a false
+  // audit and transcript record, a best-effort partial apply reported as a
+  // full one. `mapVerdict` emits exactly one redaction, so nothing in this
+  // deployment produces the shape either way; the test still pins the
+  // adapter's own behaviour rather than leaving it to that.
   for (const modifications of [
     { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/exit_status" }] },
     {
@@ -767,7 +767,7 @@ describe("validateDecision — the result gate projects the applied document ont
     { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }, { path: "/tool/name" }] },
     { parameter_overrides: { outputs: [{ value: "TOKEN=[REDACTED]" }, { value: "nothing projects this" }] } },
   ]) {
-    it(`denies a bundle whose non-leaf half would have been dropped (closed by V5): ${JSON.stringify(modifications)}`, () => {
+    it(`denies a bundle whose non-leaf half would have been dropped: ${JSON.stringify(modifications)}`, () => {
       const out = validateDecision(
         { decision: "modify", reasoning: "redaction_applied", modifications },
         { ...FRESH, modificationDocument: RESULT_DOCUMENT, outputLocation: OUTPUT_TARGET },

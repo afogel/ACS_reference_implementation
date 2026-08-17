@@ -98,7 +98,7 @@ export function sessionConfigPath(dir: string, sessionId: string): string {
  * named for a validation it does not perform.
  *
  * Exported because `get()` is not the only place this question is asked:
- * `negotiateSessionConfig` asks it of the ServerHello BEFORE storing one, so a
+ * `negotiateSessionConfig` asks it of the ServerHello before storing one, so a
  * Guardian returning a malformed hello fails loudly at the handshake rather
  * than being written to disk and then rejected, unremarked, by every
  * subsequent `get()` -- which is a silent re-handshake on every hook,
@@ -136,7 +136,7 @@ export type CreateFileSessionConfigStoreOptions = {
  * situation the posture exists for -- which is why this is a local file and
  * not a lookup.
  *
- * `get` is TOTAL: a missing, unreadable, malformed, or partial file returns
+ * `get` is total: a missing, unreadable, malformed, or partial file returns
  * undefined, never throws. The caller resolves undefined to the ACS default
  * (`proceed`, audited). A throw here would kill the hook process and take
  * the decision with it -- the exact failure this store exists to prevent.

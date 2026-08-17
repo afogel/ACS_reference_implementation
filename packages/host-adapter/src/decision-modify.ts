@@ -50,13 +50,10 @@ import { projectAppliedOutput, type HostOutputLocation } from "./result-output.t
  * either. A `modify` whose `parameter_overrides` set an argument to the
  * value it already held, or whose redaction replaces one with itself,
  * applies cleanly and returns an `applied_input` identical to what went out
- * on the wire. Measured: `parameter_overrides: {command: "cat .env"}`
- * against `{command: "cat .env"}` returns `modify` with `applied_input
- * {"command":"cat .env"}` -- the policy said rewrite, nothing was rewritten,
- * the original command runs, and the audit trail says the decision was
- * honoured. That is this branch's own fail-open family, one gate over from
- * the result gate, where `projectAppliedOutput`'s landing check refuses the
- * same shape.
+ * on the wire: the policy said rewrite, nothing was rewritten, the original
+ * command runs, and the audit trail says the decision was honoured. That is
+ * this branch's own fail-open family, one gate over from the result gate,
+ * where `projectAppliedOutput`'s landing check refuses the same shape.
  *
  * This is not closed here, because the honest repair is bigger than the
  * hole. A leaf-shaped check has no analogue at this gate: a request payload

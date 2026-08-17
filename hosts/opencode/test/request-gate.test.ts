@@ -1,12 +1,12 @@
 /**
- * The request gate, end to end (S2, Task 5): `AcsPlugin`'s
- * `"tool.execute.before"` hook, against a LIVE Guardian -- exactly as
- * hosts/claude-code/test/hook.test.ts proves the wire contract for host #1,
- * not against a hand-copied shape. Everything below the plugin factory
- * itself -- `applyOpenCodeOutput` in isolation, the shipped hookmap's static
- * shape, `AcsPlugin`'s own load-time gate -- already has its own suite
- * (apply-opencode-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
- * the first one that calls the hook OpenCode itself would call.
+ * The request gate, end to end: `AcsPlugin`'s `"tool.execute.before"` hook,
+ * against a live Guardian -- exactly as hosts/claude-code/test/hook.test.ts
+ * proves the wire contract for the Claude Code host, not against a
+ * hand-copied shape. Everything below the plugin factory itself --
+ * `applyOpenCodeOutput` in isolation, the shipped hookmap's static shape,
+ * `AcsPlugin`'s own load-time gate -- already has its own suite
+ * (apply-opencode-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this
+ * is the first one that calls the hook OpenCode itself would call.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -38,19 +38,15 @@ import { applyOpenCodeOutput } from "../apply-opencode-output.ts";
 const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
 
 // "bash" (lowercase) -- OpenCode's own real tool name, measured on 1.18.15
-// and what opencode.hookmap.yaml's request gate now scopes `tools:` to
-// (§V5 review, Task 5, fix round 1, priority item). This suite used to test
-// against "Bash" (Claude Code's name, capitalised): that hid a slice-level
-// defect -- policy/manifest.yaml's fixed policy_target denies every tool it
-// has not registered, unconditionally, before any authored rule runs, and
-// "bash" was not registered -- because "Bash" happened to already be
-// registered for host #1's own suite. policy/manifest.yaml now registers
-// "bash" too (additive), so this suite exercises the name the host actually
-// sends.
+// and what opencode.hookmap.yaml's request gate scopes `tools:` to.
+// policy/manifest.yaml's fixed policy_target denies every tool it has not
+// registered, unconditionally, before any authored rule runs; it registers
+// both "bash" and "Bash" (Claude Code's own capitalised name), additive, so
+// this suite exercises the name the host actually sends.
 const TOOL = "bash";
 
-// V3's own precedent, matching hosts/claude-code/test/hook.test.ts's own
-// ACS_AUDIT_LOG redirect: every test below expects a real decision to
+// Matching hosts/claude-code/test/hook.test.ts's own ACS_AUDIT_LOG redirect:
+// every test below expects a real decision to
 // arrive, so nothing here should ever write an entry -- but a handshake
 // failure mid-run would append raw tool arguments (a destructive command,
 // among them) to the developer's own real `.acs/audit.jsonl`, the exact file
@@ -88,8 +84,8 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     ).resolves.toBeUndefined();
 
     // A clean allow renders no `args` field at all (only the declared-inert
-    // `reason.text`), so applyOpenCodeOutput's pass 3 merges nothing -- the live
-    // object is the SAME reference, untouched.
+    // `reason.text`), so applyOpenCodeOutput's pass 3 merges nothing -- the
+    // live object is the same reference, untouched.
     expect(output.args).toEqual({ command: "ls -la" });
     // No audit entry either: a decision arrived, so no fail-open posture was
     // ever consulted.
@@ -170,9 +166,9 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     expect(output.args.command).toBe("ls -la");
   });
 
-  it("skips a tool outside this gate's own tools list: no throw, args untouched, and no Guardian request goes out (§V5 review, Task 5, fix round 1, priority item)", async () => {
+  it("skips a tool outside this gate's own tools list: no throw, args untouched, and no Guardian request goes out", async () => {
     // "read" -- one of the real tool names measured alongside "bash" that
-    // opencode.hookmap.yaml's request gate does NOT list. Args shaped the
+    // opencode.hookmap.yaml's request gate does not list. Args shaped the
     // way OpenCode's own "read" tool call actually is (the coordinator's own
     // measurement): {filePath}, not {command} -- this gate is never asked to
     // resolve `$.args` for it at all, so the shape does not matter to the
@@ -182,7 +178,7 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
 
     // If the skip did not run before any envelope was built, a request would
     // go out over `fetch` (createGuardianClient's own wire primitive) --
-    // spied here, not mocked, so a call that DOES happen still reaches the
+    // spied here, not mocked, so a call that does happen still reaches the
     // real Guardian rather than hanging; the assertion below is on whether
     // it was called at all, not on what it returned.
     const fetchSpy = spyOn(globalThis, "fetch");
@@ -198,22 +194,12 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     }
   });
 
-  it("does not crash on a bare `tools:` key (YAML null) -- read as \"every tool\", not a TypeError (§V5 review, Task 5, fix round 2, Important 1)", async () => {
+  it("does not crash on a bare `tools:` key (YAML null) -- read as \"every tool\", not a TypeError", async () => {
     // `tools:` with nothing after it parses to YAML null -- present and
-    // unusable, not absent. Before the shim's own `?? undefined` fix, EVERY
-    // call through this gate threw `TypeError: null is not an object
-    // (evaluating 'tools.includes')`, naming neither the hookmap nor the
-    // field: assertToolsWellFormed (build-envelope.ts) normalised that key to
-    // "absent" for ITS OWN validation only, and the Hookmap object
-    // loadHookmap handed back still carried the raw `null` on this entry.
-    // NEITHER HALF OF THAT SENTENCE IS STILL TRUE, and this test outlived
-    // both: `loadHookmap` now returns a normalised hookmap with the key
-    // OMITTED (`normalizeTools`, §V5 review round 3, Task 1), and the shim
-    // function that carried the compensation is gone, replaced by the
-    // adapter's own `governsTool` (Task 2), which carries none. What this
-    // test still pins is the BEHAVIOUR both changes have to preserve -- a
-    // bare `tools:` means "every tool" -- through whichever of them is
-    // responsible for it next.
+    // unusable, not absent. `loadHookmap` normalises it to a hookmap with the
+    // key omitted (`normalizeTools`), and `governsTool` is what reads the
+    // result. What this test pins is the behaviour that normalisation has to
+    // preserve -- a bare `tools:` means "every tool".
     const hookmapPath = join(SCRATCH_DIR, "bare-tools.hookmap.yaml");
     writeFileSync(
       hookmapPath,
@@ -254,18 +240,15 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     }
   });
 
-  it("throws before asking the Guardian anything when `tool` is missing or not a string -- the same broken-deployment refusal `sessionID` gets, not a silent skip (§V5 review, Task 5, fix round 2, Important 2)", async () => {
-    // Before this fix, the gate's own `tools.includes(undefined)` read as
-    // `false` -- "not in this gate's tools list" -- and the hook returned
-    // cleanly: no throw, no fetch, no audit line. Measured against
-    // the PRIOR gate (before `tools` scoping existed at all): a malformed
-    // `tool` reached `buildEnvelope`, which throws, caught by `governStep`'s
-    // stage-"request" catch and answered by the negotiated posture --
-    // AUDITED regardless of which way the posture resolved. This asserts
-    // the fix restores an ungoverned-but-loud stop, closer to (loud stop
-    // beats silent proceed) rather than exactly reproducing the posture
-    // path -- no fetch at all, the same "broken deployment" shape
-    // `sessionID`'s own missing-value test already gets.
+  it("throws before asking the Guardian anything when `tool` is missing or not a string -- the same broken-deployment refusal `sessionID` gets, not a silent skip", async () => {
+    // A `tools.includes(undefined)` check alone would read as `false` --
+    // "not in this gate's tools list" -- and return cleanly: no throw, no
+    // fetch, no audit line. This asserts an ungoverned-but-loud stop instead
+    // -- no fetch at all, the same "broken deployment" shape `sessionID`'s
+    // own missing-value test already gets, rather than letting a malformed
+    // `tool` reach `buildEnvelope` (which throws, caught by `governStep`'s
+    // stage-"request" catch and answered by the negotiated posture, audited
+    // regardless of which way the posture resolves).
     const hooks = await AcsPlugin({} as never);
     const output = { args: { command: "ls -la" } };
 
@@ -288,23 +271,20 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
 });
 
 /**
- * THE REQUEST GATE'S OWN MEMBER OF THE CLASS §V5 review round 3, Task 5 closed
- * at the result gate (fix round 1, Important 2) -- a `modify` the hookmap gives
- * nowhere to land.
+ * The request gate's own member of the class closed at the result gate -- a
+ * `modify` the hookmap gives nowhere to land.
  *
- * Task 5's first round named this in a doc comment and explicitly did NOT claim
- * to have measured it ("NOT MEASURED AT THIS GATE, and not claimed as if it
- * were"). This is that measurement, and it is worse than the comment guessed:
- * the step is not merely ungoverned, it is recorded as governed. `governStep`
- * returns `stage: "honoured"` -- a decision arrived and was honoured -- while
- * the rewrite it carried landed nowhere.
+ * This measures it, and it is worse than a silent skip: the step is not
+ * merely ungoverned, it is recorded as governed. `governStep` returns
+ * `stage: "honoured"` -- a decision arrived and was honoured -- while the
+ * rewrite it carried landed nowhere.
  *
- * Routed around `AcsPlugin` for the same reason the result gate's own fail-open
- * block is (result-gate.test.ts): the fix is a load-time refusal, so a test
- * driven through the factory would stop measuring the hazard the moment the
- * gate lands. This calls `loadHookmap` -> `resolveSessionConfig` -> `governStep`
- * -> `applyOpenCodeOutput`, exactly what the hook calls, with the factory out of
- * the path.
+ * Routed around `AcsPlugin` for the same reason the result gate's own
+ * fail-open block is (result-gate.test.ts): the fix is a load-time refusal,
+ * so a test driven through the factory would stop measuring the hazard the
+ * moment the gate lands. This calls `loadHookmap` -> `resolveSessionConfig`
+ * -> `governStep` -> `applyOpenCodeOutput`, exactly what the hook calls, with
+ * the factory out of the path.
  */
 describe("a request-gate modify the hookmap gives no way to land -- the measured fail-open", () => {
   // The shipped request gate up to (but not including) its `modify` block --
@@ -333,7 +313,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     "        output:\n" +
     "          reason.text: { from: reasoning, type: string }\n";
 
-  it("renders nothing, applies nothing, and is audited as HONOURED while the secret survives in live.args", async () => {
+  it("renders nothing, applies nothing, and is audited as honoured while the secret survives in live.args", async () => {
     const hookmapPath = join(SCRATCH_DIR, "request-modify-without-a-sink.yaml");
     writeFileSync(hookmapPath, MODIFY_WITHOUT_A_SINK);
     // Loads clean: `assertRenderableDecisions` requires only a non-empty
@@ -360,9 +340,9 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
-      // What `runExchange` passes: the tool this exchange already scoped on
-      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
-      // gate that declares a list refuses a caller that names no tool.
+      // What `runExchange` passes: the tool this exchange already scoped on.
+      // These fixtures declare `tools: [bash]`, and a gate that declares a
+      // list refuses a caller that names no tool.
       scopedTool: TOOL,
     });
 
@@ -372,13 +352,13 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       command: "echo [REDACTED]",
     });
 
-    // THE PART THAT MAKES THIS WORSE THAN SILENT. `stage: "honoured"` is what
-    // an audit entry for this step would record -- a decision that arrived and
-    // was honoured -- and nothing was applied. The audit trail is not merely
-    // missing the fault; it asserts the opposite of it.
+    // The part that makes this worse than silent: `stage: "honoured"` is what
+    // an audit entry for this step would record -- a decision that arrived
+    // and was honoured -- and nothing was applied. The audit trail is not
+    // merely missing the fault; it asserts the opposite of it.
     expect(governed.stage).toBe("honoured");
 
-    // LITERALLY `{}`: this modify carries no `reasoning`, so `reason.text`
+    // Literally `{}`: this modify carries no `reasoning`, so `reason.text`
     // renders nothing either, and no other field is declared.
     expect(governed.output).toEqual({});
 
@@ -414,9 +394,9 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
-      // What `runExchange` passes: the tool this exchange already scoped on
-      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
-      // gate that declares a list refuses a caller that names no tool.
+      // What `runExchange` passes: the tool this exchange already scoped on.
+      // These fixtures declare `tools: [bash]`, and a gate that declares a
+      // list refuses a caller that names no tool.
       scopedTool: TOOL,
     });
     expect(governed.decision?.decision).toBe("modify");
@@ -429,9 +409,9 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     return { output: governed.output as Record<string, unknown>, args, threw };
   }
 
-  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- the request gate's own
-  // copies of the two shapes `declaresSinkFrom` accepted while checking only
-  // what the sink NAMED, never whether the field could RENDER.
+  // The request gate's own copies of the two shapes `declaresSinkFrom`
+  // accepts while checking only what the sink is named, never whether the
+  // field can actually render.
   it("modify declaring args with type: string renders {} -- applied_input is an object, so the type filter drops it", async () => {
     const { output, args, threw } = await modifyThrough(
       "      modify:\n" + "        output:\n" + "          args: { from: applied_input, type: string }\n",
@@ -461,19 +441,18 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(args.command).not.toBe("echo [REDACTED]");
   });
 
-  // THE OTHER DIRECTION (§V5 review round 3, Task 5, fix round 2, Minor): a
-  // `modify` an author chose to map to a refusal instead of a rewrite. Blocking
-  // the tool is strictly MORE conservative than rewriting its arguments -- the
-  // command never runs at all -- and it is the shipped hookmap's own idiom for
-  // `ask`/`defer` at this gate. Not a silent no-op, so not this gate's to
-  // refuse.
-  // §V5 review round 3, Task 5, FIX ROUND 4, CRITICAL 7B -- the request gate's
-  // own table entry is WRONG whenever the entry declares `outputs:` instead of
-  // `arguments:`. `governStep` builds its output location off the ENTRY'S
-  // SHAPE, so a request hook declaring `outputs:` gets one -- and `resolveModify`
-  // (decision-modify.ts) then fills `applied_output` instead of `applied_input`.
-  // The sink this gate demands (`args: { from: applied_input }`) is correct,
-  // declared, and unfillable.
+  // A `modify` an author chose to map to a refusal instead of a rewrite.
+  // Blocking the tool is strictly more conservative than rewriting its
+  // arguments -- the command never runs at all -- and it is the shipped
+  // hookmap's own idiom for `ask`/`defer` at this gate. Not a silent no-op,
+  // so not this gate's to refuse.
+  //
+  // The request gate's own table entry is wrong whenever the entry declares
+  // `outputs:` instead of `arguments:`. `governStep` builds its output
+  // location off the entry's shape, so a request hook declaring `outputs:`
+  // gets one -- and `resolveModify` (decision-modify.ts) then fills
+  // `applied_output` instead of `applied_input`. The sink this gate demands
+  // (`args: { from: applied_input }`) is correct, declared, and unfillable.
   it("a request hook declaring outputs: gets applied_output, not applied_input -- the mandated args sink renders nothing", async () => {
     const hookmapPath = join(SCRATCH_DIR, "request-hook-with-outputs.yaml");
     writeFileSync(
@@ -515,9 +494,9 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       session,
       sessionId: sessionID,
       audit: NULL_AUDIT_SINK,
-      // What `runExchange` passes: the tool this exchange already scoped on
-      // (§V5 review round 4). These fixtures declare `tools: [bash]`, and a
-      // gate that declares a list refuses a caller that names no tool.
+      // What `runExchange` passes: the tool this exchange already scoped on.
+      // These fixtures declare `tools: [bash]`, and a gate that declares a
+      // list refuses a caller that names no tool.
       scopedTool: TOOL,
     });
 
@@ -534,19 +513,10 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(args.command).toBe("echo ghp_ABCDEF123456");
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 4 -- NOT on the directed list.
-  // Originally: the shim asked `governsTool(hookmap, hook, input.tool)` while
-  // `governStep` asked the same function with whatever this entry's
-  // `tool_name` path resolved to, and this test measured what that divergence
-  // cost -- `stage: "ungoverned"`, no Guardian request, no audit entry, `rm
-  // -rf /` through.
-  //
-  // §V5 REVIEW ROUND 4 CLOSED THAT IN THE ADAPTER, and this test now measures
-  // what the same hookmap costs INSTEAD, which is why it is still here.
-  // `runExchange` tells `governStep` the tool it scoped on, so the step is
-  // governed -- and the envelope that goes out names the COMMAND as the tool,
-  // because `tool_name` is what `buildEnvelope` reads for the wire. That is a
-  // wrong question asked, not a question skipped, and it is what
+  // The adapter tells `governStep` the tool `runExchange` scoped on, so the
+  // step is governed -- and the envelope that goes out names the command as
+  // the tool, because `tool_name` is what `buildEnvelope` reads for the wire.
+  // That is a wrong question asked, not a question skipped, and it is what
   // `assertEntryMatchesGate` still refuses at load time (acs-plugin.test.ts's
   // own gate for this hookmap).
   it("a tool_name path pointing away from $.tool no longer skips the step -- it asks the Guardian about the command", async () => {
@@ -580,17 +550,17 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
 
     const payload = { tool: TOOL, session_id: sessionID, callID: "c1", args };
 
-    // The shim's own early check says this tool IS governed -- it passes
+    // The shim's own early check says this tool is governed -- it passes
     // `input.tool`, which the `tools` list names -- and it is now the value
     // `governStep` is told, so there is no second answer for it to disagree
     // with.
     expect(governsTool(hookmap, "tool.execute.before", TOOL)).toBe(true);
 
-    // WHAT THIS HOOKMAP STILL COSTS, and the reason the load gate that refuses
-    // it is not now redundant: `tool_name` is what names the tool ON THE WIRE,
-    // so the policy runtime is asked about a "tool" called `rm -rf /` -- one
-    // this deployment never registered -- while the tool that actually runs is
-    // never named to it.
+    // What this hookmap still costs, and the reason the load gate that
+    // refuses it is not redundant: `tool_name` is what names the tool on the
+    // wire, so the policy runtime is asked about a "tool" called `rm -rf /`
+    // -- one this deployment never registered -- while the tool that
+    // actually runs is never named to it.
     const envelope = buildEnvelope("tool.execute.before", payload, hookmap) as {
       params: { payload: { tool: { name: string } } };
     };
@@ -608,27 +578,25 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       scopedTool: TOOL,
     });
 
-    // GOVERNED, not skipped: a real decision arrived from the real Guardian
-    // for this step. The silent, unaudited `stage: "ungoverned"` this test
-    // used to pin is gone.
+    // Governed, not skipped: a real decision arrived from the real Guardian
+    // for this step.
     expect(governed.stage).toBe("honoured");
 
-    // AND WHAT THE DECISION IS, not merely that one arrived (§V5 review round
-    // 4, fix round 1, Important 3). Several comments in this tree say the
-    // residual here is OVER-BLOCKING rather than a bypass, and the only thing
-    // making that true is what the shipped policy/manifest.yaml answers for a
-    // tool it never registered. Left as "a decision arrived", a later
-    // permissive default would turn this envelope into an `allow`, this test
-    // would stay green, and every one of those claims would silently become
-    // false.
+    // What the decision is, not merely that one arrived: several comments in
+    // this tree say the residual here is over-blocking rather than a bypass,
+    // and the only thing making that true is what the shipped
+    // policy/manifest.yaml answers for a tool it never registered. Left as "a
+    // decision arrived", a later permissive default would turn this envelope
+    // into an `allow`, this test would stay green, and every one of those
+    // claims would silently become false.
     //
-    // THE REASON CODE IS THE HALF THAT SAYS WHY IT IS OVER-BLOCKING AND NOT
-    // GOVERNANCE: `runtime_error:tool_unknown`, from `agt_stock`. The name on
-    // the wire is the COMMAND, so this deny is the tool registry refusing a
-    // tool it does not know -- this deployment's own `rm -rf /` rule was never
-    // consulted, because the envelope never said `bash`. A plain
+    // The reason code is the half that says why it is over-blocking and not
+    // governance: `runtime_error:tool_unknown`, from `agt_stock`. The name on
+    // the wire is the command, so this deny is the tool registry refusing a
+    // tool it does not know -- this deployment's own `rm -rf /` rule was
+    // never consulted, because the envelope never said `bash`. A plain
     // `toBe("deny")` would also pass if the authored rule had answered, which
-    // is the outcome this hookmap does NOT produce and must not be read as
+    // is the outcome this hookmap does not produce and must not be read as
     // producing.
     expect({
       decision: governed.decision?.decision,
@@ -636,18 +604,17 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     }).toEqual({ decision: "deny", reasonCodes: ["runtime_error:tool_unknown"] });
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 4, IMPORTANT 7A -- a DECLARED
-  // decision name the tables do not know is silently unchecked, because
-  // `assertDecisionsCanAct` iterates the TABLE and not the hookmap's own
-  // declared decisions. `expectationFor` throws on an unknown HOOK; the
-  // identical skip one level down was silent.
+  // A declared decision name the tables do not know is silently unchecked,
+  // because `assertDecisionsCanAct` iterates the table and not the
+  // hookmap's own declared decisions. `expectationFor` throws on an unknown
+  // hook; the identical skip one level down stays silent.
   //
-  // Needs a non-conformant Guardian to reach at runtime, which is why it ranks
-  // below the others -- but declaring the inert entry is strictly WORSE than
-  // not declaring it: without the entry `renderDecision` throws, `governStep`
-  // catches it, and the posture answers it, audited. With it, nothing happens
-  // and nothing is recorded. Constructed decision, same reason as the
-  // `ask`/`defer` cases in result-gate.test.ts.
+  // Needs a non-conformant Guardian to reach at runtime, which is why it
+  // ranks below the others -- but declaring the inert entry is strictly
+  // worse than not declaring it: without the entry `renderDecision` throws,
+  // `governStep` catches it, and the posture answers it, audited. With it,
+  // nothing happens and nothing is recorded. Constructed decision, same
+  // reason as the `ask`/`defer` cases in result-gate.test.ts.
   it("a declared decision name the gate's tables do not know renders an inert reason and applies nothing", () => {
     const hookmapPath = join(SCRATCH_DIR, "request-unknown-decision.yaml");
     writeFileSync(
@@ -681,7 +648,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(() => applyOpenCodeOutput(rendered, { gate: "request", args })).not.toThrow();
     expect(args.command).toBe("rm -rf /");
 
-    // WITHOUT the inert entry the same decision fails loudly instead -- which
+    // Without the inert entry the same decision fails loudly instead -- which
     // is what makes declaring it strictly worse than leaving it out.
     const withoutPath = join(SCRATCH_DIR, "request-no-unknown-decision.yaml");
     writeFileSync(
@@ -709,7 +676,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     ).toThrow(/no decisions entry for ACS decision "block"/);
   });
 
-  it("a request-gate modify mapped to an unconditional refusal THROWS before the tool runs, and applies nothing", async () => {
+  it("a request-gate modify mapped to an unconditional refusal throws before the tool runs, and applies nothing", async () => {
     const { output, args, threw } = await modifyThrough(
       "      modify:\n" +
         "        output:\n" +

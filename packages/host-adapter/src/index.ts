@@ -36,23 +36,18 @@ export { renderDecision, type HostOutput } from "./render-decision.ts";
 export { type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 export {
   governStep,
-  // The `tools` rule itself, exported because BOTH sides of it are real: a
+  // The `tools` rule itself, exported because both sides of it are real: a
   // shim asks it before it validates a session id or negotiates a session
   // config, so an out-of-scope tool costs neither; `governStep` asks it again,
-  // about the tool the shim TELLS it (`GovernStepInput.scopedTool`), so the
+  // about the tool the shim tells it (`GovernStepInput.scopedTool`), so the
   // two are one question about one value. One implementation, two call sites
   // -- see governsTool's own doc comment for why that is not one call site
   // too many.
   //
-  // "SO A SHIM THAT NEVER ASKED STILL SKIPS" IS RETIRED, and it was the first
-  // thing a third-host author read (§V5 review round 4, whole-branch review,
-  // Important 4). A shim that never asks AND never tells does not skip at a
-  // gate declaring `tools`: `governStep` refuses that call outright, because
-  // it has no way to know which tool the step is. Measured on host #1, the
-  // shim that does neither -- a `tools` list added to either of its gates is
-  // exit 2 on every call at that gate, not a skip. What a forgetful shim still
-  // gets is the skip for a tool it TOLD and the list does not name; what it
-  // gets for telling nothing is a loud stop.
+  // A shim that never tells `governStep` which tool a step is does not skip
+  // silently at a gate declaring `tools`: `governStep` refuses that call
+  // outright, because it has no way to know which tool the step is. A
+  // forgetful shim gets a loud stop rather than an unaudited skip.
   governsTool,
   type DecisionStage,
   type GovernStepInput,
@@ -130,7 +125,5 @@ export { validateDecision, type ValidateDecisionContext } from "./validate-decis
 // today; any later host tomorrow) imports these rather than keeping its own
 // module-private copy. `isReservedSegment` is a predicate, not the
 // underlying Set -- see reserved-segments.ts's own header for why the Set
-// itself stays module-private (§V5 review round 3, Task 3, fix round 1,
-// Minor 1) and for the duplication this retires and the two-job distinction
-// it does not.
+// itself stays module-private.
 export { isReservedSegment, findReservedKey } from "./reserved-segments.ts";

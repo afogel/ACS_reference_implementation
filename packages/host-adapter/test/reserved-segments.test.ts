@@ -3,8 +3,7 @@
  * in isolation, before either is exercised through a caller
  * (`modifications.ts`'s redaction/override checks, or a host applier's
  * rendered-value walk). See that module's own header for the duplication
- * this file's subjects retire and the two-job distinction that stays split
- * (§V5 review round 3, Task 3).
+ * this file's subjects retire and the two-job distinction that stays split.
  */
 import { describe, expect, it } from "bun:test";
 import { findReservedKey, isReservedSegment } from "../src/reserved-segments.ts";
@@ -18,7 +17,7 @@ describe("isReservedSegment", () => {
 
   it("is false for an ordinary field name, including ones a bare property read would resolve on any object", () => {
     // "toString"/"hasOwnProperty" resolve through the prototype chain on
-    // ANY plain object, exactly like the three reserved names do -- but
+    // any plain object, exactly like the three reserved names do -- but
     // unlike them, assigning to one doesn't repoint anything; it just
     // shadows an inherited method with an ordinary own property. Not
     // reserved, and this module doesn't claim it is.

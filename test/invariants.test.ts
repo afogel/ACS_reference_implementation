@@ -5,14 +5,14 @@ import {
   type AcsDecision,
   type HostOutputLocation,
 } from "host-adapter";
-// DEEP IMPORT, deliberately: `resolveModify` is not on the adapter's public
+// A deliberate deep import: `resolveModify` is not on the adapter's public
 // barrel and should not be -- that barrel is documented as "the whole contract
 // a shim relies on", and no shim relies on this. But the gate below is about
-// what `resolveModify` actually DOES, so re-implementing its branch inline
-// (which an earlier version of this gate did) made the assertion a tautology
-// for the one decision it most needed to cover. Same test-only precedent
-// test/redaction.test.ts and test/envelope-log-sink-roundtrip.test.ts already
-// set for reaching past a package's barrel.
+// what `resolveModify` actually does, and re-implementing its branch inline
+// instead would make the assertion a tautology for the one decision it most
+// needed to cover. Same test-only precedent test/redaction.test.ts and
+// test/envelope-log-sink-roundtrip.test.ts already set for reaching past a
+// package's barrel.
 import { resolveModify } from "../packages/host-adapter/src/decision-modify.ts";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -71,16 +71,15 @@ function readSourceFiles(dir: string): { file: string; code: string }[] {
 
 /**
  * Escapes regex metacharacters in `term`, so `assertNoVocabulary`'s "whole
- * word" claim holds LITERALLY, not just for terms with no special
- * characters. `tool.execute` was the first term this list gained with one
- * (§V5 review, fix round 1, Minor 1): unescaped, `\btool.execute\b`'s `.`
- * matches ANY character, so it would also match `tool_execute`,
- * `tool execute`, `toolXexecute` -- over-matching that happened to be safe
- * (nothing in this codebase writes any of those), but a future term with
- * `[`, `(`, or `$` would either throw building the `RegExp` or silently mean
- * something other than what its author wrote. The doc above says "whole
- * word", not "regex fragment", so the code is made to agree with the doc
- * rather than the other way around.
+ * word" claim holds literally, not just for terms with no special
+ * characters. `tool.execute` is the term that makes this matter: unescaped,
+ * `\btool.execute\b`'s `.` matches any character, so it would also match
+ * `tool_execute`, `tool execute`, `toolXexecute` -- over-matching that
+ * happens to be safe today (nothing in this codebase writes any of those),
+ * but a future term with `[`, `(`, or `$` would either throw building the
+ * `RegExp` or silently mean something other than what its author wrote. The
+ * doc above says "whole word", not "regex fragment", so the code is made to
+ * agree with the doc rather than the other way around.
  */
 function escapeRegExp(term: string): string {
   return term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -113,10 +112,10 @@ describe("architectural invariants", () => {
    * vocabulary into its own code.
    *
    * Scope, deliberately: packages/host-adapter/src only.
-   *   - hosts/claude-code/ is NOT scanned here. A host shim is
+   *   - hosts/claude-code/ is not scanned here. A host shim is
    *     host-specific by definition, and its own doc comment is allowed
    *     to name AGT in prose (acs-hook.ts's header does, explaining what
-   *     it must NOT import). The invariant that actually matters for that
+   *     it must not import). The invariant that actually matters for that
    *     file is an import-graph one ("never imports agt-bridge or
    *     guardian's server-side pieces"), not "never mentions the word" --
    *     a different claim this suite doesn't make for host shims.
@@ -140,7 +139,7 @@ describe("architectural invariants", () => {
 
   /**
    * The other half of that boundary: the adapter is promised to a second
-   * host *unchanged*, so it must not name the FIRST host's output fields
+   * host *unchanged*, so it must not name the first host's output fields
    * either. Declaring Claude Code's wire shape here -- a mandatory
    * `permissionDecision`, a returned `{ hookSpecificOutput }` -- would make
    * one host's vocabulary the shared module's public API, and a second host
@@ -150,32 +149,31 @@ describe("architectural invariants", () => {
    * one as data in claude-code.hookmap.yaml's output paths, and the remaining
    * one -- the wrapper -- in acs-hook.ts, which is what wraps, and in the
    * hookmap as the dotted prefix those paths sit under. Stated by relation
-   * rather than by count on purpose: this is the gate whose job is catching
-   * stale declarations, and it carried one ("all four names") from the moment
-   * V4 added a fifth. Same scope note as the gate above -- non-test `.ts`
-   * under packages/host-adapter/src only, with comments stripped, so a doc
-   * comment may still explain the boundary it must not cross in code.
+   * rather than by count on purpose: a fixed count is exactly the kind of
+   * claim that goes stale the moment a name is added. Same scope note as the
+   * gate above -- non-test `.ts` under packages/host-adapter/src only, with
+   * comments stripped, so a doc comment may still explain the boundary it
+   * must not cross in code.
    */
   it("the host adapter's source names no host output field", () => {
     assertNoVocabulary("packages/host-adapter/src", [
       "permissionDecision",
       "permissionDecisionReason",
       "updatedInput",
-      // V4's own field, and the one this list would have been weakest without:
-      // the result gate is where the adapter now builds a replacement for a
-      // host's tool output, so `updatedToolOutput` is the name it would be most
-      // natural to reach for -- and a gate that listed the four fields the
-      // request gate uses while omitting the one the new code is about would
-      // look like coverage while quietly losing it. It lives in
-      // claude-code.hookmap.yaml as data and in acs-hook.ts as a checked path,
-      // and nowhere else.
+      // The field this list would have been weakest without: the result gate
+      // is where the adapter builds a replacement for a host's tool output,
+      // so `updatedToolOutput` is the name it would be most natural to reach
+      // for -- and a gate that listed only the four fields the request gate
+      // uses while omitting this one would look like coverage while quietly
+      // losing it. It lives in claude-code.hookmap.yaml as data and in
+      // acs-hook.ts as a checked path, and nowhere else.
       "updatedToolOutput",
       "hookSpecificOutput",
-      // V5 (slice #6, host #2), §V5 review fix round 1, Minor 4: the same gap
-      // this list closed for V4's `updatedToolOutput` -- host #2's own deny
-      // channel, `refuse.reason` in opencode.hookmap.yaml, is a field name this
-      // adapter must stay just as ignorant of as host #1's. It lives in that
-      // hookmap as data and nowhere in packages/host-adapter/src.
+      // The same gap this list closes for `updatedToolOutput` -- opencode's
+      // own deny channel, `refuse.reason` in opencode.hookmap.yaml, is a
+      // field name this adapter must stay just as ignorant of as Claude
+      // Code's. It lives in that hookmap as data and nowhere in
+      // packages/host-adapter/src.
       "refuse",
     ]);
   });
@@ -211,13 +209,13 @@ describe("architectural invariants", () => {
       "intervention_point",
       "verdict",
       // The three AGT verdict names. Listing the word "verdict" without the
-      // verdicts themselves is not enough: it let a badge reading
-      // `ALLOW (policy fired -- ACS "warn")` pass with a green suite. ACS has
-      // no `warn` disposition, so that string taught a reader AGT's
-      // vocabulary from an ACS-first tool -- exactly the leak this gate
-      // exists to prevent.
+      // verdicts themselves is not enough: a badge could read
+      // `ALLOW (policy fired -- ACS "warn")` and still pass this gate. ACS
+      // has no `warn` disposition, so that string would teach a reader
+      // AGT's vocabulary from an ACS-first tool -- exactly the leak this
+      // gate exists to prevent.
       //
-      // `allow`/`deny`/`ask`/`modify`/`defer` are deliberately NOT here --
+      // `allow`/`deny`/`ask`/`modify`/`defer` are deliberately not here --
       // they are ACS's own dispositions and the Inspector must name them.
       // These three are AGT's alone.
       "warn",
@@ -315,34 +313,25 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R3.2, continued -- the seventh gate, and V5's own: the first gate above
-   * catches host #1's (Claude Code's) wire vocabulary leaking into the shared
-   * adapter; this one catches host #2's (OpenCode's). Placed last rather than
-   * beside the gate it parallels, so the sixth gate stays V3's and this stays
-   * countable as "the seventh" without renumbering anything above it --
-   * README.md's "Status" section names both the total count ("Seven ... of
-   * this project's architectural claims are enforced by
-   * test/invariants.test.ts") and V3's own ordinal ("The sixth of the gates
-   * counted above is V3's"), in two different paragraphs. Section-referenced
-   * rather than by line number deliberately: this comment already went stale
-   * once, when an unrelated paragraph added above both of them shifted their
-   * line numbers, and inserting a new gate in the middle of this describe
-   * block is exactly how a stale ORDINAL gets written (see V4's own fifth
-   * name, gate 2's comment above) -- the same failure mode, twice over, is
-   * worth not inviting a third time by citing a line number here too.
+   * This package knows ACS and hookmaps, nothing else -- the first gate above
+   * catches Claude Code's wire vocabulary leaking into the shared adapter;
+   * this one catches OpenCode's. New gates are added at the end of this
+   * describe block, not inserted between existing ones, because README.md's
+   * own "Status" section refers to gates by count and by ordinal --
+   * inserting one in the middle would silently make those references wrong.
    *
-   * `attachments` is the term this slice could most plausibly get wrong: it
-   * is the field OpenCode's result payload carries at runtime and does not
-   * declare in its own published type (hosts/opencode/acs-plugin.ts,
-   * "measured" against 1.18.15's type -- the same gap `outputs.mirrors` exists
-   * to let a hookmap declare instead of the adapter hard-coding), so a
-   * shortcut in result-output.ts naming it explicitly -- rather than treating
-   * it as an opaque sibling the clone-and-patch approach never has to read by
-   * name -- is the mistake this gate exists to catch. `tool.execute` (the hook
-   * name OpenCode's own runtime dispatches on) and `callID` (its per-call
-   * identifier) sit beside it for the same reason.
+   * `attachments` is the term this list catches: it is the field OpenCode's
+   * result payload carries at runtime and does not declare in its own
+   * published type (hosts/opencode/acs-plugin.ts, checked against 1.18.15's
+   * type -- the same gap `outputs.mirrors` exists to let a hookmap declare
+   * instead of the adapter hard-coding), so a shortcut in result-output.ts
+   * naming it explicitly -- rather than treating it as an opaque sibling the
+   * clone-and-patch approach never has to read by name -- is the mistake
+   * this gate exists to catch. `tool.execute` (the hook name OpenCode's own
+   * runtime dispatches on) and `callID` (its per-call identifier) sit beside
+   * it for the same reason.
    *
-   * Two more OpenCode-shaped terms are deliberately NOT in this list, and the
+   * Two more OpenCode-shaped terms are deliberately not in this list, and the
    * reason is the gate's own validity, same as the exclusions on the gate
    * above:
    *
@@ -351,47 +340,36 @@ describe("architectural invariants", () => {
    *     would fail on day one, for a term that names ACS's vocabulary, not
    *     OpenCode's.
    *   - `metadata` appears in build-envelope.ts and handshake.ts as the ACS
-   *     envelope's OWN `metadata` block -- the exact same collision.
+   *     envelope's own `metadata` block -- the exact same collision.
    *
    * Listing either would produce a gate that fails for the wrong reason, and
    * "loosen the gate until it passes" is how a gate stops meaning anything.
-   * What protects R3.2 for those two is that they are ACS vocabulary the
-   * adapter is *supposed* to speak, not a gate.
+   * What protects the adapter's isolation for those two is that they are ACS
+   * vocabulary the adapter is *supposed* to speak, not a gate.
    */
   it("the adapter names no OpenCode field", () => {
     assertNoVocabulary("packages/host-adapter/src", ["tool.execute", "callID", "attachments"]);
   });
 
   /**
-   * The eighth gate, V5's second -- §V5 review, Task 8, fix round 1,
-   * Important 1. Placed last for the same reason the seventh gate is: so
-   * neither this comment nor that one goes stale by renumbering when a
-   * ninth gate is eventually appended.
+   * Placed last for the same reason the previous gate is: so this comment
+   * does not go stale by renumbering when another gate is appended.
    *
-   * `acs-plugin.ts` used to export a second symbol, `applyOpenCodeOutput`
-   * (named `applyHostOutput` at the time this gate was added, renamed in
-   * §V5 review round 3, Task 4 -- the mechanism this gate pins is unchanged
-   * by that rename), for no reason but its own unit test's convenience
-   * (`hosts/opencode/test/apply-opencode-output.test.ts` imported it directly,
-   * to test it against plain objects rather than a live OpenCode session).
-   * Measured: OpenCode's plugin loader hands EVERY exported function of a
-   * plugin module its own registration context -- a live `client`,
-   * `directory`, `worktree`, and `$` (its shell executor) -- and calls each
-   * one as a candidate plugin factory, not only the export shaped like
-   * `Plugin`. `applyOpenCodeOutput` happened to be the safest possible
-   * accident: its own pass-1 validation
-   * rejected the context object's first key (`"client"`) before touching
-   * anything, so the mis-invocation surfaced as a caught, non-fatal `ERROR`
-   * log line and `AcsPlugin` itself still registered. But the SAME mechanism
-   * is not always safe -- measured, same review: a single **non-function**
-   * export placed beside a working factory produces `error="Plugin export is
-   * not a function"`, and the factory is **never called at all**. One
-   * exported constant would silently disable governance for the whole
-   * session, and nothing in this suite -- or in OpenCode's own log line,
-   * which is byte-identical in shape whether the fault is harmless or total
-   * -- would say so.
+   * `acs-plugin.ts` must export exactly one symbol, because OpenCode's
+   * plugin loader hands every exported function of a plugin module its own
+   * registration context -- a live `client`, `directory`, `worktree`, and
+   * `$` (its shell executor) -- and calls each one as a candidate plugin
+   * factory, not only the export shaped like `Plugin`. A second export is a
+   * hazard whose severity depends on its shape: a function export that fails
+   * its own validation on the first argument surfaces as a caught, non-fatal
+   * `error` log line while `AcsPlugin` itself still registers -- but a
+   * non-function export produces `error="Plugin export is not a function"`,
+   * and the factory is never called at all. A single exported constant would
+   * silently disable governance for the whole session, and nothing in
+   * OpenCode's own log line -- byte-identical in shape whether the fault is
+   * harmless or total -- would say so.
    *
-   * `applyOpenCodeOutput` now lives in its own module (`apply-opencode-output.ts`,
+   * `applyOpenCodeOutput` lives in its own module (`apply-opencode-output.ts`,
    * imported into `acs-plugin.ts`, tested directly by
    * `apply-opencode-output.test.ts`) specifically so `acs-plugin.ts` has exactly
    * one export for OpenCode's loader to find. This gate is what keeps that
@@ -406,119 +384,51 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * §V5 review round 3, Task 2, fix round 1, Critical 1 -- the gate that turns
-   * "unreachable by accident" into "unreachable by construction".
+   * This is the gate that turns "unreachable by accident" into "unreachable
+   * by construction".
    *
-   * WHY THIS GATE EXISTS (round 3). Task 2 made `governStep` honour a hookmap
-   * entry's `tools` list itself, so a step a gate does not govern comes back
-   * carrying an EMPTY rendered output -- a clean no-op on host #2's applier,
-   * and NOT a no-op at host #1's PreToolUse, where `emptyOutputIsHonest` is
-   * `false` because an absent `hookSpecificOutput` wrapper is an absence
-   * rather than an answer. That shim's `asClaudeCodeOutput` throws on one and
-   * `main().catch` exits 2, so an unlisted tool became a blocking stop.
-   *
-   * THE ROUND-3 CAPTURES THAT USED TO SIT HERE ARE GONE, NOT MOVED, AND THE
-   * REASON MATTERS MORE THAN THE NUMBERS (§V5 review round 4, fix round 2).
-   * They recorded `tools: [Bash]` at PreToolUse invoked for `Read` as exit 2
-   * with that applier's own stderr, and the same list at PostToolUse invoked
-   * for `Read` as `exit 0, {"hookSpecificOutput":{"hookEventName":
-   * "PostToolUse"}}, no audit entry -- the skip that was intended`. Both were
-   * true when measured. Round 4 gave `governStep` a refusal that fires BEFORE
-   * any render, so neither is reproducible, and the second one now reads as
-   * the opposite of what happens.
-   *
-   * RE-MEASURED, this tree, real shim as a subprocess against a live Guardian.
-   * Three hookmap configurations x both gates x both tools. Every payload
-   * carries the SAME `tool_response` shape, so only the tool NAME varies
-   * within a gate and no exit code can be blamed on an unbuildable envelope:
-   *
-   *     hookmap config                  invoked            exit
-   *     ------------------------------  -----------------  ----
-   *     baseline (no `tools` anywhere)   PreToolUse/Bash    0
-   *     baseline                         PreToolUse/Read    0
-   *     baseline                         PostToolUse/Bash   0
-   *     baseline                         PostToolUse/Read   0
-   *     `tools: [Bash]` at PostToolUse   PreToolUse/Bash    0   <- control
-   *     `tools: [Bash]` at PostToolUse   PreToolUse/Read    0   <- control
-   *     `tools: [Bash]` at PostToolUse   PostToolUse/Bash   2
-   *     `tools: [Bash]` at PostToolUse   PostToolUse/Read   2
-   *     `tools: [Bash]` at PreToolUse    PreToolUse/Bash    2
-   *     `tools: [Bash]` at PreToolUse    PreToolUse/Read    2
-   *     `tools: [Bash]` at PreToolUse    PostToolUse/Bash   0   <- control
-   *     `tools: [Bash]` at PreToolUse    PostToolUse/Read   0   <- control
-   *
-   * Every exit-2 row carries the same stderr, and it is `governStep`'s, not
-   * the applier's:
-   *
-   *     governStep: hookmap entry for hook "<gate>" declares a "tools" list,
-   *     so this gate governs some tools and not others -- and this call named
-   *     no scoped tool (scopedTool is undefined). [...]
-   *
-   * READ THREE THINGS OFF THAT TABLE. (1) `tools` at PostToolUse is exit 2,
-   * where the old capture said exit 0 -- for `Read`, which the list does not
-   * name, AND for `Bash`, which it does. (2) The blast radius is the GATE that
-   * declares the list, not the tool: the control rows show the other gate
-   * untouched in both directions, so nothing but that one line causes it.
-   * (3) The applier fault the round-3 captures recorded is now UNREACHABLE
-   * through a `tools` list on this host, because the refusal preempts every
-   * render -- which is why the message above names `scopedTool` and not
-   * `hookSpecificOutput`.
-   *
-   * FAIL-CLOSED, NOT FAIL-OPEN, in every exit-2 row: the tool call does not
-   * run ungoverned, and no audit entry claims it did. A broken deployment, not
-   * a bypass.
-   *
-   * WHAT THE TABLE MEANS FOR THIS HOOKMAP: HOST #1 CANNOT DECLARE `tools` AT
-   * ANY GATE, and the reason is a freeze rather than a design choice.
-   * `governStep` scopes on the tool its CALLER tells it, and REFUSES a gate
-   * whose entry declares a `tools` list when the caller named none
+   * `governStep` refuses -- throws, rather than skipping -- a gate whose
+   * entry declares a `tools` list when its caller names no scoped tool
    * (`GovernStepInput.scopedTool`, packages/host-adapter/src/govern-step.ts).
-   * acs-hook.ts does not tell -- it has never needed to, since its own
-   * settings.json matcher (`^Bash$`) scopes both gates -- and it CANNOT start
-   * telling, because `scripts/verify-zero-diff.sh` pins
-   * `hosts/claude-code/[^/]+\.(ts|yaml)$` at `+0/-0` for this slice. So while
-   * that freeze holds, a `tools` list in this hookmap is a throw on every call
-   * at the gate that declares it. That is the whole of the exit-2 rows above,
-   * and it is not the silent skip this comment used to promise.
+   * acs-hook.ts never names one: its own settings.json matcher (`^Bash$`)
+   * already scopes both gates, so it has never needed to, and it cannot
+   * start, because `scripts/verify-zero-diff.sh` freezes
+   * `hosts/claude-code/[^/]+\.(ts|yaml)$` for this slice. So while that
+   * freeze holds, a `tools` list anywhere in this hookmap is a throw on
+   * every call at the gate that declares it -- exit 2, no audit entry. Fail
+   * closed, not fail open: the tool call does not run ungoverned, and no
+   * audit entry claims it did. A broken deployment, not a bypass. Verified
+   * directly, with the real shim run as a subprocess against a live
+   * Guardian, across every combination of hookmap configuration, gate, and
+   * tool.
    *
-   * SCOPED TO GATES WHOSE `emptyOutputIsHonest` IS FALSE, AND THAT SCOPE IS
-   * NOW NARROWER THAN THE TRUTH -- deliberately, and this is the part to read
-   * before adding a `tools` line anywhere in this hookmap.
+   * Scoped to gates where `emptyOutputIsHonest` is false, which is narrower
+   * than the truth above -- deliberately, and this is the part to read
+   * before adding a `tools` line anywhere in this hookmap. This gate is not
+   * widened to match, on purpose: it refuses a narrower thing (`tools`
+   * where an empty render is not an honest answer) for a reason that
+   * outlives the freeze. That fault is about the shim's own applier -- an
+   * unlisted tool's empty output reaching `asClaudeCodeOutput` as an
+   * absence it treats as a throw rather than a no-op -- and would still be
+   * a fault the day acs-hook.ts starts naming a scoped tool. The freeze
+   * consequence above would evaporate that same day, and a gate written for
+   * it would then be refusing something legitimate. Written down here,
+   * where whoever adds the line will read it, rather than enforced by a
+   * check that expires.
    *
-   * THIS GATE IS NOT WIDENED TO MATCH, on purpose. It refuses a narrower thing
-   * (`tools` where an empty render is not an answer) for a reason that
-   * outlives the freeze: that fault is about the SHIM's applier and would
-   * still be a fault the day acs-hook.ts starts telling. The freeze
-   * consequence above would evaporate that same day, and a gate written for it
-   * would then be refusing something legitimate. Written down here, where
-   * whoever adds the line will read it, rather than enforced by a check that
-   * expires.
-   *
-   * LIVES HERE BECAUSE IT IS ABOUT TWO ARTIFACTS AT ONCE, which is what this
-   * file is for. The claim it makes needs host #1's hookmap AND the adapter's
-   * skip to state at all -- neither host's own suite owns both halves -- and
-   * that is exactly the shape of the gate directly above it, which is about
+   * Lives here because it is about two artifacts at once, which is what
+   * this file is for: the claim needs Claude Code's hookmap and the
+   * adapter's skip to state at all, and neither host's own suite owns both
+   * halves -- the same shape as the gate directly above it, which is about
    * hosts/opencode/acs-plugin.ts's export count and also lives here rather
    * than under hosts/opencode/test/.
    *
-   * THE REASON THIS COMMENT GAVE FIRST WAS FALSE (§V5 review round 3, Task 2,
-   * fix round 2): "so that host #1's own directory stays +0/-0 for slice V5
-   * (scripts/verify-zero-diff.sh)". Neither half held. Host #1's DIRECTORY is
-   * not +0/-0 -- this slice added hosts/claude-code/test/post-tool-use.test.ts
-   * and posture.test.ts, +79/-0 measured; what is +0/-0 is host #1's SHIPPED
-   * SOURCE, acs-hook.ts and claude-code.hookmap.yaml. And that script's frozen
-   * pattern is `hosts/claude-code/[^/]+\.(ts|yaml)$`, whose own comment says it
-   * "deliberately excludes hosts/claude-code/test/" for precisely that reason,
-   * so a gate placed under hosts/claude-code/test/ would not have tripped it.
-   * The placement was right and the reason invented; the mechanism it named
-   * would not have fired.
-   *
-   * What IS a freeze consequence is one file down, at
-   * `hooksWhereEmptyOutputIsDishonest`: acs-hook.ts itself IS inside that
-   * pattern, so adding an export there to let this gate import the table is
-   * not available, which is why the flag is read out of source text.
+   * `hooksWhereEmptyOutputIsDishonest`, one function down, is why the flag
+   * is read out of acs-hook.ts's source text rather than imported: that
+   * file is itself inside the frozen pattern, so adding an export there to
+   * let this gate import the table is not available.
    */
-  it("host #1's hookmap declares no `tools` at a gate where an empty render is not an answer", () => {
+  it("Claude Code's hookmap declares no `tools` at a gate where an empty render is not an answer", () => {
     const SHIM = "hosts/claude-code/acs-hook.ts";
     const HOOKMAP = "hosts/claude-code/claude-code.hookmap.yaml";
 
@@ -540,7 +450,7 @@ describe("architectural invariants", () => {
     }));
 
     // The assertion is the `expect` below; this throw is what tells whoever
-    // trips it WHY, since an object diff can name the gate but not the
+    // trips it why, since an object diff can name the gate but not the
     // consequence.
     for (const { hookEventName, tools } of declared) {
       if (tools !== "(none declared)") {
@@ -601,18 +511,16 @@ function importsSpecifier(code: string, spec: string): boolean {
  *   1. A declaration -- `export (default )?(async )?(function|const|class|
  *      type|interface|let|var) NAME`.
  *   2. A named-export list -- `export { a, b as c }`, with or without a
- *      trailing `from "…"` (a re-export). Each entry contributes its LOCAL
+ *      trailing `from "…"` (a re-export). Each entry contributes its local
  *      name (the part before `as`, if any): that is the binding a reader of
  *      this file sees, and it is what OpenCode's loader would find and try
  *      to call regardless of which module the value originally came from.
  *
- * §V5 review, Task 8, fix round 2: the list form used to go unmatched, on the
- * stated reasoning that nothing in this codebase's host shims used one --
- * true, and beside the point, because the gate this function backs exists
- * to catch a SECOND export appearing where none is expected, and a re-export
- * list is exactly as valid a way to introduce one as a second declaration.
- * Mutation-tested against the reviewer's own reproduction: `const spurious =
- * 1; export { spurious };` beside a working factory now counts as two.
+ * The list form is matched too, because the gate this function backs exists
+ * to catch a second export appearing where none is expected, and a
+ * re-export list is exactly as valid a way to introduce one as a second
+ * declaration. Mutation-tested: `const spurious = 1; export { spurious };`
+ * beside a working factory counts as two.
  *
  * Deliberately narrower than the two shapes above in other ways -- the same
  * pragmatism `assertNoVocabulary` and `importsSpecifier` above already
@@ -651,8 +559,8 @@ function exportedNames(code: string): string[] {
  * gates where that shim treats an output carrying no `hookSpecificOutput`
  * wrapper as a thing it must not write, and throws instead.
  *
- * Read out of the shim's SOURCE rather than imported, because `acs-hook.ts`
- * exports none of this and is frozen for slice V5 (`scripts/verify-zero-diff.sh`
+ * Read out of the shim's source rather than imported, because `acs-hook.ts`
+ * exports none of this and is frozen (`scripts/verify-zero-diff.sh`
  * fails on any change to it, so "export the table for the test" is not
  * available). The same pragmatism `exportedNames` and `importsSpecifier`
  * above already apply: a regex precise enough for the shape this codebase
@@ -719,15 +627,15 @@ describe("the import gate itself", () => {
 
 describe("the host-vocabulary gate itself", () => {
   /**
-   * §V5 review, fix round 1, Minor 4: adding "refuse" to the term list above
-   * is worth nothing if the gate it was added to cannot actually catch it --
-   * a term added to a list nobody exercises is exactly the "reads as coverage
-   * while enforcing nothing" failure this whole suite exists to avoid (see
-   * `readSourceFiles`'s own emptiness-check comment). Run against a scratch
-   * directory rather than the real `packages/host-adapter/src` -- the real
-   * tree is what the gate ABOVE already exercises, and it must stay clean;
-   * this checks the CHECK, the same split "the import gate itself" and "the
-   * source-file filter itself" already make for their own helpers.
+   * Adding "refuse" to the term list above is worth nothing if the gate it
+   * was added to cannot actually catch it -- a term added to a list nobody
+   * exercises is exactly the "reads as coverage while enforcing nothing"
+   * failure this whole suite exists to avoid (see `readSourceFiles`'s own
+   * emptiness-check comment). Run against a scratch directory rather than
+   * the real `packages/host-adapter/src` -- the real tree is what the gate
+   * above already exercises, and it must stay clean; this checks the check,
+   * the same split "the import gate itself" and "the source-file filter
+   * itself" already make for their own helpers.
    */
   function withScratchSourceFile(code: string, fn: (dir: string) => void): void {
     const dir = mkdtempSync(join(tmpdir(), "acs-invariants-vocab-"));
@@ -758,20 +666,19 @@ describe("the host-vocabulary gate itself", () => {
   });
 
   /**
-   * §V5 review, fix round 1, Minor 1 and Minor 2 in one case, as the review
-   * itself suggested. `tool.execute` is the first forbidden term carrying a
-   * regex metacharacter, so it closes two different gaps at once:
+   * `tool.execute` is the first forbidden term carrying a regex
+   * metacharacter, so it closes two different gaps at once:
    *
-   *   - Minor 2: pins that the term the gate above lists is one the gate can
+   *   - It pins that the term the gate above lists is one the gate can
    *     actually catch (the same argument as "catches 'refuse'..." above,
    *     applied to the OpenCode gate's own term rather than assumed to carry
    *     over).
-   *   - Minor 1: proves `escapeRegExp` is doing real work, not merely
-   *     present. Before terms were escaped, the literal `.` compiled to a
-   *     regex `.` -- ANY character -- so `"tool_execute"` (underscore, a
-   *     DIFFERENT term nobody asked to forbid) would have tripped the same
-   *     gate as `"tool.execute"` (dot, the real term). Escaped, only the
-   *     literal dot matches.
+   *   - It proves `escapeRegExp` is doing real work, not merely present.
+   *     Without escaping, the literal `.` would compile to a regex `.` --
+   *     any character -- so `"tool_execute"` (underscore, a different term
+   *     nobody asked to forbid) would trip the same gate as
+   *     `"tool.execute"` (dot, the real term). Escaped, only the literal dot
+   *     matches.
    */
   it("catches 'tool.execute' literally, without over-matching its dot as regex 'any character'", () => {
     withScratchSourceFile('export const hookName = "tool.execute";\n', (dir) => {
@@ -785,13 +692,12 @@ describe("the host-vocabulary gate itself", () => {
 
 describe("the export-count gate itself", () => {
   /**
-   * §V5 review, Task 8, fix round 1, Important 1, "mutation-tested": proves
-   * `exportedNames` actually distinguishes one export from two, rather than
-   * always returning a fixed-length answer that would let the real gate
-   * above pass no matter what `acs-plugin.ts` exports. The reviewer's own
-   * measured case -- a second export appearing beside a working factory --
-   * is reproduced here directly, on a scratch file rather than the real
-   * `hosts/opencode/acs-plugin.ts`: this checks the CHECK, the same split
+   * Mutation-tested: proves `exportedNames` actually distinguishes one
+   * export from two, rather than always returning a fixed-length answer
+   * that would let the real gate above pass no matter what `acs-plugin.ts`
+   * exports. The case -- a second export appearing beside a working factory
+   * -- is reproduced here directly, on a scratch file rather than the real
+   * `hosts/opencode/acs-plugin.ts`: this checks the check, the same split
    * "the import gate itself" and "the host-vocabulary gate itself" already
    * make for their own helpers.
    */
@@ -831,24 +737,22 @@ describe("the export-count gate itself", () => {
   });
 
   /**
-   * §V5 review, Task 8, fix round 2, "a gate that can be bypassed": the
-   * named-export LIST form (`export { a, b }`) went unmatched until this
-   * round, on the reasoning that nothing in this codebase's shims used one --
-   * true and beside the point, since the gate exists to catch a SECOND export
-   * appearing however it is written, and a list is exactly as valid a way to
-   * introduce one as a second declaration. Reproduced here with the
-   * reviewer's own exact mutation before asserting the real gate catches it
-   * below: `const spurious = 1; export { spurious };` used to leave
-   * `exportedNames` returning a single-element array beside a real factory
-   * export, 21/21 passing with the hazard live.
+   * The named-export list form (`export { a, b }`) matters because the gate
+   * exists to catch a second export appearing however it is written, and a
+   * list is exactly as valid a way to introduce one as a second declaration.
+   * Reproduced here with the same mutation asserted against the real gate
+   * below: without list-form matching, `const spurious = 1; export {
+   * spurious };` beside a real factory export would leave `exportedNames`
+   * returning a single-element array, and the gate would pass with the
+   * hazard live.
    */
-  it("counts a named-export LIST as an export -- the reviewer's own reproduction that used to go unmatched", () => {
+  it("counts a named-export list as an export", () => {
     expect(
       exportedNames('const spurious = 1;\nexport { spurious };\n\nexport const AcsPlugin = async () => ({});\n'),
     ).toEqual(["spurious", "AcsPlugin"]);
   });
 
-  it("takes the LOCAL name from an aliased export-list entry, not the exported-as name", () => {
+  it("takes the local name from an aliased export-list entry, not the exported-as name", () => {
     expect(exportedNames('const spurious = 1;\nexport { spurious as notSpurious };\n')).toEqual(["spurious"]);
   });
 
@@ -868,12 +772,12 @@ describe("the export-count gate itself", () => {
 });
 
 /**
- * §V5 review round 3, Task 2, fix round 1, Critical 1. The gate that reads
- * `emptyOutputIsHonest` out of host #1's shim is only worth having if the
- * reading is right, and it reads SOURCE TEXT because that shim exports none
- * of this and is frozen for this slice. So the parser gets the same split
- * treatment `exportedNames` and `importsSpecifier` already have: the gate
- * asserts about the real file, these assert about the parser.
+ * The gate that reads `emptyOutputIsHonest` out of Claude Code's shim is
+ * only worth having if the reading is right, and it reads source text
+ * because that shim exports none of this and is frozen. So the parser gets
+ * the same split treatment `exportedNames` and `importsSpecifier` already
+ * have: the gate asserts about the real file, these assert about the
+ * parser.
  *
  * The fixture below is the shape hosts/claude-code/acs-hook.ts actually
  * writes -- an object literal of two-space-indented entries, each with a
@@ -907,7 +811,7 @@ describe("the empty-render-honesty reader itself", () => {
   });
 
   it("attributes the flag to the entry it sits inside, not to the first entry in the table", () => {
-    // The mutation that matters: move `false` to the SECOND entry. A parser
+    // The mutation that matters: move `false` to the second entry. A parser
     // that reported "the first entry" or "every entry" would pass the test
     // above and be wrong here -- and wrong in the direction that lets a
     // `tools` key land on the gate that exits 2.
@@ -959,60 +863,51 @@ describe("the source-file filter itself", () => {
 });
 
 /**
- * THE NINTH GATE, and the one that closes a concern this project's own review
- * process raised against itself (§V5 review round 3, Task 5, fix round 4).
- *
  * `hosts/opencode/acs-plugin.ts` decides what a hookmap must declare for each
  * decision by consulting two hand-written tables -- `CARRIED_AT_REQUEST_GATE`
- * and `CARRIED_AT_RESULT_GATE` -- which say, per gate per decision, WHICH
+ * and `CARRIED_AT_RESULT_GATE` -- which say, per gate per decision, which
  * decision field that decision actually arrives carrying (or `null` for "it
  * carries nothing this host could land, so refusing is its only honest shape").
  *
- * THOSE TABLES ARE A FAIL-OPEN GENERATOR IF THEY ARE WRONG, and they have been
- * wrong twice, in the same review round -- and the first version of THIS gate
- * could only have caught one of them (§V5 review round 3, Task 5, fix round 5):
+ * Those tables are a fail-open generator if they are wrong. Two concrete ways
+ * they can be wrong, both silent without this gate:
  *
- *   - the result gate's table claimed `ask`/`defer` carry `applied_output`.
+ *   - the result gate's table could claim `ask`/`defer` carry `applied_output`.
  *     `withResultOutput` returns both untouched, so the sink the gate demanded
- *     was unfillable and a real `ask` delivered the tool's output in the leaf
- *     and its mirror.
- *   - the request gate's table claimed `modify` carries `applied_input`. True
- *     only while the entry declares `arguments:` -- an entry declaring
- *     `outputs:` gets an output location, and `resolveModify` fills
+ *     would be unfillable and a real `ask` would deliver the tool's output in
+ *     the leaf and its mirror.
+ *   - the request gate's table could claim `modify` carries `applied_input`.
+ *     That is true only while the entry declares `arguments:` -- an entry
+ *     declaring `outputs:` gets an output location, and `resolveModify` fills
  *     `applied_output` instead.
  *
- * Both were closed in the shim. Neither was DETECTABLE there: a table
- * hand-derived from another package's behaviour can go stale the moment that
- * package changes, and the failure direction is silent (over-refusal is loud;
- * under-refusal is a delivered secret). This gate is what makes it loud in both
- * directions: for every decision name at both gates it asks the ADAPTER what
- * that decision ends up carrying, and asserts the answer matches the table the
- * shim is enforcing.
+ * A table hand-derived from another package's behaviour can go stale the
+ * moment that package changes, and the failure direction is silent
+ * (over-refusal is loud; under-refusal is a delivered secret). This gate is
+ * what makes it loud in both directions: for every decision name at both
+ * gates it asks the adapter what that decision ends up carrying, and asserts
+ * the answer matches the table the shim is enforcing.
  *
- * WHICH ADAPTER FUNCTION ANSWERS THAT DEPENDS ON THE DECISION, and saying so
- * precisely matters, because an earlier version of this sentence claimed the
- * gate "runs the adapter's own `withResultOutput`/`resolveModify` projection
- * for every decision name at both gates" and that was false on both halves
- * (§V5 review round 3, Task 5, fix round 5). `withResultOutput` is what
+ * Which adapter function answers depends on the decision. `withResultOutput`
  * decides `allow`/`deny`/`ask`/`defer`. `modify` is `resolveModify`'s -- it is
- * the only decision whose table entry DIFFERS between the two gates, and the
- * exact decision fix round 4's Critical 7B was about. The first version of
- * this gate hand-seeded the field it then asserted for `modify`,
- * re-implementing `resolveModify`'s `outputLocation === undefined` branch
- * inline; at the request gate that made it a tautology, because
- * `withResultOutput(x, undefined)` returns `x` by identity. Measured:
- * reintroducing 7B from the ADAPTER side left this gate entirely green. It now
- * calls `resolveModify` itself.
+ * the only decision whose table entry differs between the two gates, since
+ * `resolveModify` decides which field a `modify` carries off exactly the
+ * `outputLocation` presence the two tables differ on. This gate calls
+ * `resolveModify` itself rather than hand-seeding the field it asserts,
+ * because re-implementing that branch inline would make the request-gate
+ * assertion a tautology: `withResultOutput(x, undefined)` returns `x` by
+ * identity regardless of whether the branch under test is correct.
  *
- * LIVES HERE, NOT IN hosts/opencode/test/, for the reason this file states for
- * its own sibling gates: the claim needs TWO artifacts at once -- the shim's
- * table and the adapter's behaviour -- and neither package's own suite owns
- * both. Same placement argument as the `tools`-at-PreToolUse gate and the
- * export-count gate above.
+ * Lives here, not in hosts/opencode/test/, for the reason this file states
+ * for its own sibling gates: the claim needs two artifacts at once -- the
+ * shim's table and the adapter's behaviour -- and neither package's own
+ * suite owns both. Same placement argument as the `tools`-at-PreToolUse gate
+ * and the export-count gate above.
  *
- * R3.2 IS NOT AT RISK from this file naming `applied_input`/`applied_output`:
- * those are ACS's own decision-message vocabulary, not any host's field names,
- * and the vocabulary gates above deliberately scope to
+ * This package's boundary -- knowing ACS and hookmaps, nothing else -- is
+ * not at risk from this file naming `applied_input`/`applied_output`: those
+ * are ACS's own decision-message vocabulary, not any host's field names, and
+ * the vocabulary gates above deliberately scope to
  * `packages/host-adapter/src` rather than to this suite.
  */
 describe("the shim's decision tables match the adapter's actual behaviour", () => {
@@ -1025,8 +920,8 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
    * assertion meaningful, since a gate importing the value it checks would
    * only ever be asserting that a constant equals itself.
    *
-   * A DIVERGENCE BETWEEN THIS COPY AND THE SHIM'S IS A REAL RISK, and it is
-   * covered: every entry below is asserted against the ADAPTER, so a shim
+   * A divergence between this copy and the shim's is a real risk, and it is
+   * covered: every entry below is asserted against the adapter, so a shim
    * table that drifts away from this one drifts away from the adapter too and
    * fails hosts/opencode/test/acs-plugin.test.ts's own accept cases.
    */
@@ -1041,20 +936,20 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
   };
 
   /**
-   * A real envelope and a real `modifications` block PER GATE, so
+   * A real envelope and a real `modifications` block per gate, so
    * `resolveModify` below takes its success path rather than its
    * `modifications_invalid` deny -- and so each gate exercises the branch it
    * actually takes.
    *
    * The two differ because `modificationDocumentOf` (build-envelope.ts) makes
-   * them differ, and its own doc comment says why: a REQUEST payload's pointers
-   * address the arguments bag, so the document is that bag unwrapped; a RESULT
+   * them differ, and its own doc comment says why: a request payload's pointers
+   * address the arguments bag, so the document is that bag unwrapped; a result
    * payload's pointers address the payload itself (`/outputs/0/value`), so the
    * document is the payload. Handing the result gate a request-shaped document
-   * is the exact bug that comment records -- every result-gate `modify` failing
-   * closed as `deny(modifications_invalid)` -- so getting this right here is
-   * part of what makes the assertion real rather than a shape that happens to
-   * survive.
+   * is the exact hazard that comment records -- every result-gate `modify`
+   * failing closed as `deny(modifications_invalid)` -- so getting this right
+   * here is part of what makes the assertion real rather than a shape that
+   * happens to survive.
    */
   const envelopeOf = (payload: Record<string, unknown>) =>
     ({ params: { payload } }) as unknown as Parameters<typeof modificationDocumentOf>[0];
@@ -1071,12 +966,12 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
   } as const;
 
   /**
-   * What the ADAPTER actually leaves on a decision of this name at this gate,
+   * What the adapter actually leaves on a decision of this name at this gate,
    * composed the way `governStep`'s own `render()` composes it: the result gate
    * passes an output location, the request gate passes `undefined`.
    *
    * `modify` is handed an `applied_input`/`applied_output` the way
-   * `validateDecision` would have left one, because `withResultOutput` THROWS
+   * `validateDecision` would have left one, because `withResultOutput` throws
    * on a `modify` carrying neither -- that throw is itself part of the
    * behaviour this asserts, and it is checked separately below.
    */
@@ -1085,11 +980,11 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
     const seed: Record<string, unknown> = { decision: decisionName, reasoning: "why" };
     let arriving = seed as unknown as AcsDecision;
     if (decisionName === "modify") {
-      // `resolveModify` ITSELF, not a hand-seeded stand-in for it (§V5 review
-      // round 3, Task 5, fix round 5). This is the branch that decides which
-      // field a `modify` carries, and it decides it off exactly the same
-      // `outputLocation` presence the two tables differ on -- so calling it is
-      // the only way this row is not asserting a constant against itself.
+      // `resolveModify` itself, not a hand-seeded stand-in for it. This is
+      // the branch that decides which field a `modify` carries, and it
+      // decides it off exactly the same `outputLocation` presence the two
+      // tables differ on -- so calling it is the only way this row is not
+      // asserting a constant against itself.
       const input = MODIFY_INPUT[hookEventName];
       arriving = resolveModify(
         { decision: "modify", reasoning: "why", modifications: input.modifications } as unknown as AcsDecision,
@@ -1146,10 +1041,10 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
   });
 
   it("a request gate genuinely gets no output location, which is what makes its table differ", () => {
-    // The other half of the same fact, and the one fix round 4's Critical 7B
-    // turned on: the two tables differ for `modify` ONLY because the request
-    // gate passes no location. `assertEntryMatchesGate` (acs-plugin.ts) is what
-    // keeps a request-gate ENTRY from acquiring one.
+    // The other half of the same fact: the two tables differ for `modify`
+    // only because the request gate passes no location.
+    // `assertEntryMatchesGate` (acs-plugin.ts) is what keeps a request-gate
+    // entry from acquiring one.
     const projected = withResultOutput(
       { decision: "deny", reasoning: "why" } as unknown as AcsDecision,
       undefined,

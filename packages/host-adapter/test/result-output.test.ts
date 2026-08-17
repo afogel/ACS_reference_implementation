@@ -9,18 +9,18 @@ import {
 } from "../src/result-output.ts";
 
 /**
- * `replacingOutput`'s mirror handling (§V5, slice #6): V4's discipline is to
- * patch a CLONE of the object a hookmap names, so every sibling survives by
- * construction. On a host where one sibling is a genuine MIRROR of the leaf --
- * its own copy of the same text, not merely a neighbouring field -- that
- * discipline is exactly the property that leaks: the clone preserves the
- * mirror untouched, and the mirror still carries the plaintext.
+ * `replacingOutput`'s discipline is to patch a clone of the object a hookmap
+ * names, so every sibling survives by construction. On a host where one
+ * sibling is a genuine mirror of the leaf -- its own copy of the same text,
+ * not merely a neighbouring field -- that discipline is exactly the property
+ * that leaks: the clone preserves the mirror untouched, and the mirror still
+ * carries the plaintext.
  *
- * The example paths below (`$.result.output`, `$.result.metadata.output`) are
- * the brief's own stand-in shape, not any real host's field names -- this
- * module names no host field, and neither does this test.
+ * The example paths below (`$.result.output`, `$.result.metadata.output`)
+ * are a stand-in shape, not any real host's field names -- this module names
+ * no host field, and neither does this test.
  */
-describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
+describe("replacingOutput — a leaf can have mirrors", () => {
   const location: HostOutputLocation = {
     payload: { result: { output: "SECRET", metadata: { output: "SECRET", exit: 0 } } },
     outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
@@ -33,13 +33,11 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
     });
   });
 
-  // §V5 review, Critical 1 correction: the FIRST version of this test used a
-  // hookmap declaring NO mirrors at all and expected a throw. That defect --
-  // the post-condition firing on two independently-equal fields with nothing
-  // declared -- is exactly what broke the shipped host (see the dedicated
-  // describe block below). The corrected design only scans for an undeclared
-  // duplicate once a hookmap has ALREADY declared at least one mirror, so the
-  // case this test now pins is "declared one, missed another."
+  // The post-condition only scans for an undeclared duplicate once a hookmap
+  // has already declared at least one mirror -- firing on two
+  // independently-equal fields with nothing declared broke a shipped host
+  // (see the dedicated describe block below). The case this test pins is
+  // "declared one, missed another."
   it("refuses when one mirror is declared but a second, undeclared one is left holding the original", () => {
     const partial: HostOutputLocation = {
       payload: {
@@ -68,7 +66,7 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
     });
   });
 
-  // More than one declared mirror -- the loop has to leave NONE of them
+  // More than one declared mirror -- the loop has to leave none of them
   // holding the original, not merely the first.
   it("patches every mirror in a list of more than one, leaving none of them holding the original", () => {
     const twoMirrors: HostOutputLocation = {
@@ -92,7 +90,7 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
     });
   });
 
-  // A mirror is a further path INSIDE `within`, the same container the leaf
+  // A mirror is a further path inside `within`, the same container the leaf
   // lives in -- not an arbitrary path anywhere in the payload.
   it("refuses a declared mirror that names a path outside `within`", () => {
     const outside: HostOutputLocation = {
@@ -108,8 +106,8 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
   });
 
   // Claude Code's hookmap declares no `mirrors` at all -- `mirrors` is
-  // optional, and an entry that never names one must behave exactly as it did
-  // before this task: nothing left over for the post-condition to catch.
+  // optional, and an entry that never names one must behave as though the
+  // post-condition were not there at all: nothing left over for it to catch.
   it("still works exactly as before when no `mirrors` are declared at all", () => {
     const noMirrors: HostOutputLocation = {
       payload: { tool_response: { stdout: "SECRET", stderr: "", interrupted: false } },
@@ -124,22 +122,18 @@ describe("replacingOutput — a leaf can have mirrors (§V5)", () => {
 });
 
 /**
- * §V5 review, Critical 1: a defect in the ORIGINAL design, not merely its
- * implementation. The first cut of the post-condition walked the whole
- * fully-patched replacement (leaf excluded) and refused whenever `original`
- * turned up anywhere in it -- regardless of whether ANY mirror was declared.
  * Structural equality alone cannot distinguish "one field is a copy of
  * another" from "two fields independently hold the same value," and the
- * second case is the ORDINARY one for a silent command: Claude Code's real
+ * second case is the ordinary one for a silent command: Claude Code's real
  * `tool_response` is `{stdout, stderr, interrupted, isImage,
  * noOutputExpected}`, and `touch`, `mkdir`, `cd`, `export`, a successful
  * `grep -q` all produce `stdout === "" && stderr === ""` -- two
- * independently-empty fields, not a mirror. The corrected design only scans
+ * independently-empty fields, not a mirror. The post-condition only scans
  * for an undeclared duplicate once a hookmap has declared at least one
  * mirror (see the describe block above); a hookmap declaring none, like
  * Claude Code's, is never scanned at all.
  */
-describe("replacingOutput — two independently-equal fields are not a mirror (§V5 review, Critical 1)", () => {
+describe("replacingOutput — two independently-equal fields are not a mirror", () => {
   it("does not refuse two independently-equal fields when no mirrors are declared", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "", sibling: "" } },
@@ -148,11 +142,10 @@ describe("replacingOutput — two independently-equal fields are not a mirror (�
     expect(replacingOutput(location, "[REDACTED]")).toEqual({ output: "[REDACTED]", sibling: "" });
   });
 
-  // The exact shape, loaded from the SHIPPED hookmap file rather than typed
+  // The exact shape, loaded from the shipped hookmap file rather than typed
   // out by hand, so this test tracks the real file rather than a belief
-  // about it -- and the exact scenario the review verified end-to-end: an
-  // empty stdout beside an empty stderr, at the result gate, must not become
-  // a blocking preflight stop.
+  // about it: an empty stdout beside an empty stderr, at the result gate,
+  // must not become a blocking preflight stop.
   it("does not block a silent command through the shipped Claude Code hookmap shape at the result gate", () => {
     const hookmap = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
     const outputs = hookmap.hooks.PostToolUse?.outputs;
@@ -184,13 +177,13 @@ describe("replacingOutput — two independently-equal fields are not a mirror (�
 });
 
 /**
- * §V5 review, Important 2: a declared mirror gets none of the leaf's own
- * three guards for free, which is a NEW fail-open of the exact shape this
- * module has closed for the leaf twelve times over -- reachable from a
- * one-token hookmap typo. Each guard here mirrors one of `replacingOutput`'s
- * existing leaf checks; see that function's own doc comment for the mapping.
+ * A declared mirror gets none of the leaf's own three guards for free, which
+ * is a fail-open of the exact shape this module closes for the leaf,
+ * reachable from a one-token hookmap typo. Each guard here mirrors one of
+ * `replacingOutput`'s existing leaf checks; see that function's own doc
+ * comment for the mapping.
  */
-describe("replacingOutput — a declared mirror gets the leaf's own three guards (§V5 review, Important 2)", () => {
+describe("replacingOutput — a declared mirror gets the leaf's own three guards", () => {
   it("refuses a mirror equal to `within` itself, rather than writing a stray key", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "SECRET", metadata: { output: "SECRET" } } },
@@ -228,12 +221,13 @@ describe("replacingOutput — a declared mirror gets the leaf's own three guards
     );
   });
 
-  // The overlap has to be refused explicitly and BEFORE any patch -- not left
-  // to whichever symptom declaration order happens to produce. Before this
-  // check, descendant-then-ancestor silently collapsed the descendant's edit
-  // (no throw at all); ancestor-then-descendant threw `patchedClone`'s
-  // generic, unrelated "no object to descend through". Both orders now throw
-  // the SAME explicit refusal.
+  // The overlap has to be refused explicitly and before any patch, not left
+  // to whichever symptom declaration order happens to produce: without this
+  // check, descendant-then-ancestor would silently collapse the descendant's
+  // edit while ancestor-then-descendant would throw `patchedClone`'s
+  // generic, unrelated "no object to descend through" -- two different
+  // symptoms for the same mistake. Both orders throw the same explicit
+  // refusal here.
   it("refuses two overlapping mirrors the same way regardless of declaration order", () => {
     const payload = { result: { output: "SECRET", m: { output: "SECRET" } } };
 
@@ -257,13 +251,13 @@ describe("replacingOutput — a declared mirror gets the leaf's own three guards
 
 /**
  * `assertOutputIsReplaceable` calls `replacingOutput` with `WITHHELD_OUTPUT`
- * BEFORE any decision is sought (`governStep`'s own preflight, see
+ * before any decision is sought (`governStep`'s own preflight, see
  * govern-step.ts). So a hookmap entry that declares a mirror but misses
  * another is refused there too -- not as a withholding deny, but as a
  * blocking stop for the deployment: the same throw, reached one route
  * earlier.
  */
-describe("replacingOutput — the same refusal, reached from the preflight (§V5)", () => {
+describe("replacingOutput — the same refusal, reached from the preflight", () => {
   it("blocks the deployment at the preflight when one mirror is declared and a second is missed", () => {
     const location: HostOutputLocation = {
       payload: {
@@ -286,9 +280,9 @@ describe("replacingOutput — the same refusal, reached from the preflight (§V5
     expect(() => assertOutputIsReplaceable(location)).not.toThrow();
   });
 
-  // §V5 review, Critical 1: a hookmap declaring NO mirrors passes the
-  // preflight too, even though the payload below has two independently-equal
-  // fields -- exactly the shape that broke the shipped host.
+  // A hookmap declaring no mirrors passes the preflight too, even though the
+  // payload below has two independently-equal fields -- exactly the shape
+  // that broke a shipped host.
   it("passes the preflight when no mirrors are declared, even with two independently-equal fields", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "", sibling: "" } },
@@ -299,21 +293,18 @@ describe("replacingOutput — the same refusal, reached from the preflight (§V5
 });
 
 /**
- * §V5 review, Important 2: gating post-condition 2 on `mirrors.length > 0`
- * (the describe block above) exempts a host that declares no mirrors, but it
- * NARROWS the "holds the same value ⇒ is a copy" conflation to
- * mirror-declaring hosts rather than removing it -- see `result-output.ts`'s
- * own prose beside the scan for why neither the conflation nor this
- * over-refusal is fixable from a payload alone. These two cases are KNOWN,
- * DELIBERATE over-refusals: recorded here the way V4 recorded cases it
- * measured and did not close (see slices/v4/README.md's own
- * "(recorded, not closed)" convention), not a regression to chase -- a
- * future reader who reproduces one of these should not spend an afternoon
- * looking for a bug that isn't here.
+ * Gating post-condition 2 on `mirrors.length > 0` (the describe block above)
+ * exempts a host that declares no mirrors, but it narrows the "holds the
+ * same value means is a copy" conflation to mirror-declaring hosts rather
+ * than removing it -- see `result-output.ts`'s own prose beside the scan for
+ * why neither the conflation nor this over-refusal is fixable from a payload
+ * alone. These two cases are known, deliberate over-refusals, not a
+ * regression to chase -- a future reader who reproduces one of these should
+ * not spend an afternoon looking for a bug that isn't here.
  */
-describe("replacingOutput — the over-refusal the scan narrows but cannot remove (§V5 review, Important 2)", () => {
-  // Reproduced exactly as the review measured it: an unrelated field INSIDE
-  // `within`, but outside the declared mirror, that happens to be empty too.
+describe("replacingOutput — the over-refusal the scan narrows but cannot remove", () => {
+  // An unrelated field inside `within`, but outside the declared mirror,
+  // that happens to be empty too.
   it("refuses when an unrelated field coincidentally holds the same empty value too (recorded, not closed)", () => {
     const location: HostOutputLocation = {
       payload: {
@@ -330,8 +321,8 @@ describe("replacingOutput — the over-refusal the scan narrows but cannot remov
     expect(() => assertOutputIsReplaceable(location)).toThrow(/still holds/);
   });
 
-  // Reproduced exactly as the review measured it: an unrelated sibling
-  // outside `metadata` entirely, coincidentally equal to a non-empty leaf.
+  // An unrelated sibling outside `metadata` entirely, coincidentally equal
+  // to a non-empty leaf.
   it("refuses when an unrelated field coincidentally holds the same non-empty value too (recorded, not closed)", () => {
     const location: HostOutputLocation = {
       payload: {
@@ -348,25 +339,24 @@ describe("replacingOutput — the over-refusal the scan narrows but cannot remov
 });
 
 /**
- * §V5 review, Important 3: the leaf mask (excluding the leaf's own field from
- * the undeclared-duplicate scan, so a modification that never touched the
- * leaf does not pre-empt `projectAppliedOutput`'s own landing check with this
- * function's "still holds" message) has to extend to every DECLARED mirror
- * too, not the leaf alone. With a mirror declared, a modification targeting
- * something other than the leaf (`/exit_status`, `/tool/name` -- the exact
- * family the original leaf-mask deviation was made to fix) leaves the mirror
- * position patched with `original` as well as the leaf -- and an unmasked
- * mirror position would make the scan fire the SAME misleading message one
- * field over.
+ * The leaf mask (excluding the leaf's own field from the undeclared-duplicate
+ * scan, so a modification that never touched the leaf does not pre-empt
+ * `projectAppliedOutput`'s own landing check with this function's "still
+ * holds" message) has to extend to every declared mirror too, not the leaf
+ * alone. With a mirror declared, a modification targeting something other
+ * than the leaf (`/exit_status`, `/tool/name`) leaves the mirror position
+ * patched with `original` as well as the leaf -- and an unmasked mirror
+ * position would make the scan fire the same misleading message one field
+ * over.
  */
-describe("projectAppliedOutput — the leaf mask extends to declared mirrors (§V5 review, Important 3)", () => {
+describe("projectAppliedOutput — the leaf mask extends to declared mirrors", () => {
   it("reports the landing check's own message, not a false mirror refusal, when a modification never touches the leaf", () => {
     const location: HostOutputLocation = {
       payload: { result: { output: "SECRET", metadata: { output: "SECRET" }, exit_status: "success" } },
       outputs: { from: "$.result.output", within: "$.result", mirrors: ["$.result.metadata.output"] },
     };
     // The leaf is untouched in the applied document (still "SECRET"); only
-    // `exit_status` changed. Both the leaf's own field AND the declared
+    // `exit_status` changed. Both the leaf's own field and the declared
     // mirror's are left holding `original` by this -- correctly, since
     // nothing was ever asked to change either of them.
     const appliedDocument = { tool: { name: "t" }, exit_status: "failure", outputs: [{ value: "SECRET" }] };
@@ -379,16 +369,16 @@ describe("projectAppliedOutput — the leaf mask extends to declared mirrors (§
 });
 
 /**
- * Task 1's own bundle check and its `withoutProjectedLeaf` helper (§V5) were
- * added to `projectAppliedOutput` and covered only indirectly, through
+ * The bundle check and its `withoutProjectedLeaf` helper, added to
+ * `projectAppliedOutput`, are covered only indirectly elsewhere, through
  * validate-decision.test.ts's exercise of the whole `resolveModify` path.
- * This is the direct coverage that Task deferred to this file: the bundle
- * check itself, called straight against `projectAppliedOutput`, and
- * `withoutProjectedLeaf`'s fallback branch -- reached only through
- * `originalDocument`, since `appliedDocument`'s own `outputs[0]` shape is
- * already validated earlier in the same function.
+ * This is the direct coverage: the bundle check itself, called straight
+ * against `projectAppliedOutput`, and `withoutProjectedLeaf`'s fallback
+ * branch -- reached only through `originalDocument`, since
+ * `appliedDocument`'s own `outputs[0]` shape is already validated earlier in
+ * the same function.
  */
-describe("projectAppliedOutput — the bundle check, called directly (§V5)", () => {
+describe("projectAppliedOutput — the bundle check, called directly", () => {
   const location: HostOutputLocation = {
     payload: { result: { output: "SECRET" } },
     outputs: { from: "$.result.output", within: "$.result" },
@@ -416,7 +406,7 @@ describe("projectAppliedOutput — the bundle check, called directly (§V5)", ()
   // Only `originalDocument` can exercise this branch through
   // `projectAppliedOutput`'s public surface: `appliedDocument`'s own
   // `outputs[0]` is already required to be a plain object carrying "value" by
-  // the check earlier in that function, so it always takes the OTHER branch
+  // the check earlier in that function, so it always takes the other branch
   // (the leaf zeroed out, not the untouched document) -- which is exactly why
   // this is the fallback's only reachable shape of test here, and why it
   // denies rather than passing quietly: an eligible document compared against

@@ -36,7 +36,7 @@ const hookmap: Hookmap = { host: "test-host", hooks: { OnStep: ON_STEP } };
 const payload = { session_id: "sess-1", tool_name: "Bash", tool_input: { command: "ls -la" } };
 
 /**
- * A RESULT gate on the same synthetic host: a gate that sees what a step
+ * A result gate on the same synthetic host: a gate that sees what a step
  * produced, and therefore the one kind of gate where a decision has to be able
  * to replace an output. Its `outputs` block is what makes it one -- read off the
  * entry's shape, never off the event name.
@@ -103,9 +103,9 @@ function answering(answer: DecisionOrFailure): GuardianClient {
 
 /**
  * `scopedTool` is spelled as its own optional override rather than folded into
- * a partial `GovernStepInput`, because ABSENT is a case under test in its own
- * right (§V5 review round 4): host #1 never passes it, and a gate that declares
- * a `tools` list refuses a caller that does not. A helper that always supplied
+ * a partial `GovernStepInput`, because absent is a case under test in its own
+ * right: Claude Code's shim never passes it, and a gate that declares a
+ * `tools` list refuses a caller that does not. A helper that always supplied
  * one would make both of those unreachable from this suite.
  */
 type Overrides = {
@@ -137,15 +137,15 @@ function governRaw(
 /**
  * The same call, narrowed to the steps this gate actually governs.
  *
- * `governStep` gained a third way out in §V5 review round 3, Task 2 -- a step
- * whose tool the gate's own `tools` list does not name comes back
- * `{stage: "ungoverned", decision: null}` -- and none of the fixtures above
- * declares a `tools` list, so no test using this helper can produce one. Asked
- * here, once, rather than at each of the assertions below that read
- * `.decision`: those tests are about what happened to a decision, and making
- * every one of them narrow a case its fixture cannot reach would be noise that
- * hides the one thing they are each about. The tests that ARE about the skip
- * call `governRaw` and assert on the whole discriminated union.
+ * `governStep` has a third way out: a step whose tool the gate's own `tools`
+ * list does not name comes back `{stage: "ungoverned", decision: null}` --
+ * and none of the fixtures above declares a `tools` list, so no test using
+ * this helper can produce one. Asked here, once, rather than at each of the
+ * assertions below that read `.decision`: those tests are about what
+ * happened to a decision, and making every one of them narrow a case its
+ * fixture cannot reach would be noise that hides the one thing they are each
+ * about. The tests that are about the skip call `governRaw` and assert on
+ * the whole discriminated union.
  */
 async function govern(
   guardian: GuardianClient,
@@ -226,7 +226,7 @@ describe("governStep — a decision that arrived", () => {
 describe("governStep — the three failure stages name three different incidents", () => {
   // "request": nothing was ever asked of anything, so the audit reasoning
   // must not blame a Guardian that was never contacted. This wiring -- a
-  // build failure IS the request stage -- is pinned directly here, at the
+  // build failure is the request stage -- is pinned directly here, at the
   // collaborator, rather than only derived by inspecting a local variable's
   // state inside a catch block somewhere else.
   it("files a request that could not be built under \"request\", and never reaches the Guardian", async () => {
@@ -342,7 +342,7 @@ describe("governStep — the three failure stages name three different incidents
     });
   });
 
-  // "render": a decision DID arrive and was honoured in principle; only this
+  // "render": a decision did arrive and was honoured in principle; only this
   // host's expression of it failed. Auditing that as "no decision arrived" would
   // send an incident reviewer to a Guardian that answered correctly.
   it("files a decision this hookmap cannot express under \"render\", and still produces an output", async () => {
@@ -423,7 +423,7 @@ describe("governStep — a result gate whose named output no replacement can be 
   });
 
   // The refusal has to be about the leaf and not about the gate: a result gate
-  // whose named leaf IS prose governs exactly as before, and its deny withholds.
+  // whose named leaf is prose governs exactly as before, and its deny withholds.
   it("lets a gate whose named leaf is prose govern, and its deny still withholds", async () => {
     const { sink, events } = recordingSink();
     const { guardian, asked } = askedGuardian();
@@ -633,28 +633,25 @@ describe("governStep — the session's failure travels beside the step's own", (
 });
 
 /**
- * §V5 review round 3, Task 2. `tools` was shared hookmap vocabulary this
- * package shape-checked (`assertToolsWellFormed`) and normalised
- * (`normalizeTools`) and then had no opinion about: the only code that ACTED
- * on it lived in one host's shim, so a third host written from an existing
- * shim would load a `tools` list and govern every tool anyway -- and the
+ * `tools` is shared hookmap vocabulary this package shape-checks
+ * (`assertToolsWellFormed`) and normalises (`normalizeTools`). Which tool a
+ * gate governs is `governsTool`'s question, and `governStep` asks it before
+ * it does anything else -- a third host written from an existing shim that
+ * skipped this check would govern every tool regardless of the list, and the
  * envelope that follows is one the deployment's policy configuration cannot
- * express a target for, answered by the negotiated posture, which is this
- * slice's recurring fail-open shape.
+ * express a target for, answered by the negotiated posture.
  *
- * The rule is `governsTool`'s now, and `governStep` asks it before it does
- * anything else. Both shims still ask it a call earlier, which is what makes
- * an out-of-scope tool cost no session validation and no handshake either --
- * that half is pinned in each host's own suite (hosts/opencode/test/
- * request-gate.test.ts and result-gate.test.ts). What is pinned HERE is the
- * half a shim cannot provide: that a shim which never asks still skips.
+ * Both shims also ask it a call earlier, which is what makes an out-of-scope
+ * tool cost no session validation and no handshake either -- that half is
+ * pinned in each host's own suite (hosts/opencode/test/request-gate.test.ts
+ * and result-gate.test.ts). What is pinned here is the half a shim cannot
+ * provide: that a shim which never asks still skips.
  *
- * WHICH TOOL IT ASKS ABOUT IS THE CALLER'S TO SAY (§V5 review round 4, thread
- * 3778055539). Every scoped case below therefore TELLS `governStep` its tool,
- * the way a shim that already scoped on one does; the untold cases are the
- * two that matter on their own -- a gate declaring no list (host #1's, which
- * has nothing to tell) and a gate declaring one (refused outright, in its own
- * describe block below).
+ * Which tool it asks about is the caller's to say. Every scoped case below
+ * therefore tells `governStep` its tool, the way a shim that already scoped
+ * on one does; the untold cases are the two that matter on their own -- a
+ * gate declaring no list (Claude Code's, which has nothing to tell) and a
+ * gate declaring one (refused outright, in its own describe block below).
  */
 describe("governStep — a gate governs only the tools its hookmap entry names", () => {
   /**
@@ -717,21 +714,21 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
   });
 
   /**
-   * HOST #1's OWN CASE, and the reason this is a separate test rather than an
-   * assumption: hosts/claude-code/claude-code.hookmap.yaml declares no `tools`
-   * key at either of its gates, because its settings.json matcher (`^Bash$`)
-   * already scopes both. What this row measures is that pair reaching
-   * `governStep` and coming back GOVERNED -- not that `governsTool` reads an
-   * absent list correctly, which it never gets asked here (see the told
-   * companion test below, which is where that half is pinned).
+   * Claude Code's own case, and the reason this is a separate test rather
+   * than an assumption: hosts/claude-code/claude-code.hookmap.yaml declares
+   * no `tools` key at either of its gates, because its settings.json matcher
+   * (`^Bash$`) already scopes both. What this row measures is that pair
+   * reaching `governStep` and coming back governed -- not that `governsTool`
+   * reads an absent list correctly, which it never gets asked here (see the
+   * told companion test below, which is where that half is pinned).
    *
-   * UNTOLD, AND THAT IS HALF THE POINT SINCE §V5 review round 4. Host #1's
-   * call passes no `scopedTool`, because there is no list for it to be scoped
-   * against and its shipped source is frozen for this whole slice. So this
-   * fixture declares no `tools` AND tells nothing, which is exactly the pair
-   * host #1 presents -- and the refusal added in that round must not fire on
-   * it. (The same pair against host #1's REAL hookmap, both gates, is pinned
-   * in hosts/claude-code/test/hook.test.ts.)
+   * Untold, and that is half the point: Claude Code's shim passes no
+   * `scopedTool`, because there is no list for it to be scoped against. So
+   * this fixture declares no `tools` and tells nothing, which is exactly the
+   * pair Claude Code presents -- and the refusal that a caller must name a
+   * tool for a scoped gate must not fire on it. (The same pair against Claude
+   * Code's real hookmap, both gates, is pinned in
+   * hosts/claude-code/test/hook.test.ts.)
    */
   it("governs every tool when the entry declares no tools list at all", async () => {
     const { sink, events } = recordingSink();
@@ -748,17 +745,16 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
   });
 
   /**
-   * THE TOLD HALF OF THE SAME CLAIM, and it exists because the untold test
-   * above does NOT measure what its own comment says (§V5 review round 4,
-   * whole-branch review, Minor). That comment warns against "a skip that
-   * treated an absent list as 'no tools'" -- but with nothing told, the skip
-   * short-circuits on `scopedTool !== undefined` and `governsTool` is never
-   * reached, so mutating it to exactly that wrong form (`tools !== undefined
-   * && tools.includes(tool)`) leaves the test above GREEN. Measured: that
-   * mutation fails three tests in this file, none of them the one warning
-   * about it.
+   * The told half of the same claim, and it exists because the untold test
+   * above does not measure what its own comment says. That comment warns
+   * against "a skip that treated an absent list as 'no tools'" -- but with
+   * nothing told, the skip short-circuits on `scopedTool !== undefined` and
+   * `governsTool` is never reached, so mutating it to exactly that wrong form
+   * (`tools !== undefined && tools.includes(tool)`) leaves the test above
+   * passing. That mutation fails three tests in this file, none of them the
+   * one warning about it.
    *
-   * Told, with no list declared, `governsTool` IS consulted and has to answer
+   * Told, with no list declared, `governsTool` is consulted and has to answer
    * "governs" for a name no hookmap anywhere lists. That is the assertion the
    * warning was always describing, and it dies under that mutation.
    */
@@ -781,26 +777,23 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
   });
 
   /**
-   * A TOOL NAME THE HOOKMAP'S OWN PATH CANNOT READ IS UNREADABLE, NOT OUT OF
-   * SCOPE -- and since §V5 review round 4 it is not a scoping question at all,
-   * which is what this table now measures. Nothing scopes off the payload any
-   * more: the caller TELLS `governStep` which tool it checked, so an
-   * unreadable `tool_name` can no longer produce a skip by any route, and what
-   * remains is whatever `buildEnvelope` makes of it.
+   * A tool name the hookmap's own path cannot read is unreadable, not out of
+   * scope -- it is not a scoping question at all, which is what this table
+   * measures. Nothing scopes off the payload: the caller tells `governStep`
+   * which tool it checked, so an unreadable `tool_name` can no longer produce
+   * a skip by any route, and what remains is whatever `buildEnvelope` makes
+   * of it.
    *
-   * ALL THREE CASES, because "whatever already handles it" is NOT one
-   * mechanism, and the doc comment that used to sit on the deleted
-   * `toolNameFor` claimed it was until §V5 review round 3, Task 2, fix round 1
-   * measured otherwise. An absent or non-string name is a `buildEnvelope`
-   * throw the posture answers, audited; an EMPTY name is not --
-   * `buildEnvelope` checks the type and not the length, so the step is asked
-   * about and governed. Re-measured under the told-tool scheme and pinned
-   * here, so the distinction stays a property of the code rather than of a
-   * paragraph.
+   * All three cases are covered because "whatever already handles it" is not
+   * one mechanism: an absent or non-string name is a `buildEnvelope` throw
+   * the posture answers, audited; an empty name is not -- `buildEnvelope`
+   * checks the type and not the length, so the step is asked about and
+   * governed. That distinction is pinned here so it stays a property of the
+   * code rather than of a paragraph.
    *
-   * THE TOLD TOOL IS LISTED IN EVERY ROW, deliberately: the gate governs this
-   * step on the caller's own word, so any row that is NOT governed or audited
-   * is a step this gate said it governs and then dropped.
+   * The told tool is listed in every row, deliberately: the gate governs
+   * this step on the caller's own word, so any row that is not governed or
+   * audited is a step this gate said it governs and then dropped.
    */
   it("does not skip a step whose tool name the hookmap's path cannot read — unreadable is not out of scope", async () => {
     const rows: Record<string, unknown>[] = [];
@@ -822,14 +815,12 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
         scopedTool: "Bash",
       });
 
-      // WHAT each audit entry says, not merely THAT there is one (§V5 review
-      // round 3, Task 2, fix round 2). The single-case version of this test
-      // asserted `{outcome: "proceeded", failure: {kind:
-      // "host_configuration"}}`, and widening it to a table dropped both --
-      // leaving "an entry was written" pinned and its contents free, which is
-      // the half that says the incident was filed correctly. A posture that
-      // audited the wrong outcome, or blamed a Guardian never contacted, would
-      // have passed the weakened form.
+      // What each audit entry says, not merely that there is one: asserting
+      // only `{outcome: "proceeded", failure: {kind: "host_configuration"}}`
+      // for a single case would leave "an entry was written" pinned while
+      // its contents stayed free, which is the half that says the incident
+      // was filed correctly. A posture that audited the wrong outcome, or
+      // blamed a Guardian never contacted, would pass a weaker assertion.
       rows.push({
         label,
         stage: governed.stage,
@@ -867,12 +858,12 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
   });
 
   /**
-   * WHY AN EMPTY TOLD TOOL IS REFUSED RATHER THAN PASSED THROUGH. `governsTool`
-   * answers `false` for an empty name against any declared list -- so a caller
-   * that told `""` would have a step this gate governs skipped silently and
-   * unaudited, the identical shape the whole round-4 change exists to close.
-   * The predicate's answer is pinned first, because it is what makes the
-   * refusal necessary rather than decorative.
+   * Why an empty told tool is refused rather than passed through:
+   * `governsTool` answers `false` for an empty name against any declared
+   * list, so a caller that told `""` would have a step this gate governs
+   * skipped silently and unaudited -- the same fail-open shape the told-tool
+   * rule exists to close. The predicate's answer is pinned first, because it
+   * is what makes the refusal necessary rather than decorative.
    */
   it("refuses an empty told tool, because the predicate would silently skip one", async () => {
     expect(governsTool(scoped(["Bash"]), "OnStep", "")).toBe(false);
@@ -889,15 +880,16 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
   });
 
   /**
-   * THE ORDERING, and the reason the skip is the FIRST thing `governStep`
-   * does rather than merely an early one. `assertOutputIsReplaceable` refuses
-   * a result-gate payload whose named leaf no replacement can be built for --
-   * a loud, blocking stop, correctly, for a step this gate governs. But on
-   * host #2 an unlisted tool's payload is EXACTLY that shape: that gate's
-   * `outputs`/`exit_status` are written for the one tool it lists, and every
-   * other tool's `metadata` carries something else (opencode.hookmap.yaml's
-   * own measurement table). Asked after that refusal, an out-of-scope tool
-   * would stop the deployment instead of being skipped.
+   * The ordering, and the reason the skip is the first thing `governStep`
+   * does rather than merely an early one: `assertOutputIsReplaceable`
+   * refuses a result-gate payload whose named leaf no replacement can be
+   * built for -- a loud, blocking stop, correctly, for a step this gate
+   * governs. But on opencode an unlisted tool's payload is exactly that
+   * shape: that gate's `outputs`/`exit_status` are written for the one tool
+   * it lists, and every other tool's `metadata` carries something else
+   * (opencode.hookmap.yaml's own measurement table). Asked after that
+   * refusal, an out-of-scope tool would stop the deployment instead of being
+   * skipped.
    */
   it("skips before the result gate's own refusal, so an unlisted tool costs no stop", async () => {
     const { sink, events } = recordingSink();
@@ -928,16 +920,15 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
 });
 
 /**
- * §V5 review round 4, thread 3778055539, `tell, don't ask`. `governStep` used
- * to ask a SECOND question about a SECOND value: the shim scoped on its own
- * host field, and this function re-derived a name by resolving the entry's
- * `tool_name` path against the payload. Both shipped hookmaps made those the
- * same string, so both shipped deployments were fine -- and a hookmap pointing
- * `tool_name` elsewhere had the shim proceeding while this function skipped the
- * step as `"ungoverned"`, with no Guardian request, no decision and no audit
- * entry.
+ * `governStep` follows tell, don't ask: it takes the tool name the caller
+ * says, rather than re-deriving one by resolving the hookmap entry's
+ * `tool_name` path against the payload. The two sources can disagree -- a
+ * hookmap pointing `tool_name` at something other than the tool (say, at the
+ * command) would make a shim proceed while this function silently skipped
+ * the step as `"ungoverned"`, with no Guardian request, no decision, and no
+ * audit entry.
  *
- * The fixtures below make the two sources DISAGREE on purpose, which is the
+ * The fixtures below make the two sources disagree on purpose, which is the
  * only way to tell "scoped on what it was told" from "scoped on what it
  * derived": every earlier test in this file uses a hookmap where the two agree,
  * and would pass under either rule.
@@ -961,9 +952,9 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
   }
 
   /**
-   * The divergent gate: `tool_name` points at the COMMAND, not at the tool.
+   * The divergent gate: `tool_name` points at the command, not at the tool.
    * Against `payload` that resolves to `"ls -la"` while the step's real tool is
-   * `"Bash"` -- the same shape as the measured host #2 fail-open
+   * `"Bash"` -- the same shape as opencode's own fail-open risk
    * (`tool_name: $.args.command` beside `tools: [bash]`), in this suite's own
    * synthetic vocabulary.
    */
@@ -981,9 +972,9 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
       scopedTool: "Bash",
     });
 
-    // Under the derived-name rule this was `stage: "ungoverned"`, 0 asked, 0
-    // audited -- a governed step dropped in silence. Told, it is a step this
-    // gate really governs.
+    // Told, this is a step the gate really governs. Scoping on the
+    // tool_name path instead of the caller's own word would silently drop
+    // it as `"ungoverned"`, with nothing asked and nothing audited.
     expect(governed.stage).toBe("honoured");
     expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
   });
@@ -992,7 +983,7 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
     const { sink, events } = recordingSink();
     const { guardian, asked } = unaskedGuardian();
 
-    // The list names what `tool_name` resolves to, and NOT what the caller
+    // The list names what `tool_name` resolves to, and not what the caller
     // says it scoped on. A gate still asking the payload would govern this
     // step; one asking the caller skips it.
     const governed = await governRaw(guardian, sink, undefined, {
@@ -1005,13 +996,13 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
   });
 
   /**
-   * THE RULE THAT MAKES THE FIX STRUCTURAL RATHER THAN OPTIONAL. A third host
-   * copying the two-ask pattern -- scoping in its own shim and leaving
-   * `governStep` to work the tool out again -- gets a loud failure here
-   * instead of the old divergence. Decidable from the hookmap entry and the
-   * call's own arguments, with no payload consulted: the entry says this gate
-   * governs some tools and not others, and the caller has not said which tool
-   * this step is.
+   * The rule that makes this structural rather than optional: a third host
+   * that scopes in its own shim and leaves `governStep` to work the tool out
+   * again independently gets a loud failure here instead of a silent
+   * divergence. Decidable from the hookmap entry and the call's own
+   * arguments, with no payload consulted: the entry says this gate governs
+   * some tools and not others, and the caller has not said which tool this
+   * step is.
    */
   it("refuses a gate that declares a tools list when the caller named no tool, asking and auditing nothing", async () => {
     const { sink, events } = recordingSink();
@@ -1024,17 +1015,17 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
   });
 
   /**
-   * AND THE REFUSAL IS NOT ANSWERABLE BY THE NEGOTIATED POSTURE, which is the
-   * difference between this fix and a fail-open of its own. `governStep`
-   * answers a stage-"request" fault with §6.4's `on_decision_failure`, and
-   * under `proceed` -- the ACS default, and what this deployment ships -- that
-   * is an ungoverned step that PROCEEDS, audited. A refusal that landed inside
-   * that `try` would therefore let the exact call it exists to reject run the
-   * tool anyway.
+   * This refusal is not answerable by the negotiated posture, which is what
+   * keeps it from being a fail-open of its own. `governStep` answers a
+   * stage-"request" fault with §6.4's `on_decision_failure`, and under
+   * `proceed` -- the ACS default, and what this deployment ships -- that is
+   * an ungoverned step that proceeds, audited. A refusal that landed inside
+   * that `try` would let the exact call it exists to reject run the tool
+   * anyway.
    *
    * The contrast is measured in the same test rather than asserted, because
    * "this throw escapes" means nothing without a throw at the same gate, under
-   * the same session, that does NOT: the second half drives a payload
+   * the same session, that does not: the second half drives a payload
    * `buildEnvelope` cannot read a tool name from, and gets back a proceeded,
    * audited step instead of a rejection.
    */
@@ -1053,7 +1044,7 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
       expect({ posture, asked: asked(), events }).toEqual({ posture, asked: 0, events: [] });
     }
 
-    // The same gate, the same negotiated `proceed`, and a fault that IS the
+    // The same gate, the same negotiated `proceed`, and a fault that is the
     // posture's to answer: `buildEnvelope` cannot read a tool name from this
     // payload, so the step proceeds and is audited. Without this row, a
     // refusal that never reached any posture-answerable code would pass the
@@ -1098,7 +1089,7 @@ describe("governsTool — the rule both hosts and governStep share", () => {
       governsTool(scopedHookmap, "OnStep", "bash"),
       governsTool(scopedHookmap, "OnStep", "Write"),
       governsTool(scopedHookmap, "OnStep", "read"),
-      // Case matters, and this is the asymmetry that made host #2's own suite
+      // Case matters, and this is the asymmetry that made opencode's own suite
       // pass against a tool name its host never sends: OpenCode reports
       // `bash`, Claude Code reports `Bash`.
       governsTool(scopedHookmap, "OnStep", "Bash"),

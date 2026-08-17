@@ -1,20 +1,20 @@
 /**
- * The result gate, end to end (S2, Task 6): `AcsPlugin`'s
- * `"tool.execute.after"` hook, against a LIVE Guardian -- the same precedent
- * request-gate.test.ts sets for this host's other gate, and
- * hosts/claude-code/test/post-tool-use.test.ts sets for host #1's own result
- * gate. `applyOpenCodeOutput` in isolation, the shipped hookmap's static shape,
- * and `AcsPlugin`'s own load-time gate already have their own suites
- * (apply-opencode-output.test.ts, hookmap.test.ts, acs-plugin.test.ts); this is
- * the first one that calls THIS hook the way OpenCode itself would.
+ * The result gate, end to end: `AcsPlugin`'s `"tool.execute.after"` hook,
+ * against a live Guardian -- the same precedent request-gate.test.ts sets for
+ * this host's other gate, and hosts/claude-code/test/post-tool-use.test.ts
+ * sets for the Claude Code host's own result gate. `applyOpenCodeOutput` in
+ * isolation, the shipped hookmap's static shape, and `AcsPlugin`'s own
+ * load-time gate already have their own suites (apply-opencode-output.test.ts,
+ * hookmap.test.ts, acs-plugin.test.ts); this is the first one that calls this
+ * hook the way OpenCode itself would.
  *
- * THE MIRROR IS THE POINT. `opencode.hookmap.yaml`'s result gate declares
+ * The mirror is the point. `opencode.hookmap.yaml`'s result gate declares
  * `outputs.mirrors: [$.result.metadata.output]` -- `metadata` carries its own
  * copy of the tool's output, and a redaction that patched only the leaf would
  * leave the plaintext sitting in OpenCode's own session record while the
- * model correctly saw the redaction. The whole reason this slice touched the
- * shared adapter a second time is to prove that mirror lands, end to end,
- * through the unmodified adapter, on a second host.
+ * model correctly saw the redaction. Proving that mirror lands, end to end,
+ * through the unmodified adapter, on a second host, is the whole point of
+ * this suite.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -70,8 +70,7 @@ function liveResult(output: string): {
   };
 }
 
-// The same shape, with `metadata.exit` absent -- §V5 review, Task 6 fix
-// round 1, Important 1's own probe payload, not a hand-waved "missing
+// The same shape, with `metadata.exit` absent -- not a hand-waved "missing
 // field". Real OpenCode never sends this for a `bash` call (see the "posture
 // -proceeds" test below for the two measurements that pin that), but the
 // gate's own behaviour for it is still real and still worth pinning.
@@ -89,8 +88,8 @@ function liveResultMissingExit(output: string): {
   };
 }
 
-// V3's own precedent, matching hosts/claude-code/test/post-tool-use.test.ts
-// and this host's own request-gate.test.ts: redirected regardless of whether
+// Matching hosts/claude-code/test/post-tool-use.test.ts and this host's own
+// request-gate.test.ts: redirected regardless of whether
 // today's tests reach the fail-open path, because a handshake failure
 // mid-run would otherwise append a real secret to the developer's own
 // `.acs/audit.jsonl`.
@@ -99,9 +98,9 @@ const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
 /**
  * A scratch audit path unique to one call, so an assertion about whether
- * THAT call wrote an audit entry does not depend on this file's own test
+ * that call wrote an audit entry does not depend on this file's own test
  * order, or on what an earlier test happened to write to the shared
- * `AUDIT_LOG` (§V5 review, Task 6 fix round 1, Minor 4).
+ * `AUDIT_LOG`.
  */
 function freshAuditLogPath(): string {
   return join(SCRATCH_DIR, `audit-${crypto.randomUUID()}.jsonl`);
@@ -151,13 +150,12 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
   it("redacts the leaf AND its metadata mirror, leaving every other sibling untouched", async () => {
     const hooks = await AcsPlugin({} as never);
     const result = liveResult("TOKEN=ghp_SECRET123456");
-    // Captured BEFORE the hook runs, so the `toBe` checks below the
-    // assertions are IDENTITY checks, not value checks (§V5 review, Task 6
-    // fix round 1, Minor 1) -- the request gate's own `originalArgs` pin
-    // (request-gate.test.ts) is meaningful because the applier COULD replace
-    // that reference; this is its result-gate counterpart, for the two
-    // fields the deep in-place merge (mergeInPlace, acs-plugin.ts) exists to
-    // spare.
+    // Captured before the hook runs, so the `toBe` checks below the
+    // assertions are identity checks, not value checks -- the request gate's
+    // own `originalArgs` pin (request-gate.test.ts) is meaningful because the
+    // applier could replace that reference; this is its result-gate
+    // counterpart, for the two fields the deep in-place merge (mergeInPlace,
+    // acs-plugin.ts) exists to spare.
     const originalMetadata = result.metadata;
     const originalAttachments = result.attachments;
 
@@ -171,24 +169,24 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     // The leaf.
     expect(result.output).toBe("TOKEN=[REDACTED]");
     expect(result.output).not.toContain("ghp_SECRET123456");
-    // The mirror -- the whole reason this slice touched the shared adapter a
-    // second time. A redaction that patched only `result.output` and left
-    // this plaintext would be a clean-looking leak: the model sees the
-    // redaction, OpenCode's own session record does not.
+    // The mirror -- the whole reason a second host exists to prove the
+    // shared adapter still works. A redaction that patched only
+    // `result.output` and left this plaintext would be a clean-looking leak:
+    // the model sees the redaction, OpenCode's own session record does not.
     expect(result.metadata.output).toBe("TOKEN=[REDACTED]");
     expect(result.metadata.output).not.toContain("ghp_SECRET123456");
 
-    // Every sibling this decision does not name, untouched -- V4's clone
-    // discipline, which is right for every field that is not a mirror.
+    // Every sibling this decision does not name, untouched -- the clone
+    // discipline that is right for every field that is not a mirror.
     expect(result.title).toBe("cat .env");
     expect(result.metadata.exit).toBe(0);
     expect(result.metadata.truncated).toBe(false);
     expect(result.attachments).toEqual([{ type: "file", path: "/tmp/note.txt" }]);
 
-    // OBJECT IDENTITY survives the merge, not merely equal content:
-    // `result.metadata` is the SAME object mergeInPlace recursed into and
+    // Object identity survives the merge, not merely equal content:
+    // `result.metadata` is the same object mergeInPlace recursed into and
     // mutated in place (this applier's own contract with OpenCode -- "mutate
-    // what you were handed"), and `result.attachments` is the SAME array
+    // what you were handed"), and `result.attachments` is the same array
     // `patchedClone` (result-output.ts) never touched, because it sits
     // outside the path to both the leaf and the mirror. A shallow
     // `Object.assign`-based merge would have replaced `result.metadata` with
@@ -216,15 +214,15 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     // nothing -- the tool's own output survives exactly as produced.
     expect(result).toEqual(liveResult("hello world"));
     // No audit entry either: a decision arrived, so no fail-open posture was
-    // ever consulted. Its own scratch path, not the shared `AUDIT_LOG` (§V5
-    // review, Task 6 fix round 1, Minor 4) -- this assertion no longer
-    // depends on this test running before any test that DOES write one.
+    // ever consulted. Its own scratch path, not the shared `AUDIT_LOG` --
+    // this assertion does not depend on this test running before any test
+    // that does write one.
     expect(existsSync(auditPath)).toBe(false);
   });
 
   it("withholds a denied result by replacing rather than throwing", async () => {
     // "rm -rf /" -- the same destructive-command pattern policy/manifest.yaml
-    // configures for the request gate, matched here against the RESULT
+    // configures for the request gate, matched here against the result
     // payload's own text (post_tool_call's policy_target,
     // "$.tool_result.outputs[0].value") -- confirmed genuinely policy-
     // produced, below, not assumed from the withheld marker alone.
@@ -232,11 +230,11 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     const sessionID = "ses-result-gate-deny";
     const result = liveResult("rm -rf /");
 
-    // RESOLVES, does not throw -- opencode.hookmap.yaml's own header states
+    // Resolves, does not throw -- opencode.hookmap.yaml's own header states
     // the measurement this pins: OpenCode discards the plugin's mutations on
     // a throw out of "tool.execute.after" and rebuilds `metadata` from its
     // own pre-hook copy, so a secret scrubbed by a throw would not stay
-    // scrubbed on disk. The result gate's own deny withholds by REPLACING
+    // scrubbed on disk. The result gate's own deny withholds by replacing
     // `result` instead.
     await withAuditLog(auditPath, async () => {
       const hooks = await AcsPlugin({} as never);
@@ -258,13 +256,12 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     expect(result.metadata.truncated).toBe(false);
     expect(result.attachments).toEqual([{ type: "file", path: "/tmp/note.txt" }]);
 
-    // GENUINELY POLICY-PRODUCED, NOT A POSTURE DENY (§V5 review, Task 6 fix
-    // round 1, Minor 2) -- the withheld marker alone cannot tell the two
-    // apart, since a fail-closed posture would render byte-identically. Two
-    // independent checks close that:
+    // Genuinely policy-produced, not a posture deny -- the withheld marker
+    // alone cannot tell the two apart, since a fail-closed posture would
+    // render byte-identically. Two independent checks close that:
     //
     //   1. No audit entry: a posture is only ever consulted, and only ever
-    //      audited, when a decision FAILED to arrive -- a real decision
+    //      audited, when a decision failed to arrive -- a real decision
     //      arriving is not that.
     expect(existsSync(auditPath)).toBe(false);
     //   2. A cross-check against the real Guardian's own decision for the
@@ -292,7 +289,7 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
 
   it("skips a tool outside this gate's own tools list: no throw, result untouched, and no Guardian request goes out", async () => {
     // "read" -- one of the real tool names measured alongside "bash" that
-    // opencode.hookmap.yaml's result gate does NOT list (its own comment:
+    // opencode.hookmap.yaml's result gate does not list (its own comment:
     // `metadata` is per-tool -- "read"'s carries {display, loaded, preview,
     // truncated}, no `exit`). This gate is never asked to resolve
     // `$.result.metadata.exit` for it at all, so the shape below does not
@@ -314,21 +311,20 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
 
       expect(result).toEqual(liveResult("some file preview text"));
       expect(fetchSpy).not.toHaveBeenCalled();
-      // No audit line either (§V5 review, Task 6 fix round 1, Minor 4) --
-      // sound by construction (this skip returns before
-      // resolveSessionConfig/governStep are ever asked, so there is nothing
-      // for a posture to answer or an entry to record), pinned rather than
-      // left implicit.
+      // No audit line either -- sound by construction (this skip returns
+      // before resolveSessionConfig/governStep are ever asked, so there is
+      // nothing for a posture to answer or an entry to record), pinned
+      // rather than left implicit.
       expect(existsSync(auditPath)).toBe(false);
     } finally {
       fetchSpy.mockRestore();
     }
   });
 
-  // §V5 review, Task 6 fix round 1, Important 1. See acs-plugin.ts's own
-  // "tool.execute.after" doc comment for the two measurements pinning this
-  // as unreachable through `bash`, the only tool this gate governs -- real
-  // in principle, and correctly left to the posture rather than closed here.
+  // See acs-plugin.ts's own "tool.execute.after" doc comment for the two
+  // measurements pinning this as unreachable through `bash`, the only tool
+  // this gate governs -- real in principle, and correctly left to the
+  // posture rather than closed here.
   it("posture-proceeds, audited, when metadata.exit is missing -- real in principle, not reachable through bash", async () => {
     const auditPath = freshAuditLogPath();
     const result = liveResultMissingExit("TOKEN=ghp_SECRET123456");
@@ -347,15 +343,15 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     // throw, caught by governStep before the Guardian is ever asked -- is
     // answered by this deployment's negotiated posture, which defaults to
     // "proceed" (handshake.ts's own spec default). A posture "allow" renders
-    // no `result` field, so applyOpenCodeOutput merges nothing: the tool's own
-    // output -- secret included -- is delivered exactly as produced, in both
-    // the leaf and the mirror. Correct per this slice's own rule (the fault
-    // is payload-dependent, so `resolveByPosture` is the right seam), and
-    // pinned here so the behaviour is a recorded decision, not an accident.
+    // no `result` field, so applyOpenCodeOutput merges nothing: the tool's
+    // own output -- secret included -- is delivered exactly as produced, in
+    // both the leaf and the mirror. Correct because the fault is
+    // payload-dependent, so `resolveByPosture` is the right seam, and pinned
+    // here so the behaviour is a recorded decision, not an accident.
     expect(result.output).toBe("TOKEN=ghp_SECRET123456");
     expect(result.metadata.output).toBe("TOKEN=ghp_SECRET123456");
 
-    // AUDITED -- this is the whole point of a posture-routed proceed: it is
+    // Audited -- this is the whole point of a posture-routed proceed: it is
     // visible, not silent (§6.4).
     expect(existsSync(auditPath)).toBe(true);
     const entries = readFileSync(auditPath, "utf8")
@@ -406,26 +402,27 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
 });
 
 /**
- * THE FAULT `assertHostAcceptsEveryDecision` (acs-plugin.ts) EXISTS TO REFUSE,
- * MEASURED RATHER THAN ASSUMED (§V5 review round 3, Task 5, Critical).
+ * The fault `assertHostAcceptsEveryDecision` (acs-plugin.ts) exists to
+ * refuse, measured rather than assumed.
  *
- * These three tests are deliberately NOT written through `AcsPlugin`, and that
- * is the point rather than a convenience: the whole finding is that this class
- * of hookmap used to REGISTER CLEANLY, and the fix is a load-time refusal.
- * Driving these through `AcsPlugin` would prove only that the refusal now fires,
- * which `acs-plugin.test.ts` already pins -- it would say nothing about what the
- * refused hookmap actually DOES if it ever reaches a live decision, which is the
- * claim the gate rests on. So these call the same collaborators
- * `"tool.execute.after"` above calls (`loadHookmap`, `resolveSessionConfig` ->
- * `governStep`, `applyOpenCodeOutput`), against the same live Guardian and the
- * same real decisions, with the plugin factory -- and therefore the gate -- out
- * of the path. They keep measuring the hazard after the gate lands.
+ * These three tests are deliberately not written through `AcsPlugin`, and
+ * that is the point rather than a convenience: this class of hookmap loads
+ * cleanly on its own, and the fix is a load-time refusal in `AcsPlugin`.
+ * Driving these through `AcsPlugin` would prove only that the refusal fires,
+ * which `acs-plugin.test.ts` already pins -- it would say nothing about what
+ * the refused hookmap actually does if it ever reaches a live decision,
+ * which is the claim the gate rests on. So these call the same collaborators
+ * `"tool.execute.after"` above calls (`loadHookmap`, `resolveSessionConfig`
+ * -> `governStep`, `applyOpenCodeOutput`), against the same live Guardian and
+ * the same real decisions, with the plugin factory -- and therefore the gate
+ * -- out of the path. They keep measuring the hazard the gate exists to
+ * prevent.
  *
  * Every fixture below is a few lines different from the shipped
- * `opencode.hookmap.yaml`'s result gate, and every one of them LOADS CLEAN
+ * `opencode.hookmap.yaml`'s result gate, and every one of them loads clean
  * through `loadHookmap`: `assertRenderableDecisions` (build-envelope.ts)
- * requires only a non-empty `output` block whose every field names a `value` or
- * a `from`, and `reason.text: { from: reasoning }` satisfies that exactly.
+ * requires only a non-empty `output` block whose every field names a `value`
+ * or a `from`, and `reason.text: { from: reasoning }` satisfies that exactly.
  */
 describe("a result-gate decision the hookmap gives no way to withhold with -- the measured fail-open", () => {
   /** Writes one fixture hookmap into this file's scratch dir and returns its path. */
@@ -436,25 +433,25 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
   }
 
   /**
-   * Runs the real chain for one hookmap and reports what the applier did to the
-   * live object, with the plugin factory out of the path -- see this describe
-   * block's own comment for why that is deliberate.
+   * Runs the real chain for one hookmap and reports what the applier did to
+   * the live object, with the plugin factory out of the path -- see this
+   * describe block's own comment for why that is deliberate.
    *
-   * `expectedDecision` is asserted here rather than returned, because it is this
-   * helper's own precondition: every caller below is claiming something about a
-   * decision that GENUINELY ARRIVED, and a test whose Guardian answered
-   * something else would be measuring nothing.
+   * `expectedDecision` is asserted here rather than returned, because it is
+   * this helper's own precondition: every caller below is claiming something
+   * about a decision that genuinely arrived, and a test whose Guardian
+   * answered something else would be measuring nothing.
    *
-   * WHAT THIS HELPER CANNOT ASSERT, AND HOW THE CALLERS COVER IT INSTEAD. The
-   * decision message's own `applied_output` -- `withResultOutput`'s guarantee,
-   * the one the retired doc comment mistook for protection -- is NOT reachable
-   * from here: `governStep` attaches it inside its own render step and returns
-   * the pre-attachment decision on `GovernedStep.decision` (govern-step.ts,
-   * `renderDecision(hookEventName, withResultOutput(decision, ...), hookmap)`).
-   * So each caller pins the guarantee the way it is actually observable -- by
-   * running the IDENTICAL payload through the SHIPPED hookmap and showing the
-   * withholding lands there. Same Guardian, same decision, same live shape; the
-   * hookmap is the only thing that differs, which is exactly the claim.
+   * What this helper cannot assert, and how the callers cover it instead: the
+   * decision message's own `applied_output` -- `withResultOutput`'s guarantee
+   * -- is not reachable from here. `governStep` attaches it inside its own
+   * render step and returns the pre-attachment decision on
+   * `GovernedStep.decision` (govern-step.ts, `renderDecision(hookEventName,
+   * withResultOutput(decision, ...), hookmap)`). So each caller pins the
+   * guarantee the way it is actually observable -- by running the identical
+   * payload through the shipped hookmap and showing the withholding lands
+   * there. Same Guardian, same decision, same live shape; the hookmap is the
+   * only thing that differs, which is exactly the claim.
    */
   async function governAndApply(options: {
     hookmapPath: string;
@@ -463,7 +460,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expectedDecision: string;
   }): Promise<{ output: Record<string, unknown>; result: ReturnType<typeof liveResult>; threw: unknown }> {
     // Loads clean for every fixture below -- the finding's first half. Nothing
-    // in the adapter's own load-time checks has an opinion about WHICH key a
+    // in the adapter's own load-time checks has an opinion about which key a
     // result-gate `deny`/`modify` renders into.
     const hookmap: Hookmap = loadHookmap(options.hookmapPath);
 
@@ -489,13 +486,13 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       // decision failed to arrive, and every caller below asserts a real one
       // did. Nothing here writes an audit line, so nothing here needs a path.
       audit: NULL_AUDIT_SINK,
-      // What `runExchange` passes: the tool this exchange already scoped on
-      // (§V5 review round 4). Every fixture below declares `tools: [bash]`,
-      // and a gate that declares a list refuses a caller that names no tool.
+      // What `runExchange` passes: the tool this exchange already scoped on.
+      // Every fixture below declares `tools: [bash]`, and a gate that
+      // declares a list refuses a caller that names no tool.
       scopedTool: TOOL,
     });
 
-    // A REAL policy decision, not a posture-resolved one: `stage: "honoured"`
+    // A real policy decision, not a posture-resolved one: `stage: "honoured"`
     // is reachable only through the route that rendered a decision that
     // actually arrived (govern-step.ts's own `GovernedStep` doc comment).
     expect(governed.stage).toBe("honoured");
@@ -510,7 +507,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     return { output: governed.output as Record<string, unknown>, result, threw };
   }
 
-  // The result gate exactly as shipped, EXCEPT that `deny` and `modify`
+  // The result gate exactly as shipped, except that `deny` and `modify`
   // declare only `reason.text` -- the `result: { from: applied_output }` sink
   // removed from both. Every other line, `outputs.mirrors` included, is the
   // shipped file's.
@@ -545,9 +542,9 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     // it is rendered through.
     const TOOL_OUTPUT = "rm -rf /";
 
-    // THE CONTROL, first: the shipped hookmap, whose result-gate `deny`
+    // The control, first: the shipped hookmap, whose result-gate `deny`
     // declares `result: { from: applied_output }`. The withholding lands on
-    // the leaf AND the mirror -- so `withResultOutput` did put one on the
+    // the leaf and the mirror -- so `withResultOutput` did put one on the
     // decision message for this exact payload.
     const shipped = await governAndApply({
       hookmapPath: HOOKMAP_PATH,
@@ -559,7 +556,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(shipped.result.output).toBe("[OUTPUT WITHHELD BY POLICY]");
     expect(shipped.result.metadata.output).toBe("[OUTPUT WITHHELD BY POLICY]");
 
-    // THE FAULT: the same decision, the same payload, one hookmap block
+    // The fault: the same decision, the same payload, one hookmap block
     // different.
     const { output, result, threw } = await governAndApply({
       hookmapPath: fixture("result-deny-without-a-sink.yaml", NO_SINK_AT_ALL),
@@ -575,7 +572,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(Object.keys(output)).toEqual(["reason"]);
     expect(threw).toBeUndefined();
 
-    // Nothing applied. The tool's own output survives in BOTH places --
+    // Nothing applied. The tool's own output survives in both places --
     // indistinguishable, on this live object, from a clean allow (compare
     // "passes a clean result through untouched", above).
     expect(result.output).toBe(TOOL_OUTPUT);
@@ -607,28 +604,28 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "modify",
     });
 
-    // EMPTY, not even `reason`: this `modify` carries no `reasoning` field, and
-    // `reason.text: { from: reasoning }` renders nothing without one. So the
-    // render is `{}` -- byte-identical to what a clean `allow` renders on this
-    // host, which is the shape §V5 fix round 1's Critical 1 closed at the
-    // REQUEST gate and this task closes here.
+    // Empty, not even `reason`: this `modify` carries no `reasoning` field,
+    // and `reason.text: { from: reasoning }` renders nothing without one. So
+    // the render is `{}` -- byte-identical to what a clean `allow` renders on
+    // this host, the same shape the request gate's own equivalent rule
+    // closes.
     expect(output).toEqual({});
     expect(threw).toBeUndefined();
     expect(result.output).toBe(TOOL_OUTPUT);
     expect(result.metadata.output).toBe(TOOL_OUTPUT);
   });
 
-  // The SECOND shape this gate refuses, and the reason its rule is the exact
+  // The second shape this gate refuses, and the reason its rule is the exact
   // key `result` rather than "any path whose leading segment is `result`".
-  // Naming the LEAF renders `{result: {output: <the whole patched container>}}`,
+  // Naming the leaf renders `{result: {output: <the whole patched container>}}`,
   // which `applyOpenCodeOutput` merges without complaint: `live.result.output`
-  // becomes an OBJECT where OpenCode expects the tool's own output string, and
-  // `live.result.metadata.output` -- the mirror, the entire reason this slice
-  // touched the shared adapter a second time -- is never written at all.
-  // opencode.hookmap.yaml's own `deny` comment already names this shape as
-  // wrong ("burying the mirror's own patched copy one level too deep for
-  // OpenCode to ever apply") and hookmap.test.ts already asserts the shipped
-  // file does not use it; nothing REFUSED it until this task.
+  // becomes an object where OpenCode expects the tool's own output string, and
+  // `live.result.metadata.output` -- the mirror, the entire reason a second
+  // host exists to prove the shared adapter still works -- is never written
+  // at all. opencode.hookmap.yaml's own `deny` comment already names this
+  // shape as wrong ("burying the mirror's own patched copy one level too deep
+  // for OpenCode to ever apply") and hookmap.test.ts already asserts the
+  // shipped file does not use it; this load-time gate is what refuses it.
   const DENY_NAMING_THE_LEAF = NO_SINK_AT_ALL.replace(
     "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
     "      deny:\n" +
@@ -649,23 +646,21 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     // The mirror keeps what the tool produced -- a clean-looking leak, exactly
     // the one `outputs.mirrors` exists to prevent.
     expect(result.metadata.output).toBe("rm -rf /");
-    // And the leaf did not receive the withheld STRING either: it received the
+    // And the leaf did not receive the withheld string either: it received the
     // whole patched container object, one level too deep for OpenCode to read
     // an output from.
     expect(typeof result.output).toBe("object");
     expect((result.output as unknown as Record<string, unknown>).output).toBe("[OUTPUT WITHHELD BY POLICY]");
   });
 
-  // THE THIRD MEMBER OF THE CLASS, and the one that survived the first version
-  // of this task's own gate (§V5 review round 3, Task 5, fix round 1,
-  // Critical 1). That gate asked only whether the key `result` was PRESENT --
-  // never what it SOURCED. `result: { from: applied_input }` declares the
-  // right key against the wrong field: a result-gate decision carries
-  // `applied_output`, never `applied_input`, and a `from:` field renders
-  // NOTHING when its source is absent (render-decision.ts). Which is exactly
-  // the reasoning the REQUEST gate's rule was already written around
-  // ("`refuse.reason` alone is a `from:` field that renders NOTHING...") and
-  // the result-gate rule sitting beside it inherited none of.
+  // The third member of the class. A gate that checks only whether the key
+  // `result` is present, never what it is sourced from, would load this
+  // fixture clean: `result: { from: applied_input }` declares the right key
+  // against the wrong field. A result-gate decision carries `applied_output`,
+  // never `applied_input`, and a `from:` field renders nothing when its
+  // source is absent (render-decision.ts) -- exactly the reasoning the
+  // request gate's own rule is written around ("`refuse.reason` alone is a
+  // `from:` field that renders nothing...").
   //
   // Not a contrived shape: `args: { from: applied_input }` is what the request
   // gate's own `modify` declares, one copy-paste away in the same file.
@@ -685,7 +680,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "deny",
     });
 
-    // NO `result` KEY AT ALL: `applied_input` is absent on a result-gate
+    // No `result` key at all: `applied_input` is absent on a result-gate
     // decision, so the field the hookmap declared resolved to nothing and
     // `renderDecision` emitted no key for it. What is left is the
     // declared-inert `reason` -- exactly the render the no-sink-at-all deny
@@ -698,16 +693,15 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(result).toEqual(liveResult("rm -rf /"));
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 2, CRITICAL -- the third time this
-  // class survived a fix built to close it. `declaresSinkFrom` checked what the
-  // sink NAMED and never whether the field could RENDER, so both shapes below
-  // declared `result: { ... from: applied_output ... }` and still delivered.
+  // `declaresSinkFrom` checks what the sink is named, not whether the field
+  // can actually render, so both shapes below declare
+  // `result: { ... from: applied_output ... }` and still deliver.
   //
-  // SHAPE 1: `type: string` beside the right `from`. `renderDecision` drops a
+  // Shape 1: `type: string` beside the right `from`. `renderDecision` drops a
   // `from:` field whose carried value fails `typeof carried === field.type`
-  // (render-decision.ts) -- and `applied_output` is an OBJECT, so `type: string`
-  // drops it every time. MORE plausible than the wrong-`from` shape above, not
-  // less: EVERY other `from:` field in the shipped hookmap carries
+  // (render-decision.ts) -- and `applied_output` is an object, so `type: string`
+  // drops it every time. More plausible than the wrong-`from` shape above, not
+  // less: every other `from:` field in the shipped hookmap carries
   // `type: string` (`reason.text: { from: reasoning, type: string }`), so an
   // author following the house style writes exactly this.
   const DENY_WITH_A_TYPE_THAT_NEVER_MATCHES = NO_SINK_AT_ALL.replace(
@@ -733,7 +727,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(result).toEqual(liveResult("rm -rf /"));
   });
 
-  it("modify declaring result with type: string renders LITERALLY {} -- the secret delivered in leaf and mirror", async () => {
+  it("modify declaring result with type: string renders literally {} -- the secret delivered in leaf and mirror", async () => {
     // The same shape on the decision that carries no `reasoning`, so nothing
     // renders at all: byte-identical to a clean `allow`.
     const yaml = NO_SINK_AT_ALL.replace(
@@ -756,8 +750,8 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(result.metadata.output).toBe("TOKEN=ghp_SECRET123456");
   });
 
-  // SHAPE 2: a `value:` sitting beside the right `from:`. `renderDecision`
-  // checks `hasOwnProperty(field, "value")` FIRST and `continue`s -- it never
+  // Shape 2: a `value:` sitting beside the right `from:`. `renderDecision`
+  // checks `hasOwnProperty(field, "value")` first and `continue`s -- it never
   // reads `from` at all. So this renders the literal, and an empty literal
   // renders `{"result":{}}`: a key the applier happily merges, merging nothing.
   const DENY_WITH_A_LITERAL_BESIDE_THE_SOURCE = NO_SINK_AT_ALL.replace(
@@ -773,30 +767,28 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "deny",
     });
 
-    // The key IS rendered -- so a gate checking only for the key's presence
+    // The key is rendered -- so a gate checking only for the key's presence
     // sees a well-formed sink -- and it is empty, so the merge is a no-op.
     expect(output).toEqual({ result: {} });
     expect(threw).toBeUndefined();
     expect(result).toEqual(liveResult("rm -rf /"));
   });
 
-  // §V5 review round 3, Task 5, fix round 1, Important 1: `ask`/`defer`
-  // DECLARED at this gate were unchecked, on the reasoning that the shipped
-  // hookmap declares neither -- reasoning from the shipped file to the class,
-  // which is the same move the result-gate skip itself used to make.
+  // Covers `ask`/`defer` declared at this gate, even though the shipped
+  // hookmap declares neither.
   //
-  // DIRECTION IS WHAT MAKES IT A FAULT RATHER THAN A GAP. NOT declaring `ask`
+  // Direction is what makes it a fault rather than a gap. Not declaring `ask`
   // is the safe state: `renderDecision` throws on a decision the hookmap has
   // no entry for, `governStep` catches it, and the deployment's posture
-  // answers it -- audited either way. DECLARING it without a sink is the
+  // answers it -- audited either way. Declaring it without a sink is the
   // silent one, and that is what this measures.
   //
-  // THE DECISION IS CONSTRUCTED, NOT GUARDIAN-PRODUCED, and deliberately so:
-  // what is at issue is what THIS HOOKMAP renders for an arriving `ask`, not
+  // The decision is constructed, not Guardian-produced, and deliberately so:
+  // what is at issue is what this hookmap renders for an arriving `ask`, not
   // which Guardian produces one. `renderDecision` is the exact seam the fault
-  // lives at, and it is the same function `governStep` calls -- so this drives
-  // the real adapter and the real applier, with only the decision's origin
-  // differing from the tests above.
+  // lives at, and it is the same function `governStep` calls -- so this
+  // drives the real adapter and the real applier, with only the decision's
+  // origin differing from the tests above.
   const ASK_AND_DEFER_WITHOUT_A_SINK =
     NO_SINK_AT_ALL.replace(
       "      deny:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
@@ -842,25 +834,26 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     },
   );
 
-  // THE OTHER DIRECTION, and the reason this gate's rule is "land it OR refuse
-  // it" rather than "land it" (§V5 review round 3, Task 5, fix round 2, Minor).
+  // The other direction, and the reason this gate's rule is "land it or
+  // refuse it" rather than "land it".
   //
-  // A result-gate decision mapped to `refuse.denied: { value: true }` is NOT a
-  // silent no-op: the applier THROWS, measured below. That is a weaker
+  // A result-gate decision mapped to `refuse.denied: { value: true }` is not
+  // a silent no-op: the applier throws, measured below. That is a weaker
   // withholding than replacing -- opencode.hookmap.yaml's own header records
   // the measurement that OpenCode discards this plugin's mutations on a throw
   // out of "tool.execute.after" and rebuilds `metadata` from its own pre-hook
   // copy, so the plaintext survives in OpenCode's session record -- but it is
-  // an HONEST one: the model never sees the output, and the author chose it.
+  // an honest one: the model never sees the output, and the author chose it.
   //
-  // Refusing such a hookmap at LOAD would be strictly worse on this host, and
-  // that is measured too, elsewhere: OpenCode catches a throwing plugin factory
-  // and continues with the plugin UNLOADED (docs/shaping/acs-reference-impl-slices.md),
-  // so every tool call for the rest of the session runs completely ungoverned
-  // -- the secret delivered to the model AND left on disk. Over-refusal is not
-  // a free direction to err in here.
+  // Refusing such a hookmap at load would be strictly worse on this host, and
+  // that is measured too, elsewhere: OpenCode catches a throwing plugin
+  // factory and continues with the plugin unloaded
+  // (docs/shaping/acs-reference-impl-slices.md), so every tool call for the
+  // rest of the session runs completely ungoverned -- the secret delivered to
+  // the model and left on disk. Over-refusal is not a free direction to err
+  // in here.
   it.each(["deny", "ask", "defer", "modify"] as const)(
-    "a result-gate %s mapped to an unconditional refusal THROWS -- an honest outcome, not a no-op",
+    "a result-gate %s mapped to an unconditional refusal throws -- an honest outcome, not a no-op",
     (decisionName) => {
       const yaml =
         NO_SINK_AT_ALL.replace(
@@ -887,7 +880,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       } as unknown as AcsDecision, hookmap);
 
       expect(rendered).toEqual({ refuse: { denied: true } });
-      // THROWS -- the model never sees the tool's output. Nothing half-applied
+      // Throws -- the model never sees the tool's output. Nothing half-applied
       // either: pass 2a fires before any assignment.
       expect(() =>
         applyOpenCodeOutput(rendered, { gate: "result", result: result as unknown as Record<string, unknown> }),
@@ -896,18 +889,18 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     },
   );
 
-  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6a -- the sixth member of
-  // the class, and the one the gate itself MANDATED.
+  // The sixth member of the class, and the one the gate itself mandates.
   //
-  // Fix round 1 widened the result gate's rule to `deny`/`modify`/`ask`/`defer`
-  // without checking whether the sink it demands can ever be FILLED for the two
-  // it added. `withResultOutput` (result-output.ts) attaches `applied_output`
-  // for `deny` alone; it throws for a `modify` arriving without one, and it
-  // returns everything else -- `allow`, `ask`, `defer` -- UNTOUCHED. So a
+  // The result gate's rule requires a sink on `deny`/`modify`/`ask`/`defer`,
+  // but the sink it demands can never be filled for two of them.
+  // `withResultOutput` (result-output.ts) attaches `applied_output` for
+  // `deny` alone; it throws for a `modify` arriving without one, and it
+  // returns everything else -- `allow`, `ask`, `defer` -- untouched. So a
   // result-gate `ask` or `defer` declaring `result: { from: applied_output }`,
-  // the exact declaration the gate required, renders no `result` key at all.
+  // the exact declaration the gate requires, renders no `result` key at all.
   //
-  // Variant 1's exact observable, reached THROUGH the mandated declaration.
+  // The same observable as the no-sink case above, reached through the
+  // mandated declaration instead.
   //
   // Composed the way `governStep` composes it -- `renderDecision(hook,
   // withResultOutput(decision, outputLocation), hookmap)`, its own `render()`
@@ -915,7 +908,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
   // decision is constructed rather than Guardian-produced for the same reason
   // stated on the `ask`/`defer` no-sink case above.
   it.each(["ask", "defer"] as const)(
-    "a result-gate %s declaring the MANDATED result sink renders no result key -- withResultOutput never fills it",
+    "a result-gate %s declaring a mandated result sink renders no result key -- withResultOutput never fills it",
     (decisionName) => {
       const yaml = NO_SINK_AT_ALL.replace(
         "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
@@ -942,7 +935,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
         { payload: { result }, outputs },
       );
 
-      // UNTOUCHED: no `applied_output` was attached, so the field the hookmap
+      // Untouched: no `applied_output` was attached, so the field the hookmap
       // points at does not exist on the decision.
       expect(Object.hasOwn(projected, "applied_output")).toBe(false);
 
@@ -958,21 +951,20 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     },
   );
 
-  // §V5 review round 3, Task 5, FIX ROUND 3, CRITICAL 6b -- the same
-  // unsatisfiable-by-construction fault reached from the ENTRY rather than the
-  // decision, and this one hits `deny`.
+  // The same unsatisfiable-by-construction fault reached from the entry
+  // rather than the decision, and this one hits `deny`.
   //
-  // `withResultOutput` no-ops for EVERY decision when its `location` is
+  // `withResultOutput` no-ops for every decision when its `location` is
   // undefined, and `governStep` builds that location from the entry's own
   // `outputs` block (`outputs === undefined ? undefined : {...}`). An entry at
   // `tool.execute.after` declaring `arguments:` instead of `outputs:` is a
   // legal `HookmapRequestHookEntry` as far as the adapter is concerned -- the
-  // adapter keys off the entry's SHAPE and never off the event name, on purpose
-  // -- so it loads clean, and this host's gate (which DOES key by hook name)
-  // demanded `result: { from: applied_output }` and got it.
+  // adapter keys off the entry's shape and never off the event name, on
+  // purpose -- so it loads clean, and this host's gate (which does key by
+  // hook name) demanded `result: { from: applied_output }` and got it.
   //
-  // Guardian-produced end to end: this face hits `deny`, which this deployment
-  // really does answer for `rm -rf /`.
+  // Guardian-produced end to end: this face hits `deny`, which this
+  // deployment really does answer for `rm -rf /`.
   const RESULT_HOOK_WITH_NO_OUTPUTS =
     "host: opencode\n" +
     "hooks:\n" +
@@ -990,10 +982,9 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     "          result: { from: applied_output }\n" +
     "          reason.text: { from: reasoning, type: string }\n";
 
-  // §V5 review round 3, Task 5, FIX ROUND 4, CRITICAL 7D -- `outputs.within`
-  // names the container a decision's `applied_output` is a patched clone OF,
-  // and nothing checked that it is the object this shim actually hands the
-  // applier. The shim passes `result: output` (the live
+  // `outputs.within` names the container a decision's `applied_output` is a
+  // patched clone of, and nothing checks that it is the object this shim
+  // actually hands the applier. The shim passes `result: output` (the live
   // `{title, output, metadata, attachments}`), and its payload puts that at
   // `$.result` -- so `$.result` is the only path that names it. Any other
   // container satisfies the sink rule and lands the clone somewhere else.
@@ -1027,10 +1018,10 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       expectedDecision: "deny",
     });
 
-    // The sink rule is satisfied -- a `result` key IS rendered and IS merged.
+    // The sink rule is satisfied -- a `result` key is rendered and is merged.
     expect(Object.hasOwn(output, "result")).toBe(true);
     expect(threw).toBeUndefined();
-    // And it withheld nothing: the clone is of the whole PAYLOAD, so its own
+    // And it withheld nothing: the clone is of the whole payload, so its own
     // `result` field is what carries the withholding, one level below where
     // the live object lives.
     expect(result.output).toBe("rm -rf /");
@@ -1060,7 +1051,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     });
 
     expect(threw).toBeUndefined();
-    // THE MIRROR KEEPS THE PLAINTEXT -- the leak `outputs.mirrors` exists to
+    // The mirror keeps the plaintext -- the leak `outputs.mirrors` exists to
     // close, reached from the container rather than from a missing mirror.
     expect(result.metadata.output).toBe("rm -rf /");
     // And `metadata`'s own siblings land on the live result object as junk,
@@ -1070,21 +1061,18 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     expect(asRecord.truncated).toBe(false);
   });
 
-  // §V5 review round 3, Task 5, FIX ROUND 5, CRITICAL -- VARIANT 8, and it is
-  // worse than "withholds the wrong field", which is how fix round 4's report
-  // characterised it while declining to close it.
-  //
-  // `outputs.from` is not only the leaf a withholding replaces. It is the leaf
-  // that goes ON THE WIRE as the ACS result payload's `outputs[0].value` --
-  // the value the policy runtime is asked ABOUT. Point it at a different field
-  // and the Guardian is not asked the wrong question about the output; it is
-  // asked about a different value entirely, answers it correctly, and the step
-  // is audited as a clean allow.
+  // `outputs.from` is not only the leaf a withholding replaces. It is the
+  // leaf that goes on the wire as the ACS result payload's
+  // `outputs[0].value` -- the value the policy runtime is asked about. Point
+  // it at a different field and the Guardian is not asked the wrong question
+  // about the output; it is asked about a different value entirely, answers
+  // it correctly, and the step is audited as a clean allow.
   it("outputs.from naming another leaf puts the WRONG VALUE on the wire, and the deny never happens", async () => {
     const yaml = RESULT_WITHIN("$.result.title", "$.result");
     const hookmapPath = fixture("result-from-title.yaml", yaml);
 
-    // FIRST, the wire: this is what the policy runtime is actually asked about.
+    // First, the wire: this is what the policy runtime is actually asked
+    // about.
     const hookmap: Hookmap = loadHookmap(hookmapPath);
     const envelope = buildEnvelope("tool.execute.after", {
       tool: TOOL,
@@ -1094,22 +1082,19 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
       result: liveResult("rm -rf /"),
     }, hookmap);
     // "cat .env" -- `liveResult`'s own `title` -- where the shipped hookmap
-    // puts the tool's OUTPUT. (`bash` is `tool.name`, a different field, and
-    // an earlier version of this comment named it here by mistake: the
-    // round-5 correction landed in the assertion below and not in the line
-    // above it.)
+    // puts the tool's output. (`bash` is `tool.name`, a different field.)
     expect(envelope.params.payload).toEqual({
       tool: { name: "bash" },
       exit_status: "success",
       outputs: [{ value: "cat .env" }],
     });
 
-    // THEN the consequence, end to end against the live Guardian.
+    // Then the consequence, end to end against the live Guardian.
     const { output, result, threw } = await governAndApply({
       hookmapPath,
       sessionID: "ses-result-from-title",
       toolOutput: "rm -rf /",
-      // ALLOW -- not a deny that failed to land, a deny that never happened.
+      // Allow -- not a deny that failed to land, a deny that never happened.
       // The policy never saw `rm -rf /` at all.
       expectedDecision: "allow",
     });

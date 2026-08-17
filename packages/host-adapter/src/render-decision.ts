@@ -103,13 +103,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * instead of adding a key, so a hookmap naming it would produce an output
  * missing the field it declared while changing something else entirely);
  * the other two are rejected beside it rather than reasoned about
- * individually. The CHECK below stays local and unshared, though (§V5
- * review round 3, Task 3): this is a WRITER walking a dotted output path and
- * creating levels as it goes, the same job `hookmap-path.ts`'s reader does
- * for the hookmap's own notation, and PR #13's review response deliberately
- * kept it separate from a shared resolver on the grounds that folding it in
- * "would have merged two path languages rather than de-duplicating one" --
- * that ruling stands.
+ * individually. The check itself stays local to this module rather than
+ * moving into a shared resolver: this is a writer walking a dotted output
+ * path and creating levels as it goes, the same job `hookmap-path.ts`'s
+ * reader does for the hookmap's own notation, and folding the two together
+ * would merge two different path languages rather than de-duplicate one.
  */
 function place(output: HostOutput, path: string, value: unknown): void {
   const segments = path.split(".");

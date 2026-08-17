@@ -66,9 +66,10 @@ export function pathSegments(path: string): string[] {
 }
 
 /**
- * Walks ALREADY-SPLIT segments through an object, answering `undefined` at the
- * first level that is not one. Everything that reads a value out of a payload
- * goes through this, and nothing re-joins segments to look one up again.
+ * Walks already-split segments through an object, answering `undefined` at
+ * the first level that is not one. Everything that reads a value out of a
+ * payload goes through this, and nothing re-joins segments to look one up
+ * again.
  */
 export function resolveSegments(root: Record<string, unknown>, segments: string[]): unknown {
   let current: unknown = root;

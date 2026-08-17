@@ -62,16 +62,15 @@ function payload(command: string, sessionId = "sess-1"): string {
 }
 
 /**
- * The RESULT gate's payload, with `Bash`'s real `tool_response` shape as Claude
- * Code 2.1.227 delivers it (`{stdout, stderr, interrupted, isImage,
+ * The result gate's payload, with `Bash`'s real `tool_response` shape as
+ * Claude Code 2.1.227 delivers it (`{stdout, stderr, interrupted, isImage,
  * noOutputExpected}`) -- prose in `stdout` and flags beside it.
  *
- * Every posture claim in this file was written against `PreToolUse`, which is
- * the only gate the hookmap mapped when they were written. Two of them are
- * properties of the SHIM rather than of that gate, so they are asked of both
- * here: whether a parsed payload can still end in a non-zero exit with nothing on
- * stdout, and whether a hookmap this host cannot carry out blocks rather than
- * proceeding.
+ * Most posture claims in this file test `PreToolUse`. Two of them are
+ * properties of the shim itself rather than of a particular gate, so they
+ * are asked of both here: whether a parsed payload can still end in a
+ * non-zero exit with nothing on stdout, and whether a hookmap this host
+ * cannot carry out blocks rather than proceeding.
  */
 function resultPayload(stdout: string, sessionId = "sess-1"): string {
   return JSON.stringify({
@@ -101,16 +100,16 @@ type ShimRun = { exitCode: number; stdout: string; stderr: string };
 
 /**
  * Asserts the successful shape in full -- exit 0, a decision on stdout, and
- * NOTHING on stderr -- and returns the parsed hookSpecificOutput.
+ * nothing on stderr -- and returns the parsed hookSpecificOutput.
  *
- * The stderr half is the part that was missing. Every exit-0 test asserted
- * the exit code and the decision and said nothing about stderr, so a shim
- * that started printing a warning (or a stack trace) on every hook would
- * have gone unnoticed by the whole suite. This hook runs as a Claude Code
- * subprocess whose stderr a human sees, and "the decision was right and it
- * also printed something alarming" is not a pass. Exactly one test here
- * legitimately writes to stderr -- the one whose audit sink cannot be
- * written -- and it asserts what it prints rather than using this helper.
+ * The stderr check matters: without it, a shim that started printing a
+ * warning (or a stack trace) on every hook would go unnoticed by the whole
+ * suite, since a test could assert the exit code and the decision and say
+ * nothing about stderr. This hook runs as a Claude Code subprocess whose
+ * stderr a human sees, and "the decision was right and it also printed
+ * something alarming" is not a pass. Exactly one test here legitimately
+ * writes to stderr -- the one whose audit sink cannot be written -- and it
+ * asserts what it prints rather than using this helper.
  *
  * `toEqual` on both fields at once, so a failure prints the offending
  * stderr text instead of only "expected 0, got 2".
@@ -179,7 +178,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     const hook = expectQuietDecision(out);
     expect(hook.permissionDecision).toBe("allow");
     // Byte-for-byte what docs/demos/v3-runbook.md captures for this step. The
-    // session note added for an unpersistable config must not leak into the
+    // session note for an unpersistable config must not leak into the
     // healthy path, where hook 2 reads the config hook 1 stored and never
     // re-handshakes at all.
     expect(hook.permissionDecisionReason).toBe(
@@ -247,11 +246,9 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   });
 
   // Malformed per JSON-RPC (a response carries one of `result`/`error`, never
-  // both), and audited whenever it happens, so this was never a silent
-  // bypass -- but it was the one path in the tree where a posture could
-  // outrank an arriving decision, and a malformed envelope gets no exception
-  // from that rule: a decision that arrives is always honoured over the
-  // posture.
+  // both), and audited whenever it happens, so this is never a silent bypass.
+  // A decision that arrives is always honoured over the posture, with no
+  // exception for a malformed envelope.
   it("exits 2 with empty stdout at the result gate when a fail-closed deny has no output to withhold", async () => {
     const dir = scratch();
     const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST, onDecisionFailure: "deny" });
@@ -332,10 +329,10 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     // this hook negotiates a real "proceed" posture), then answers
     // steps/toolCallRequest with a decision no hookmap entry names.
     // validateDecision passes an unrecognised decision through unchanged,
-    // so without the fix this makes renderDecision throw *after* the
-    // shim's last try/catch, main().catch exits 1 with empty stdout, and
-    // Claude Code proceeds -- ungoverned and unaudited. Same shape as
-    // every other fail-open this project has found.
+    // so an unguarded renderDecision would throw after the shim's last
+    // try/catch, main().catch would exit 1 with empty stdout, and Claude
+    // Code would proceed -- ungoverned and unaudited. Same shape as every
+    // other fail-open this project has found.
     const stub = Bun.serve({
       port: 0,
       async fetch(req) {
@@ -373,10 +370,10 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
       // A decision did arrive here and was honoured in principle -- only this
       // host's rendering of it failed. Auditing that as a delivery failure
-      // ("no decision arrived from the guardian", kind "unknown") told an
-      // incident reviewer to go and look at a Guardian that answered
-      // correctly, which is the same misattribution `host_configuration`
-      // fixed one step earlier in the exchange.
+      // ("no decision arrived from the guardian", kind "unknown") would send
+      // an incident reviewer to look at a Guardian that answered correctly --
+      // the same misattribution `host_configuration` guards against one step
+      // earlier in the exchange.
       expect(audit[0].failure.kind).toBe("decision_unrenderable");
       expect(JSON.parse(out.stdout).hookSpecificOutput.permissionDecisionReason)
         .toMatch(/a decision arrived from the guardian .* and was honoured/i);
@@ -485,7 +482,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // The runbook demonstrates both postures against a killed Guardian, so both
   // captures show failure.kind "transport". The case §6.4 actually defines a
   // decision failure by -- a Guardian that accepts the connection and stays
-  // silent past the negotiated timeout, which is why the client grew an
+  // silent past the negotiated timeout, which is why the client needs an
   // AbortSignal.timeout at all -- appears nowhere else end to end, and an
   // unexercised classification path is not something to take on trust.
   it("classifies a Guardian that accepts and never answers as a timeout, not a transport failure", async () => {
@@ -637,8 +634,8 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(out.exitCode).toBe(2);
     expect(out.stdout).toBe("");
     expect(existsSync(join(dir, "escape.json"))).toBe(false);
-    // Asserting only the exit code left the diagnostic untested: exit 2 with
-    // an empty or unhelpful stderr blocks the tool call and tells the human
+    // The exit code alone does not test the diagnostic: exit 2 with an
+    // empty or unhelpful stderr blocks the tool call and tells the human
     // nothing about why. The rejected value has to appear, since the point of
     // blocking here is that the deployment's `session_id` is unusable.
     expect(out.stderr).toContain("../escape");
@@ -718,13 +715,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // The result gate's own arm of the same gate, and the fail-open it closes is
-  // the one V4's planning reproduced by hand: rendering deny as Claude Code's
-  // documented {"decision":"block","reason":…} delivered the real stdout to the
-  // model AND the block reason. The tool has already run at this event, so
-  // `block` alone REPORTS a withholding that did not happen -- the same
-  // "reported but never took effect" shape V3 found when V1 copied a raw
-  // modifications object into updatedInput. Only the replacing output withholds.
+  // The result gate's own arm of the same gate: rendering deny as Claude
+  // Code's documented {"decision":"block","reason":…} delivers the real
+  // stdout to the model along with the block reason. The tool has already
+  // run at this event, so `block` alone reports a withholding that did not
+  // happen -- the same "reported but never took effect" hazard as any
+  // decision that claims a change without producing one. Only the replacing
+  // output actually withholds.
   //
   // loadHookmap cannot catch this either: the entry below is perfectly
   // renderable, and which host field a renderable entry has to name is not the
@@ -770,14 +767,14 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // The other half of the same two-part rule, and the half that would have
-  // survived deletion: a result-gate deny declaring the replacement WITHOUT the
-  // block. The replacement withholds, so this one is not a fail-open -- it is a
-  // withholding that happens with nothing in the transcript saying why, which is
-  // the mirror of the case above and the reason the rule is two-part rather than
-  // either field alone. Checked at the gate, not only against the shipped file:
-  // the data-level assertion below reads what this deployment declares, which
-  // says nothing about what the gate would accept.
+  // The other half of the same two-part rule: a result-gate deny declaring
+  // the replacement without the block. The replacement withholds, so this
+  // one is not a fail-open -- it is a withholding that happens with nothing
+  // in the transcript saying why, which is the mirror of the case above and
+  // the reason the rule is two-part rather than either field alone. Checked
+  // at the gate, not only against the shipped file: the data-level assertion
+  // below reads what this deployment declares, which says nothing about what
+  // the gate would accept.
   it("exits 2 (blocking) on a PostToolUse deny that declares a replacing output without the block", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "withholds-without-saying.yaml");
@@ -885,16 +882,16 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // A fail-open, end to end. A result-gate `deny` withholds by carrying a
   // replacement for the output, and a leaf that is not prose is a leaf no
   // replacement can be expressed for. Discovering that at the render, with the
-  // decision already in hand, is too late: it exits 0 with the FULL UNREDACTED
-  // tool_response delivered, the Guardian's deny dropped, and an audit entry
-  // saying the decision "was honoured". The hookmap below is the same shipped
-  // file with `outputs.from`
+  // decision already in hand, is too late: it would exit 0 with the full
+  // unredacted tool_response delivered, the Guardian's deny dropped, and an
+  // audit entry saying the decision "was honoured". The hookmap below is the
+  // same shipped file with `outputs.from`
   // moved one field along, from `stdout` to the boolean `interrupted` -- so
   // `buildEnvelope` still builds a clean envelope and a decision would still come
   // back. It is refused before either happens.
   //
   // The Guardian URL is deliberately unreachable, which makes the posture the ACS
-  // default `proceed` -- the posture that WOULD have proceeded. Nothing is
+  // default `proceed` -- the posture that would have proceeded. Nothing is
   // audited, because nothing proceeded and no decision was ever sought.
   it("exits 2 (blocking) on a result gate whose named output no replacement can be built for", async () => {
     const dir = scratch();
@@ -937,21 +934,22 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       expect(out.stderr).toContain("PostToolUse");
       expect(out.stderr).toContain("$.tool_response.interrupted");
       expect(out.stderr).toMatch(/is a string where this tool produced a boolean/);
-      // Nothing proceeded, so nothing was audited as having proceeded. This is
-      // the assertion the old behaviour failed: it wrote one.
+      // Nothing proceeded, so nothing was audited as having proceeded: a
+      // regression that let this proceed silently would still write an audit
+      // entry, and this assertion is what catches it.
       expect(existsSync(join(dir, "audit.jsonl"))).toBe(false);
     } finally {
       unlinkSync(hookmapPath);
     }
   });
 
-  // Global Constraint 4, at the gate: an unexpected hookmap entry throws. A hook
-  // this shim has no expectation for is a hook whose declared decisions nothing
-  // checks and whose rendered output nothing checks, at an event whose semantics
-  // this shim has never been taught -- so it is refused rather than skipped. A
-  // skip here would be a tenth fail-open of exactly the established shape: the
-  // hook fires, the host reads no honoured decision, and the step runs
-  // ungoverned.
+  // An unexpected hookmap entry throws, at the gate. A hook this shim has no
+  // expectation for is a hook whose declared decisions nothing checks and
+  // whose rendered output nothing checks, at an event whose semantics this
+  // shim has never been taught -- so it is refused rather than skipped. A
+  // skip here would be a fail-open of exactly the same shape as the others
+  // in this file: the hook fires, the host reads no honoured decision, and
+  // the step runs ungoverned.
   it("exits 2 (blocking) on a hookmap mapping a hook this shim has no expectation for, rather than skipping it", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "unknown-hook.yaml");
@@ -993,14 +991,14 @@ describe("acs-hook — the negotiated posture, end to end", () => {
 
   // The other half of the gate: it must not fire on the hookmap this
   // deployment actually ships. Asserted twice over -- against the file's own
-  // data (so adding a fourth value, e.g. reinstating a `defer` entry that
-  // declares `{ value: defer }`, fails here rather than at runtime) and
-  // through a real subprocess run that reaches a decision.
+  // data (so adding a fourth value, e.g. a `defer` entry that declares
+  // `{ value: defer }`, fails here rather than at runtime) and through a
+  // real subprocess run that reaches a decision.
   //
   // Reading the literal out of the output path is the same reach the shim's
-  // own gate makes, and it now also covers an entry that declares no
-  // permission field at all: `value` comes back undefined, which is not one
-  // of the three, so the entry fails here exactly as the shim would fail it.
+  // own gate makes, and it also covers an entry that declares no permission
+  // field at all: `value` comes back undefined, which is not one of the
+  // three, so the entry fails here exactly as the shim would fail it.
   //
   // V4: per hook, and the two gates are checked against DIFFERENT expectations,
   // because Claude Code accepts different things at them. `PostToolUse` has no
@@ -1175,18 +1173,18 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // §V5 review, Important 1 (fix round 2). `outputs.mirrors` used to be
-  // validated only inside `buildEnvelope`'s own per-invocation `buildPayload`
-  // -- reached from `governStep`, whose `buildEnvelope` throw is answered by
-  // the deployment's NEGOTIATED delivery posture (which can be `proceed`),
-  // not by this shim's hard stop. Measured with this exact hookmap before the
-  // fix moved the check to `loadHookmap`: exit 0, `posture: proceed`,
+  // `outputs.mirrors` is validated inside `loadHookmap`, by
+  // `assertMirrorsWellFormed` -- called before `governStep` and therefore
+  // before any posture is ever consulted. This matters because a
+  // `governStep` call whose `buildEnvelope` throws is answered by the
+  // deployment's negotiated delivery posture (which can be `proceed`), not
+  // by this shim's hard stop: a hookmap this malformed, checked only inside
+  // `buildEnvelope`, would render exit 0, `posture: proceed`,
   // `outcome: proceeded` -- a hookmap that provably cannot express a
-  // withholding, governing the step anyway. `assertMirrorsWellFormed` (called
-  // from `loadHookmap`, before `governStep` and therefore before any posture
-  // is ever consulted) closes that: this must exit 2, like every other
-  // load-time hookmap fault above, not proceed.
-  it("exits 2 (blocking) on a PostToolUse hookmap whose outputs.mirrors is malformed, rather than proceeding (§V5 review, Important 1)", async () => {
+  // withholding, governing the step anyway. Checking at `loadHookmap`
+  // instead closes that: this must exit 2, like every other load-time
+  // hookmap fault above, not proceed.
+  it("exits 2 (blocking) on a PostToolUse hookmap whose outputs.mirrors is malformed, rather than proceeding", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "malformed-mirrors.yaml");
     writeFileSync(

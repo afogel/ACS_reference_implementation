@@ -53,8 +53,8 @@ function preToolUsePayload(command: string): Record<string, unknown> {
 }
 
 /** The real PostToolUse payload shape Claude Code 2.1.227 delivers, captured
- * from a live run (Evidence 2): `tool_response` is a structured object and
- * `stdout` is the leaf the shipped hookmap puts on the wire. */
+ * from a live run: `tool_response` is a structured object and `stdout` is
+ * the leaf the shipped hookmap puts on the wire. */
 function postToolUsePayload(stdout: string): Record<string, unknown> {
   return {
     session_id: "abc123",
@@ -169,14 +169,14 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
     expect(stderr).toBe("");
   });
 
-  // The half of the wrapper refusal that had to learn which hook it is at. At
-  // PreToolUse an output Claude Code reads no decision from lets the tool call
-  // proceed, so this shim refuses to write one -- and that refusal, applied to
-  // the result gate, would have exited 2 on EVERY clean tool call. The tool has
-  // already run here: "nothing to change, deliver it as the tool produced it" is
-  // the honest answer, and it is what a clean allow renders, because the only
-  // field PostToolUse's `allow` declares is conditional on a `reasoning` a
-  // genuine allow does not carry.
+  // This wrapper refusal is hook-aware. At PreToolUse an output Claude Code
+  // reads no decision from lets the tool call proceed, so this shim refuses
+  // to write one -- and that same refusal, applied to the result gate, would
+  // exit 2 on every clean tool call. The tool has already run here:
+  // "nothing to change, deliver it as the tool produced it" is the honest
+  // answer, and it is what a clean allow renders, because the only field
+  // PostToolUse's `allow` declares is conditional on a `reasoning` a genuine
+  // allow does not carry.
   //
   // Through the real shim and the real Guardian rather than a stub, because the
   // claim is about the bytes a Claude Code process reads back for a clean
@@ -193,28 +193,27 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
 });
 
 /**
- * §V5 review round 4, thread 3778055539. `governStep` was given an optional
- * `scopedTool` -- the tool a caller has already scoped on -- and a gate whose
- * hookmap entry declares a `tools` list now REFUSES a caller that names none.
- * This shim declares no `tools` at either gate (its settings.json matcher
- * `^Bash$` already scopes both), passes no `scopedTool`, and is frozen at
- * `+0/-0` for this whole slice: `scripts/verify-zero-diff.sh` pins
- * `hosts/claude-code/*.ts` and `*.yaml`, so its one `governStep` call cannot
- * be updated even if the field became required.
+ * `governStep` accepts an optional `scopedTool` -- the tool a caller has
+ * already scoped on. When a gate's hookmap entry declares a `tools` list,
+ * governStep refuses a caller that names none. This shim declares no
+ * `tools` at either gate (its settings.json matcher `^Bash$` already scopes
+ * both) and passes no `scopedTool`. `scripts/verify-zero-diff.sh` pins
+ * `hosts/claude-code/*.ts` and `*.yaml`, so this file's one `governStep`
+ * call cannot be updated even if the field became required.
  *
- * `verify:zero-diff` proves the file did not change. It cannot prove the call
- * still WORKS -- that is this suite's job, and the two subprocess tests above
- * already prove it end to end for the request gate. Pinned separately, and at
- * the adapter seam rather than through stdin/stdout, because the property is
- * specifically "untold is a complete call at BOTH gates": a refusal that fired
- * on an absent `tools` key rather than a declared one would break this host
- * everywhere at once, and the failure that reported it should name the field
- * rather than an exit code.
+ * `verify:zero-diff` proves the file did not change. It cannot prove the
+ * call still works -- that is this suite's job, and the two subprocess
+ * tests above already prove it end to end for the request gate. Pinned
+ * separately, and at the adapter seam rather than through stdin/stdout,
+ * because the property is specifically that an untold scope is a complete
+ * call at both gates: a refusal that fired on an absent `tools` key rather
+ * than a declared one would break this host everywhere at once, and the
+ * failure that reported it should name the field rather than an exit code.
  *
- * Against the SHIPPED hookmap, not a fixture, because the thing under test is
- * that this deployment's own entries declare no list.
+ * Tested against the shipped hookmap, not a fixture, because the thing
+ * under test is that this deployment's own entries declare no list.
  */
-describe("host #1 tells governStep no scoped tool, and that is a complete call at both gates", () => {
+describe("this shim tells governStep no scoped tool, and that is a complete call at both gates", () => {
   const SESSION_ID = "abc123";
 
   it.each([
@@ -223,7 +222,7 @@ describe("host #1 tells governStep no scoped tool, and that is a complete call a
   ] as const)("governs a %s step with no scopedTool passed", async (hookEventName, buildPayload) => {
     const hookmap: Hookmap = loadHookmap(HOOKMAP_PATH);
 
-    // WHY untold is legal here, stated as an assertion rather than as a
+    // Why untold is legal here, stated as an assertion rather than as a
     // comment: this entry declares no `tools`, so there is no list for a
     // caller to be scoped against and nothing for it to tell. If a future
     // edit adds one, this row fails before the call below does, and it names
