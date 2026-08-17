@@ -95,7 +95,7 @@ function expectQuietDecision(out: ShimRun): Record<string, unknown> {
 }
 
 describe("acs-hook — the negotiated posture, end to end", () => {
-  it("handshakes on the first hook and leaves S13 on disk for the next process", async () => {
+  it("handshakes on the first hook and leaves the negotiated session config on disk for the next process", async () => {
     const dir = scratch();
     const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST });
     try {
@@ -114,7 +114,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  it("still denies a destructive command — the posture never touches an arriving decision (R1.5)", async () => {
+  it("still denies a destructive command — the posture never touches an arriving decision", async () => {
     const dir = scratch();
     const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST });
     try {
@@ -133,7 +133,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  it("proceeds and audits when the Guardian is gone under the proceed posture (R1.7, §6.4)", async () => {
+  it("proceeds and audits when the Guardian is gone under the proceed posture (§6.4)", async () => {
     const dir = scratch();
     const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST });
     const env = {
@@ -165,10 +165,8 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ session_id: "sess-1", posture: "proceed", outcome: "proceeded" });
-    // The assertion fix round 2 adds: a dead Guardian is §6.4's commonest
-    // delivery failure, and classifyDeliveryFailure's own fix (Task 4's
-    // TypeError assumption did not hold on this runtime) is only real if
-    // the durable record actually says "transport" here, not "unknown".
+    // A dead Guardian is §6.4's commonest delivery failure, so the durable
+    // record must actually say "transport" here, not "unknown".
     expect(audit[0].failure.kind).toBe("transport");
   });
 
@@ -176,7 +174,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     const dir = scratch();
     // This Guardian process under test declares `deny` explicitly, via
     // startGuardian's own option -- not via process.env, which would leak
-    // across every other test in this file (plan Risk 7).
+    // across every other test in this file.
     const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST, onDecisionFailure: "deny" });
     const env = {
       ACS_GUARDIAN_URL: guardian.url,
@@ -208,9 +206,9 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(existsSync(join(dir, "sessions", "sess-1.json"))).toBe(false);
   });
 
-  // The V1 placeholder exited 1 with empty stdout, which Claude Code reads as
-  // "non-blocking error" and proceeds -- an unaudited, undeclared fail-open.
-  // That is the shape of every fail-open this project has found. It must be gone.
+  // Exiting non-zero with empty stdout is the shape of a fail-open: Claude
+  // Code reads it as "non-blocking error" and proceeds, unaudited and
+  // undeclared. It must never happen once a hook payload has parsed.
   it("never exits non-zero with empty stdout once a hook payload has parsed", async () => {
     const dir = scratch();
     const out = await runShim(payload("ls -la"), {
@@ -222,11 +220,12 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
   });
 
-  // Whole-branch review, M1. Malformed per JSON-RPC (a response carries one of
-  // `result`/`error`, never both) and audited whenever it happens, so it was
-  // never a silent bypass -- but it was the only expression in the tree where
-  // a posture could outrank an arriving decision, and Global Constraint 1 does
-  // not have an exception for a malformed envelope.
+  // Malformed per JSON-RPC (a response carries one of `result`/`error`, never
+  // both), and audited whenever it happens, so this was never a silent
+  // bypass -- but it was the one path in the tree where a posture could
+  // outrank an arriving decision, and a malformed envelope gets no exception
+  // from that rule: a decision that arrives is always honoured over the
+  // posture.
   it("honours a deny that arrives alongside an error, rather than answering with the posture", async () => {
     const dir = scratch();
     const stub = Bun.serve({
@@ -273,7 +272,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  it("still exits 0 with a decision when the Guardian returns a decision this hookmap cannot render (CRITICAL fix)", async () => {
+  it("still exits 0 with a decision when the Guardian returns a decision this hookmap cannot render", async () => {
     const dir = scratch();
     // A stub, not a real Guardian: answers handshake/hello honestly (so
     // this hook negotiates a real "proceed" posture), then answers
@@ -318,7 +317,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
       expect(audit).toHaveLength(1);
       expect(audit[0]).toMatchObject({ posture: "proceed", outcome: "proceeded" });
-      // A decision DID arrive here and was honoured in principle -- only this
+      // A decision did arrive here and was honoured in principle -- only this
       // host's rendering of it failed. Auditing that as a delivery failure
       // ("no decision arrived from the guardian", kind "unknown") told an
       // incident reviewer to go and look at a Guardian that answered
@@ -332,11 +331,12 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // The branch the shim takes for every N27-boundary case -- a parse error,
-  // an envelope too broken to address a decision to, an outer-net `-32020` --
-  // and it had no end-to-end coverage at all. That is the same gap shape that
-  // let `transport` be misclassified as `unknown` through eleven review
-  // passes and was found only by running it.
+  // The branch the shim takes whenever nothing arrived that names a decision
+  // -- a parse error, an envelope too broken to address a decision to, an
+  // outer-net `-32020` -- is covered only here, end to end, because a
+  // delivery-failure classification (e.g. `transport` vs. `unknown`) is only
+  // trustworthy once it has been verified against the runtime rather than
+  // reasoned about.
   it("audits a JSON-RPC error carrying no decision as error_without_decision, and applies the posture", async () => {
     const dir = scratch();
     const stub = Bun.serve({
@@ -356,7 +356,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
             },
           });
         }
-        // An error and NO result: nothing arrived that names a decision, so
+        // An error and no result: nothing arrived that names a decision, so
         // this is a delivery failure and the posture answers it.
         return Response.json({
           jsonrpc: "2.0",
@@ -392,13 +392,11 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // Whole-branch review, I8: the runbook demonstrates both postures against a
-  // *killed* Guardian, so both captures show failure.kind "transport". The
-  // case §6.4 actually defines a decision failure by -- a Guardian that
-  // accepts the connection and stays silent past the negotiated timeout, which
-  // is why the client grew an AbortSignal.timeout at all -- appeared nowhere
-  // end to end. This slice has already shipped one classification verified
-  // against an assumption instead of the runtime, and it was wrong, so an
+  // The runbook demonstrates both postures against a killed Guardian, so both
+  // captures show failure.kind "transport". The case §6.4 actually defines a
+  // decision failure by -- a Guardian that accepts the connection and stays
+  // silent past the negotiated timeout, which is why the client grew an
+  // AbortSignal.timeout at all -- appears nowhere else end to end, and an
   // unexercised classification path is not something to take on trust.
   it("classifies a Guardian that accepts and never answers as a timeout, not a transport failure", async () => {
     const dir = scratch();
@@ -461,12 +459,11 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // Reproduced from the whole-branch review (I3): with ACS_AUDIT_LOG pointing
-  // at a path under a regular file, the step used to proceed, exit 0, and
-  // write nothing -- the only trace being a stderr line from a subprocess that
-  // succeeded. §6.4 makes the entry a MUST for a step that proceeds without a
-  // decision, so an unauditable proceed is a silent bypass and blocks instead.
-  it("blocks rather than proceeding when the audit entry cannot be written (constraint 3)", async () => {
+  // With ACS_AUDIT_LOG pointing at a path under a regular file, both mkdir
+  // and append fail. §6.4 makes the entry a MUST for a step that proceeds
+  // without a decision, so an unauditable proceed is a silent bypass and
+  // blocks instead.
+  it("blocks rather than proceeding when the audit entry cannot be written", async () => {
     const dir = scratch();
     // Parent path is a regular file, so both mkdir and append fail.
     const blocker = join(dir, "blocker");
@@ -492,13 +489,14 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // The three members of "this shim cannot read its own input", all of which
-  // used to exit 1 -- "non-blocking error", which Claude Code reads as "the
+  // The three members of "this shim cannot read its own input" all exit 2,
+  // never 1: exit 1 is "non-blocking error", which Claude Code reads as "the
   // hook did not fire" and proceeds past, ungoverned and unaudited. A
   // governance hook that cannot read its own input has no honest reason to
-  // prefer proceed to block, and the sibling case (a session_id that IS
-  // present but unsafe) already blocked, so the two halves of one class sat
-  // on opposite sides of the fail-open line.
+  // prefer proceed to block, and the sibling case -- a session_id that is
+  // present but unsafe -- already blocks, so treating these differently
+  // would put two halves of one class on opposite sides of the fail-open
+  // line.
   it("exits 2 (blocking) on a payload that is not JSON at all", async () => {
     const out = await runShim("{not json", { ACS_SESSION_DIR: scratch() });
     expect(out.exitCode).toBe(2);
@@ -542,7 +540,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       ACS_SESSION_DIR: join(dir, "sessions"),
       ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
     });
-    // Exit 2 ("blocking error"), not 1: a hook payload DID parse here, so
+    // Exit 2 ("blocking error"), not 1: a hook payload did parse here, so
     // this must not read to Claude Code as the non-blocking "hook didn't
     // fire" that exit 1 means -- an unsafe session_id is a broken
     // deployment, and stops the tool call loudly instead.
@@ -579,20 +577,20 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   });
 
   // A hookmap whose `permissionDecision` is a well-formed string that Claude
-  // Code does not accept. Reproduced against a live Guardian before this
-  // gate existed: mutating the real hookmap's `deny` entry to declare
-  // `{ value: dney }` made a real policy deny for `rm -rf /` render
-  // as {"hookSpecificOutput":{...,"permissionDecision":"dney",
+  // Code does not accept. Mutating the real hookmap's `deny` entry to
+  // declare `{ value: dney }` renders a real policy deny for `rm -rf /` as
+  // {"hookSpecificOutput":{...,"permissionDecision":"dney",
   // "permissionDecisionReason":"matched pattern ... at offset 0"}} with exit
-  // 0 -- and Claude Code, which accepts only allow/deny/ask, read that as no
-  // decision at all and PROCEEDED. A policy that fired and denied became an
+  // 0 -- and Claude Code, which accepts only allow/deny/ask, reads that as no
+  // decision at all and proceeds. A policy that fired and denied becomes an
   // allowed tool call behind plausible JSON and a success exit code.
   //
   // loadHookmap cannot catch it: it checks that every entry renders
   // something and stops there, because the adapter must not know any host's
-  // decision enum -- or, since the output shape became generic, any host's
-  // field names at all (R3.2, enforced by test/invariants.test.ts). The check
-  // belongs in this shim, which is host-specific by definition.
+  // decision enum -- or, since the output shape is generic, any host's field
+  // names at all. That boundary is enforced by test/invariants.test.ts's
+  // vocabulary gate. The check belongs in this shim, which is host-specific
+  // by definition.
   it("exits 2 (blocking) on a hookmap permissionDecision Claude Code does not accept, rather than emitting it", async () => {
     const dir = scratch();
     const hookmapPath = join(dir, "typo-hookmap.yaml");
@@ -616,7 +614,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
       });
       expect(out.exitCode).toBe(2);
       expect(out.stdout).toBe("");
-      // The offending entry AND its value are named, so a reader of the
+      // The offending entry and its value are both named, so a reader of the
       // stderr line knows which line of YAML to fix.
       expect(out.stderr).toContain("decisions.deny");
       expect(out.stderr).toContain("dney");
@@ -658,14 +656,14 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(expectQuietDecision(out).permissionDecision).toBe("allow");
   });
 
-  // Risk row 14, closed here. The handshake reached the Guardian and came
-  // back with `on_decision_failure: deny`; only the local WRITE of that
-  // ServerHello failed. Before this fix the shim discarded the returned
-  // value, `store.get()` stayed undefined, and the ACS default (`proceed`)
-  // applied -- so a deployment that declared `deny` failed OPEN on the very
-  // step whose posture it had just negotiated, and did so on every hook,
-  // forever, because every hook re-handshakes and every write fails again.
-  it("applies a ServerHello it could not persist to the step that negotiated it (risk row 14)", async () => {
+  // The handshake reaches the Guardian and returns `on_decision_failure:
+  // deny`, but the local write of that ServerHello fails. The negotiated
+  // posture must still govern the very step that negotiated it: if the write
+  // failure silently discarded the value, `store.get()` would stay
+  // undefined, the ACS default (`proceed`) would apply instead, and a
+  // deployment that declared `deny` would fail open on every hook, forever,
+  // since every hook re-handshakes and every write fails again.
+  it("applies a ServerHello it could not persist to the step that negotiated it", async () => {
     const dir = scratch();
     // A regular file where the session directory should be: `mkdirSync`
     // throws ENOTDIR, reliably and cross-platform, so `set()` throws while
@@ -692,7 +690,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
           });
         }
         // A delivery failure for the step itself, so the posture is what
-        // decides the outcome (constraint 1 keeps the two domains apart).
+        // decides the outcome.
         return Response.json({
           jsonrpc: "2.0",
           id: body.id,
@@ -731,14 +729,14 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  it("exits 2 (blocking) when the hookmap's decisions block is malformed, not merely absent (fix round 3)", async () => {
+  it("exits 2 (blocking) when the hookmap's decisions block is malformed, not merely absent", async () => {
     const dir = scratch();
-    // A hookmap that loadHookmap's presence check alone would have let
-    // through (before fix round 3): "allow" is a key in `decisions`, but
-    // its value is `null`, not a renderable rule. This must fail at load
-    // time (exit 2), not at render time deep inside the shim's own
-    // fallback (which would have been a THIRD route to exit 1 with empty
-    // stdout -- the exact fail-open this task exists to remove).
+    // A hookmap where "allow" is a key in `decisions`, but its value is
+    // `null`, not a renderable rule: loadHookmap's presence check alone
+    // would let this through. It must fail at load time (exit 2), not at
+    // render time deep inside the shim's own fallback, which would be a
+    // third route to exit 1 with empty stdout -- the exact fail-open this
+    // file exists to prevent.
     const hookmapPath = join(dir, "bad-hookmap.yaml");
     writeFileSync(
       hookmapPath,

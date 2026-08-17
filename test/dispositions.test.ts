@@ -28,8 +28,7 @@ async function decide(config: unknown, command: string, annotator?: () => unknow
           timestamp: new Date().toISOString(),
           // metadata.session_id is schema-constrained to format "uuid"
           // (request-envelope.json) -- "sess-1" fails that check before
-          // the envelope ever reaches AGT, so this is a real UUID rather
-          // than the brief's literal placeholder. See the task report.
+          // the envelope ever reaches AGT, so this uses a real UUID instead.
           metadata: { agent_id: "test", session_id: crypto.randomUUID() },
           payload: { tool: { name: "Bash" }, arguments: { command: { value: command } } },
         },
@@ -43,7 +42,7 @@ async function decide(config: unknown, command: string, annotator?: () => unknow
 
 const PATTERNS = { patterns: { patterns: DESTRUCTIVE, reason: "destructive_shell_command_blocked" } };
 
-describe("R1.2 — all five AGT verdicts arrive as ACS decisions, from the pinned bundle", () => {
+describe("all five AGT verdicts arrive as ACS decisions, from the pinned bundle", () => {
   it("allow", async () => {
     const { result } = await decide(PATTERNS, "ls -la");
     expect(result).toMatchObject({ decision: "allow" });
@@ -61,7 +60,7 @@ describe("R1.2 — all five AGT verdicts arrive as ACS decisions, from the pinne
     expect(result).toMatchObject({ decision: "ask", reason_codes: ["approval_required"] });
   });
 
-  it("transform arrives as modify, carrying the rewritten argument (R1.6)", async () => {
+  it("transform arrives as modify, carrying the rewritten argument", async () => {
     const { result } = await decide(
       { ...PATTERNS, redact: { patterns: ["ghp_[A-Za-z0-9]{6,}"], replacement: "[REDACTED]" } },
       "echo ghp_ABCDEF123456",
@@ -73,16 +72,16 @@ describe("R1.2 — all five AGT verdicts arrive as ACS decisions, from the pinne
     });
   });
 
-  // R1.2's load-bearing half: warn has no ACS disposition of its own, so it
-  // arrives as allow, and the NON-EMPTY policy_references is the only thing
-  // distinguishing it from a clean allow.
+  // warn has no ACS disposition of its own, so it arrives as allow, and the
+  // non-empty policy_references is the only thing distinguishing it from a
+  // clean allow.
   it("warn arrives as allow with non-empty policy_references", async () => {
     const { result } = await decide({ ...PATTERNS, drift: { warn_threshold: 0.5 } }, "ls -la", () => 0.9);
     expect(result).toMatchObject({ decision: "allow", reason_codes: ["drift_detected"] });
     expect(result?.policy_references).toEqual([{ policy_id: "agt_stock", rule_id: "drift_detected" }]);
   });
 
-  // P3, stated as a test so the mechanic is recorded in code, not only prose.
+  // Stated as a test so the mechanic is recorded in code, not only prose.
   it("the stock chain's global approval switch outranks allow and transform", async () => {
     const config = {
       ...PATTERNS,

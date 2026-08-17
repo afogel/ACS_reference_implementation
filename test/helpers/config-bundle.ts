@@ -1,23 +1,22 @@
 /**
- * Test-only fixture helper for R1.2's coverage task (Task 10). AGT's
- * priority chain (deny > escalate > transform > warn > allow) means a
- * single `data.agt.defaults.config` document cannot reach every verdict at
- * once -- with `approval.required: true`, every non-denied step escalates,
- * making `allow`/`transform`/`warn` unreachable in that same config (see
- * this module's header note and the task brief's fact 1). Covering all
+ * Test-only fixture helper for covering every AGT verdict. AGT's priority
+ * chain (deny > escalate > transform > warn > allow) means a single
+ * `data.agt.defaults.config` document cannot reach every verdict at once --
+ * with `approval.required: true`, every non-denied step escalates, making
+ * `allow`/`transform`/`warn` unreachable in that same config. Covering all
  * five verdicts therefore means varying the config across separate runs,
  * and config lives in the bundle directory (loaded from its `data.json`),
  * not pushed by the SDK at call time -- so varying config means varying the
  * bundle directory. This builds one such directory per call.
  *
- * The central risk this helper exists to close (plan Risk 5): a fixture
- * bundle that silently forks `policy/lib/*.rego` would let every test above
- * pass while quietly invalidating this project's central claim that AGT's
- * engine runs unforked at a pinned commit (R2.2/R2.3). `buildConfigBundle`
- * copies each `.rego` file and reads BOTH the source and the just-written
- * copy back off disk, comparing them byte-for-byte, so a copy that silently
- * corrupts or truncates a file fails loudly, immediately, naming the file --
- * not "coverage passed while the pin quietly broke."
+ * The central risk this helper exists to close: a fixture bundle that
+ * silently forks `policy/lib/*.rego` would let every test above pass while
+ * quietly invalidating this project's central claim that AGT's engine runs
+ * unforked at a pinned commit. `buildConfigBundle` copies each `.rego` file
+ * and reads both the source and the just-written copy back off disk,
+ * comparing them byte-for-byte, so a copy that silently corrupts or
+ * truncates a file fails loudly, immediately, naming the file -- not
+ * "coverage passed while the pin quietly broke."
  */
 import { mkdtempSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -99,7 +98,7 @@ export type BuildManifestOptions = {
    * `policy/manifest.drift.yaml`'s own two blocks (see that file's header
    * for why a host-supplied score, not one derived from the ACS envelope,
    * is what AGT's own drift gate expects). Omitted/false emits the plain
-   * V1-shaped manifest with no annotator at all. */
+   * manifest with no annotator at all. */
   annotator?: boolean;
 };
 
@@ -110,15 +109,14 @@ export type BuildManifestOptions = {
  * (which re-reads the directory rather than a remembered file list) picks
  * this file up too. Returns the manifest's path.
  *
- * `bundle:` is written as `bundleDir`'s own absolute path, not `"."`.
- * Confirmed empirically during this fixture's design: a relative `"."`
- * resolves to an empty bundle directory, and with no rules loaded the Rego
- * library's own `default verdict := {"decision": "allow"}` is the only rule
- * left to apply -- so evaluation returns `allow` and nothing is wrong from
- * the engine's point of view. That is Rego's default-rule semantics doing
- * exactly what they say, not a defect: the risk lives entirely in the
- * bundle path, which is why this writes an absolute one. The project
- * records the same class of path risk at C2.
+ * `bundle:` is written as `bundleDir`'s own absolute path, not `"."`. A
+ * relative `"."` resolves to an empty bundle directory, and with no rules
+ * loaded, the Rego library's own `default verdict := {"decision": "allow"}`
+ * is the only rule left to apply -- so evaluation returns `allow` and
+ * nothing is wrong from the engine's point of view. That is Rego's
+ * default-rule semantics doing exactly what they say, not a defect: the
+ * risk lives entirely in the bundle path, which is why this writes an
+ * absolute one.
  */
 export function buildManifest({ bundleDir, annotator = false }: BuildManifestOptions): string {
   const manifestPath = join(bundleDir, "manifest.yaml");

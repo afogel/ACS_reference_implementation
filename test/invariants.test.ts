@@ -40,7 +40,7 @@ function isUnderTestDir(relativePath: string): boolean {
  * Every non-test `.ts` file under `dir`, with comments stripped.
  *
  * The emptiness check is what stops all four gates below from passing
- * vacuously (whole-branch review, finding 7). A *renamed* directory already
+ * vacuously. A *renamed* directory already
  * failed loudly -- `Glob.scanSync` throws ENOENT -- but a directory that
  * still exists with no non-test `.ts` under it would sail through with zero
  * assertions, and a gate that cannot fail is worse than no gate: it reads as
@@ -179,19 +179,19 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R5.1 -- envelopes are inspectable *on the wire*. If the Inspector
-   * imported the Guardian's types, "inspectable" would be a claim about our
-   * own type graph instead: any third-party reader of S6 has only the file.
-   * So does this one.
+   * Envelopes must be inspectable on the wire. If the Inspector imported the
+   * Guardian's types, "inspectable" would be a claim about our own type
+   * graph instead: any third-party reader of the envelope log has only the
+   * file. So does this one.
    *
-   * "host-adapter" widened this list the moment N51 landed: the Inspector
-   * now also tails S14, a host-side artifact, and declares its own
-   * AuditEntry rather than importing the adapter's for exactly the same
-   * reason it re-declares EnvelopeLogEntry rather than importing the Guardian's
-   * (see tail-audit-log.ts's module doc). Without this third entry, the
-   * gate would still pass -- but it would no longer be testing the claim
-   * this task exists to make, and a gate that passes without covering what
-   * changed is worse than no gate: it looks like coverage while quietly
+   * "host-adapter" is on this list because the Inspector also tails the
+   * audit log, a host-side artifact, and declares its own AuditEntry rather
+   * than importing the adapter's, for exactly the same reason it re-declares
+   * EnvelopeLogEntry rather than importing the Guardian's (see
+   * tail-audit-log.ts's module doc). Without this third entry, the gate
+   * would still pass -- but it would no longer be testing the claim this
+   * test makes, and a gate that passes without covering what it claims to
+   * cover is worse than no gate: it looks like coverage while quietly
    * losing it.
    */
   it("the Envelope Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter", () => {
@@ -204,29 +204,29 @@ describe("architectural invariants", () => {
   });
 
   /**
-   * R3.2 from the host's side, and the gate that did not exist (whole-branch
-   * review, I7). The vocabulary gate above deliberately excludes `hosts/`,
-   * because a host shim is host-specific by definition and its doc comment may
-   * name the policy runtime in prose -- but the invariant that *does* bind it
-   * is an import-graph one, exactly as that exclusion says: "never imports
+   * This is the same boundary from the host's side. The vocabulary gate
+   * above deliberately excludes `hosts/`, because a host shim is
+   * host-specific by definition and its doc comment may name the policy
+   * runtime in prose -- but the invariant that *does* bind it is an
+   * import-graph one, exactly as that exclusion says: "never imports
    * agt-bridge or guardian's server-side pieces, only host-adapter's public
-   * surface". Global Constraint 7 names `hosts/` as in scope and
-   * acs-hook.ts's own header asserts the property, and until now nothing
-   * checked either.
+   * surface". acs-hook.ts's own header asserts the property; this is what
+   * checks it.
    *
-   * That claim is what makes V5's second host cost zero policy-runtime code:
-   * a shim reaching into the Guardian in-process would be governable by that
-   * Guardian and nothing else, which is the M×N collapse undone. It passes
-   * today with one shim, and starts biting the moment there are two.
+   * That claim is what makes a second host cost zero policy-runtime code: a
+   * shim reaching into the Guardian in-process would be governable by that
+   * Guardian and nothing else, which undoes the M×N collapse this
+   * architecture depends on. It passes today with one shim, and starts
+   * biting the moment there are two.
    *
    * `isUnderTestDir` excludes hosts/claude-code/test/, which is the only
    * place that legitimately imports `guardian` -- it stands up a real one to
    * prove the wire contract end to end, the same test-only precedent
    * packages/host-adapter/test/ already sets.
    *
-   * KNOWN, AND LEFT: `importsSpecifier` matches the specifier by SUBSTRING,
-   * so a future shim importing a local file whose name merely contains
-   * "guardian" (`./guardian-defaults.ts`, say) would trip this gate
+   * Known and left as is: `importsSpecifier` matches the specifier by
+   * substring, so a future shim importing a local file whose name merely
+   * contains "guardian" (`./guardian-defaults.ts`, say) would trip this gate
    * spuriously. That is deliberate. The substring match is what catches the
    * real hole -- a relative reach-around like
    * `from "../../packages/guardian/src/index.ts"`, which no exact-match
@@ -240,14 +240,13 @@ describe("architectural invariants", () => {
     const scanned = readSourceFiles("hosts");
 
     // Asserted, not assumed. `readSourceFiles`'s emptiness check stops the
-    // gate passing vacuously on ZERO files, but not on the wrong ones: this
+    // gate passing vacuously on zero files, but not on the wrong ones: this
     // gate passes today partly because `Glob.scanSync` does not descend into
-    // hosts/claude-code/node_modules -- verified empirically when the gate
-    // was written, asserted nowhere until now. A globbing change that started
+    // hosts/claude-code/node_modules. A globbing change that started
     // returning vendored `.ts` files would bury the shim among hundreds of
     // them; one that stopped returning the shim would leave a gate that scans
-    // something irrelevant and always passes. Pinned to the exact list, so
-    // V5's second shim has to be added here consciously.
+    // something irrelevant and always passes. Pinned to the exact list, so a
+    // second shim has to be added here consciously.
     expect(scanned.map(({ file }) => file).sort()).toEqual(["claude-code/acs-hook.ts"]);
 
     for (const { file, code } of scanned) {
@@ -263,9 +262,9 @@ describe("architectural invariants", () => {
  * True when `code` names a module specifier containing `spec` in any position
  * that actually creates a dependency on it.
  *
- * The original gate matched `from "…"` alone (whole-branch review, finding
- * 6), which is the one form nobody reaching for a forbidden import by
- * accident would use. Each alternative below is a real hole it left:
+ * `from "…"` alone is the one form nobody reaching for a forbidden import by
+ * accident would use. Each alternative below is a real hole a narrower
+ * check would leave:
  *
  *   from "guardian"              the static named/default import
  *   import "guardian"            the bare side-effect import, no `from`
@@ -288,9 +287,9 @@ function importsSpecifier(code: string, spec: string): boolean {
 
 describe("the import gate itself", () => {
   /**
-   * A gate is only worth having if it bites. These are the exact forms the
-   * finding listed as blind spots, asserted directly against the matcher so
-   * a future simplification of the regex cannot quietly reopen one of them.
+   * A gate is only worth having if it bites. These are the exact forms a
+   * narrower regex would miss, asserted directly against the matcher so a
+   * future simplification cannot quietly reopen one of them.
    */
   it("catches every import form, in any case", () => {
     const caught = [

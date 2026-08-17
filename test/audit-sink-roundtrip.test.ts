@@ -14,10 +14,11 @@ import { tailAuditLog, type AuditEntry as InspectorAuditEntry } from "../package
 /**
  * The contract test that keeps two independent AuditEntry declarations
  * honest -- the same job test/envelope-tap-roundtrip.test.ts does for
- * EnvelopeLogEntry, and the reason the R5.2 import gate is meaningful rather than
- * merely inconvenient. The Inspector declares its own type BECAUSE it must
- * not import the adapter's; that duplication is only safe while something
- * fails when the two drift.
+ * EnvelopeLogEntry, and the reason the Inspector's import boundary (it must
+ * never import the adapter) is meaningful rather than merely inconvenient.
+ * The Inspector declares its own type because it must not import the
+ * adapter's; that duplication is only safe while something fails when the
+ * two drift.
  *
  * This file is the only place in the tree that imports both sides.
  */
@@ -36,15 +37,14 @@ afterEach(() => {
 });
 
 /**
- * The first entry the Inspector's tailer yields, or a failure that SAYS SO.
+ * The first entry the Inspector's tailer yields, or a failure that says so.
  *
- * The tests below used to `for await` the tailer directly, which fails the
- * wrong way in the exact case they exist to catch: if the Inspector's shape
- * validator tightens past what the adapter writes, the line stops being
- * yielded, the loop never completes, and the test dies of a bun-test timeout
- * -- a red suite whose message is "timed out after 5000ms", pointing nowhere
- * near the drift. Bounded here instead, so the same drift fails with a
- * sentence naming it.
+ * A bare `for await` over the tailer fails the wrong way in the exact case
+ * this exists to catch: if the Inspector's shape validator tightens past
+ * what the adapter writes, the line stops being yielded, the loop never
+ * completes, and the test dies of a bun-test timeout -- a red suite whose
+ * message is "timed out after 5000ms", pointing nowhere near the drift.
+ * Bounded here instead, so the same drift fails with a sentence naming it.
  */
 async function firstEntry(path: string, timeoutMs = 1000): Promise<InspectorAuditEntry> {
   const controller = new AbortController();
@@ -84,8 +84,8 @@ afterEach(() => {
 
 /**
  * The drift direction `toEqual` cannot see. Every assertion below compares
- * RUNTIME values, and the tailer yields the parsed JSON object whole -- so
- * dropping a field from the Inspector's TYPE changes nothing at runtime and
+ * runtime values, and the tailer yields the parsed JSON object whole -- so
+ * dropping a field from the Inspector's type changes nothing at runtime and
  * fails nothing, even though the two declarations have then stopped being
  * one contract. These two assignments are the check, and they are enforced
  * by `bun run typecheck` rather than by `bun test`: a field on either side
@@ -93,7 +93,7 @@ afterEach(() => {
  * that names which side lost it.
  *
  * `Required<>` on both sides, not the bare types, and that is load-bearing:
- * assignability alone ignores an OPTIONAL field going missing (a value that
+ * assignability alone ignores an optional field going missing (a value that
  * lacks it is still assignable), and `session_failure` -- the newest field,
  * and the one most likely to be dropped by a future edit -- is exactly that
  * shape. `Required<>` promotes every optional field to required, so a drop
@@ -102,18 +102,19 @@ afterEach(() => {
  * Deliberately not `as` casts between the two, and deliberately not
  * exported -- an `as` here would silence exactly what is being checked.
  *
- * THE FIELD SETS ARE COMPARED, NOT THE FIELD TYPES, and the one place they
- * legitimately differ is why (PR #12 review, second pass). `failure.kind` is
- * `StepFailureKind` on the writer, because N6 builds it and the union is true
- * by construction -- that is the whole point of carrying the taxonomy to the
- * durable boundary. It stays `string` on the reader, because the Inspector
- * parses a file it did not write and `isAuditEntryShape` checks only that the
- * field IS a string. Narrowing the reader's type to the union would make the
- * declaration claim something its own guard does not check, which is the defect
- * class this branch has now fixed twice; validating membership instead would
- * make the Inspector DROP an audit line whose kind it does not recognise, and a
- * reader that silently discards records of fail-open proceeds is worse than one
- * that renders an unfamiliar word.
+ * The field sets are compared, not the field types, and the one place they
+ * legitimately differ is why: `failure.kind` is `StepFailureKind` on the
+ * writer, because the code that builds it (`applyFailurePosture`) always
+ * constructs it from that union, so the type is true by construction --
+ * that is the whole point of carrying the taxonomy to the durable boundary.
+ * It stays `string` on the reader, because the Inspector parses a file it
+ * did not write and `isAuditEntryShape` checks only that the field is a
+ * string. Narrowing the reader's type to the union would make the
+ * declaration claim something its own guard does not check -- exactly the
+ * mistake this test exists to catch. Validating membership instead would
+ * make the Inspector drop an audit line whose kind it does not recognise,
+ * and a reader that silently discards records of fail-open proceeds is
+ * worse than one that renders an unfamiliar word.
  *
  * So the drift this test exists to catch -- a field added or dropped on one
  * side -- is checked by key parity in both directions, which is what `toEqual`
@@ -142,7 +143,7 @@ void _failureFieldsMatch;
 void _sessionFailureFieldsMatch;
 void _inspectorAcceptsWhatTheAdapterWrites;
 
-describe("S14 write -> N51 read: every field survives", () => {
+describe("the audit log write and the Inspector's read agree on every field", () => {
   for (const outcome of ["proceeded", "blocked"] as const) {
     it(`round-trips a ${outcome} entry`, async () => {
       const path = join(scratch(), "audit.jsonl");
@@ -172,11 +173,11 @@ describe("S14 write -> N51 read: every field survives", () => {
     });
   }
 
-  // Both fields the whole-branch review added, together: a null `method`
-  // (nothing was sent, so no ACS method was ever determined) and a
-  // `session_failure` beside the step's own failure. The optional field is
-  // exactly where two independent type declarations drift most quietly, so it
-  // is asserted with toEqual like the rest.
+  // Both fields together: a null `method` (nothing was sent, so no ACS
+  // method was ever determined) and a `session_failure` beside the step's
+  // own failure. The optional field is exactly where two independent type
+  // declarations drift most quietly, so it is asserted with toEqual like the
+  // rest.
   it("round-trips a null method and a session_failure", async () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") }).write({

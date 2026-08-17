@@ -14,10 +14,11 @@ import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type 
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
 
-// V3: the shim now negotiates a session (S13) and can audit a fail-open
-// (S14), both of which default to `.acs/...` under the process cwd when
-// unset -- which would otherwise scatter real files into the repo's working
-// tree on every run of this suite. Both tests below share one session id
+// The shim negotiates a session, persisting it to the session config store,
+// and can audit a fail-open to the audit log; both default to `.acs/...`
+// under the process cwd when unset -- which would otherwise scatter real
+// files into the repo's working tree on every run of this suite. Both tests
+// below share one session id
 // ("abc123"), so the only path either can create is `sessions/abc123.json`
 // under this scratch dir; no audit file is expected, since both tests
 // exercise a decision that actually arrives.
@@ -25,9 +26,9 @@ const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-hook-test-"));
 const SESSION_DIR = join(SCRATCH_DIR, "sessions");
 const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
-/** The real PreToolUse payload shape Claude Code delivers on stdin (per the
- * Task 7 brief), with `tool_name: "Bash"` -- what Claude Code actually
- * sends, and what `policy/manifest.yaml` registers (Task 8's fix). */
+/** The real PreToolUse payload shape Claude Code delivers on stdin, with
+ * `tool_name: "Bash"` -- what Claude Code actually sends, and what
+ * `policy/manifest.yaml` registers. */
 function preToolUsePayload(command: string): Record<string, unknown> {
   return {
     session_id: "abc123",

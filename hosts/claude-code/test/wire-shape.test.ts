@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
  * Every other test in this directory asserts one field at a time ("the
  * decision is deny", "the reason is a non-empty string"), which is exactly the
  * shape of assertion that survives an output quietly gaining, losing or moving
- * a field. This file asserts the WHOLE JSON object, as a literal, for every
+ * a field. This file asserts the whole JSON object, as a literal, for every
  * decision the shipped hookmap declares -- allow, deny, ask, defer and modify
  * -- so that any change to the rendered wire shape has to be a deliberate edit
  * to the literals below rather than something a refactor can do by accident.
@@ -28,15 +28,13 @@ import { fileURLToPath } from "node:url";
  * and `deny` would leave the three rarest renderings -- the ones nobody looks
  * at, and the ones a careless change breaks first -- unpinned.
  *
- * V3: the shim negotiates a session before the step call (N5/N6), so the stub
- * grew the `handshake/hello` branch V1's own note here anticipated and each run
- * negotiates a real `proceed` posture. That branch is why the two ACS
- * `*_details` fixtures below are well-formed rather than bare: they are what
- * they always claimed to be, an ask and a defer that arrived intact. It moved
- * none of the literals -- captured both ways before it was added, and the
- * bytes on stdout are identical either way, because every case here is a
- * decision that ARRIVES, so no posture is ever consulted. What it does buy is
- * that this suite no longer reads or writes `.acs/` under the repo's own cwd.
+ * The shim negotiates a session before the step call, so the stub answers a
+ * `handshake/hello` request and each run negotiates a real `proceed` posture.
+ * That branch is why the two ACS `*_details` fixtures below are well-formed
+ * rather than bare: they are what they claim to be, an ask and a defer that
+ * arrived intact. Every case here is a decision that arrives, so no posture
+ * is ever consulted, and this suite never reads or writes `.acs/` under the
+ * repo's own cwd.
  */
 const SHIM = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 
@@ -147,16 +145,13 @@ describe("the wire shape this host writes to stdout, pinned decision by decision
   });
 
   it("renders an allow that carries reasoning with that reasoning attached", async () => {
-    // The shape an observe-only upstream signal produces (R1.2): an ACS allow
-    // with a synthesized explanation and non-empty policy_references. V1's own
-    // version of this case pinned the explanation NOT travelling, because
-    // `decisions.allow` named no reason source and said so; the same note said
-    // whichever slice gave `allow` a reason had to edit this literal to say so.
-    // V3 did (812419f), and this is that edit: the references still do not
-    // travel to the host, the explanation now does, and it is the only thing
-    // distinguishing this from a plain allow in the transcript a human reads.
-    // The case that actually pays for it is a fail-open proceed, whose reason
-    // is written by applyFailurePosture and had nowhere to go before.
+    // The shape an observe-only upstream signal produces: an ACS allow with a
+    // synthesized explanation and non-empty policy_references. The
+    // explanation travels to the host; the references do not, and the
+    // explanation is the only thing distinguishing this from a plain allow
+    // in the transcript a human reads. The case that actually pays for this
+    // is a fail-open proceed, whose reason is written by applyFailurePosture
+    // and needs somewhere to go.
     expect(
       await renderedBy(
         {
@@ -188,16 +183,15 @@ describe("the wire shape this host writes to stdout, pinned decision by decision
     });
   });
 
-  // `ask_details` is what makes this an ask that arrived intact, and V3 is why
-  // it has to be here: the decision now reaches renderDecision through N7
-  // (validateDecision), which substitutes a deny for an ask carrying no usable
-  // `ask_details` -- it cannot tell an unexpired ask from an expired one
-  // without the window, and §6 makes that fail closed. Pinning the substituted
-  // deny here instead would leave the hookmap's `ask` entry -- one of the three
-  // rarest renderings this file exists for -- with nothing pinning it at all;
-  // the substitution itself is covered where it belongs, in
-  // packages/host-adapter/test/validate-decision.test.ts. The rendered literal
-  // is V1's, unchanged.
+  // `ask_details` is what makes this an ask that arrived intact: the decision
+  // reaches renderDecision through `validateDecision`, which substitutes a
+  // deny for an ask carrying no usable `ask_details` -- it cannot tell an
+  // unexpired ask from an expired one without the window, and §6 makes that
+  // fail closed. Pinning the substituted deny here instead would leave the
+  // hookmap's `ask` entry -- one of the three rarest renderings this file
+  // exists for -- with nothing pinning it at all; the substitution itself is
+  // covered where it belongs, in
+  // packages/host-adapter/test/validate-decision.test.ts.
   it("renders an ask that is still inside its window as an ask, carrying its reasoning", async () => {
     expect(
       await renderedBy(
@@ -220,10 +214,10 @@ describe("the wire shape this host writes to stdout, pinned decision by decision
   // `defer_details` for the same reason as `ask_details` above, and the deny
   // below is the hookmap's own `defer` entry rendering (this host has no
   // deferral state, so §defer-details' own default is the least-wrong mapping)
-  // rather than N7 substituting one for a defer it could not read. The two are
-  // indistinguishable in the decision field and tell apart only by the reason:
-  // the policy's own text here, a "missing valid defer_details" message there.
-  // The rendered literal is V1's, unchanged.
+  // rather than `validateDecision` substituting one for a defer it could not
+  // read. The two are indistinguishable in the decision field and tell apart
+  // only by the reason: the policy's own text here, a "missing valid
+  // defer_details" message there.
   it("renders a defer that is still inside its window as a deny -- this host has no deferral state", async () => {
     expect(
       await renderedBy(
@@ -248,16 +242,12 @@ describe("the wire shape this host writes to stdout, pinned decision by decision
   });
 
   it("renders a modify as an allow carrying the rewritten arguments and the reason they changed", async () => {
-    // V1 pinned two gaps here and named V3 as the slice that owned closing
-    // them, both of which show up in this literal. `updatedInput` used to
-    // carry ACS's raw `modifications` object, a shape Claude Code's
-    // `updatedInput` does not accept -- so the rewrite was reported and never
-    // took effect (R1.6). It now carries what N7's validateDecision produced by
-    // actually applying §6.3's modifications to the arguments that went out on
-    // the wire (`applied_input`, b6f1566): the tool input Claude Code can run,
-    // with the secret gone. And the entry gained a reason path (0f95527),
-    // because a policy-ordered rewrite was the one decision that changed what
-    // runs while the transcript said nothing about it.
+    // `updatedInput` carries what `validateDecision` produces by applying
+    // §6.3's modifications to the arguments that went out on the wire
+    // (`applied_input`): the tool input Claude Code can run, with the secret
+    // gone. The entry also carries a reason, because a policy-ordered
+    // rewrite is the one decision that changes what runs while the
+    // transcript would otherwise say nothing about it.
     expect(
       await renderedBy(
         {
