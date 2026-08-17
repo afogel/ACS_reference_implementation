@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll } from "bun:test";
 import { AgentControl } from "agent-control-specification";
-import { createBridge, type PolicyBridge } from "../src/index.ts";
+import { createBridge, type EvidenceBridge, type PolicyBridge } from "../src/index.ts";
 import { buildConfigBundle, buildManifest } from "../../../test/helpers/config-bundle.ts";
 
 const snapshotFor = (command: string) => ({
@@ -23,7 +23,8 @@ const snapshotFor = (command: string) => ({
 // currently-passing test for no reason connected to IFC.
 const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
 
-let bridge: PolicyBridge;
+// `createBridge` answers with both roles, and this suite exercises both.
+let bridge: PolicyBridge & EvidenceBridge;
 beforeAll(() => { bridge = createBridge("policy/manifest.yaml"); });
 
 describe("agt-bridge", () => {
@@ -96,18 +97,8 @@ describe("agt-bridge", () => {
       async evaluate(point, snapshot) {
         return { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` };
       },
-      // A stand-in for a role with two messages implements both. The identities
-      // are fixed strings rather than real hashes: this double exists to show the
-      // Guardian depends on a role and not on `createBridge`, and the Guardian
-      // never reads them.
-      async evaluateWithEvidence(point, snapshot) {
-        return {
-          verdict: { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` },
-          policyInput: {},
-          inputIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-          enforcedIdentity: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        };
-      },
+      // Nothing else: `PolicyBridge` carries `evaluate` alone, so a stand-in
+      // for what the Guardian depends on cannot be asked for evidence.
     };
 
     const verdict = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));

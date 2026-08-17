@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs N40 (packages/conformance/src/main.ts), the conformance runner, for
-# real: publishes the mapping table (U32), the coverage matrix (U30) and the
-# trace rows (U33), with N41's schema leg included rather than self-skipped.
+# Runs the conformance runner (packages/conformance/src/main.ts) for real:
+# publishes the mapping table, the coverage matrix and the trace-pillar rows,
+# with the policy-input schema check included rather than self-skipped.
 #
-# That leg validates the policy input the Guardian would send at
+# That check validates the policy input the Guardian would send at
 # pre_tool_call / post_tool_call against AGT's OWN policy-input.schema.json
-# at agt.lock's pinned ref -- never a copy of that schema kept in this repo
-# (R2.4). Reaching it needs the network, so this script mirrors
+# at agt.lock's pinned ref -- never a copy of that schema kept in this repo.
+# Reaching it needs the network, so this script mirrors
 # scripts/verify-pin.sh's own pattern exactly: shallow-clone AGT at the
 # pinned ref into a scratch temp dir, hand the clone's path to the runner by
 # environment variable, clean up with `trash`. `bun test` alone never sets

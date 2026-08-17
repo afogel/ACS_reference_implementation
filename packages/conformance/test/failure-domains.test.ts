@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { startGuardian, type StartedGuardian } from "guardian";
-import { checkFailureDomains } from "../src/failure-domains.ts";
+import { loadMapping, startGuardian, type Mapping, type StartedGuardian } from "guardian";
+import { checkDenyFailsClosed } from "../src/failure-domains.ts";
+
+const mapping: Mapping = loadMapping("mapping.yaml");
 
 let guardian: StartedGuardian;
 beforeAll(async () => {
@@ -13,13 +15,13 @@ afterAll(async () => {
 describe("the two failure domains stay apart", () => {
   it("resolves the deny column expressed, by name, at exactly the six points mapping.yaml gives an ACS method to", async () => {
     // Asserting only "every deny cell that came back is expressed" would
-    // pass identically whether checkFailureDomains measured one point or
-    // six -- it could not tell a correct six-point measurement apart from
-    // an unmeasured one. This asserts exactly which points are covered, by
+    // pass identically whether the check measured one point or six -- it
+    // could not tell a correct six-point measurement apart from an
+    // unmeasured one. This asserts exactly which points are covered, by
     // name, matching mapping.yaml's six acs_method-bearing rows
     // (pre_model_call / post_model_call excluded -- the intervention-point
     // check's cell, not this check's).
-    const cells = await checkFailureDomains(guardian.url);
+    const cells = await checkDenyFailsClosed(guardian, mapping);
     const deny = cells.filter((c) => c.verdict === "deny");
 
     expect(deny.map((c) => c.point).sort()).toEqual([
@@ -32,7 +34,7 @@ describe("the two failure domains stay apart", () => {
     ]);
     for (const cell of deny) {
       expect(cell.status).toBe("expressed");
-      expect(cell.measuredBy).toContain("N44");
+      expect(cell.measuredBy).toContain("deny fails closed");
     }
   });
 
@@ -42,7 +44,7 @@ describe("the two failure domains stay apart", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         jsonrpc: "2.0",
-        id: "rpc-n44",
+        id: "rpc-deny-probe",
         method: "steps/toolCallRequest",
         params: {
           acs_version: "0.1.0",
@@ -53,7 +55,7 @@ describe("the two failure domains stay apart", () => {
           // validation and log a console.error unrelated to what this test
           // means to exercise.
           request_id: crypto.randomUUID(),
-          metadata: { session_id: "sess-n44" },
+          metadata: { session_id: "sess-deny-probe" },
           payload: {},
         },
       }),

@@ -1,7 +1,7 @@
 /**
- * This module is validateEnvelope's outbound twin. It closes a gap: inbound
- * requests are compiled against three schemas (request-envelope.json and,
- * method-gated, the two hook payload schemas -- all 43 are registered so
+ * This module is validateEnvelope's outbound counterpart. It closes a gap:
+ * inbound requests are compiled against three schemas (request-envelope.json
+ * and, method-gated, the two hook payload schemas -- all 43 are registered so
  * `$ref`s resolve, but only those three are ever compiled) and responses
  * were hand-built objects checked by nothing. A conformance harness
  * publishing a matrix over that wire would have been measuring a format
@@ -9,27 +9,54 @@
  * the coverage matrix exists to prove: that ACS v0.1.0's expressiveness
  * against AGT is checked case by case, not merely asserted.
  *
- * THREE ANSWERS, NOT TWO, and the third is a measured fact about v0.1.0
- * rather than a hedge. `response-envelope.json` declares `result` as an
- * unconditional `$ref` to `AcsResult`, and `AcsResult` requires `decision`.
- * A ServerHello has no `decision`. So a correct handshake response cannot
- * satisfy the response envelope schema, and a two-answer validator would have
- * to call a correct response invalid or skip it in silence. `unexpressible`
- * says which. server.ts reports it on the same stderr line shape as an
- * invalid response -- naming the method and this reason -- so the answer is
- * recorded rather than computed and dropped; it is not written into the
- * envelope log (`envelope-log-sink.ts`). That entry's shape
- * (`EnvelopeLogEntry`) is left narrower on purpose, and the Inspector
- * already reads it -- carrying a validation result onto that wire, so the
- * Inspector could render it directly instead of an operator reading stderr,
- * is future work this module does not attempt. The conformance package's
- * coverage matrix carries the same cell.
+ * FOUR STATUSES, AND EACH NAMES A DIFFERENT FACT. They are a status, not
+ * values of a boolean called `valid`, because two of them are not answers
+ * about validity at all:
  *
- * REPORTS, NEVER THROWS, and never alters the response. This runs on the
- * decision path; a validator that could turn a governed tool call into an
+ *   checked_valid     compiled against the schema, and satisfied it.
+ *   checked_invalid   compiled against the schema, and did not.
+ *   unexpressible     v0.1.0 has no shape this response could satisfy, so
+ *                     there was nothing to compile it against.
+ *   unchecked         the schema registry could not be built, so no
+ *                     comparison happened.
+ *
+ * The last two were previously folded into `valid: false`, which said the
+ * response had been checked and rejected. "Never checked" and "checked and
+ * rejected" are different facts about a response the Guardian is about to
+ * send, and a deployment reading the first as the second would be chasing a
+ * schema violation that was never observed.
+ *
+ * `unexpressible` is a measured fact about v0.1.0 rather than a hedge.
+ * `response-envelope.json` declares `result` as an unconditional `$ref` to
+ * `AcsResult`, and `AcsResult` requires `decision`. A ServerHello has no
+ * `decision`. So a correct handshake response cannot satisfy the response
+ * envelope schema, and a two-answer validator would have to call a correct
+ * response invalid or skip it in silence. server.ts reports it on the same
+ * stderr line shape as an invalid response -- naming the method and this
+ * reason -- so the answer is recorded rather than computed and dropped; it
+ * is not written into the envelope log (`envelope-log-sink.ts`). That
+ * entry's shape (`EnvelopeLogEntry`) is left narrower on purpose, and the
+ * Inspector already reads it -- carrying a check result onto that wire, so
+ * the Inspector could render it directly instead of an operator reading
+ * stderr, is future work this module does not attempt.
+ *
+ * This status is NOT a coverage-matrix cell and must not be described as
+ * one. A matrix cell is an AGT intervention point against an AGT verdict;
+ * `handshake/hello` is neither, and the matrix's own `CellStatus` has
+ * `unexpressed`, a different word for a different axis. Letting one
+ * measurement stand in for another is exactly the confusion this project
+ * keeps apart, and it must not happen inside the module that exists to make
+ * the matrix's wire trustworthy.
+ *
+ * REPORTS, NEVER THROWS, and never alters the response -- which is why the
+ * verb is `check` rather than `validate`. Inbound, `validateEnvelope`
+ * throws and the request stops. This runs on the decision path, after the
+ * decision is made; a check that could turn a governed tool call into an
  * error response would be a fail-open of exactly the family this project
- * keeps closing. A response that fails validation is still sent, and the
- * failure is recorded.
+ * keeps closing. A response that fails is still sent, and the failure is
+ * recorded. `ResponseCheck` is the twin of the conformance harness's
+ * `SchemaLegResult`, which reports `{ran: false, reason}` for the same
+ * reason: whether a check ran is a fact it has to be able to state.
  *
  * The Ajv instance is validate-envelope.ts's own, reached through its
  * exported `getValidator(schemaId)` rather than rebuilt here: both modules
@@ -50,16 +77,17 @@
  * immediately before the response is sent, with nothing above it in
  * server.ts to catch a second throw -- so if this function let one escape,
  * the exact fail-open server.ts's header exists to prevent would reopen one
- * call later, on the way out instead of the way in. The try/catch below is
- * what makes "reports, never throws" true for a broken deployment and not
- * only for a well-formed one.
+ * call later, on the way out instead of the way in. `unchecked` is what
+ * makes "reports, never throws" true for a broken deployment and not only
+ * for a well-formed one.
  */
 import { getValidator } from "./validate-envelope.ts";
 
-export type ResponseValidation =
-  | { valid: true }
-  | { valid: false; pointer: string; message: string }
-  | { valid: "unexpressible"; reason: string };
+export type ResponseCheck =
+  | { status: "checked_valid" }
+  | { status: "checked_invalid"; pointer: string; message: string }
+  | { status: "unexpressible"; reason: string }
+  | { status: "unchecked"; reason: string };
 
 const HANDSHAKE_UNEXPRESSIBLE =
   "response-envelope.json's `result` unconditionally $refs AcsResult, which requires `decision`; " +
@@ -87,22 +115,22 @@ function isServerHelloResponse(response: unknown): boolean {
   return !("decision" in result) && "methods_evaluated" in result;
 }
 
-export function validateResponse(response: unknown): ResponseValidation {
+export function checkResponse(response: unknown): ResponseCheck {
   // isServerHelloResponse is inside the try too -- "reports, never throws" is
   // stated as this function's whole contract, not as a property of the parts
   // that happen to call into Ajv, so nothing in this body is allowed to sit
   // outside the one guard that makes the contract true.
   try {
     if (isServerHelloResponse(response)) {
-      return { valid: "unexpressible", reason: HANDSHAKE_UNEXPRESSIBLE };
+      return { status: "unexpressible", reason: HANDSHAKE_UNEXPRESSIBLE };
     }
     const validate = getValidator(RESPONSE_ENVELOPE_SCHEMA_ID);
     if (validate(response)) {
-      return { valid: true };
+      return { status: "checked_valid" };
     }
     const first = validate.errors?.[0];
     return {
-      valid: false,
+      status: "checked_invalid",
       pointer: first?.instancePath ?? "",
       message: first ? `${first.instancePath || "/"} ${first.message}` : "response failed validation",
     };
@@ -113,18 +141,14 @@ export function validateResponse(response: unknown): ResponseValidation {
     // failure rather than trusting a caller to: server.ts calls this
     // function with nothing above it left to catch a second throw.
     //
-    // The message says the check did not run, not that the response is
-    // invalid -- `valid: false` is the only shape this union has for "not
-    // known to satisfy the schema", and server.ts's own report line composes
-    // this message after a fixed prefix (see its comment), so the words here
-    // have to stay true under that composition too: this response was never
-    // checked against response-envelope.json, which is a different fact
-    // from "checked and rejected."
+    // Its own status, not `checked_invalid`. This response was never
+    // compared against response-envelope.json, and saying it failed the
+    // comparison would send an operator looking for a schema violation
+    // nothing observed.
     const message = error instanceof Error ? error.message : String(error);
     return {
-      valid: false,
-      pointer: "",
-      message: `the response was never checked -- validateResponse's own schema registry failed to build: ${message}`,
+      status: "unchecked",
+      reason: `the schema registry could not be built: ${message}`,
     };
   }
 }

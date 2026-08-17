@@ -79,7 +79,7 @@ import {
   validateEnvelope,
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
-import { validateResponse } from "./validate-response.ts";
+import { checkResponse } from "./check-response.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 import {
@@ -193,7 +193,13 @@ export function toRepoRelativeMessage(error: unknown): string {
  * -32000..-32099.
  */
 const ENVELOPE_INVALID_CODE = -32010;
-const METHOD_NOT_DISPATCHED_CODE = -32011;
+/**
+ * Exported, unlike its two neighbours, because the conformance harness posts
+ * a dispatch probe and has to recognise this Guardian's own answer to it. A
+ * copy of the literal over there would be measuring the Guardian against a
+ * number the Guardian could also be wrong about.
+ */
+export const METHOD_NOT_DISPATCHED_CODE = -32011;
 /** Any throw the Guardian did not turn into a response itself: mapVerdict's
  * own require_policy_references check, an AGT runtime error, or -- through
  * handleAcsRequest's outer net -- a failure to even build the schema registry.
@@ -498,28 +504,30 @@ async function handleAcsRequest(
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
 
-  const validation = validateResponse(response);
+  const responseCheck = checkResponse(response);
   try {
     // Reported, not thrown, and the response is sent unchanged either way:
-    // see validate-response.ts. This is the outbound counterpart to
+    // see check-response.ts. This is the outbound counterpart to
     // validateEnvelope's inbound checking, and it must not be able to turn a
     // governed step into an ungoverned one.
     //
-    // "not confirmed to satisfy", not "fails": `validation.message` is true
-    // under two different causes -- a real schema violation, or
-    // validateResponse's own registry failing to build (see its doc
-    // comment) -- and this line has to stay true under either, so it never
-    // asserts the stronger claim itself.
-    if (validation.valid === false) {
+    // One line per status, because they are different findings. Reporting
+    // "unchecked" as a schema failure -- which is what the old boolean did --
+    // sent an operator hunting a violation that was never observed, when the
+    // real fault is a deployment whose schema registry will not build.
+    if (responseCheck.status === "checked_invalid") {
       console.error(
-        `guardian sent a response not confirmed to satisfy response-envelope.json at ${validation.pointer}: ${validation.message}`,
+        `guardian sent a response that fails response-envelope.json at ${responseCheck.pointer}: ${responseCheck.message}`,
       );
-    } else if (validation.valid === "unexpressible") {
+    } else if (responseCheck.status === "unchecked") {
+      console.error(
+        `guardian sent a response for method ${method} without checking it against response-envelope.json: ${responseCheck.reason}`,
+      );
+    } else if (responseCheck.status === "unexpressible") {
       // Recorded, not silently dropped -- v0.1.0 has no schema this method's
-      // response could satisfy (see validate-response.ts), which is not the
-      // same fact as "not confirmed to satisfy" above and gets its own line
-      // rather than being folded into that one.
-      console.error(`guardian sent a response for method ${method} that v0.1.0 cannot express: ${validation.reason}`);
+      // response could satisfy (see check-response.ts), which is not the
+      // same fact as either line above and gets its own.
+      console.error(`guardian sent a response for method ${method} that v0.1.0 cannot express: ${responseCheck.reason}`);
     }
   } catch {
     // A reporting failure (an EPIPE on stderr, say) must not be able to

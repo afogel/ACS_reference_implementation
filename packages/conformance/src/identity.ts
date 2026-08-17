@@ -41,7 +41,7 @@
  * computing anything.
  */
 import { createHash } from "node:crypto";
-import type { InterventionSnapshot, PolicyBridge } from "agt-bridge";
+import type { AgtEvidence, EvidenceBridge, InterventionSnapshot } from "agt-bridge";
 import { AGT_POINTS, type CellStatus, type CoverageCell } from "./cells.ts";
 
 /** `boundTo === "policy_target"`: the measured, real behaviour against the
@@ -79,22 +79,38 @@ const NO_REWRITE =
   "identity to, and this check made no policy_target/snapshot comparison -- input and enforced identity are " +
   "equal by construction, not because either candidate was tested and matched";
 
+/**
+ * One evaluation's two answers, kept apart because they are two
+ * measurements: `input` is whether AGT's input-identity hash reproduces from
+ * the policy input it reported, `enforced` is which document its enforced
+ * identity turned out to cover. Neither implies the other, and a single flat
+ * record wearing one name made it read as though it did.
+ */
 export type IdentityFinding = {
   /** The AGT intervention point this finding was measured at. Validated
-   * against `AGT_POINTS` in `checkEnforcedIdentity` (the only place a point
+   * against `AGT_POINTS` in `measureIdentity` (the only place a point
    * arrives from a caller), so a finding can never carry one AGT does not
    * have. */
   point: string;
-  recomputed: boolean;
-  inputIdentity: string;
-  enforcedIdentity: string;
-  /** `policy_target` / `snapshot`: a transform was reported and one of the
-   * two candidates this check constructs matched. `unattributable`: a
-   * transform was reported and neither candidate matched. `no_rewrite`: no
-   * transform was reported, so no candidate was ever constructed. Four
-   * distinct situations, not three -- `unattributable` and `no_rewrite` look
-   * similar (neither names a document) but differ in whether a comparison
-   * was attempted at all, and `identityCells` gives each its own reason. */
+  input: InputIdentityCheck;
+  enforced: EnforcedBindingCheck;
+};
+
+/** `checkInputIdentity`'s answer: did AGT's own input identity reproduce? */
+export type InputIdentityCheck = { recomputed: boolean; identity: string };
+
+/** `checkEnforcedBinding`'s answer: which document does the enforced
+ * identity cover?
+ *
+ * `policy_target` / `snapshot`: a transform was reported and one of the two
+ * candidates this check constructs matched. `unattributable`: a transform
+ * was reported and neither candidate matched. `no_rewrite`: no transform was
+ * reported, so no candidate was ever constructed. Four distinct situations,
+ * not three -- `unattributable` and `no_rewrite` look similar (neither names
+ * a document) but differ in whether a comparison was attempted at all, and
+ * `coverageCellsFromIdentity` gives each its own reason. */
+export type EnforcedBindingCheck = {
+  identity: string;
   boundTo: "policy_target" | "snapshot" | "unattributable" | "no_rewrite";
 };
 
@@ -116,8 +132,19 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
-export async function checkEnforcedIdentity(
-  bridge: PolicyBridge,
+/**
+ * One evaluation, both questions. The bridge is asked once and the two
+ * checks below read the same evidence, so they cannot disagree about which
+ * run they describe -- which is why this is not two functions each fetching
+ * their own.
+ *
+ * The point is validated here, the only place one arrives from a caller, and
+ * is recorded on the finding rather than threaded separately to the
+ * projection: a point passed alongside the finding it describes can disagree
+ * with it at the call site, and recording it makes that unrepresentable.
+ */
+export async function measureIdentity(
+  bridge: EvidenceBridge,
   point: string,
   snapshot: InterventionSnapshot,
 ): Promise<IdentityFinding> {
@@ -126,14 +153,18 @@ export async function checkEnforcedIdentity(
   }
 
   const evidence = await bridge.evaluateWithEvidence(point, snapshot);
-  const recomputed = canonicalIdentity(evidence.policyInput) === evidence.inputIdentity;
+  return { point, input: checkInputIdentity(evidence), enforced: checkEnforcedBinding(evidence) };
+}
 
+/**
+ * Does AGT's input identity reproduce from the policy input it reported?
+ * Says nothing about where the enforced identity landed -- that is
+ * `checkEnforcedBinding`'s separate answer.
+ */
+export function checkInputIdentity(evidence: AgtEvidence): InputIdentityCheck {
   return {
-    point,
-    recomputed,
-    inputIdentity: evidence.inputIdentity,
-    enforcedIdentity: evidence.enforcedIdentity,
-    boundTo: resolveBinding(evidence),
+    recomputed: canonicalIdentity(evidence.policyInput) === evidence.inputIdentity,
+    identity: evidence.inputIdentity,
   };
 }
 
@@ -205,21 +236,28 @@ function setAtPolicyTargetPath(snapshot: unknown, path: string, value: unknown):
  * Which document AGT's enforced identity actually covers, decided by
  * recomputing each candidate rather than by reading AGT's description of it.
  *
- * Four returns, not three collapsed into one: `no_rewrite` short-circuits
+ * Four outcomes, not three collapsed into one: `no_rewrite` short-circuits
  * before either candidate is built (there is nothing to substitute), while
  * `policy_target` / `snapshot` / `unattributable` all construct and hash
  * both candidates and differ only in which, if either, matched. The
  * short-circuit and the ran-and-failed comparison are different data -- one
  * never compared anything, the other compared and found no match -- so they
- * get different names, and `identityCells` gives each a reason true of only
- * it.
+ * get different names, and `coverageCellsFromIdentity` gives each a reason
+ * true of only it.
+ *
+ * Exported beside `checkInputIdentity`: same evidence, a different question,
+ * and each answerable and testable without the other.
  */
-function resolveBinding(evidence: {
+export function checkEnforcedBinding(evidence: AgtEvidence): EnforcedBindingCheck {
+  return { identity: evidence.enforcedIdentity, boundTo: resolveBoundTo(evidence) };
+}
+
+function resolveBoundTo(evidence: {
   policyInput: unknown;
   inputIdentity: string;
   enforcedIdentity: string;
   verdict: { transform?: { value: unknown } };
-}): IdentityFinding["boundTo"] {
+}): EnforcedBindingCheck["boundTo"] {
   const transformed = evidence.verdict.transform?.value;
   if (transformed === undefined) {
     // No rewrite: MEASURED here, not merely asserted in prose -- an allow at
@@ -257,7 +295,7 @@ function resolveBinding(evidence: {
   return "unattributable";
 }
 
-function boundToCell(boundTo: IdentityFinding["boundTo"]): { status: CellStatus; reason: string } {
+function boundToCell(boundTo: EnforcedBindingCheck["boundTo"]): { status: CellStatus; reason: string } {
   switch (boundTo) {
     case "policy_target":
       return { status: "guardian_only", reason: BOUND_TO_POLICY_TARGET };
@@ -271,35 +309,37 @@ function boundToCell(boundTo: IdentityFinding["boundTo"]): { status: CellStatus;
 }
 
 /**
- * The cell this finding resolves: the `transform` column, at the point the
- * finding was actually measured at (`finding.point`, validated against
- * `AGT_POINTS` in `checkEnforcedIdentity` -- the only place a point arrives
- * from a caller). Not a second parameter here: a point threaded in
- * separately from the finding it is supposed to describe can disagree with
- * it at the call site just as easily as a hard-coded constant can disagree
- * with reality inside this function: `identityCells(await
- * checkEnforcedIdentity(bridge, "pre_tool_call", s), "post_tool_call")`
- * would type-check and mislabel the cell. Recording the point on the finding
- * itself makes that divergence unrepresentable.
+ * The projection stage -- named for being one, rather than for a measurement
+ * it does not perform. It turns one finding into the `transform` column's
+ * cell at the point the finding was actually measured at (`finding.point`,
+ * validated against `AGT_POINTS` in `measureIdentity` -- the only place a
+ * point arrives from a caller). Not a second parameter here: a point
+ * threaded in separately from the finding it is supposed to describe can
+ * disagree with it at the call site just as easily as a hard-coded constant
+ * can disagree with reality inside this function:
+ * `coverageCellsFromIdentity(await measureIdentity(bridge, "pre_tool_call",
+ * s), "post_tool_call")` would type-check and mislabel the cell. Recording
+ * the point on the finding itself makes that divergence unrepresentable.
  *
- * The status and reason are gated on `boundTo`, not asserted regardless of
- * it: `recomputed: true` says AGT's input identity was reproduced, nothing
- * about where the enforced identity landed, so the four `boundTo` outcomes
- * get four different, independently true reasons rather than one claim
- * repeated across all of them -- `unattributable` and `no_rewrite` look
- * alike (neither names a document) but are not the same claim: one says a
+ * The two measurements are read in order, not merged: `input.recomputed`
+ * false resolves the cell on its own, because a binding computed from an
+ * unreproducible input identity is not evidence of anything. Only when it
+ * held is `enforced.boundTo` asked, and its four outcomes get four
+ * different, independently true reasons rather than one claim repeated
+ * across all of them -- `unattributable` and `no_rewrite` look alike
+ * (neither names a document) but are not the same claim: one says a
  * comparison ran and found no match, the other says no comparison was
  * possible, and conflating them would misstate both.
  */
-export function identityCells(finding: IdentityFinding): CoverageCell[] {
-  if (!finding.recomputed) {
+export function coverageCellsFromIdentity(finding: IdentityFinding): CoverageCell[] {
+  if (!finding.input.recomputed) {
     return [
       {
         point: finding.point,
         verdict: "transform",
         status: "unexpressed",
         reason: "AGT's input identity could not be reproduced from the policy input it reported",
-        measuredBy: ["N43"],
+        measuredBy: ["action identity"],
       },
     ];
   }
@@ -307,8 +347,8 @@ export function identityCells(finding: IdentityFinding): CoverageCell[] {
     {
       point: finding.point,
       verdict: "transform",
-      ...boundToCell(finding.boundTo),
-      measuredBy: ["N43"],
+      ...boundToCell(finding.enforced.boundTo),
+      measuredBy: ["action identity"],
     },
   ];
 }

@@ -14,7 +14,7 @@ const WARN_REASON =
   "drift score could be derived from, so the Guardian must originate it";
 
 const cell = (point: string, verdict: string, status: CoverageCell["status"], reason?: string): CoverageCell =>
-  ({ point, verdict, status, measuredBy: ["N41"], ...(reason ? { reason } : {}) }) as CoverageCell;
+  ({ point, verdict, status, measuredBy: ["intervention-point round trip"], ...(reason ? { reason } : {}) }) as CoverageCell;
 
 describe("renderCoverageMatrix -- the published coverage matrix", () => {
   // A fully-measured matrix: every cell expressed except the warn column,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "bun:test";
-import { createBridge, type AgtEvidence, type PolicyBridge } from "agt-bridge";
-import { canonicalIdentity, checkEnforcedIdentity, identityCells } from "../src/identity.ts";
+import { createBridge, type AgtEvidence, type EvidenceBridge } from "agt-bridge";
+import { canonicalIdentity, measureIdentity, coverageCellsFromIdentity } from "../src/identity.ts";
 
 const bridge = createBridge("policy/manifest.yaml");
 
@@ -14,22 +14,22 @@ const REDACTABLE = {
 
 describe("recomputing AGT's identity rather than believing it", () => {
   it("reproduces the identity of a policy input AGT hashed", async () => {
-    const finding = await checkEnforcedIdentity(bridge, "post_tool_call", REDACTABLE);
+    const finding = await measureIdentity(bridge, "post_tool_call", REDACTABLE);
 
-    expect(finding.recomputed).toBe(true);
+    expect(finding.input.recomputed).toBe(true);
   });
 
   it("finds the enforced identity bound to the policy target, not to the snapshot the host executes", async () => {
-    const finding = await checkEnforcedIdentity(bridge, "post_tool_call", REDACTABLE);
+    const finding = await measureIdentity(bridge, "post_tool_call", REDACTABLE);
 
-    expect(finding.inputIdentity).not.toBe(finding.enforcedIdentity);
+    expect(finding.input.identity).not.toBe(finding.enforced.identity);
     // The finding the slice publishes: boundTo resolves "policy_target", not
     // "snapshot", precisely because the snapshot's own copy of the redacted
     // leaf (policyInput.snapshot.tool_result.outputs[0].value) is left
     // holding the un-redacted token -- only policy_target.value was
     // replaced. resolveBinding computes the snapshot candidate too and it
     // does not match, which is what this assertion is actually resting on.
-    expect(finding.boundTo).toBe("policy_target");
+    expect(finding.enforced.boundTo).toBe("policy_target");
   });
 
   it("hashes key-sorted, whitespace-free JSON -- so key order and depth cannot change the identity, and whitespace does", () => {
@@ -48,7 +48,7 @@ describe("recomputing AGT's identity rather than believing it", () => {
   });
 
   it("resolves the transform column guardian-only at the point actually measured, naming the absent wire field", async () => {
-    const cells = identityCells(await checkEnforcedIdentity(bridge, "post_tool_call", REDACTABLE));
+    const cells = coverageCellsFromIdentity(await measureIdentity(bridge, "post_tool_call", REDACTABLE));
 
     expect(cells).not.toHaveLength(0);
     for (const cell of cells) {
@@ -65,11 +65,11 @@ describe("recomputing AGT's identity rather than believing it", () => {
     // here rather than let this test pass silently -- so this test passing
     // at all is the measurement, not the equality assertion alone.
     const BENIGN = { ...REDACTABLE, tool_result: { outputs: [{ value: "hello" }] } };
-    const finding = await checkEnforcedIdentity(bridge, "post_tool_call", BENIGN);
+    const finding = await measureIdentity(bridge, "post_tool_call", BENIGN);
 
-    expect(finding.recomputed).toBe(true);
-    expect(finding.inputIdentity).toBe(finding.enforcedIdentity);
-    expect(finding.boundTo).toBe("no_rewrite");
+    expect(finding.input.recomputed).toBe(true);
+    expect(finding.input.identity).toBe(finding.enforced.identity);
+    expect(finding.enforced.boundTo).toBe("no_rewrite");
   });
 
   it("resolves unexpressed when AGT's reported input identity cannot be reproduced from the policy input it also reported", async () => {
@@ -77,10 +77,8 @@ describe("recomputing AGT's identity rather than believing it", () => {
     // (the first test above measures that), so the only way to exercise this
     // branch is a bridge that reports an inputIdentity its own policyInput
     // does not hash to.
-    const lying: PolicyBridge = {
-      async evaluate() {
-        throw new Error("not used by this test");
-      },
+    const lying: EvidenceBridge = {
+      // No `evaluate`: this check depends on `EvidenceBridge` alone.
       async evaluateWithEvidence() {
         return {
           verdict: { decision: "transform", transform: { path: "$policy_target", value: "x" } },
@@ -91,17 +89,17 @@ describe("recomputing AGT's identity rather than believing it", () => {
       },
     };
 
-    const finding = await checkEnforcedIdentity(lying, "post_tool_call", {});
-    expect(finding.recomputed).toBe(false);
+    const finding = await measureIdentity(lying, "post_tool_call", {});
+    expect(finding.input.recomputed).toBe(false);
 
-    const cells = identityCells(finding);
+    const cells = coverageCellsFromIdentity(finding);
     expect(cells).toHaveLength(1);
     expect(cells[0]).toMatchObject({ point: "post_tool_call", verdict: "transform", status: "unexpressed" });
     expect(cells[0]!.reason).toMatch(/could not be reproduced/);
   });
 
   it("rejects a point AGT does not have, rather than measuring one silently", async () => {
-    await expect(checkEnforcedIdentity(bridge, "not_a_real_point", REDACTABLE)).rejects.toThrow(/not_a_real_point/);
+    await expect(measureIdentity(bridge, "not_a_real_point", REDACTABLE)).rejects.toThrow(/not_a_real_point/);
   });
 });
 
@@ -119,20 +117,20 @@ describe("the request gate, measured rather than assumed to match the result gat
   };
 
   it("reproduces the identity and finds the same policy_target binding pre_tool_call finds at post_tool_call", async () => {
-    const finding = await checkEnforcedIdentity(bridge, "pre_tool_call", REDACTABLE_COMMAND);
+    const finding = await measureIdentity(bridge, "pre_tool_call", REDACTABLE_COMMAND);
 
-    expect(finding.recomputed).toBe(true);
-    expect(finding.inputIdentity).not.toBe(finding.enforcedIdentity);
+    expect(finding.input.recomputed).toBe(true);
+    expect(finding.input.identity).not.toBe(finding.enforced.identity);
     // MEASURED, not assumed from the result gate's own finding above: the
     // request gate was driven independently through the real bridge and its
     // enforced identity was recomputed against both candidates the same way.
-    expect(finding.boundTo).toBe("policy_target");
+    expect(finding.enforced.boundTo).toBe("policy_target");
   });
 
   it("resolves both gates' transform cells guardian-only with the identical reason -- not forced to agree, found to", async () => {
     const [preCells, postCells] = await Promise.all([
-      checkEnforcedIdentity(bridge, "pre_tool_call", REDACTABLE_COMMAND).then(identityCells),
-      checkEnforcedIdentity(bridge, "post_tool_call", REDACTABLE).then(identityCells),
+      measureIdentity(bridge, "pre_tool_call", REDACTABLE_COMMAND).then(coverageCellsFromIdentity),
+      measureIdentity(bridge, "post_tool_call", REDACTABLE).then(coverageCellsFromIdentity),
     ]);
 
     expect(preCells[0]!.point).toBe("pre_tool_call");
@@ -160,10 +158,8 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
   };
   const inputIdentity = canonicalIdentity(SYNTHETIC_INPUT);
 
-  const evidenceBridge = (evidence: AgtEvidence): PolicyBridge => ({
-    async evaluate() {
-      throw new Error("not used by this test");
-    },
+  const evidenceBridge = (evidence: AgtEvidence): EvidenceBridge => ({
+    // No `evaluate`: this check depends on `EvidenceBridge` alone.
     async evaluateWithEvidence() {
       return evidence;
     },
@@ -178,10 +174,10 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
       enforcedIdentity: canonicalIdentity(policyTargetOnly),
     };
 
-    const finding = await checkEnforcedIdentity(evidenceBridge(evidence), "post_tool_call", {});
-    expect(finding.boundTo).toBe("policy_target");
+    const finding = await measureIdentity(evidenceBridge(evidence), "post_tool_call", {});
+    expect(finding.enforced.boundTo).toBe("policy_target");
 
-    const [cell] = identityCells(finding);
+    const [cell] = coverageCellsFromIdentity(finding);
     expect(cell!.status).toBe("guardian_only");
     expect(cell!.reason).toBe(
       "ACS v0.1.0 carries no action-identity field on any of its 43 schemas, so a wire consumer cannot bind an " +
@@ -200,10 +196,10 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
       enforcedIdentity: canonicalIdentity(snapshotOnly),
     };
 
-    const finding = await checkEnforcedIdentity(evidenceBridge(evidence), "post_tool_call", {});
-    expect(finding.boundTo).toBe("snapshot");
+    const finding = await measureIdentity(evidenceBridge(evidence), "post_tool_call", {});
+    expect(finding.enforced.boundTo).toBe("snapshot");
 
-    const [cell] = identityCells(finding);
+    const [cell] = coverageCellsFromIdentity(finding);
     expect(cell!.status).toBe("guardian_only");
     expect(cell!.reason).toBe(
       "AGT's enforced identity in this run binds to the snapshot leaf policy_target.path addresses -- the document " +
@@ -220,10 +216,10 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
       enforcedIdentity: `sha256:${"a".repeat(64)}`,
     };
 
-    const finding = await checkEnforcedIdentity(evidenceBridge(evidence), "post_tool_call", {});
-    expect(finding.boundTo).toBe("unattributable");
+    const finding = await measureIdentity(evidenceBridge(evidence), "post_tool_call", {});
+    expect(finding.enforced.boundTo).toBe("unattributable");
 
-    const [cell] = identityCells(finding);
+    const [cell] = coverageCellsFromIdentity(finding);
     expect(cell!.status).toBe("unexpressed");
     expect(cell!.reason).toBe(
       "AGT's enforced identity does not match a hash of the policy input with policy_target.value replaced by the " +
@@ -240,10 +236,10 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
       enforcedIdentity: inputIdentity,
     };
 
-    const finding = await checkEnforcedIdentity(evidenceBridge(evidence), "post_tool_call", {});
-    expect(finding.boundTo).toBe("no_rewrite");
+    const finding = await measureIdentity(evidenceBridge(evidence), "post_tool_call", {});
+    expect(finding.enforced.boundTo).toBe("no_rewrite");
 
-    const [cell] = identityCells(finding);
+    const [cell] = coverageCellsFromIdentity(finding);
     expect(cell!.status).toBe("unexpressed");
     expect(cell!.reason).toBe(
       "AGT reported no transform for this policy input: there is no rewritten document to attribute its enforced " +

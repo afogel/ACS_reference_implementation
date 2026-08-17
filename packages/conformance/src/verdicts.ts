@@ -94,9 +94,32 @@ export function checkVerdicts(mapping: Mapping): CoverageCell[] {
   return everyCell().map(({ point, verdict }) => ({
     point,
     verdict,
-    ...roundTrip(verdict, point, mapping, inverse),
-    measuredBy: ["N42"],
+    ...applyWarnDriftScoreFinding(verdict, roundTrip(verdict, point, mapping, inverse)),
+    measuredBy: ["verdict round trip"],
   }));
+}
+
+/**
+ * The second step, and deliberately not part of the round trip above.
+ *
+ * `warn` round-trips exactly like the other four -- AGT `warn` becomes ACS
+ * `allow` with a non-empty `policy_references` and reads back as `warn`. What
+ * makes its column `guardian_only` is a different finding altogether: the
+ * stock gate reads a drift score no v0.1.0 payload carries. Folding that into
+ * `roundTrip` put a coverage finding inside a function named for a round
+ * trip, so a reader had to know that one of its five verdicts was answering
+ * a second question.
+ *
+ * Applied only where the round trip held. A `warn` that failed to invert is
+ * `unexpressed` for that reason, and this must not overwrite it with a
+ * milder status: the drift-score finding is about a mapping that works.
+ */
+function applyWarnDriftScoreFinding(
+  verdict: string,
+  roundTripResult: { status: CoverageCell["status"]; reason?: string },
+): { status: CoverageCell["status"]; reason?: string } {
+  if (verdict !== "warn" || roundTripResult.status !== "expressed") return roundTripResult;
+  return { status: "guardian_only", reason: WARN_GUARDIAN_ONLY };
 }
 
 function roundTrip(
@@ -172,8 +195,5 @@ function roundTrip(
     };
   }
 
-  if (verdict === "warn") {
-    return { status: "guardian_only", reason: WARN_GUARDIAN_ONLY };
-  }
   return { status: "expressed" };
 }

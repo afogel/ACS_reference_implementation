@@ -44,6 +44,31 @@ export type CoverageCell = {
   measuredBy: string[];
 };
 
+/**
+ * The merge's product, and the only thing that is one: 40 cells, one per
+ * coordinate, no duplicates and no holes. A `CoverageCell[]` that has not
+ * been through `mergeCells` is a check's own contribution, not the matrix --
+ * the distinction `renderCoverageMatrix`'s duplicate-coordinate throw exists
+ * to catch. Declared so the noun is occupied: `Mapping` is `mapping.yaml`'s
+ * data, `MappingTable` is the rendered mapping table, and `CoverageMatrix`
+ * is the coverage matrix's measurements, and none of the three can quietly
+ * come to hold another's contents while all three names have owners.
+ */
+export type CoverageMatrix = readonly CoverageCell[];
+
+declare const MAPPING_TABLE: unique symbol;
+
+/**
+ * The rendered artifact -- the mapping table as text.
+ *
+ * Branded rather than a bare `string` alias so the name is load-bearing and
+ * not decorative: `renderMappingTable` is the only thing that can produce
+ * one, so nothing can present an arbitrary string as the published table.
+ * The brand costs callers nothing in the other direction -- a `MappingTable`
+ * is a `string` and prints like one.
+ */
+export type MappingTable = string & { readonly [MAPPING_TABLE]: true };
+
 /** Every (point, verdict) pair, in a stable order. Every check and
  * `mergeCells` iterate this, so none of them can disagree about what the
  * matrix's 40 coordinates are. `renderCoverageMatrix` does not: it derives

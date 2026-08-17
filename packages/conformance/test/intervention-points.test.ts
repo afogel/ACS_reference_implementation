@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { loadMapping } from "guardian";
 import { AGT_POINTS, AGT_VERDICTS } from "../src/cells.ts";
-import { checkInterventionPoints } from "../src/intervention-points.ts";
+import {
+  checkInterventionPoints,
+  coverageCellsFromInterventionPoints,
+} from "../src/intervention-points.ts";
 
 const mapping = loadMapping("mapping.yaml");
 
@@ -21,30 +24,30 @@ describe("the axes come from AGT, not from us", () => {
 });
 
 describe("the intervention-point round trip", () => {
-  const cells = checkInterventionPoints(mapping);
+  const results = checkInterventionPoints(mapping);
 
-  it("produces one cell per point per verdict, and no others", () => {
-    expect(cells).toHaveLength(AGT_POINTS.length * AGT_VERDICTS.length);
+  it("answers once per point, not once per point per verdict", () => {
+    // The question this check asks never reads a verdict, so its product is
+    // one answer per point. Returning 40 cells would mean stamping an answer
+    // onto four columns it did not measure.
+    expect(results).toHaveLength(AGT_POINTS.length);
+    expect(results.map((r) => r.point).sort()).toEqual([...AGT_POINTS].sort());
   });
 
-  it("round-trips every point that mapping.yaml gives an ACS method", () => {
-    const expressed = cells.filter((c) => c.point === "pre_tool_call");
+  it("resolves every point that mapping.yaml gives an ACS method", () => {
+    const preToolCall = results.find((r) => r.point === "pre_tool_call");
 
-    expect(expressed).toHaveLength(5);
-    for (const cell of expressed) {
-      expect(cell.status).toBe("expressed");
-      expect(cell.measuredBy).toContain("N41");
-    }
+    expect(preToolCall?.status).toBe("resolved");
   });
 
   it("marks both model-call points unexpressed, carrying mapping.yaml's own stated reason", () => {
     for (const point of ["pre_model_call", "post_model_call"]) {
-      const cells_ = cells.filter((c) => c.point === point);
-      expect(cells_).toHaveLength(5);
-      for (const cell of cells_) {
-        expect(cell.status).toBe("unexpressed");
-        expect(cell.reason).toBe("no ACS v0.1.0 target — D4, V7 red cell");
-      }
+      const result = results.find((r) => r.point === point);
+
+      expect(result?.status).toBe("unexpressed");
+      expect(result?.status === "unexpressed" && result.reason).toBe(
+        "no ACS v0.1.0 method carries a model call, so this point is unexpressed at every verdict",
+      );
     }
   });
 
@@ -59,11 +62,30 @@ describe("the intervention-point round trip", () => {
         output: { acs_method: "steps/toolCallRequest" },
       },
     };
-    const broken = checkInterventionPoints(ambiguous).filter((c) => c.point === "pre_tool_call");
+    const broken = checkInterventionPoints(ambiguous).find((r) => r.point === "pre_tool_call");
 
-    for (const cell of broken) {
+    expect(broken?.status).toBe("unexpressed");
+    expect(broken?.status === "unexpressed" && broken.reason).toMatch(/more than one/);
+  });
+});
+
+describe("the projection onto matrix coordinates", () => {
+  it("emits nothing for a resolved point, because this check answers no verdict column there", () => {
+    const cells = coverageCellsFromInterventionPoints(checkInterventionPoints(mapping));
+
+    expect(cells.some((cell) => cell.point === "pre_tool_call")).toBe(false);
+  });
+
+  it("emits all five columns for an unexpressed point, because no verdict reaches it either", () => {
+    const cells = coverageCellsFromInterventionPoints(checkInterventionPoints(mapping)).filter(
+      (cell) => cell.point === "pre_model_call",
+    );
+
+    expect(cells).toHaveLength(AGT_VERDICTS.length);
+    expect(cells.map((cell) => cell.verdict).sort()).toEqual([...AGT_VERDICTS].sort());
+    for (const cell of cells) {
       expect(cell.status).toBe("unexpressed");
-      expect(cell.reason).toMatch(/more than one/);
+      expect(cell.measuredBy).toContain("intervention-point round trip");
     }
   });
 });

@@ -91,7 +91,7 @@ describe("the verdict round trip", () => {
     for (const point of ["pre_model_call", "post_model_call"]) {
       for (const verdict of AGT_VERDICTS) {
         expect(at(point, verdict).status).toBe("unexpressed");
-        expect(at(point, verdict).reason).toBe("no ACS v0.1.0 target — D4, V7 red cell");
+        expect(at(point, verdict).reason).toBe("no ACS v0.1.0 method carries a model call, so this point is unexpressed at every verdict");
       }
     }
   });

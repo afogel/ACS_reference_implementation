@@ -24,7 +24,7 @@
  * the same string.
  */
 import type { Mapping } from "guardian";
-import type { CellStatus, CoverageCell } from "./cells.ts";
+import type { CellStatus, CoverageCell, CoverageMatrix, MappingTable } from "./cells.ts";
 import type { TraceRow } from "./trace-pillar.ts";
 
 /** Colour is opt-in, matching this repository's other renderer
@@ -98,7 +98,7 @@ function renderVerdictRow(verdict: string, rule: VerdictRule): string {
  * AGT thing maps to which ACS thing" the way `intervention_points` and
  * `verdicts` are.
  */
-export function renderMappingTable(mapping: Mapping): string {
+export function renderMappingTable(mapping: Mapping): MappingTable {
   const points = Object.entries(mapping.intervention_points)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([point, row]) => renderPointRow(point, row));
@@ -113,7 +113,7 @@ export function renderMappingTable(mapping: Mapping): string {
     "",
     "AGT verdict -> ACS decision (mapping.yaml: verdicts)",
     ...verdicts,
-  ].join("\n");
+  ].join("\n") as MappingTable;
 }
 
 /** One glyph per `CellStatus` (`cells.ts`) -- no fourth member, no default,
@@ -184,7 +184,7 @@ function coordinateKey(point: string, verdict: string): string {
  * printed once beneath the grid, and every cell carrying it points at that
  * number.
  */
-export function renderCoverageMatrix(cells: CoverageCell[], options: RenderOptions = {}): string {
+export function renderCoverageMatrix(cells: CoverageMatrix, options: RenderOptions = {}): string {
   const color = options.color ?? false;
 
   const lookup = new Map<string, CoverageCell>();
@@ -317,8 +317,8 @@ export function renderTraceRows(rows: TraceRow[], options: RenderOptions = {}): 
   return [
     "Trace pillar (trace/otel-mapping.json): each required OTel attribute against its v0.1.0 wire source, and " +
       "whether a downstream consumer of the ACS wire -- not this Guardian -- could emit it from that source " +
-      "alone. R5.3 declares this implementation does NOT claim the Trace pillar; this table is what that " +
-      "declaration is measured against.",
+      "alone. This implementation does NOT claim the Trace pillar; this table is what that declaration is " +
+      "measured against.",
     "",
     ...lines,
     "",

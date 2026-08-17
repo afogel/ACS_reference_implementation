@@ -17,23 +17,30 @@
  * self-skip.
  *
  * FOUR CHECKS MERGED, AND A FIFTH BESIDE THEM: `checkInterventionPoints`,
- * `checkVerdicts`, `checkEnforcedIdentity` (driven at both transform-capable
+ * `checkVerdicts`, `measureIdentity` (driven at both transform-capable
  * gates and merged -- it measures `pre_tool_call` as well as
  * `post_tool_call` because the two were found not to diverge, and a runner
  * calling it for one would narrow a measurement that was widened on
- * purpose; see identity.ts's own header), and `checkFailureDomains`, fed to
+ * purpose; see identity.ts's own header), and `checkDenyFailsClosed`, fed to
  * `mergeCells` -- never concatenated, which is exactly the misuse
  * `renderCoverageMatrix`'s own duplicate-coordinate throw exists to catch
  * (render.ts's own header). `checkTracePillar` is separate: its
  * `TraceRow[]` has no (point, verdict) coordinate to merge into the matrix
  * at all, and is rendered on its own as the trace-pillar table.
  *
+ * TWO OF THOSE ANSWER AT THEIR OWN GRAIN AND ARE PROJECTED HERE.
+ * `checkInterventionPoints` answers per point and `measureIdentity` per
+ * evaluation, so neither returns cells; `coverageCellsFromInterventionPoints`
+ * and `coverageCellsFromIdentity` are the named stages that place what they
+ * did measure onto the coordinates it actually covers. Neither stage
+ * broadcasts an answer across an axis its check never read.
+ *
  * THE SCHEMA LEG is orthogonal to the matrix: it asks whether the policy
  * input the Guardian actually constructs at `pre_tool_call` /
  * `post_tool_call` validates against AGT's own `policy-input.schema.json`,
  * which has no verdict axis to place a cell at (the same document
  * regardless of which verdict AGT eventually returns for it). It self-skips
- * without `UPSTREAM_AGT_CLONE`, and the runner names -- on the output's own
+ * without `PINNED_AGT_CLONE`, and the runner names -- on the output's own
  * face -- whether it ran, so a matrix published without it cannot be
  * mistaken for one that includes it.
  *
@@ -48,11 +55,11 @@
 import { createBridge } from "agt-bridge";
 import { loadMapping, startGuardian } from "guardian";
 import type { InterventionSnapshot } from "agt-bridge";
-import type { CoverageCell } from "./cells.ts";
-import { checkInterventionPoints } from "./intervention-points.ts";
+import type { CoverageMatrix } from "./cells.ts";
+import { checkInterventionPoints, coverageCellsFromInterventionPoints } from "./intervention-points.ts";
 import { checkVerdicts } from "./verdicts.ts";
-import { checkEnforcedIdentity, identityCells } from "./identity.ts";
-import { checkFailureDomains } from "./failure-domains.ts";
+import { coverageCellsFromIdentity, measureIdentity } from "./identity.ts";
+import { checkDenyFailsClosed } from "./failure-domains.ts";
 import { checkTracePillar } from "./trace-pillar.ts";
 import { mergeCells } from "./merge-cells.ts";
 import { renderCoverageMatrix, renderMappingTable, renderTraceRows } from "./render.ts";
@@ -90,7 +97,7 @@ export type ConformanceRun = {
   /** The merged matrix `renderCoverageMatrix` rendered `output`'s coverage
    * section from -- exposed alongside the text so a caller (this file's own
    * test) can assert its shape precisely instead of pattern-matching text. */
-  cells: CoverageCell[];
+  cells: CoverageMatrix;
   /** 0 for a fully resolved matrix, non-zero for a hole (exit-code.ts's own
    * `resolveExitCode` -- see that file for the rule this reads). */
   exitCode: number;
@@ -102,40 +109,40 @@ export async function main(): Promise<ConformanceRun> {
   const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST_PATH });
 
   try {
-    const n41 = checkInterventionPoints(mapping);
+    const n41 = coverageCellsFromInterventionPoints(checkInterventionPoints(mapping));
     const n42 = checkVerdicts(mapping);
     const [preFinding, postFinding] = await Promise.all([
-      checkEnforcedIdentity(bridge, "pre_tool_call", PRE_TOOL_CALL_SNAPSHOT),
-      checkEnforcedIdentity(bridge, "post_tool_call", POST_TOOL_CALL_SNAPSHOT),
+      measureIdentity(bridge, "pre_tool_call", PRE_TOOL_CALL_SNAPSHOT),
+      measureIdentity(bridge, "post_tool_call", POST_TOOL_CALL_SNAPSHOT),
     ]);
-    const n43 = [...identityCells(preFinding), ...identityCells(postFinding)];
-    const n44 = await checkFailureDomains(guardian.url);
+    const n43 = [...coverageCellsFromIdentity(preFinding), ...coverageCellsFromIdentity(postFinding)];
+    const n44 = await checkDenyFailsClosed(guardian, mapping);
 
     const cells = mergeCells(n41, n42, n43, n44);
     const traceRows = checkTracePillar();
     const schemaLeg = await checkPolicyInputSchema(bridge);
 
     const schemaLegLine = schemaLeg.ran
-      ? `N41 policy-input schema (AGT's own policy-input.schema.json, agt.lock's pinned ref): RAN -- validated ${schemaLeg.points.join(", ")}`
-      : `N41 policy-input schema (AGT's own policy-input.schema.json, agt.lock's pinned ref): DID NOT RUN -- ${schemaLeg.reason}`;
+      ? `policy-input schema (AGT's own policy-input.schema.json, at the pinned ref): RAN -- validated ${schemaLeg.points.join(", ")}`
+      : `policy-input schema (AGT's own policy-input.schema.json, at the pinned ref): DID NOT RUN -- ${schemaLeg.reason}`;
 
     const output = [
-      "=== U32 mapping table (N48, S10's declaration) ===",
+      "=== Mapping table: what this implementation declares (from mapping.yaml) ===",
       renderMappingTable(mapping),
       "",
-      "=== U30 coverage matrix (N47, N41-N44 merged) ===",
+      "=== Coverage matrix: what was measured, 8 AGT intervention points x 5 AGT verdicts ===",
       renderCoverageMatrix(cells),
       "",
-      "=== U33 trace rows (N52, N49's measurement) ===",
+      "=== Trace pillar: measured as a non-claim, attribute by attribute ===",
       renderTraceRows(traceRows),
       "",
-      "=== Legs measured ===",
-      "N41 intervention-point round trip (resolver): RAN",
+      "=== Which checks ran ===",
+      "intervention-point round trip (through the Guardian's own resolver): RAN",
       schemaLegLine,
-      "N42 verdict round trip: RAN",
-      "N43 enforced identity (pre_tool_call, post_tool_call, merged): RAN",
-      "N44 failure domains (live Guardian, wire-level): RAN",
-      "N49 trace pillar: RAN",
+      "verdict round trip (through the Guardian's own verdict mapping): RAN",
+      "action identity (recomputed at pre_tool_call and post_tool_call, merged): RAN",
+      "deny fails closed (live Guardian, over the wire): RAN",
+      "trace pillar: RAN",
     ].join("\n");
 
     return { output, cells, exitCode: resolveExitCode(cells) };
@@ -149,8 +156,9 @@ if (import.meta.main) {
   console.log(run.output);
   if (run.exitCode !== 0) {
     console.error(
-      `\nconformance: exit ${run.exitCode} -- the coverage matrix has a coordinate no check measured (see the ` +
-        `"no check measured this cell" cell(s) above), not a red cell (this check does not treat red as failure)`,
+      `\nconformance: exit ${run.exitCode} -- the coverage matrix has a hole: a coordinate no check measured ` +
+        `(see the "no check measured this cell" cell(s) above). An unexpressed cell is resolved, not a hole, ` +
+        `and never makes this exit non-zero`,
     );
   }
   process.exit(run.exitCode);

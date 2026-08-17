@@ -31,10 +31,18 @@
  * DOES NOT FETCH. Mirrors `scripts/verify-pin.sh`'s own pattern exactly: a
  * shell script (`scripts/run-conformance.sh`) clones AGT at the pinned ref
  * into a scratch temp dir and hands the path in by
- * `UPSTREAM_AGT_CLONE`; this module self-skips -- returns `{ran: false}`,
+ * `PINNED_AGT_CLONE`; this module self-skips -- returns `{ran: false}`,
  * never throws -- when that variable is absent, so `bun test` (which never
  * sets it) always exercises every check that does not need the network and
  * never performs one.
+ *
+ * PINNED, NOT UPSTREAM, and the distinction matters. This clone is
+ * `agt.lock`'s locked ref -- the contract this repository is built against,
+ * not AGT's moving `main`. A separate name is reserved for `main`
+ * (`UpstreamSurfaces` beside `PinnedSurfaces`), and both will live in this
+ * package once its drift watch exists. A differ told "upstream" twice is
+ * exactly the failure that split was written to prevent, so this one says
+ * which ref it means.
  *
  * A THROW, not a resolved finding, when a constructed policy input actually
  * FAILS validation -- the same choice `failure-domains.ts`'s
@@ -48,16 +56,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import type { InterventionSnapshot, PolicyBridge } from "agt-bridge";
+import type { EvidenceBridge, InterventionSnapshot } from "agt-bridge";
 
 /** Names the variable `scripts/run-conformance.sh` sets after cloning AGT at
  * `agt.lock`'s pinned ref -- read here, and printed in the skip reason below,
  * so a reader of the runner's own output does not have to go and find the
  * name in this file to reproduce the leg locally. */
-export const UPSTREAM_AGT_CLONE_ENV = "UPSTREAM_AGT_CLONE";
+export const PINNED_AGT_CLONE_ENV = "PINNED_AGT_CLONE";
 
 /** Confirmed present at `agt.lock`'s pinned ref. Relative to the clone root
- * `UPSTREAM_AGT_CLONE` names. */
+ * `PINNED_AGT_CLONE` names. */
 const SCHEMA_RELATIVE_PATH = "policy-engine/spec/schema/wire/policy-input.schema.json";
 
 /** Representative snapshots at the two points this leg covers -- the same
@@ -106,26 +114,26 @@ export type SchemaLegResult =
  * settings against the schema fetched from the pinned ref and both probe
  * snapshots below: both validate `true`, not merely "this schema compiles".
  */
-function buildValidator(upstreamClone: string) {
-  const schemaPath = join(upstreamClone, SCHEMA_RELATIVE_PATH);
+function buildValidator(pinnedClone: string) {
+  const schemaPath = join(pinnedClone, SCHEMA_RELATIVE_PATH);
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
   const ajv = new Ajv2020({ strict: true, allErrors: true, strictRequired: false, allowUnionTypes: true });
   addFormats(ajv);
   return ajv.compile(schema);
 }
 
-export async function checkPolicyInputSchema(bridge: PolicyBridge): Promise<SchemaLegResult> {
-  const upstreamClone = process.env[UPSTREAM_AGT_CLONE_ENV];
-  if (!upstreamClone) {
+export async function checkPolicyInputSchema(bridge: EvidenceBridge): Promise<SchemaLegResult> {
+  const pinnedClone = process.env[PINNED_AGT_CLONE_ENV];
+  if (!pinnedClone) {
     return {
       ran: false,
       reason:
-        `${UPSTREAM_AGT_CLONE_ENV} is not set -- run \`bun run conformance\` (scripts/run-conformance.sh clones ` +
+        `${PINNED_AGT_CLONE_ENV} is not set -- run \`bun run conformance\` (scripts/run-conformance.sh clones ` +
         `AGT at agt.lock's pinned ref and sets it) to run this leg; \`bun test\` alone never performs the fetch`,
     };
   }
 
-  const validate = buildValidator(upstreamClone);
+  const validate = buildValidator(pinnedClone);
   const points: string[] = [];
   for (const [point, snapshot] of PROBE_SNAPSHOTS) {
     const evidence = await bridge.evaluateWithEvidence(point, snapshot);

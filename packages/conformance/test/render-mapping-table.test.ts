@@ -12,7 +12,7 @@ describe("renderMappingTable renders the conformance runner's own declaration an
   });
 
   it("says what an unmapped point is, rather than leaving its ACS column blank", () => {
-    expect(table).toMatch(/post_model_call.*no ACS v0\.1\.0 target/s);
+    expect(table).toMatch(/post_model_call.*no ACS v0\.1\.0 method carries a model call/s);
   });
 
   it("renders AGT's five verdicts against ACS's five dispositions without calling either list 'the five'", () => {

@@ -24,7 +24,7 @@
  * whether zero checks ran or all four did: the merge is driven by the full
  * coordinate space, not by whatever coordinates happened to arrive.
  */
-import { everyCell, type CellStatus, type CoverageCell } from "./cells.ts";
+import { everyCell, type CellStatus, type CoverageCell, type CoverageMatrix } from "./cells.ts";
 
 /** Worst first, best last -- the ordering `worseOf` resolves ties by. Not
  * exported: this ranking is the merge's own business, and nothing outside
@@ -107,12 +107,15 @@ function mergeCoordinate(point: string, verdict: string, contributions: Contribu
 /**
  * Merges any number of checks' cell arrays into the 40 cells the matrix
  * reports, one per `everyCell()` coordinate. A check that returns fewer than
- * 40 cells (the enforced-identity check and the failure-domains check both
- * do -- see their own modules' headers) contributes only to the coordinates
- * it actually measured; every other coordinate is merged from whatever the
- * other checks contributed there, or from nothing at all.
+ * 40 cells (three of the four do -- see their own modules' headers)
+ * contributes only to the coordinates it actually measured; every other
+ * coordinate is merged from whatever the other checks contributed there, or
+ * from nothing at all.
+ *
+ * This is the only producer of a `CoverageMatrix`. A check's own
+ * `CoverageCell[]` is a contribution and is typed as one.
  */
-export function mergeCells(...contributions: Contribution[][]): CoverageCell[] {
+export function mergeCells(...contributions: Contribution[][]): CoverageMatrix {
   const byCoordinate = new Map<string, Contribution[]>();
   for (const cells of contributions) {
     for (const cell of cells) {

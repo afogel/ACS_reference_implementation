@@ -26,7 +26,13 @@
  * that boundary, and `test/envelope-log-sink-roundtrip.test.ts` keeps the
  * two declarations honest with each other.
  */
-export { startGuardian, type StartGuardianOptions, type StartedGuardian, type GuardianSnapshot } from "./server.ts";
+export {
+  startGuardian,
+  METHOD_NOT_DISPATCHED_CODE,
+  type StartGuardianOptions,
+  type StartedGuardian,
+  type GuardianSnapshot,
+} from "./server.ts";
 export { buildServerHello, type ServerHello } from "./handshake.ts";
 export {
   validateEnvelope,
@@ -37,7 +43,7 @@ export {
   type ToolCallRequestEnvelope,
   type ToolCallResultEnvelope,
 } from "./validate-envelope.ts";
-export { validateResponse, type ResponseValidation } from "./validate-response.ts";
+export { checkResponse, type ResponseCheck } from "./check-response.ts";
 export {
   assemblePreToolCallSnapshot,
   assemblePostToolCallSnapshot,

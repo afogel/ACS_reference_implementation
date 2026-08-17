@@ -87,16 +87,8 @@
  * resolved by a probe naming the point it is a cell about, never by an
  * argument about routing.
  */
-import { loadMapping, type Mapping } from "guardian";
+import { METHOD_NOT_DISPATCHED_CODE, type Mapping, type StartedGuardian } from "guardian";
 import { AGT_POINTS, type CoverageCell } from "./cells.ts";
-
-const MAPPING_PATH = "mapping.yaml";
-
-/** server.ts's own code for "well-formed envelope, no handler here"
- * (`METHOD_NOT_DISPATCHED_CODE` in server.ts). Read here only to
- * recognise a dispatch probe's own answer -- not re-exported, not
- * re-implemented against a guess at the wire shape. */
-const METHOD_NOT_DISPATCHED_CODE = -32011;
 
 /** A method no row of mapping.yaml's `intervention_points` table ever
  * assigns to any point (see this module's header: this is the "unmapped
@@ -118,16 +110,17 @@ const UNDISPATCHED_MAPPED_METHOD = "steps/sessionStart";
 type DenyProbeResponse = { result?: { decision?: string; reason_codes?: string[] }; error?: unknown };
 type DispatchProbeResponse = { result?: unknown; error?: { code?: number; message?: string } };
 
-/** Domain (1)'s reason, attached to every `deny` cell `measureDenyColumn`
- * resolves `expressed`. States what was measured at this point, not a
- * general claim about the specification or an inference from a different
- * point's probe. */
+/** The reason attached to every `deny` cell `measureDenyColumn` resolves
+ * `expressed`. This string is printed into the published coverage matrix, so
+ * it has to stand on its own: it states what was measured at this point, not
+ * a general claim about the specification and not an inference from a
+ * different point's probe. */
 const DENY_EXPRESSED_REASON =
-  "AGT's evaluation layer fails closed (R1.5, §6.4): an otherwise well-formed envelope missing a required " +
+  "AGT's evaluation layer fails closed (§6.4): an otherwise well-formed envelope missing a required " +
   "request-envelope.json field (params.metadata) arrives as an honoured ACS deny decision at this point, never " +
-  "a bare JSON-RPC error -- denyOnInvalidEnvelope (N27) is what does it, measured live against this Guardian at " +
-  "this point specifically. Domain (2), the wire's delivery-failure half of R1.7, is a different claim, is the " +
-  "host's rather than the Guardian's, and is measured separately by hosts/claude-code/test/posture.test.ts.";
+  "a bare JSON-RPC error -- denyOnInvalidEnvelope is what does it, measured live against this Guardian at this " +
+  "point specifically. What a host does when no decision arrives at all is a different claim, is the host's " +
+  "rather than the Guardian's, and is measured separately by hosts/claude-code/test/posture.test.ts.";
 
 /** Builds a schema-valid, generic ACS request envelope naming `method`, so a
  * probe posting it measures exactly one thing at a time -- the hook-payload
@@ -325,13 +318,13 @@ async function measureDenyColumn(guardianUrl: string, mapping: Mapping): Promise
           `does not hold at this point against this Guardian.`,
       );
     }
-    cells.push({ point, verdict: "deny", status: "expressed", reason: DENY_EXPRESSED_REASON, measuredBy: ["N44"] });
+    cells.push({ point, verdict: "deny", status: "expressed", reason: DENY_EXPRESSED_REASON, measuredBy: ["deny fails closed"] });
   }
   return cells;
 }
 
 /**
- * Drives `guardianUrl` with four kinds of probe (this module's header), nine
+ * Drives `guardian` with four kinds of probe (this module's header), nine
  * wire posts in all, and returns `measureDenyColumn`'s six
  * independently-measured cells -- one post per mapped method, which is the
  * whole point: this column is measured six times, never measured once and
@@ -342,13 +335,25 @@ async function measureDenyColumn(guardianUrl: string, mapping: Mapping): Promise
  * hook-payload/dispatch coincidence, and `assertUnmappedMethodIsUndispatched`
  * measures the third boundary against a method mapping.yaml does not map at
  * all.
+ *
+ * Named for what it returns. `checkFailureDomains` claimed both domains this
+ * module's header keeps apart, and domain (2) is the host's -- measured by
+ * `hosts/claude-code/test/posture.test.ts`, referenced here and never
+ * re-driven. What this function measures is domain (1): that AGT's
+ * evaluation layer fails closed at every mapped point.
+ *
+ * Told a `StartedGuardian` rather than a URL string, and told the `Mapping`
+ * its caller already loaded rather than reading `mapping.yaml` a second
+ * time: two readers of one file can disagree about it, and the runner is
+ * already holding the answer.
  */
-export async function checkFailureDomains(guardianUrl: string): Promise<CoverageCell[]> {
-  const mapping = loadMapping(MAPPING_PATH);
+export async function checkDenyFailsClosed(
+  guardian: StartedGuardian,
+  mapping: Mapping,
+): Promise<CoverageCell[]> {
+  await assertEvaluationFailsClosed(guardian.url);
+  await assertHookPayloadFailureIsUndispatchedElsewhere(guardian.url);
+  await assertUnmappedMethodIsUndispatched(guardian.url);
 
-  await assertEvaluationFailsClosed(guardianUrl);
-  await assertHookPayloadFailureIsUndispatchedElsewhere(guardianUrl);
-  await assertUnmappedMethodIsUndispatched(guardianUrl);
-
-  return measureDenyColumn(guardianUrl, mapping);
+  return measureDenyColumn(guardian.url, mapping);
 }
