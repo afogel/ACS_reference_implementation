@@ -150,8 +150,10 @@ export type GovernStepInput = {
    * hookmap may legitimately name that a registry does not.
    *
    * Optional because a gate can decline to scope at all: host #1 declares no
-   * `tools` at either of its gates (its own settings.json matcher already
-   * scopes both), so it has nothing to tell and nothing is checked. A caller
+   * `tools` at either of its gates -- each has its own settings.json matcher
+   * already scoping it, and the two are no longer the same matcher: the
+   * request gate's names two tools, the result gate's still names one -- so
+   * it has nothing to tell and nothing is checked. A caller
    * whose gate does declare a list and does not tell is refused outright,
    * before anything is asked or audited -- see the guard in `governStep`
    * below, which is what makes this structural rather than a convention a
@@ -287,8 +289,9 @@ export type GovernedStep =
  * Does this gate govern this tool? -- `hookmap.hooks[hookEventName].tools`,
  * enacted. An entry with no `tools` key governs every tool, which is
  * `HookmapHookEntryCommon.tools`'s own contract (build-envelope.ts) and
- * host #1's own case: its hookmap declares no `tools` at either gate, because
- * its settings.json matcher (`^Bash$`) already scopes both.
+ * host #1's own case: its hookmap declares no `tools` at either gate,
+ * because each has its own settings.json matcher already scoping it --
+ * `^(Bash|WebFetch)$` at the request gate, `^Bash$` at the result gate.
  *
  * `tools` is shared hookmap vocabulary that build-envelope.ts shape-checks at
  * load time (`assertToolsWellFormed`) and normalises (`normalizeTools`), but

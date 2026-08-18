@@ -116,7 +116,7 @@ describe("opencode.hookmap.yaml", () => {
     }
   });
 
-  it("scopes both gates to bash", () => {
+  it("scopes the result gate to bash alone, and the request gate to bash and webfetch", () => {
     // OpenCode fires the result gate's hook for every tool with no matcher,
     // and `metadata` is per-tool -- only `bash` carries
     // `metadata.exit`/`metadata.output`, which this gate's `outputs` and
@@ -131,9 +131,11 @@ describe("opencode.hookmap.yaml", () => {
     // any authored rule runs, independent of the tool registry. An unscoped
     // request gate would ask the Guardian about every tool it can never
     // register a target for, and get an unconditional deny back rather than a
-    // policy decision. Scoped to `bash` now, for the same reason the result
-    // gate already is.
-    expect(hooks["tool.execute.before"]?.tools).toEqual(["bash"]);
+    // policy decision. Scoped to `bash` and `webfetch` -- the two tools
+    // mapping.yaml's policy_target_argument table now knows how to read a
+    // target from -- for the same reason the result gate is scoped at all:
+    // every other tool is declined here, not asked and mis-answered.
+    expect(hooks["tool.execute.before"]?.tools).toEqual(["bash", "webfetch"]);
   });
 
   it("builds a wire payload of exactly {tool, exit_status, outputs:[{value}]}, with no mirrors anywhere in it", () => {

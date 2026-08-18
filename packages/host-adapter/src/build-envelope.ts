@@ -86,8 +86,9 @@ type HookmapHookEntryCommon = {
   /**
    * The tool names this gate governs. Undeclared (`undefined`) means "every
    * tool" -- matching Claude Code's own hookmap, which needs no scoping at
-   * all because its settings.json matcher (`^Bash$`) already provides it,
-   * for both of its gates.
+   * all because its settings.json matcher already provides it, for both of
+   * its gates: `^(Bash|WebFetch)$` at the request gate, `^Bash$` at the
+   * result gate.
    *
    * Common to both entry kinds, not just the result-gate shape: scoping
    * which tools a gate governs is orthogonal to which payload shape that

@@ -195,8 +195,9 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
  * `governStep` accepts an optional `scopedTool` -- the tool a caller has
  * already scoped on. When a gate's hookmap entry declares a `tools` list,
  * governStep refuses a caller that names none. This shim declares no
- * `tools` at either gate (its settings.json matcher `^Bash$` already scopes
- * both) and passes no `scopedTool`. `scripts/verify-zero-diff.sh` pins
+ * `tools` at either gate (each has its own settings.json matcher already
+ * scoping it -- `^(Bash|WebFetch)$` at the request gate, `^Bash$` at the
+ * result gate) and passes no `scopedTool`. `scripts/verify-zero-diff.sh` pins
  * `hosts/claude-code/*.ts` and `*.yaml`, so this file's one `governStep`
  * call cannot be updated even if the field became required.
  *

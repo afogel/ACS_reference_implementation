@@ -911,10 +911,10 @@ describe("buildEnvelope", () => {
       });
     });
 
-    it("loads the real opencode.hookmap.yaml's request gate, now scoped to `bash`", () => {
+    it("loads the real opencode.hookmap.yaml's request gate, now scoped to `bash` and `webfetch`", () => {
       const parsed = loadHookmap("hosts/opencode/opencode.hookmap.yaml");
       expect(parsed.hooks["tool.execute.before"]?.outputs).toBeUndefined();
-      expect(parsed.hooks["tool.execute.before"]?.tools).toEqual(["bash"]);
+      expect(parsed.hooks["tool.execute.before"]?.tools).toEqual(["bash", "webfetch"]);
     });
   });
 

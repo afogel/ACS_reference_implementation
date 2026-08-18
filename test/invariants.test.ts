@@ -390,9 +390,10 @@ describe("architectural invariants", () => {
    * `governStep` refuses -- throws, rather than skipping -- a gate whose
    * entry declares a `tools` list when its caller names no scoped tool
    * (`GovernStepInput.scopedTool`, packages/host-adapter/src/govern-step.ts).
-   * acs-hook.ts never names one: its own settings.json matcher (`^Bash$`)
-   * already scopes both gates, so it has never needed to, and it cannot
-   * start, because `scripts/verify-zero-diff.sh` freezes
+   * acs-hook.ts never names one: its own settings.json matcher already
+   * scopes both gates -- `^(Bash|WebFetch)$` at the request gate, `^Bash$`
+   * at the result gate -- so it has never needed to, and it cannot start,
+   * because `scripts/verify-zero-diff.sh` freezes
    * `hosts/claude-code/[^/]+\.(ts|yaml)$` for this slice. So while that
    * freeze holds, a `tools` list anywhere in this hookmap is a throw on
    * every call at the gate that declares it -- exit 2, no audit entry. Fail
@@ -469,7 +470,7 @@ describe("architectural invariants", () => {
             `main().catch exits 2 -- so every call to an UNLISTED tool becomes a blocking stop, not the silent ` +
             `skip a list is added for. Both are fail-closed, so nothing runs ungoverned, and neither is what a ` +
             `"tools" list means anywhere else. Scope this gate by its host's own matcher (settings.json, ` +
-            `"^Bash$") as it already is.`,
+            `"^(Bash|WebFetch)$") as it already is.`,
         );
       }
     }

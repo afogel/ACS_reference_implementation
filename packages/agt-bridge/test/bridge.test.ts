@@ -47,10 +47,10 @@ const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
 //
 // The smallest dispatcher that satisfies the declaration, not the Guardian's
 // real one: this suite is about the bridge's own contract, and the real
-// annotator lives in packages/guardian/src/server.ts, which cannot be imported
-// here -- guardian depends on this package, not the other way round. Answering
-// no destination leaves AGT's egress gate undefined, so every rule these tests
-// are actually about still gets its turn.
+// annotator lives in packages/guardian/src/deployment-bridge.ts, which cannot
+// be imported here -- guardian depends on this package, not the other way
+// round. Answering no destination leaves AGT's egress gate undefined, so
+// every rule these tests are actually about still gets its turn.
 const noDestination: Annotator = () => ({});
 // The same answer in the SDK's own dispatcher shape, for the one test below
 // that drives AgentControl directly instead of through createBridge.

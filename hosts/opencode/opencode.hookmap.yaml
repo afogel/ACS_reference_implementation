@@ -107,7 +107,7 @@ hooks:
   # mutable `{args}`; the shim (acs-plugin.ts) assembles those into one payload
   # object so these paths have something to resolve against.
   #
-  # `tools: [bash]` -- REVERSING a claim this comment used to make ("No tools:
+  # `tools` -- REVERSING a claim this comment used to make ("No tools:
   # here, and none belongs here ... it governs everything"). That claim checked
   # only that THIS gate's own paths ($.tool, $.args) resolve for every tool
   # OpenCode fires the hook for, which is true and was never the right question.
@@ -135,7 +135,12 @@ hooks:
     # command line is `$.args.command` where host #1 has `$.tool_input.command`.
     # Absorbing that difference is what a hookmap is for.
     raw_command: $.args.command
-    tools: [bash]
+    # `webfetch` joins `bash` because the manifest can now express a policy
+    # target for it: mapping.yaml names which argument each tool's target lives
+    # in, and the Guardian copies it to the one leaf the manifest points at. The
+    # paragraph above still holds for every OTHER tool this host can call --
+    # they are declined here, not asked and mis-answered.
+    tools: [bash, webfetch]
     decisions:
       # `refuse.reason` is this host's deny channel AT THIS GATE and there is
       # no other here: measured, `output.status = "deny"` and
