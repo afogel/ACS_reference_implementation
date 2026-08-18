@@ -613,9 +613,14 @@ function exportedNames(code: string): string[] {
  * wrapper as a thing it must not write, and throws instead.
  *
  * Read out of the shim's source rather than imported, because `acs-hook.ts`
- * exports none of this and is frozen (`scripts/verify-zero-diff.sh`
- * fails on any change to it, so "export the table for the test" is not
- * available). The same pragmatism `exportedNames` and `importsSpecifier`
+ * exports none of this and, when this was written, was frozen --
+ * `scripts/verify-zero-diff.sh` failed on any change to it, so "export the
+ * table for the test" was not available. That freeze is past tense: the
+ * script diffs against `slice/v4`, this host's files have since changed under
+ * its frozen pattern, `bun run verify:zero-diff` exits 1 from this HEAD, and
+ * nothing in `.github/workflows/` runs it. The source-text read is what
+ * shipped and is what the gate above depends on; the constraint that produced
+ * it is history. The same pragmatism `exportedNames` and `importsSpecifier`
  * above already apply: a regex precise enough for the shape this codebase
  * actually writes, with its own meta-tests below, not a TypeScript parser.
  *
@@ -827,7 +832,9 @@ describe("the export-count gate itself", () => {
 /**
  * The gate that reads `emptyOutputIsHonest` out of Claude Code's shim is
  * only worth having if the reading is right, and it reads source text
- * because that shim exports none of this and is frozen. So the parser gets
+ * because that shim exports none of this and, at the time, was frozen -- see
+ * `hooksWhereEmptyOutputIsDishonest` above for why that is past tense and what
+ * holds the property now. So the parser gets
  * the same split treatment `exportedNames` and `importsSpecifier` already
  * have: the gate asserts about the real file, these assert about the
  * parser.

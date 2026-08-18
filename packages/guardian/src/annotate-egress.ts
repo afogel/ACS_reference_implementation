@@ -108,10 +108,25 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * The same URL with any userinfo removed -- everything between the "://" and
  * the "@" that ends the authority, the "@" included.
  *
- * Bounded by the first "/" after the scheme on purpose, because only an "@"
- * ahead of the path is userinfo. `https://exfil.attacker.test/mail@host` has
+ * Bounded at the first "/", "?" or "#" after the scheme, because only an "@"
+ * ahead of all three is userinfo. `https://exfil.attacker.test/mail@host` has
  * its "@" inside the path and is returned unchanged; stripping there would
  * rewrite the host out of a URL that never had a credential in it.
+ *
+ * ALL THREE DELIMITERS, AND THE TWO THAT ARE EASY TO FORGET ARE THE DANGEROUS
+ * ONES. RFC 3986 ends an authority at the first of "/", "?" or "#", and the
+ * character class this module matches URLs with admits "?" and "#" -- so a
+ * bound taken at "/" alone reads a query or fragment as part of the authority.
+ * Measured through a Guardian started from this tree with the bound at "/"
+ * only: `curl https://evil.test?x=a@docs.anthropic.com` and
+ * `curl https://evil.test#a@docs.anthropic.com` were both ALLOWED, because the
+ * strip discarded `evil.test` and answered `https://docs.anthropic.com`, which
+ * the allowlist covers -- while `curl` itself resolves `evil.test` for both
+ * (measured with `curl -w '%{url.host}'`). That is the same bypass class this
+ * whole helper exists to close, re-opened by the normalisation meant to close
+ * it, and reachable without any userinfo at all: an attacker appends
+ * `?x=a@<allowlisted-host>` to a path-less URL they already control. Both forms
+ * deny now, and the two tests below are the ones that would have caught it.
  *
  * The LAST "@" in the authority is the delimiter, not the first: a userinfo may
  * itself contain one, and the host is what follows the final "@".
@@ -125,8 +140,8 @@ function withoutUserinfo(url: string): string {
   const schemeEnd = url.indexOf("://");
   if (schemeEnd === -1) return url;
   const afterScheme = url.slice(schemeEnd + "://".length);
-  const pathStart = afterScheme.indexOf("/");
-  const authority = pathStart === -1 ? afterScheme : afterScheme.slice(0, pathStart);
+  const authorityEnd = afterScheme.search(/[/?#]/);
+  const authority = authorityEnd === -1 ? afterScheme : afterScheme.slice(0, authorityEnd);
   const userinfoEnd = authority.lastIndexOf("@");
   if (userinfoEnd === -1) return url;
   return url.slice(0, schemeEnd + "://".length) + afterScheme.slice(userinfoEnd + 1);
