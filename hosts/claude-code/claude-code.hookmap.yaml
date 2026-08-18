@@ -20,6 +20,24 @@ hooks:
     acs_method: steps/toolCallRequest
     tool_name: $.tool_name
     arguments: $.tool_input
+    # ACS's own raw_command: the command line this step IS, verbatim, which is
+    # a different thing from the argument bag above and is why it gets its own
+    # path rather than being read back out of `arguments`.
+    #
+    # What reads it: the Guardian's egress annotator, which extracts a
+    # destination from it and answers at AGT's own fifth default destination
+    # path. The gate cannot simply be pointed at the command line instead:
+    # measured, its host_of() answers `echo hi` for `echo hi`, so a forwarded
+    # command always resolves a destination, no allowlist pattern matches a
+    # command line, and every benign shell step would be denied.
+    # packages/guardian/src/annotate-egress.ts carries the full measurement.
+    #
+    # Unresolvable is ORDINARY here, not a fault: WebFetch sends no `command`,
+    # and the field is optional in hooks/tool-call-request.json. buildEnvelope
+    # omits it rather than throwing, which is the opposite of what it does for
+    # the result gate's `outputs.from` -- see that function's own comment for
+    # why the two differ.
+    raw_command: $.tool_input.command
     # This `decisions` block is where Claude Code's output field names live,
     # and they appear nowhere in the shared adapter. Each entry declares an
     # `output` block whose keys are dotted paths into the JSON object this

@@ -130,6 +130,11 @@ hooks:
     acs_method: steps/toolCallRequest
     tool_name: $.tool
     arguments: $.args
+    # The same declaration Claude Code's hookmap makes, at this host's own
+    # field: OpenCode hands the plugin a mutable `{args}`, so the shell tool's
+    # command line is `$.args.command` where host #1 has `$.tool_input.command`.
+    # Absorbing that difference is what a hookmap is for.
+    raw_command: $.args.command
     tools: [bash]
     decisions:
       # `refuse.reason` is this host's deny channel AT THIS GATE and there is

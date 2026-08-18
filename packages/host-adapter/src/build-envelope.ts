@@ -134,6 +134,17 @@ type HookmapHookEntryCommon = {
 export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
   /** JSONPath-lite (`$.foo.bar`) into the raw hook payload for the argument bag. */
   arguments: string;
+  /**
+   * JSONPath-lite into the raw hook payload for the command line this step is,
+   * verbatim -- ACS's own `raw_command`, optional in
+   * hooks/tool-call-request.json and optional here.
+   *
+   * Declared per host because the field it lives in is the host's: Claude Code
+   * puts it at `$.tool_input.command`, OpenCode at `$.args.command`. A tool
+   * that is not a shell command resolves it to nothing, and that is an
+   * ordinary outcome, not a fault -- see buildPayload.
+   */
+  raw_command?: string;
   outputs?: never;
   exit_status?: never;
 };
@@ -141,6 +152,10 @@ export type HookmapRequestHookEntry = HookmapHookEntryCommon & {
 /** A hook asking after a step ran: builds a tool-call-result payload. */
 export type HookmapResultHookEntry = HookmapHookEntryCommon & {
   arguments?: never;
+  /** A result payload carries no command. Spelled `never` beside the request
+   * entry's own member, the same way `arguments` and `outputs` are, so the
+   * broken entry is not a legal type. */
+  raw_command?: never;
   outputs: HookmapOutputs;
   /**
    * The exit status this hook means. A literal for a host whose gate genuinely
@@ -185,6 +200,9 @@ type AcsOutput = { value: unknown };
 export type AcsToolCallRequestPayload = {
   tool: { name: string };
   arguments: Record<string, AcsArgument>;
+  /** ACS's optional `raw_command`. Present only when the hookmap declared a
+   * path for it AND that path resolved to a string. */
+  raw_command?: string;
   exit_status?: never;
   outputs?: never;
 };
@@ -197,6 +215,11 @@ export type AcsToolCallRequestPayload = {
 export type AcsToolCallResultPayload = {
   tool: { name: string };
   arguments?: never;
+  /** A result payload carries no command line, the same way it carries no
+   * arguments -- declared `never` here for the identical reason, so the
+   * exclusive union stays exclusive and `raw_command` reads as `string |
+   * undefined` on either payload shape without a cast. */
+  raw_command?: never;
   exit_status: string;
   outputs: AcsOutput[];
 };
@@ -736,10 +759,50 @@ function buildPayload(
         args[key] = { value };
       }
     }
-    return { tool: { name: toolName }, arguments: args };
+
+    const payloadOut: AcsToolCallRequestPayload = { tool: { name: toolName }, arguments: args };
+
+    // `?? undefined` for the same reason its siblings use it: a bare
+    // `raw_command:` line parses to null in YAML, which is a key present and
+    // unusable rather than a key absent.
+    const rawCommandPath = entry.raw_command ?? undefined;
+    if (rawCommandPath !== undefined) {
+      if (typeof rawCommandPath !== "string") {
+        throw new Error(
+          `buildEnvelope: hookmap entry for hook "${event}" declares "raw_command" as ` +
+            `${JSON.stringify(rawCommandPath)} -- "raw_command" names the verbatim command line with a ` +
+            `single JSONPath-lite string, the same notation as "arguments" beside it`,
+        );
+      }
+      const rawCommand = resolvePath(payload, rawCommandPath);
+      // Omitted, never a throw, and the asymmetry with outputs.from below is
+      // deliberate. An unresolvable outputs.from throws because a result
+      // payload with no output would ask the far end to govern a step whose
+      // output it cannot see. raw_command is different in kind: it is optional
+      // in hooks/tool-call-request.json, a request payload without one is
+      // complete and fully governable, and a tool that is not a shell command
+      // resolves this path to nothing on EVERY call. Throwing there would send
+      // every one of those steps to governStep's posture path, which under the
+      // shipped `proceed` runs the step ungoverned.
+      if (typeof rawCommand === "string") {
+        payloadOut.raw_command = rawCommand;
+      }
+    }
+
+    return payloadOut;
   }
 
   if (outputs !== undefined) {
+    // A result gate declaring a command path is a hookmap fault, not a payload
+    // one: the result payload this branch builds has no member for it, so the
+    // declaration could only ever be silently dropped.
+    if (entry.raw_command !== undefined && entry.raw_command !== null) {
+      throw new Error(
+        `buildEnvelope: hookmap entry for hook "${event}" declares "raw_command" beside "outputs" -- a ` +
+          `result payload carries no command line, and this declaration could only be dropped`,
+      );
+    }
+
     // The entry's own three members are checked first and the payload after. A
     // malformed entry is a hookmap fault and an unresolvable path is a payload
     // fault; which of these throws is what tells an incident reviewer apart,

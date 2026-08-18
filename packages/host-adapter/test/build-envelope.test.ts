@@ -1053,4 +1053,98 @@ describe("buildEnvelope", () => {
     // reached, since `loadHookmap` calls it last, after every check has
     // passed.
   });
+
+  describe("the raw command a hookmap declares a path for", () => {
+    // Casts to HookmapHookEntry the same way `withBrokenEntry` above does: a
+    // hookmap loaded from YAML has no compile-time guarantee on its shape, so
+    // a fixture built to exercise the runtime guard has to bypass the
+    // compile-time one rather than satisfy it.
+    function requestGate(extra: Record<string, unknown> = {}): Hookmap {
+      return {
+        host: "test-host",
+        hooks: {
+          PreToolUse: {
+            acs_method: "steps/toolCallRequest",
+            tool_name: "$.tool_name",
+            arguments: "$.tool_input",
+            raw_command: "$.tool_input.command",
+            decisions: { allow: { output: { d: { value: "allow" } } }, deny: { output: { d: { value: "deny" } } } },
+            ...extra,
+          } as unknown as HookmapHookEntry,
+        },
+      };
+    }
+
+    it("carries it onto the request payload when the path resolves", () => {
+      const envelope = buildEnvelope(
+        "PreToolUse",
+        { session_id: "s", tool_name: "Bash", tool_input: { command: "curl https://exfil.test/x" } },
+        requestGate(),
+      );
+      expect(envelope.params.payload.raw_command).toBe("curl https://exfil.test/x");
+    });
+
+    // Unlike outputs.from, whose unresolvable path throws: raw_command is
+    // optional in the ACS request payload, and a tool with no shell command
+    // resolves this path to nothing on every call. Throwing would send every
+    // one of those steps into the delivery posture and, under the shipped
+    // `proceed`, run it ungoverned.
+    it("omits it when the path does not resolve, rather than failing the step", () => {
+      const envelope = buildEnvelope(
+        "PreToolUse",
+        { session_id: "s", tool_name: "WebFetch", tool_input: { url: "https://docs.anthropic.com/x" } },
+        requestGate(),
+      );
+      expect(envelope.params.payload.raw_command).toBeUndefined();
+      expect(envelope.params.payload.arguments?.url).toEqual({ value: "https://docs.anthropic.com/x" });
+    });
+
+    it("omits it when the path resolves to something that is not a string", () => {
+      const envelope = buildEnvelope(
+        "PreToolUse",
+        { session_id: "s", tool_name: "Bash", tool_input: { command: { nested: true } } },
+        requestGate(),
+      );
+      expect(envelope.params.payload.raw_command).toBeUndefined();
+    });
+
+    it("names the hook and the member when the declaration is not a path string", () => {
+      expect(() =>
+        buildEnvelope(
+          "PreToolUse",
+          { session_id: "s", tool_name: "Bash", tool_input: { command: "echo hi" } },
+          requestGate({ raw_command: { from: "$.tool_input.command" } }),
+        ),
+      ).toThrow(/PreToolUse.*raw_command/s);
+    });
+
+    it("refuses a result gate that declares one -- a result payload has no command", () => {
+      const withRawCommand: Hookmap = {
+        host: "test-host",
+        hooks: {
+          PostToolUse: {
+            acs_method: "steps/toolCallResult",
+            tool_name: "$.tool_name",
+            outputs: { from: "$.tool_response.stdout", within: "$.tool_response" },
+            exit_status: { literal: "success" },
+            raw_command: "$.tool_input.command",
+            decisions: { allow: { output: { d: { value: "a" } } }, deny: { output: { d: { value: "d" } } } },
+          } as unknown as HookmapHookEntry,
+        },
+      };
+
+      expect(() =>
+        buildEnvelope(
+          "PostToolUse",
+          {
+            session_id: "s",
+            tool_name: "Bash",
+            tool_input: { command: "echo hi" },
+            tool_response: { stdout: "hi" },
+          },
+          withRawCommand,
+        ),
+      ).toThrow(/PostToolUse.*raw_command/s);
+    });
+  });
 });
