@@ -38,8 +38,9 @@ always making the one choice this runbook needs it to make.
 
 **The manifest edit is the whole deployment-side change, and it is additive.** OpenCode reports
 its shell tool as `bash` (lowercase); Claude Code reports `Bash`. AGT resolves
-`policy/manifest.yaml`'s fixed `pre_tool_call.policy_target` (`$.tool_call.args.command`)
-**before any authored rule runs**, and a `tool_call.name` the manifest has not registered fails
+`policy/manifest.yaml`'s fixed `pre_tool_call.policy_target` — which was `$.tool_call.args.command`
+when this slice shipped — **before any authored rule runs**, and a `tool_call.name` the manifest has
+not registered fails
 that resolution closed — `runtime_error:tool_unknown` for `bash` itself, `runtime_error:path_missing`
 for every other tool OpenCode can call. So `policy/manifest.yaml` and `policy/manifest.drift.yaml`
 each gained one `tools:` entry, `bash`, beside the existing `Bash`/`run_shell` — nothing removed,
@@ -47,6 +48,16 @@ nothing rewritten. What survives untouched is the entire claim the manifest edit
 Rego authored, `policy/lib` byte-identical under `bun run verify:pin`, `data.agt.defaults.config`
 unchanged, and zero lines changed in the Guardian, the bridge, or AGT — `bun run verify:zero-diff`
 proves that mechanically, captured near the end of this file.
+
+⚠️ *That target has moved since, and the sentence above is scoped to when this slice shipped rather
+than rewritten, because the mechanism it explains is unchanged: AGT still resolves one fixed
+`policy_target` per intervention point, before any rule runs, and an unregistered `tool_call.name`
+still fails closed. What changed in V9 (slice #28) is which leaf that one target names. It is now
+`$.tool_call.args.acs_policy_target` — a normalised leaf the Guardian writes — because a target
+naming one tool's own argument denies every call by a tool that has no such argument, which is
+exactly the `runtime_error:path_missing` this paragraph describes, reached from the other side.
+`mapping.yaml`'s `policy_target_argument` table says which of each tool's own arguments is copied
+into that leaf. See [`docs/demos/v9-runbook.md`](v9-runbook.md).*
 
 **Both gates carry a `tools:` scope, which makes the two hosts symmetric rather than asymmetric.**
 When this slice shipped that scope was `tools: [bash]` at both gates, matching host #1, which was

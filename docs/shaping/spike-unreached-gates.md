@@ -134,10 +134,41 @@ defines them, this implementation validates them, and nothing downstream can
 read them. An egress destination inside a shell command is *present on the wire*
 and *absent from every snapshot*.
 
-Note what this does **not** buy on its own: `egress.rego`'s `host_of()` splits on
-`://` and `/`, so handed `curl https://evil.test/x` it answers `curl https`.
-Forwarding `raw_command` into a `destination_paths` entry produces a garbage
-host, not a destination. Extraction is a real step, not a plumbing step.
+Note what this does **not** buy on its own: forwarding `raw_command` into a
+`destination_paths` entry does not produce a usable destination. Extraction is a
+real step, not a plumbing step.
+
+⚠️ **The mechanism this paragraph originally gave for that was wrong, and it is
+retracted here rather than left standing.** It read: *"`egress.rego`'s
+`host_of()` splits on `://` and `/`, so handed `curl https://evil.test/x` it
+answers `curl https`."* Re-measured during V9 execution by calling the rule
+directly through the OPA binary the pinned SDK ships — `opa eval -d
+policy/lib/egress.rego` against `data.agt.egress.host_of(<string>)`, once per
+row; the exact loop that produced this block is in
+`docs/demos/v9-runbook.md` §2:
+
+```
+host_of("echo hi")                             -> "echo hi"
+host_of("ls -la /tmp")                         -> "ls -la "
+host_of("curl https://evil.test/x")            -> "evil.test"
+host_of("curl https://docs.anthropic.com/x")   -> "docs.anthropic.com"
+host_of("curl https://docs.anthropic.com; ls") -> "docs.anthropic.com; ls"
+```
+
+`split(url, "://")[1]` is everything *after* the scheme, so an embedded,
+path-bounded URL yields a perfectly good host — the third and fourth rows are
+the case that works, and it is the only one. Two things break the rest.
+`host_of` has a **second branch**, for strings containing no `"://"`, which
+returns the command's own leading word: so a forwarded command line *always*
+resolves a destination, no allowlist pattern matches a command line, and every
+benign shell step would be denied. And where nothing bounds the host on the
+right, trailing shell text is swallowed into it — the fifth row turns an
+allowlisted destination into a denial.
+
+The conclusion above is unchanged and is if anything better supported:
+extraction is a real step. The corrected wording lives beside the code in
+`packages/guardian/src/annotate-egress.ts`, and the amended argument is in
+`docs/shaping/acs-reference-impl-slices.md` §V9 under C7.2.
 
 ## A4 — a manifest tool may declare `content_hash`, and the SDK carries it through
 

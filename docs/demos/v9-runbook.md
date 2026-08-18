@@ -694,6 +694,47 @@ git diff be5ab38..HEAD --stat -- policy/
 Two manifests and one config document. Not one line of the twenty-two `.rego` files in
 `policy/lib` — eleven rule modules and their eleven upstream test modules.
 
+## How to check these captures
+
+Every block above says it is real. This section is how a reader stops taking that on trust, and it
+is deliberately a procedure rather than a number — a claim that "the blocks were verified" is worth
+exactly as much as the reader's willingness to believe it.
+
+**1. Start the Guardian and re-run the ten `curl` commands.** The invocation is in *Setup common to
+every section* above: `ACS_GUARDIAN_PORT=8791` with `ACS_ENVELOPE_LOG=.acs/v9-runbook.jsonl`. Each
+`curl` in this file is complete and self-contained — fixed `request_id`s, fixed bodies, nothing
+elided — so the responses are comparable field for field, not merely in shape.
+
+**2. Then check them against the Guardian's own record, not against your terminal scrollback.** The
+envelope sink writes one JSONL line per envelope crossing the wire, in **both** directions, before
+validation, at the log path the setup block names. So the file holds the request you sent and the
+response the Guardian sent back, as the Guardian saw them:
+
+```bash
+jq -c 'select(.direction == "response") | .envelope' .acs/v9-runbook.jsonl | sort -u | jq .
+```
+
+`sort -u` is the point. Run the ten requests several times and the log grows, but the number of
+*distinct* response envelopes must stay at ten — one per request — because every field that varies
+run to run is fixed in the request bodies. That is what makes the log a check on this file rather
+than an echo of it: it is written by the Guardian process, from the port named on its own command
+line, and it cannot contain a response some other process gave.
+
+Writing this file, six runs accumulated in that log — 120 lines, 60 request/response pairs,
+**ten distinct response envelopes**, each byte-identical to a block above. `.acs/` is gitignored, so
+your copy starts empty and fills as you run.
+
+**3. The blocks that are not wire traffic** each name the command that produced them, right where
+they appear: `git diff be5ab38..HEAD` for the two `policy/` blocks, `opa eval` for the `host_of`
+rows, `bun run verify:pin` for the pin, and — for the policy-input block, the pre-slice `mapVerdict`
+comparison and the missing-`by_tool`-row deny — a short script printed or described in full beside
+its output.
+
+**4. One field will not match, and only one:** `verify:pin`'s bracketed wall-clock time, which the
+pin section already records varying across three runs. Everything else in this file is expected to
+reproduce byte for byte, and a block that does not is a finding — about this file, or about the
+tree it was captured from.
+
 ## What this file is, and is not
 
 This file is the **evidence** — real runs against a Guardian started from commit `16a3ab0`, pasted
