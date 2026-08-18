@@ -128,6 +128,26 @@ hooks:
   PostToolUse:
     acs_method: steps/toolCallResult
     tool_name: $.tool_name
+    # THIS GATE'S MATCHER STAYS SINGLE-TOOL WHILE `outputs.from` IS A SINGLE
+    # PATH, and that is the fact to read before widening `^Bash$` in
+    # settings.json to match the request gate's `^(Bash|WebFetch)$`. JSON
+    # cannot carry a comment, so this entry is the only place it can be
+    # written down.
+    #
+    # Measured end to end: a `WebFetch` result carries no `stdout`, so
+    # `$.tool_response.stdout` resolves to `undefined`, the payload builder in
+    # packages/host-adapter/src/build-envelope.ts throws rather than asking the
+    # far end to govern a step whose output it cannot see, `governStep` catches
+    # that and answers with the deployment's negotiated delivery posture instead
+    # of a decision -- and under the shipped `proceed` the tool result is
+    # delivered UNGOVERNED, with an audit event and no Guardian request. Fail
+    # open, at the one gate whose job is to see what a call produced.
+    #
+    # So widening this matcher costs a fail-open on every fetch result and buys
+    # nothing: no gate in the pinned bundle reads a tool's output for a fetch.
+    # A second tool shape belongs here once `outputs` can name a path per tool,
+    # the way `mapping.yaml` already names the policy-target argument per tool
+    # for the request gate -- not before.
     outputs:
       from: $.tool_response.stdout
       within: $.tool_response

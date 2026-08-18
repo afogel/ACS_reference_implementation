@@ -201,8 +201,8 @@ bun run verify:pin        # re-clones AGT and byte-diffs the pinned bundle — n
 ```
 
 **`bun run verify:zero-diff` is deliberately not in the list above — it does not pass from
-this HEAD, and that is not a V7 defect.** Captured real, run bare, exactly as a reader would
-run it:
+this HEAD, and that is not a V7 defect.** Captured real, run bare, from V7's own HEAD at the
+time this file was written:
 
 ```bash
 $ bun run verify:zero-diff
@@ -226,6 +226,20 @@ packages/guardian/src/validate-response.ts
 policy/lib/data.json
 error: script "verify:zero-diff" exited with code 1
 ```
+
+**⚠️ That block is a record of a run, not an instruction — it no longer reproduces verbatim, and
+the sentence above it used to imply it would.** Three things have moved, all of them after V7,
+and none of them changes what the block is here to show. The script's failure message was
+rewritten: it now opens *"the second host must cost zero changed lines in the Guardian, the AGT
+bridge, or AGT itself — but these frozen paths changed:"* rather than *"R3.4 violated…"*. The
+`base=` line cited below moved from line 15 to line 16. And later slices added entries under the
+frozen paths, so the list is longer: run from this branch's HEAD the same command names
+seventeen paths rather than thirteen, `hosts/claude-code/claude-code.hookmap.yaml` and
+`mapping.yaml` among them. What still reproduces is the part this section is about — exit code
+`1`, for the reason given next, and still not a defect of V7 or of any slice after it. Re-run it
+and expect different wording and a longer list, never a pass. The block is left exactly as
+captured rather than re-taken, because re-taking it would make it a record of a different run
+under a heading about V7's.
 
 Exit code `1`. The measured reason: `scripts/verify-zero-diff.sh:15` reads
 `base="${1:-slice/v4}"`, so a bare invocation always diffs HEAD against `slice/v4` — the base

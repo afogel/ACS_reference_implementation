@@ -197,13 +197,18 @@ describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", (
  * governStep refuses a caller that names none. This shim declares no
  * `tools` at either gate (each has its own settings.json matcher already
  * scoping it -- `^(Bash|WebFetch)$` at the request gate, `^Bash$` at the
- * result gate) and passes no `scopedTool`. `scripts/verify-zero-diff.sh` pins
- * `hosts/claude-code/*.ts` and `*.yaml`, so this file's one `governStep`
- * call cannot be updated even if the field became required.
+ * result gate) and passes no `scopedTool`. `scripts/verify-zero-diff.sh`
+ * pinned `hosts/claude-code/*.ts` and `*.yaml`, which is why this comment
+ * used to say the shim's one `governStep` call could not be updated even if
+ * the field became required.
  *
- * `verify:zero-diff` proves the file did not change. It cannot prove the
- * call still works -- that is this suite's job, and the two subprocess
- * tests above already prove it end to end for the request gate. Pinned
+ * That is past tense now. The script diffs against `slice/v4`, this host's
+ * hookmap has since changed under the frozen pattern, `bun run
+ * verify:zero-diff` exits 1 from this HEAD naming it, and no workflow runs
+ * the script. So it proved the file unchanged at the commit it was written
+ * against and proves nothing from here -- and it never could prove the call
+ * still works, which was always this suite's job: the two subprocess tests
+ * above prove that end to end for the request gate. Pinned
  * separately, and at the adapter seam rather than through stdin/stdout,
  * because the property is specifically that an untold scope is a complete
  * call at both gates: a refusal that fired on an absent `tools` key rather

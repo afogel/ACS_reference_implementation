@@ -390,18 +390,28 @@ describe("architectural invariants", () => {
    * `governStep` refuses -- throws, rather than skipping -- a gate whose
    * entry declares a `tools` list when its caller names no scoped tool
    * (`GovernStepInput.scopedTool`, packages/host-adapter/src/govern-step.ts).
-   * acs-hook.ts never names one: its own settings.json matcher already
-   * scopes both gates -- `^(Bash|WebFetch)$` at the request gate, `^Bash$`
-   * at the result gate -- so it has never needed to, and it cannot start,
-   * because `scripts/verify-zero-diff.sh` freezes
-   * `hosts/claude-code/[^/]+\.(ts|yaml)$` for this slice. So while that
-   * freeze holds, a `tools` list anywhere in this hookmap is a throw on
-   * every call at the gate that declares it -- exit 2, no audit entry. Fail
-   * closed, not fail open: the tool call does not run ungoverned, and no
-   * audit entry claims it did. A broken deployment, not a bypass. Verified
-   * directly, with the real shim run as a subprocess against a live
-   * Guardian, across every combination of hookmap configuration, gate, and
-   * tool.
+   * acs-hook.ts names none: its own settings.json matcher already scopes
+   * both gates -- `^(Bash|WebFetch)$` at the request gate, `^Bash$` at the
+   * result gate -- so it has never needed to.
+   *
+   * `scripts/verify-zero-diff.sh` once held that shut mechanically by
+   * freezing `hosts/claude-code/[^/]+\.(ts|yaml)$`, and this comment used to
+   * say so in the present tense. It is past tense now. That script diffs
+   * against `slice/v4`, this host's hookmap has since changed under the
+   * frozen pattern, and `bun run verify:zero-diff` exits 1 from this HEAD
+   * naming `hosts/claude-code/claude-code.hookmap.yaml` among the paths that
+   * moved -- with nothing in `.github/workflows/` running it either. So the
+   * freeze proved the claim at the commit it was written against and does
+   * not hold from here. What holds the property today is THIS TEST, which is
+   * why the sentence is worth reading rather than deleting.
+   *
+   * The consequence itself is unchanged: while acs-hook.ts passes no scoped
+   * tool, a `tools` list anywhere in this hookmap is a throw on every call at
+   * the gate that declares it -- exit 2, no audit entry. Fail closed, not
+   * fail open: the tool call does not run ungoverned, and no audit entry
+   * claims it did. A broken deployment, not a bypass. Verified directly,
+   * with the real shim run as a subprocess against a live Guardian, across
+   * every combination of hookmap configuration, gate, and tool.
    *
    * Scoped to gates where `emptyOutputIsHonest` is false, which is narrower
    * than the truth above -- deliberately, and this is the part to read
@@ -411,9 +421,11 @@ describe("architectural invariants", () => {
    * outlives the freeze. That fault is about the shim's own applier -- an
    * unlisted tool's empty output reaching `asClaudeCodeOutput` as an
    * absence it treats as a throw rather than a no-op -- and would still be
-   * a fault the day acs-hook.ts starts naming a scoped tool. The freeze
-   * consequence above would evaporate that same day, and a gate written for
-   * it would then be refusing something legitimate. Written down here,
+   * a fault the day acs-hook.ts starts naming a scoped tool. The
+   * throw-on-every-call consequence above would evaporate that same day, and
+   * a gate written for it would then be refusing something legitimate. That
+   * is the sense in which the reason outlives the freeze, and the freeze has
+   * now gone first. Written down here,
    * where whoever adds the line will read it, rather than enforced by a
    * check that expires.
    *
@@ -425,9 +437,11 @@ describe("architectural invariants", () => {
    * than under hosts/opencode/test/.
    *
    * `hooksWhereEmptyOutputIsDishonest`, one function down, is why the flag
-   * is read out of acs-hook.ts's source text rather than imported: that
-   * file is itself inside the frozen pattern, so adding an export there to
-   * let this gate import the table is not available.
+   * is read out of acs-hook.ts's source text rather than imported: that file
+   * is inside the pattern `scripts/verify-zero-diff.sh` freezes, so when this
+   * gate was written, adding an export there was not available. That
+   * constraint is historical for the reason stated above -- the freeze does
+   * not hold from this HEAD -- and the source-text read is what shipped.
    */
   it("Claude Code's hookmap declares no `tools` at a gate where an empty render is not an answer", () => {
     const SHIM = "hosts/claude-code/acs-hook.ts";
@@ -460,9 +474,11 @@ describe("architectural invariants", () => {
             `FAULTS, and the first one fires first. (1) governStep REFUSES a gate whose entry declares a ` +
             `"tools" list when its caller named no scoped tool, and ${SHIM} passes none -- so this is a throw ` +
             `on EVERY call at this gate, for the listed tool as much as for an unlisted one, exit 2 with no ` +
-            `audit entry. Measured with "tools: [Bash]" at PostToolUse, invoked for Bash. That shim cannot be ` +
-            `taught to tell while scripts/verify-zero-diff.sh pins it at +0/-0, so host #1 cannot declare ` +
-            `"tools" at any gate today. See GovernStepInput.scopedTool ` +
+            `audit entry. Measured with "tools: [Bash]" at PostToolUse, invoked for Bash. That shim passes no ` +
+            `scoped tool, and while scripts/verify-zero-diff.sh still held this host at +0/-0 it could not be ` +
+            `taught to; that freeze does not hold from this HEAD (the script exits 1 here and no workflow runs ` +
+            `it), so teaching the shim to tell is now an ordinary code change -- but until it is taught, ` +
+            `declaring "tools" at any gate is this throw. See GovernStepInput.scopedTool ` +
             `(packages/host-adapter/src/govern-step.ts). (2) Even once it does tell, this hook is one where ` +
             `${SHIM} declares "emptyOutputIsHonest: false": governStep returns an EMPTY rendered output for a ` +
             `tool a gate's list does not name (the "ungoverned" member of GovernedStep -- see its "output" ` +
