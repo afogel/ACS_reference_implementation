@@ -10,10 +10,21 @@
  * is to say AGT anticipated exactly this seam and published the address for
  * it.
  *
- * WHY EXTRACTION RATHER THAN FORWARDING. The gate's `host_of()` splits on
- * `://` and then on `/`, so handed `curl https://evil.test/x` whole it answers
- * `curl https`. Pointing a destination path at `raw_command` produces a
- * garbage host, not a destination.
+ * WHY EXTRACTION RATHER THAN FORWARDING. `host_of()` has two branches, and
+ * both of them answer something for a whole command line. When the string
+ * contains "://" it takes everything after the scheme, so a URL bounded by a
+ * "/" survives being embedded in a command: measured, `curl
+ * https://evil.test/x` answers `evil.test`. That is the case that works, and
+ * it is the only one. When the string contains no "://" the second branch
+ * returns the command's own leading word -- measured, `echo hi` answers
+ * `echo hi` and `ls -la /tmp` answers `ls -la ` -- so a forwarded command
+ * line always resolves a destination, and no allowlist pattern matches a
+ * command, so every benign shell step would be denied. And when nothing
+ * bounds the host on the right, trailing shell text is swallowed into it:
+ * `curl https://docs.anthropic.com; ls` answers `docs.anthropic.com; ls`,
+ * which turns an allowlisted destination into a denial. Extracting the URL
+ * first is what keeps the gate from deciding about strings that are not
+ * destinations at all.
  *
  * WHY IT READS THE PRELIMINARY DOCUMENT ITSELF. A manifest's
  * `annotations.<name>.from` is a liveness precondition, not a projection: the
