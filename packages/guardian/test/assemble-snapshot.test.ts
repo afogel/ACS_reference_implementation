@@ -71,7 +71,7 @@ describe("assemblePreToolCallSnapshot", () => {
     const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(snapshot.tool_call.name).toBe("run_shell");
-    expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /", acs_policy_target: "rm -rf /" });
+    expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /", [POLICY_TARGET_LEAF]: "rm -rf /" });
   });
 
   // AGT's stock pattern check reads input.policy_target.value and

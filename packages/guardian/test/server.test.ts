@@ -11,9 +11,9 @@ import {
   createMemorySessionContextStore,
   loadSessionContext,
   supplySourceLabels,
-  type AcsDecision,
 } from "../src/index.ts";
 import { toRepoRelativeMessage } from "../src/server.ts";
+import type { AcsFinalResult } from "../src/acs-result.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
 
@@ -110,7 +110,10 @@ async function postStep(guardian: { url: string }, envelope: unknown): Promise<J
 
 /**
  * Posts a `steps/toolCallRequest` envelope for an arbitrary tool and its
- * arguments, and answers with the decision off the final result.
+ * arguments, and answers with the final result -- the JSON-RPC `result` for
+ * this method, which really is an `AcsFinalResult` (the decision plus its
+ * correlation fields), not merely a value that happens to carry the same
+ * fields at its top level.
  *
  * `extraPayload`, when given, is spread onto the request payload alongside
  * `tool` and `arguments` -- the seam a later change uses to put `raw_command`
@@ -121,7 +124,7 @@ async function postToolCallRequest(
   toolName: string,
   args: Record<string, unknown>,
   extraPayload?: Record<string, unknown>,
-): Promise<AcsDecision> {
+): Promise<AcsFinalResult> {
   const response = await postAcs(
     guardian.url,
     makeEnvelope("steps/toolCallRequest", {
@@ -130,7 +133,7 @@ async function postToolCallRequest(
       ...extraPayload,
     }),
   );
-  return response.result as unknown as AcsDecision;
+  return response.result as unknown as AcsFinalResult;
 }
 
 /** The options every session-state test starts from, spread with its own

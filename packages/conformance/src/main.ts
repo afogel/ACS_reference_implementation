@@ -53,7 +53,7 @@
  * listener.
  */
 import { createBridge } from "agt-bridge";
-import { loadMapping, startGuardian } from "guardian";
+import { loadMapping, startGuardian, POLICY_TARGET_LEAF } from "guardian";
 import type { InterventionSnapshot } from "agt-bridge";
 import type { CoverageMatrix } from "./cells.ts";
 import { checkInterventionPoints, coverageCellsFromInterventionPoints } from "./intervention-points.ts";
@@ -77,10 +77,10 @@ const PRE_TOOL_CALL_SNAPSHOT: InterventionSnapshot = {
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
   tool_call: {
     name: "Bash",
-    // acs_policy_target mirrors the leaf assemble-snapshot.ts copies a tool's
-    // own policy-target argument to; policy/manifest.yaml's pre_tool_call
-    // point targets that leaf, not `command` directly.
-    args: { command: "echo ghp_ONLYINCOMMAND999", acs_policy_target: "echo ghp_ONLYINCOMMAND999" },
+    // POLICY_TARGET_LEAF is the leaf assemble-snapshot.ts copies a tool's own
+    // policy-target argument to; policy/manifest.yaml's pre_tool_call point
+    // targets that leaf, not `command` directly.
+    args: { command: "echo ghp_ONLYINCOMMAND999", [POLICY_TARGET_LEAF]: "echo ghp_ONLYINCOMMAND999" },
     id: "t1",
   },
   input: { ifc: { source_labels: ["public"] } },

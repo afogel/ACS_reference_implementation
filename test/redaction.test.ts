@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 // fail both `bun test` and `tsc`. Same precedent as
 // audit-sink-roundtrip.test.ts reaching packages/inspector/src directly.
 import { createBridge } from "../packages/agt-bridge/src/index.ts";
+import { POLICY_TARGET_LEAF } from "guardian";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
@@ -76,7 +77,7 @@ describe("the shipped bundle redacts at the result gate", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "rm -rf / ", acs_policy_target: "rm -rf / " } },
+      tool_call: { name: "Bash", args: { command: "rm -rf / ", [POLICY_TARGET_LEAF]: "rm -rf / " } },
       ...publicLabel,
     });
     expect(verdict.decision).toBe("deny");

@@ -397,7 +397,15 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
   // would be rejected by the Guardian's own response validation.
   it("never emits both shapes at once", () => {
     for (const point of ["pre_tool_call", "post_tool_call"]) {
-      const mods = mapVerdict(transformVerdict, m, point, "command").modifications as Record<string, unknown>;
+      // The shipped mapping declares no policy_target_argument for
+      // post_tool_call, so "command" is not a value resolvePolicyTargetArgument
+      // could ever answer there -- only pre_tool_call's parameter_overrides
+      // branch reads this argument at all.
+      const policyTargetArgument = point === "pre_tool_call" ? "command" : undefined;
+      const mods = mapVerdict(transformVerdict, m, point, policyTargetArgument).modifications as Record<
+        string,
+        unknown
+      >;
       expect(["redactions", "parameter_overrides"].filter((k) => k in mods)).toHaveLength(1);
       expect("modified_content" in mods).toBe(false);
     }

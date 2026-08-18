@@ -94,11 +94,13 @@ intervention_points:
     # into_path is the ACS JSON pointer for the same leaf this point's
     # policy_target addresses: policy/manifest.yaml declares
     # policy_target: "$.tool_result.outputs[0].value", and the pointer into the
-    # result payload for that leaf is "/outputs/0/value". That agreement is the
-    # SECOND of the two places mapping.yaml and policy/manifest.yaml touch,
-    # exactly as into_argument is for the request gate above -- and, like that
-    # one, it is derived and checked in test/path-dialects.test.ts rather than
-    # left to whoever edits one file remembering the other.
+    # result payload for that leaf is "/outputs/0/value". That agreement is now
+    # the ONLY direct place mapping.yaml and policy/manifest.yaml touch: the
+    # request gate above no longer names a leaf here at all, so its own
+    # agreement is between policy/manifest.yaml's policy_target and
+    # assemble-snapshot.ts's POLICY_TARGET_LEAF constant instead. Both
+    # agreements are derived and checked in test/path-dialects.test.ts rather
+    # than left to whoever edits one file remembering the other.
     #
     # The HOST's own dialect (the hookmap's outputs.from, "$.tool_response
     # .stdout") is deliberately NOT derived from either: it addresses the host's

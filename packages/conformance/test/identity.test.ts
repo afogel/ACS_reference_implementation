@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "bun:test";
 import { createBridge, type AgtEvidence, type EvidenceBridge } from "agt-bridge";
+import { POLICY_TARGET_LEAF } from "guardian";
 import { canonicalIdentity, measureIdentity, coverageCellsFromIdentity } from "../src/identity.ts";
 
 const bridge = createBridge("policy/manifest.yaml");
@@ -117,7 +118,7 @@ describe("the request gate, measured rather than assumed to match the result gat
     envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
     tool_call: {
       name: "Bash",
-      args: { command: "echo ghp_ONLYINCOMMAND999", acs_policy_target: "echo ghp_ONLYINCOMMAND999" },
+      args: { command: "echo ghp_ONLYINCOMMAND999", [POLICY_TARGET_LEAF]: "echo ghp_ONLYINCOMMAND999" },
       id: "t1",
     },
     input: { ifc: { source_labels: ["public"] } },

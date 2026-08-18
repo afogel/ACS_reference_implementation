@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 // precedent as test/redaction.test.ts, which sits beside this file and
 // exercises the same bridge against the same manifest.
 import { createBridge } from "../packages/agt-bridge/src/index.ts";
-import { createMemorySessionContextStore, persistIfcLabels, supplySourceLabels } from "guardian";
+import {
+  createMemorySessionContextStore,
+  persistIfcLabels,
+  supplySourceLabels,
+  POLICY_TARGET_LEAF,
+} from "guardian";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
@@ -26,7 +31,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", acs_policy_target: "echo hello" }, id: "req-1" },
+      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
       input: { ifc: { source_labels: ["confidential"] } },
     });
     expect(verdict.decision).toBe("allow");
@@ -37,7 +42,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", acs_policy_target: "echo hello" }, id: "req-1" },
+      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
       input: { ifc: { source_labels: ["secret"] } },
     });
     expect(verdict.decision).toBe("deny");
@@ -59,7 +64,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", acs_policy_target: "echo hello" }, id: "req-1" },
+      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
       input: { ifc: { source_labels: ["confidential"] } },
       // The trap agt_ifc_test.rego pins: labels at the snapshot root are not
       // read. Deliberately placed at the snapshot root rather than nested
@@ -93,7 +98,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", acs_policy_target: "echo hello" }, id: "req-1" },
+      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
       input: { ifc: { source_labels: [] } },
     });
     expect(verdict.decision).toBe("deny");
@@ -117,7 +122,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "rm -rf /", acs_policy_target: "rm -rf /" }, id: "req-1" },
+      tool_call: { name: "Bash", args: { command: "rm -rf /", [POLICY_TARGET_LEAF]: "rm -rf /" }, id: "req-1" },
       input: { ifc: { source_labels: ["public"] } },
     });
     expect(verdict.decision).toBe("deny");
