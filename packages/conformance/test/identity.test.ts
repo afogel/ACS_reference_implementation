@@ -2,9 +2,17 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "bun:test";
 import { createBridge, type AgtEvidence, type EvidenceBridge } from "agt-bridge";
 import { POLICY_TARGET_LEAF } from "guardian";
+// Reached past guardian's barrel deliberately: that surface is the governance
+// verbs, and this is one deployment's annotator wiring. Same reason src/main.ts
+// imports it -- these findings are only about the shipped deployment if the
+// bridge is built the way startGuardian builds one.
+import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
 import { canonicalIdentity, measureIdentity, coverageCellsFromIdentity } from "../src/identity.ts";
 
-const bridge = createBridge("policy/manifest.yaml");
+// policy/manifest.yaml declares an `egress` annotator, and a bridge with
+// nothing to dispatch it denies every call at the request gate on
+// runtime_error:annotation_failed -- measured, benign calls included.
+const bridge = createBridge("policy/manifest.yaml", { annotator: dispatchGuardianAnnotator });
 
 const REDACTABLE = {
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
@@ -119,6 +127,10 @@ describe("the request gate, measured rather than assumed to match the result gat
     tool_call: {
       name: "Bash",
       args: { command: "echo ghp_ONLYINCOMMAND999", [POLICY_TARGET_LEAF]: "echo ghp_ONLYINCOMMAND999" },
+      // The request gate's `annotations.egress.from` names this member, and an
+      // annotation's `from` is a liveness precondition: unresolved, AGT denies
+      // the whole call on runtime_error:path_missing before any rule runs.
+      raw_command: "echo ghp_ONLYINCOMMAND999",
       id: "t1",
     },
     input: { ifc: { source_labels: ["public"] } },

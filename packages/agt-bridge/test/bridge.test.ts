@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll } from "bun:test";
 import { AgentControl } from "agent-control-specification";
-import { createBridge, type EvidenceBridge, type PolicyBridge } from "../src/index.ts";
+import { createBridge, type Annotator, type EvidenceBridge, type PolicyBridge } from "../src/index.ts";
 import { buildConfigBundle, buildManifest } from "../../../test/helpers/config-bundle.ts";
 
 // `acs_policy_target` mirrors the leaf `packages/guardian/src/assemble-snapshot.ts`
@@ -8,9 +8,19 @@ import { buildConfigBundle, buildManifest } from "../../../test/helpers/config-b
 // pre_tool_call point targets that leaf, not `command` directly, so a
 // hand-built snapshot omitting it fails AGT's own path resolution with
 // runtime_error:path_missing before any rule this suite is about ever runs.
+//
+// `raw_command` is here for the identical reason at a second path: that point
+// also declares `annotations.egress.from: "$.tool_call.raw_command"`, and an
+// annotation's `from` is a liveness precondition -- unresolved, the call
+// denies on runtime_error:path_missing with the annotator never dispatched.
+// The assembler writes the member on every snapshot (the empty string when
+// the wire carried none), so this stand-in carries it too. It stays inside
+// `tool_call` rather than at the snapshot root deliberately: the key set this
+// helper puts at the root is asserted verbatim by "a caller that never
+// touches createBridge can satisfy the role too" below.
 const snapshotFor = (command: string) => ({
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
-  tool_call: { name: "run_shell", args: { command, acs_policy_target: command }, id: "t1" },
+  tool_call: { name: "run_shell", args: { command, acs_policy_target: command }, raw_command: command, id: "t1" },
 });
 
 // The label the Guardian's own session seed would have supplied, spread
@@ -28,9 +38,27 @@ const snapshotFor = (command: string) => ({
 // currently-passing test for no reason connected to IFC.
 const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
 
+// policy/manifest.yaml declares an `egress` annotator, and a bridge built
+// against it with NO dispatcher denies every call on
+// runtime_error:annotation_failed -- measured, benign calls included, so it is
+// a total deny wearing a policy-shaped reason rather than a no-op. Every
+// evaluation in this suite that uses the shipped manifest therefore supplies
+// one.
+//
+// The smallest dispatcher that satisfies the declaration, not the Guardian's
+// real one: this suite is about the bridge's own contract, and the real
+// annotator lives in packages/guardian/src/server.ts, which cannot be imported
+// here -- guardian depends on this package, not the other way round. Answering
+// no destination leaves AGT's egress gate undefined, so every rule these tests
+// are actually about still gets its turn.
+const noDestination: Annotator = () => ({});
+// The same answer in the SDK's own dispatcher shape, for the one test below
+// that drives AgentControl directly instead of through createBridge.
+const noDestinationDispatcher = { async dispatch(): Promise<Record<string, never>> { return {}; } };
+
 // `createBridge` answers with both roles, and this suite exercises both.
 let bridge: PolicyBridge & EvidenceBridge;
-beforeAll(() => { bridge = createBridge("policy/manifest.yaml"); });
+beforeAll(() => { bridge = createBridge("policy/manifest.yaml", { annotator: noDestination }); });
 
 describe("agt-bridge", () => {
   it("denies a destructive shell command using the stock bundle", async () => {
@@ -75,7 +103,7 @@ describe("agt-bridge", () => {
   // returning distinct identities, where the old one could also fail for a
   // change in this package's own pass-through.
   it("the Node SDK returns input and enforced identity as distinct fields", async () => {
-    const control = AgentControl.fromPath("policy/manifest.yaml");
+    const control = AgentControl.fromPath("policy/manifest.yaml", noDestinationDispatcher);
     const result = await control.evaluateInterventionPoint("pre_tool_call" as never, snapshotFor("ls -la") as never);
 
     expect(result.inputIdentity).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -86,10 +114,19 @@ describe("agt-bridge", () => {
     // The `let bridge: PolicyBridge` annotation above is already the
     // compile-time half of this claim; this is the runtime half, asserting the
     // role's one method is the one being called throughout.
-    const asRole: PolicyBridge = createBridge("policy/manifest.yaml");
+    const asRole: PolicyBridge = createBridge("policy/manifest.yaml", { annotator: noDestination });
 
     expect(typeof asRole.evaluate).toBe("function");
-    expect((await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).decision).toBe("deny");
+    // The reason as well as the decision: a dispatcher-less bridge also
+    // answers `deny` here, on runtime_error:annotation_failed, so asserting
+    // the decision alone would pass whether or not any rule ran at all.
+    // `ifc_clearance_violation` and not the pattern's own reason because this
+    // snapshot carries no label -- see `publicLabel` above for why an
+    // unlabelled snapshot never reaches the gates below IFC.
+    expect(await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).toMatchObject({
+      decision: "deny",
+      reason: "ifc_clearance_violation",
+    });
   });
 
   it("a caller that never touches createBridge can satisfy the role too", async () => {

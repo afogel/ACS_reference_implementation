@@ -2,6 +2,9 @@
   "agt": {
     "defaults": {
       "config": {
+        "egress": {
+          "allowlist": ["*.anthropic.com", "docs.example.com"]
+        },
         "patterns": {
           "patterns": [
             "(?i)rm\\s+-[a-z]*r[a-z]*f[a-z]*\\s+/(?:\\s|$)",

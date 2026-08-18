@@ -86,6 +86,11 @@ const PROBE_SNAPSHOTS: [point: "pre_tool_call" | "post_tool_call", snapshot: Int
         // tool's own policy-target argument to; policy/manifest.yaml's
         // pre_tool_call point targets that leaf, not `command` directly.
         args: { command: "echo ghp_ONLYINCOMMAND999", [POLICY_TARGET_LEAF]: "echo ghp_ONLYINCOMMAND999" },
+        // The same point's `annotations.egress.from` names this member, and
+        // an annotation's `from` is a liveness precondition: unresolved, AGT
+        // denies the whole call on runtime_error:path_missing, and the
+        // document this leg is meant to validate is never produced.
+        raw_command: "echo ghp_ONLYINCOMMAND999",
         id: "t1",
       },
       input: { ifc: { source_labels: ["public"] } },

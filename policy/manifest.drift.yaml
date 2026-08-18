@@ -49,12 +49,24 @@ annotators:
     type: classifier
 intervention_points:
   pre_tool_call:
-    policy_target: "$.tool_call.args.command"
+    # The same normalised leaf policy/manifest.yaml points at, and for the same
+    # reason: AGT resolves policy_target before any rule runs, so a target
+    # naming one tool's own argument denies every call by a tool that has no
+    # such argument, on runtime_error:path_missing with no rule consulted.
+    # "$.tool_call.args.command" still resolved for Bash today only because the
+    # assembler leaves each tool's own arguments beside the leaf -- so leaving
+    # it there would have gone on working until the first non-shell tool anyone
+    # ran this demo with, and then denied it silently.
+    #
+    # `annotations.drift_score.from` moves with it because that path is a
+    # LIVENESS PRECONDITION: it must resolve or AGT denies the whole call
+    # before the annotator is dispatched at all.
+    policy_target: "$.tool_call.args.acs_policy_target"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"
     annotations:
       drift_score:
-        from: "$.tool_call.args.command"
+        from: "$.tool_call.args.acs_policy_target"
     policy:
       id: agt_stock
 tools:

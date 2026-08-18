@@ -14,6 +14,33 @@ policies:
     # every rule while still answering allow.
     bundle: lib
     query: data.agt.defaults.verdict
+# The one annotator this deployment declares, and the only way `annotations`
+# reaches policy input at all -- five other placements were tried against the
+# ACS snapshot and every one was dropped silently; see
+# policy/manifest.drift.yaml's header.
+#
+# `classifier` is AGT's own type for a host-supplied judgement about a step.
+# Here the judgement is "which destination does this command reach", which the
+# Guardian answers from ACS's raw_command because AGT's own host_of() cannot:
+# it has a second branch for strings with no "://" that returns the command's
+# leading word, so a forwarded command line ALWAYS resolves a destination
+# (measured: `echo hi` answers `echo hi`), no allowlist pattern matches a
+# command line, and every benign shell step would be denied.
+# packages/guardian/src/annotate-egress.ts carries the full measurement.
+#
+# The value lands at ["annotations", "egress", "destination"], one of the five
+# paths `default_destination_paths` in policy/lib/egress.rego declares, so this
+# seam is AGT's own published address rather than anything invented here.
+#
+# WHAT MUST BE TRUE FOR THIS BLOCK TO BE SAFE, measured rather than assumed: a
+# manifest that declares an annotator and is evaluated by a bridge built
+# WITHOUT a dispatcher denies every call -- benign ones included -- with
+# runtime_error:annotation_failed. startGuardian therefore supplies its
+# built-in dispatcher unconditionally, and a test asserting a benign call is
+# not denied under this manifest is the backstop.
+annotators:
+  egress:
+    type: classifier
 intervention_points:
   pre_tool_call:
     # ONE target for every tool, which is all AGT's manifest schema allows:
@@ -35,6 +62,21 @@ intervention_points:
     policy_target: "$.tool_call.args.acs_policy_target"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"
+    # Wires the annotator above into this gate. `from` is a LIVENESS
+    # PRECONDITION, not a projection, and both halves of that are measured:
+    # AGT requires this path to resolve or it denies the whole call on
+    # runtime_error:path_missing with the annotator never dispatched, and the
+    # value it resolves is NOT what the annotator receives -- the dispatcher
+    # gets the entire preliminary policy input and reads the command out of it
+    # by name.
+    #
+    # So this path names the one snapshot member assemble-snapshot.ts
+    # guarantees is always present: raw_command, the empty string when the wire
+    # carried none. A path that could be absent for some tool would make every
+    # call by that tool a total deny.
+    annotations:
+      egress:
+        from: "$.tool_call.raw_command"
     policy:
       id: agt_stock
   # Additive: nothing evaluates this point until a steps/toolCallResult
@@ -115,8 +157,10 @@ tools:
   # Additive: registering it changes
   # nothing for any existing caller (measured, suite byte-identical with and
   # without this entry), and security_labels: [shell] is inert under this
-  # manifest's own policy/lib/data.json config today -- carried only so
-  # "bash" behaves like "Bash" the moment cfg.egress ever gets configured.
+  # manifest's own policy/lib/data.json config: the egress gate is the bundle's
+  # only reader of security_labels, and it reads them only as a fallback for a
+  # cfg.egress with no `allowlist` of its own -- which data.json sets. The
+  # WebFetch entry below carries the full reasoning.
   bash:
     type: Tool
     id: bash
@@ -129,14 +173,15 @@ tools:
   # either host dispatches.
   #
   # security_labels: [shell] is carried for the same reason every other entry
-  # carries it, and it matters more now than it did: with cfg.egress
-  # configured but its `allowlist` key absent, AGT's allowlist(rules) falls
-  # back to input.tool.security_labels and denies every destination.
-  # policy/lib/data.json configures no cfg.egress today (agt_default.rego's
-  # egress_verdict only fires when is_object(cfg.egress), and config carries
-  # no "egress" key), so that fallback is not live yet -- carried here so
-  # WebFetch is already covered the moment cfg.egress gets its own explicit
-  # allowlist.
+  # carries it, and it stays inert only because of a key in another file.
+  # policy/lib/data.json now configures cfg.egress, so the egress gate is
+  # live for every tool here -- and AGT's allowlist(rules) falls back to
+  # input.tool.security_labels whenever cfg.egress carries no `allowlist` of
+  # its own. That fallback would hand the gate ["shell"], which matches no
+  # destination, and every fetch and every command with a URL in it would be
+  # denied on egress_destination_not_allowed. data.json therefore sets
+  # `allowlist` explicitly, and since policy/lib/egress.rego is the bundle's
+  # only reader of security_labels at all, these labels are read by nothing.
   WebFetch:
     type: Tool
     id: WebFetch

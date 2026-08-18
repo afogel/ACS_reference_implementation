@@ -7,8 +7,20 @@ import { fileURLToPath } from "node:url";
 // audit-sink-roundtrip.test.ts reaching packages/inspector/src directly.
 import { createBridge } from "../packages/agt-bridge/src/index.ts";
 import { POLICY_TARGET_LEAF } from "guardian";
+// Reached past the barrel deliberately: that surface is the governance verbs,
+// and this is one deployment's annotator wiring. It is the same function
+// `startGuardian` supplies, so these hand-built bridges evaluate the shipped
+// manifest exactly as a real Guardian does.
+import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
+// policy/manifest.yaml declares an `egress` annotator on its REQUEST gate, and
+// a bridge built against it with no dispatcher denies every call at that gate
+// on runtime_error:annotation_failed -- measured. The result-gate tests here
+// would survive without it (that point declares no `annotations`), but a bridge
+// that behaves like the deployment's at one gate and not the other is a trap
+// for whoever adds the next test, so all of them get one.
+const withAnnotator = { annotator: dispatchGuardianAnnotator };
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
 // The label the Guardian's own session seed would have supplied. AGT's own
 // severity ranking checks IFC first -- ahead of
@@ -24,7 +36,7 @@ const publicLabel = { input: { ifc: { source_labels: ["public"] } } };
 
 describe("the shipped bundle redacts at the result gate", () => {
   it("returns a transform carrying the fully substituted output", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash" },
@@ -43,7 +55,7 @@ describe("the shipped bundle redacts at the result gate", () => {
   // Pinned because the Guardian synthesizes that member from the ACS payload,
   // and nothing else would notice if it stopped.
   it("fails closed when the snapshot carries no tool_call", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_result: { outputs: [{ value: "TOKEN=ghp_ABCDEF123456" }] },
@@ -53,7 +65,7 @@ describe("the shipped bundle redacts at the result gate", () => {
   });
 
   it("leaves output with nothing to redact as a clean allow", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("post_tool_call", {
       envelope: budgets,
       tool_call: { name: "Bash" },
@@ -74,10 +86,22 @@ describe("the shipped bundle redacts at the result gate", () => {
   // manifest. This is the assertion that would catch an additive manifest
   // edit turning out not to be additive.
   it("leaves the pre-tool deny exactly as it was", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "rm -rf / ", [POLICY_TARGET_LEAF]: "rm -rf / " } },
+      // `raw_command` for the same reason POLICY_TARGET_LEAF is here: this
+      // point declares `annotations.egress.from: "$.tool_call.raw_command"`,
+      // and that path is a liveness precondition -- unresolved, AGT denies
+      // on runtime_error:path_missing before the pattern rule under test
+      // runs. Every Guardian-assembled snapshot carries it
+      // (packages/guardian/src/assemble-snapshot.ts), so this stand-in does
+      // too. The post_tool_call fixtures above need none: `annotations` is
+      // declared on the request gate only.
+      tool_call: {
+        name: "Bash",
+        args: { command: "rm -rf / ", [POLICY_TARGET_LEAF]: "rm -rf / " },
+        raw_command: "rm -rf / ",
+      },
       ...publicLabel,
     });
     expect(verdict.decision).toBe("deny");

@@ -54,6 +54,11 @@
  */
 import { createBridge } from "agt-bridge";
 import { loadMapping, startGuardian, POLICY_TARGET_LEAF } from "guardian";
+// Reached past guardian's barrel deliberately: that surface is the governance
+// verbs, and this is one deployment's annotator wiring. This runner MEASURES
+// the shipped deployment, so it has to build its bridge the way startGuardian
+// builds one -- with the same annotator, not a stand-in.
+import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
 import type { InterventionSnapshot } from "agt-bridge";
 import type { CoverageMatrix } from "./cells.ts";
 import { checkInterventionPoints, coverageCellsFromInterventionPoints } from "./intervention-points.ts";
@@ -81,6 +86,11 @@ const PRE_TOOL_CALL_SNAPSHOT: InterventionSnapshot = {
     // policy-target argument to; policy/manifest.yaml's pre_tool_call point
     // targets that leaf, not `command` directly.
     args: { command: "echo ghp_ONLYINCOMMAND999", [POLICY_TARGET_LEAF]: "echo ghp_ONLYINCOMMAND999" },
+    // The same point's `annotations.egress.from` names this member, and an
+    // annotation's `from` is a liveness precondition: unresolved, AGT denies
+    // the whole call on runtime_error:path_missing before the annotator is
+    // dispatched. assemble-snapshot.ts writes it on every real snapshot.
+    raw_command: "echo ghp_ONLYINCOMMAND999",
     id: "t1",
   },
   input: { ifc: { source_labels: ["public"] } },
@@ -114,7 +124,12 @@ export type ConformanceRun = {
 
 export async function main(): Promise<ConformanceRun> {
   const mapping = loadMapping(MAPPING_PATH);
-  const bridge = createBridge(MANIFEST_PATH);
+  // With the annotator omitted, every measurement below would come back
+  // `deny runtime_error:annotation_failed`: policy/manifest.yaml declares an
+  // `egress` annotator, and a bridge with nothing to dispatch it fails every
+  // call closed -- measured, benign calls included. A conformance run reporting
+  // that as its finding would be measuring its own misconfiguration.
+  const bridge = createBridge(MANIFEST_PATH, { annotator: dispatchGuardianAnnotator });
   const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST_PATH });
 
   try {

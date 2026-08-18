@@ -22,16 +22,42 @@ import {
   supplySourceLabels,
   POLICY_TARGET_LEAF,
 } from "guardian";
+// Reached past the barrel deliberately: that surface is the governance verbs,
+// and this is one deployment's annotator wiring. It is the same function
+// `startGuardian` supplies, so these hand-built bridges evaluate the shipped
+// manifest exactly as a real Guardian does.
+import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
+// policy/manifest.yaml declares an `egress` annotator, and a bridge built
+// against it with no dispatcher denies EVERY call on
+// runtime_error:annotation_failed -- measured, benign calls included. So every
+// bridge below is constructed with one, exactly as startGuardian constructs
+// its own.
+const withAnnotator = { annotator: dispatchGuardianAnnotator };
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
+// Every pre_tool_call fixture below carries `raw_command` for the same reason
+// it carries POLICY_TARGET_LEAF: policy/manifest.yaml's pre_tool_call point
+// now declares `annotations.egress.from: "$.tool_call.raw_command"`, and that
+// path is a liveness precondition -- AGT denies the whole call on
+// runtime_error:path_missing when it does not resolve, before any rule these
+// tests are about ever runs. assemble-snapshot.ts writes the member on every
+// Guardian-assembled snapshot (the empty string when the wire carried none),
+// so a hand-built stand-in has to carry it too. The values here reach no
+// allowlisted or denied host, so the egress gate stays undefined and the
+// gates under test keep their turn.
 
 describe("the IFC round trip, on the shipped bundle", () => {
   it("propagates a label the session already carries, and returns it", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
+      tool_call: {
+        name: "Bash",
+        args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" },
+        raw_command: "echo hello",
+        id: "req-1",
+      },
       input: { ifc: { source_labels: ["confidential"] } },
     });
     expect(verdict.decision).toBe("allow");
@@ -39,10 +65,15 @@ describe("the IFC round trip, on the shipped bundle", () => {
   });
 
   it("denies a flow the configured clearance does not dominate", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
+      tool_call: {
+        name: "Bash",
+        args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" },
+        raw_command: "echo hello",
+        id: "req-1",
+      },
       input: { ifc: { source_labels: ["secret"] } },
     });
     expect(verdict.decision).toBe("deny");
@@ -61,10 +92,15 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // "confidential" clearance would deny -- so an "allow" here is possible
   // only if the root-level `ifc` this snapshot also carries was never read.
   it("reads nothing from the path the upstream library uses, which AGT hosts do not populate", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
+      tool_call: {
+        name: "Bash",
+        args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" },
+        raw_command: "echo hello",
+        id: "req-1",
+      },
       input: { ifc: { source_labels: ["confidential"] } },
       // The trap agt_ifc_test.rego pins: labels at the snapshot root are not
       // read. Deliberately placed at the snapshot root rather than nested
@@ -95,10 +131,15 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // makes the session seed load-bearing rather than cosmetic: without it, a
   // fresh session's first step hits exactly this case.
   it("denies a session whose labels were cleared outright, because zero labels is a denied flow", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" }, id: "req-1" },
+      tool_call: {
+        name: "Bash",
+        args: { command: "echo hello", [POLICY_TARGET_LEAF]: "echo hello" },
+        raw_command: "echo hello",
+        id: "req-1",
+      },
       input: { ifc: { source_labels: [] } },
     });
     expect(verdict.decision).toBe("deny");
@@ -119,10 +160,15 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // the gates still compose once a label is present, not just that adding
   // one makes a denial go away.
   it("still reaches the pattern gate once IFC allows the flow -- a labelled destructive command denies for the pattern's own reason", async () => {
-    const bridge = createBridge(MANIFEST);
+    const bridge = createBridge(MANIFEST, withAnnotator);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "rm -rf /", [POLICY_TARGET_LEAF]: "rm -rf /" }, id: "req-1" },
+      tool_call: {
+        name: "Bash",
+        args: { command: "rm -rf /", [POLICY_TARGET_LEAF]: "rm -rf /" },
+        raw_command: "rm -rf /",
+        id: "req-1",
+      },
       input: { ifc: { source_labels: ["public"] } },
     });
     expect(verdict.decision).toBe("deny");
