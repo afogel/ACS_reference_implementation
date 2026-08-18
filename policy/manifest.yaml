@@ -159,8 +159,8 @@ tools:
   # without this entry), and security_labels: [shell] is inert under this
   # manifest's own policy/lib/data.json config: the egress gate is the bundle's
   # only reader of security_labels, and it reads them only as a fallback for a
-  # cfg.egress with no `allowlist` of its own -- which data.json sets. The
-  # WebFetch entry below carries the full reasoning.
+  # cfg.egress with no `allowlist` of its own -- which data.json sets, and only
+  # while it does. The WebFetch entry below carries the full reasoning.
   bash:
     type: Tool
     id: bash
@@ -180,8 +180,19 @@ tools:
   # its own. That fallback would hand the gate ["shell"], which matches no
   # destination, and every fetch and every command with a URL in it would be
   # denied on egress_destination_not_allowed. data.json therefore sets
-  # `allowlist` explicitly, and since policy/lib/egress.rego is the bundle's
-  # only reader of security_labels at all, these labels are read by nothing.
+  # `allowlist` explicitly, and policy/lib/egress.rego is the bundle's only
+  # reader of security_labels at all -- so FOR AS LONG AS THAT KEY IS SET,
+  # and only for that long, nothing reads these labels. Delete the labels and
+  # nothing changes; delete data.json's `allowlist` and they become the
+  # allowlist for every tool here.
+  #
+  # WHAT IS IN THAT ALLOWLIST AND WHY, since JSON carries no comments to say
+  # so: `*.anthropic.com` is the host this repository's own demos and tests
+  # fetch from, and `docs.example.com` is a second, deliberately inert entry
+  # -- it proves the allowlist is a LIST rather than a single value, and
+  # gives a runbook reader an obvious slot to edit when adding their own
+  # host. No test depends on the second entry; every test that depends on the
+  # first fetches an anthropic.com URL.
   WebFetch:
     type: Tool
     id: WebFetch

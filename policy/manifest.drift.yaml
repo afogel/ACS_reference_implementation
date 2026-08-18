@@ -87,3 +87,20 @@ tools:
     type: Tool
     id: bash
     security_labels: [shell]
+  # A tool whose own arguments carry no `command` -- which is the whole point
+  # of it being here. This manifest's policy_target and its annotation `from`
+  # both name the normalised leaf now, so a non-shell tool shape resolves them;
+  # pointed at "$.tool_call.args.command", as they were, this call denied on
+  # runtime_error:path_missing before any rule ran. Registered because an
+  # unregistered tool_call.name denies on runtime_error:tool_unknown first,
+  # which would make that property untestable through this manifest at all.
+  # Both spellings, for the reason policy/manifest.yaml gives: one manifest
+  # serves both hosts.
+  WebFetch:
+    type: Tool
+    id: WebFetch
+    security_labels: [shell]
+  webfetch:
+    type: Tool
+    id: webfetch
+    security_labels: [shell]

@@ -12,7 +12,8 @@ import {
   loadSessionContext,
   supplySourceLabels,
 } from "../src/index.ts";
-import { dispatchGuardianAnnotator, toRepoRelativeMessage } from "../src/server.ts";
+import { toRepoRelativeMessage } from "../src/server.ts";
+import { dispatchGuardianAnnotator } from "../src/deployment-bridge.ts";
 import type { AcsFinalResult } from "../src/acs-result.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
@@ -1397,6 +1398,13 @@ describe("session state end to end", () => {
 });
 
 describe("a redaction lands on the argument the tool actually sent", () => {
+  // The host in this URL is load-bearing, and not for the redaction. AGT ranks
+  // an egress deny ABOVE a redact transform, so this case only reaches the
+  // redact rule because `docs.anthropic.com` matches an allowlist entry in
+  // policy/lib/data.json (`*.anthropic.com`). Narrow or remove that entry and
+  // this test stops asserting a redaction and starts reporting an
+  // egress_destination_not_allowed deny -- which is correct behaviour and a
+  // confusing failure, so it is written down here rather than rediscovered.
   it("rewrites the fetch's url, and names no argument the tool does not have", async () => {
     const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
     try {
@@ -1531,6 +1539,44 @@ describe("AGT's stock egress gate, driven from configuration", () => {
       expect(
         (await postToolCallRequest(guardian, "Bash", { command: "echo hi" }, { raw_command: "echo hi" })).decision,
       ).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+// policy/manifest.drift.yaml had NOTHING holding it: no code in this tree
+// builds a bridge or a Guardian on it, and its only invocation is a code block
+// inside a runbook, which is documentation and never executed. So the property
+// below -- the one its policy_target and its annotation `from` were moved onto
+// the normalised leaf for -- was backed by nothing the suite could detect, in
+// either direction, and a regression would have surfaced as a total deny in a
+// live demo rather than as a red test.
+//
+// Measured, by pointing that manifest's two paths back at
+// "$.tool_call.args.command" and evaluating this same shape: deny,
+// runtime_error:path_missing, before any rule ran. The tool here is registered
+// in that manifest and sends no `command` at all, which is the whole point --
+// against a target naming one tool's own argument, that is a total deny for
+// every call by every tool shaped like it.
+describe("the drift demo's manifest, on a tool that sends no command", () => {
+  it("resolves its policy target and its annotation, rather than denying the call before any rule runs", async () => {
+    const guardian = await startGuardian({
+      port: 0,
+      manifestPath: "policy/manifest.drift.yaml",
+      // The constant-score stub docs/demos/v3-runbook.md runs the demo with.
+      // AGT's design puts behaviour-drift detection outside the policy engine,
+      // so a fixed score makes the wiring visible without building a detector.
+      annotator: () => 0.9,
+    });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", { url: "https://docs.anthropic.com/x" });
+
+      expect(decision.reason_codes ?? []).not.toContain("runtime_error:path_missing");
+      // Not vacuous: every way this manifest can fail a call it cannot resolve
+      // -- path_missing, tool_unknown, annotation_failed -- arrives as a deny,
+      // so a decision of "allow" is what says the call was actually evaluated.
+      expect(decision.decision).toBe("allow");
     } finally {
       await guardian.close();
     }

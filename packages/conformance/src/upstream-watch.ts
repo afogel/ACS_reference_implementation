@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
-import { createBridge } from "agt-bridge";
-// Reached past guardian's barrel deliberately: that surface is the governance
-// verbs, and this is one deployment's annotator wiring. This watch sends AGT
-// the document the shipped deployment sends, so it builds its bridge the way
-// startGuardian builds one.
-import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
+// The deployment subpath, not the barrel: the barrel is the governance verbs,
+// and this is how the deployment builds a bridge. This watch validates the
+// document the shipped deployment sends AGT, so it has to send the document
+// the shipped bridge produces.
+import { createDeploymentBridge } from "guardian/deployment";
 import { diffSurfaces, type SurfaceDiff } from "./diff-surfaces.ts";
 import { fetchUpstreamSurfaces, UPSTREAM_AGT_CLONE_ENV } from "./fetch-upstream.ts";
 import { checkPolicyInputSchemaAt, PINNED_AGT_CLONE_ENV } from "./policy-input-schema.ts";
@@ -244,12 +243,12 @@ export async function runUpstreamWatch(
 
   let schemaAgainstMain: SchemaAgainstMainChecked;
   try {
-    // With the annotator omitted, this bridge would send AGT a policy input
-    // whose `annotations` never arrived and take a deny on
-    // runtime_error:annotation_failed -- measured. The document this leg
-    // validates against upstream's schema has to be the document the shipped
-    // deployment actually sends.
-    const bridge = createBridge(MANIFEST_PATH, { annotator: dispatchGuardianAnnotator });
+    // A bridge without this deployment's annotator would send AGT a policy
+    // input whose `annotations` never arrived, and take a deny on
+    // runtime_error:annotation_failed -- measured. What this leg validates
+    // against upstream's schema would then be a document the deployment never
+    // sends.
+    const bridge = createDeploymentBridge(MANIFEST_PATH);
     const result = await checkPolicyInputSchemaAt(bridge, upstreamClone);
     schemaAgainstMain = result.ran
       ? { checked: true, ok: true, points: result.points }

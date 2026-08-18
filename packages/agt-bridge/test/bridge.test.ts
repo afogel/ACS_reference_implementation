@@ -119,13 +119,13 @@ describe("agt-bridge", () => {
     expect(typeof asRole.evaluate).toBe("function");
     // The reason as well as the decision: a dispatcher-less bridge also
     // answers `deny` here, on runtime_error:annotation_failed, so asserting
-    // the decision alone would pass whether or not any rule ran at all.
-    // `ifc_clearance_violation` and not the pattern's own reason because this
-    // snapshot carries no label -- see `publicLabel` above for why an
-    // unlabelled snapshot never reaches the gates below IFC.
-    expect(await asRole.evaluate("pre_tool_call", snapshotFor("rm -rf /"))).toMatchObject({
+    // the decision alone would pass whether or not any rule ran at all. And
+    // `publicLabel` is spread in for the same reason it is elsewhere -- an
+    // unlabelled snapshot denies on IFC before the pattern gate runs, which
+    // would make the `rm -rf /` fixture decorative.
+    expect(await asRole.evaluate("pre_tool_call", { ...snapshotFor("rm -rf /"), ...publicLabel })).toMatchObject({
       decision: "deny",
-      reason: "ifc_clearance_violation",
+      reason: "destructive_shell_command_blocked",
     });
   });
 

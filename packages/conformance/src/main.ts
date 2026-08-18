@@ -52,13 +52,13 @@
  * invariant -- see e.g. failure-domains.ts's own header) never leaks the
  * listener.
  */
-import { createBridge } from "agt-bridge";
 import { loadMapping, startGuardian, POLICY_TARGET_LEAF } from "guardian";
-// Reached past guardian's barrel deliberately: that surface is the governance
-// verbs, and this is one deployment's annotator wiring. This runner MEASURES
-// the shipped deployment, so it has to build its bridge the way startGuardian
-// builds one -- with the same annotator, not a stand-in.
-import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
+// The deployment subpath, not the barrel: the barrel is the governance verbs,
+// and this is how the deployment builds a bridge. This runner MEASURES the
+// shipped deployment, so it has to build the same bridge startGuardian builds
+// -- assembling a replica here is how a harness comes to measure something
+// that is no longer the thing it names.
+import { createDeploymentBridge } from "guardian/deployment";
 import type { InterventionSnapshot } from "agt-bridge";
 import type { CoverageMatrix } from "./cells.ts";
 import { checkInterventionPoints, coverageCellsFromInterventionPoints } from "./intervention-points.ts";
@@ -124,12 +124,15 @@ export type ConformanceRun = {
 
 export async function main(): Promise<ConformanceRun> {
   const mapping = loadMapping(MAPPING_PATH);
-  // With the annotator omitted, every measurement below would come back
-  // `deny runtime_error:annotation_failed`: policy/manifest.yaml declares an
-  // `egress` annotator, and a bridge with nothing to dispatch it fails every
-  // call closed -- measured, benign calls included. A conformance run reporting
-  // that as its finding would be measuring its own misconfiguration.
-  const bridge = createBridge(MANIFEST_PATH, { annotator: dispatchGuardianAnnotator });
+  // One function builds both: `startGuardian` on the next line calls
+  // `createDeploymentBridge` itself, so the bridge this runner measures
+  // directly and the bridge behind the live Guardian below cannot drift apart.
+  // Assembling the recipe here instead would have made every measurement
+  // conditional on this file remembering it, and the failure is silent in the
+  // worst direction -- a bridge missing this deployment's annotator denies
+  // every call on `runtime_error:annotation_failed`, which a coverage matrix
+  // would faithfully report as the implementation's own behaviour.
+  const bridge = createDeploymentBridge(MANIFEST_PATH);
   const guardian = await startGuardian({ port: 0, manifestPath: MANIFEST_PATH });
 
   try {

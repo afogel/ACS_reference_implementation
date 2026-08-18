@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { createBridge } from "agt-bridge";
+import { createDeploymentBridge } from "../src/deployment-bridge.ts";
 import {
   assemblePostToolCallSnapshot,
   assemblePreToolCallSnapshot,
@@ -8,7 +8,6 @@ import {
   type ToolCallResultEnvelope,
 } from "../src/assemble-snapshot.ts";
 import { isToolCallRequest, isToolCallResult, validateEnvelope } from "../src/validate-envelope.ts";
-import { dispatchGuardianAnnotator } from "../src/server.ts";
 import type { IfcLabels } from "../src/session-context.ts";
 
 /**
@@ -134,21 +133,25 @@ describe("assemblePreToolCallSnapshot", () => {
       args: { command: { value: "rm -rf /", provenance: { source: "user" } } },
     });
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
-    // The annotator is what startGuardian supplies, and this bridge stands in
-    // for one: policy/manifest.yaml declares an `egress` annotator, and a
-    // bridge with nothing to dispatch it denies every request-gate call on
+    // NOT `EMPTY_SOURCE_LABELS`: IFC deny outranks every other gate
+    // (policy/lib/agt_default.rego's header), so a zero-label snapshot denies
+    // on `ifc_clearance_violation` before the pattern rule this test is named
+    // for ever runs -- and the assertion below would then pass for `echo hi`
+    // just as readily, leaving the `rm -rf /` fixture decorative. The
+    // `["public"]` label is what the Guardian's own session seed supplies.
+    const snapshot = assemblePreToolCallSnapshot(envelope, ["public"], "command");
+    // Built the way the deployment builds one, which is the way startGuardian
+    // does: this bridge stands in for a real Guardian, and a bridge missing
+    // this deployment's annotator denies every request-gate call on
     // runtime_error:annotation_failed -- measured, benign calls included.
-    const bridge = createBridge("policy/manifest.yaml", { annotator: dispatchGuardianAnnotator });
+    const bridge = createDeploymentBridge("policy/manifest.yaml");
     const verdict = await bridge.evaluate("pre_tool_call", snapshot);
 
-    // The reason, not the decision alone. A dispatcher-less bridge answers
-    // `deny` here too, and so does an unlabelled snapshot; pinning the reason
-    // is what keeps this test measuring the gate it names. `ifc_clearance_-
-    // violation` rather than the pattern's own reason because
-    // EMPTY_SOURCE_LABELS carries no label, and IFC deny outranks every other
-    // gate (policy/lib/agt_default.rego's header).
-    expect(verdict).toMatchObject({ decision: "deny", reason: "ifc_clearance_violation" });
+    // The reason, not the decision alone. Both an annotator-less bridge and an
+    // unlabelled snapshot also answer `deny` here, so pinning the decision by
+    // itself would not distinguish the pattern gate firing from evaluation
+    // failing somewhere above it.
+    expect(verdict).toMatchObject({ decision: "deny", reason: "destructive_shell_command_blocked" });
   });
 });
 
@@ -307,7 +310,7 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope({ outputs: [] }), EMPTY_SOURCE_LABELS);
     expect(snapshot.tool_result.outputs).toEqual([]);
 
-    const bridge = createBridge("policy/manifest.yaml", { annotator: dispatchGuardianAnnotator });
+    const bridge = createDeploymentBridge("policy/manifest.yaml");
     const verdict = await bridge.evaluate("post_tool_call", snapshot);
 
     expect(verdict.decision).toBe("deny");
@@ -331,7 +334,7 @@ describe("assemblePostToolCallSnapshot -- the post_tool_call sibling", () => {
   // actually about ever runs.
   it("feeds a secret-bearing output through the real AGT bridge and gets the redaction transform", async () => {
     const snapshot = assemblePostToolCallSnapshot(makeResultEnvelope(), ["public"]);
-    const bridge = createBridge("policy/manifest.yaml", { annotator: dispatchGuardianAnnotator });
+    const bridge = createDeploymentBridge("policy/manifest.yaml");
 
     const verdict = await bridge.evaluate("post_tool_call", snapshot);
 

@@ -1,18 +1,15 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "bun:test";
-import { createBridge, type AgtEvidence, type EvidenceBridge } from "agt-bridge";
+import { type AgtEvidence, type EvidenceBridge } from "agt-bridge";
 import { POLICY_TARGET_LEAF } from "guardian";
-// Reached past guardian's barrel deliberately: that surface is the governance
-// verbs, and this is one deployment's annotator wiring. Same reason src/main.ts
-// imports it -- these findings are only about the shipped deployment if the
-// bridge is built the way startGuardian builds one.
-import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
+// The deployment subpath, not the barrel: the barrel is the governance verbs,
+// and this is how the deployment builds a bridge. Same reason src/main.ts uses
+// it -- these findings are only about the shipped deployment if the bridge is
+// the shipped one.
+import { createDeploymentBridge } from "guardian/deployment";
 import { canonicalIdentity, measureIdentity, coverageCellsFromIdentity } from "../src/identity.ts";
 
-// policy/manifest.yaml declares an `egress` annotator, and a bridge with
-// nothing to dispatch it denies every call at the request gate on
-// runtime_error:annotation_failed -- measured, benign calls included.
-const bridge = createBridge("policy/manifest.yaml", { annotator: dispatchGuardianAnnotator });
+const bridge = createDeploymentBridge("policy/manifest.yaml");
 
 const REDACTABLE = {
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },

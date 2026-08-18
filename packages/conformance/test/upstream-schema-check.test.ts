@@ -4,18 +4,13 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { checkPolicyInputSchemaAt } from "../src/policy-input-schema.ts";
-import { createBridge } from "agt-bridge";
-// Reached past guardian's barrel deliberately: that surface is the governance
-// verbs, and this is one deployment's annotator wiring. Same as src/main.ts and
+// The deployment subpath, not the barrel: the barrel is the governance verbs,
+// and this is how the deployment builds a bridge. Same as src/main.ts and
 // src/upstream-watch.ts -- the document this leg validates is only the shipped
-// deployment's document if the bridge carries the same annotator.
-import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
+// deployment's document if the bridge is the shipped one.
+import { createDeploymentBridge } from "guardian/deployment";
 
 const SCHEMA_REL = "policy-engine/spec/schema/wire/policy-input.schema.json";
-// policy/manifest.yaml declares an `egress` annotator; a bridge with nothing to
-// dispatch it denies every request-gate call on
-// runtime_error:annotation_failed -- measured.
-const withAnnotator = { annotator: dispatchGuardianAnnotator };
 
 const createdDirs: string[] = [];
 
@@ -41,14 +36,14 @@ describe("checkPolicyInputSchemaAt -- the document we send, against the schema a
   });
 
   it("validates against a permissive schema", async () => {
-    const bridge = createBridge("policy/manifest.yaml", withAnnotator);
+    const bridge = createDeploymentBridge("policy/manifest.yaml");
     const result = await checkPolicyInputSchemaAt(bridge, cloneWithSchema({ type: "object" }));
 
     expect(result.ran).toBe(true);
   });
 
   it("reports a FAILURE, not a skip, when the schema at that clone rejects what we send", async () => {
-    const bridge = createBridge("policy/manifest.yaml", withAnnotator);
+    const bridge = createDeploymentBridge("policy/manifest.yaml");
     const tightened = { type: "object", required: ["a_field_agt_does_not_send_today"] };
 
     await expect(checkPolicyInputSchemaAt(bridge, cloneWithSchema(tightened))).rejects.toThrow(

@@ -5,10 +5,10 @@
  * NOT the gate. `policy/lib/egress.rego` is the gate, `cfg.egress` is its
  * configuration, `egress_destination_not_allowed` is the reason it emits, and
  * every one of those is AGT's, vendored byte-identical and not authored here.
- * This module supplies one of that gate's own declared inputs -- its FIFTH
- * default destination path, `["annotations", "egress", "destination"]`, which
- * is to say AGT anticipated exactly this seam and published the address for
- * it.
+ * This module supplies one of that gate's own declared inputs -- the
+ * destination path `["annotations", "egress", "destination"]`, one of the five
+ * that `default_destination_paths` declares, which is to say AGT anticipated
+ * exactly this seam and published the address for it.
  *
  * WHY EXTRACTION RATHER THAN FORWARDING. `host_of()` has two branches, and
  * both of them answer something for a whole command line. When the string

@@ -10,31 +10,19 @@
  */
 import { describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
-// Relative, not a bare `agt-bridge` specifier: the workspace package is
-// linked only into packages/guardian/node_modules (its sole declared
-// consumer), so a bare import does not resolve from this directory. Same
-// precedent as test/redaction.test.ts, which sits beside this file and
-// exercises the same bridge against the same manifest.
-import { createBridge } from "../packages/agt-bridge/src/index.ts";
 import {
   createMemorySessionContextStore,
   persistIfcLabels,
   supplySourceLabels,
   POLICY_TARGET_LEAF,
 } from "guardian";
-// Reached past the barrel deliberately: that surface is the governance verbs,
-// and this is one deployment's annotator wiring. It is the same function
-// `startGuardian` supplies, so these hand-built bridges evaluate the shipped
-// manifest exactly as a real Guardian does.
-import { dispatchGuardianAnnotator } from "guardian/src/server.ts";
+// The deployment subpath, not the barrel: the barrel is the governance verbs,
+// and this is how the deployment builds a bridge. Using it rather than
+// `createBridge` directly is what makes the bridges below the same ones a real
+// Guardian evaluates against -- annotator included.
+import { createDeploymentBridge } from "guardian/deployment";
 
 const MANIFEST = fileURLToPath(new URL("../policy/manifest.yaml", import.meta.url));
-// policy/manifest.yaml declares an `egress` annotator, and a bridge built
-// against it with no dispatcher denies EVERY call on
-// runtime_error:annotation_failed -- measured, benign calls included. So every
-// bridge below is constructed with one, exactly as startGuardian constructs
-// its own.
-const withAnnotator = { annotator: dispatchGuardianAnnotator };
 const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } };
 // Every pre_tool_call fixture below carries `raw_command` for the same reason
 // it carries POLICY_TARGET_LEAF: policy/manifest.yaml's pre_tool_call point
@@ -49,7 +37,7 @@ const budgets = { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds
 
 describe("the IFC round trip, on the shipped bundle", () => {
   it("propagates a label the session already carries, and returns it", async () => {
-    const bridge = createBridge(MANIFEST, withAnnotator);
+    const bridge = createDeploymentBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: {
@@ -65,7 +53,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
   });
 
   it("denies a flow the configured clearance does not dominate", async () => {
-    const bridge = createBridge(MANIFEST, withAnnotator);
+    const bridge = createDeploymentBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: {
@@ -92,7 +80,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // "confidential" clearance would deny -- so an "allow" here is possible
   // only if the root-level `ifc` this snapshot also carries was never read.
   it("reads nothing from the path the upstream library uses, which AGT hosts do not populate", async () => {
-    const bridge = createBridge(MANIFEST, withAnnotator);
+    const bridge = createDeploymentBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: {
@@ -131,7 +119,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // makes the session seed load-bearing rather than cosmetic: without it, a
   // fresh session's first step hits exactly this case.
   it("denies a session whose labels were cleared outright, because zero labels is a denied flow", async () => {
-    const bridge = createBridge(MANIFEST, withAnnotator);
+    const bridge = createDeploymentBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: {
@@ -160,7 +148,7 @@ describe("the IFC round trip, on the shipped bundle", () => {
   // the gates still compose once a label is present, not just that adding
   // one makes a denial go away.
   it("still reaches the pattern gate once IFC allows the flow -- a labelled destructive command denies for the pattern's own reason", async () => {
-    const bridge = createBridge(MANIFEST, withAnnotator);
+    const bridge = createDeploymentBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
       tool_call: {

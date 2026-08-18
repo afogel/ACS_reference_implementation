@@ -66,8 +66,8 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createBridge, type Annotator, type PolicyBridge } from "agt-bridge";
-import { annotateEgressDestination } from "./annotate-egress.ts";
+import type { Annotator, PolicyBridge } from "agt-bridge";
+import { createDeploymentBridge } from "./deployment-bridge.ts";
 import {
   assemblePostToolCallSnapshot,
   assemblePreToolCallSnapshot,
@@ -249,31 +249,6 @@ type JsonRpcFailure = {
   error: { code: number; message: string; data?: unknown };
 };
 
-/**
- * The annotators this Guardian can answer for, routed by the name the manifest
- * declared.
- *
- * A name this has nothing for THROWS, and that is deliberate even though AGT
- * turns it into a deny on every call in the deployment. It is wrong on every
- * call: a manifest declaring an annotator whose value never arrives is
- * evaluating policy against an annotation that is permanently absent. Failing
- * loudly and immediately is better than running silently unannotated, and the
- * failure is found on the first request rather than in an incident review.
- *
- * Not re-exported from this package's barrel: that surface is the governance
- * verbs, and this is one deployment's wiring rather than a verb a consumer
- * speaks.
- */
-export const dispatchGuardianAnnotator: Annotator = (name, config, preliminary) => {
-  if (name === "egress") {
-    return annotateEgressDestination(name, config, preliminary);
-  }
-  throw new Error(
-    `this Guardian has no annotator named ${JSON.stringify(name)} -- the manifest declares one it cannot ` +
-      `supply a value for`,
-  );
-};
-
 export type StartGuardianOptions = {
   port: number;
   manifestPath: string;
@@ -307,14 +282,22 @@ export type StartGuardianOptions = {
   /** Overrides the annotator this Guardian dispatches, replacing the built-in
    * one entirely.
    *
-   * Omitting this no longer means "no annotator" -- it means the built-in one
-   * (`dispatchGuardianAnnotator` above). `policy/manifest.yaml` declares an
-   * `egress` annotator, and a declared annotator the bridge dispatches
-   * nothing for denies EVERY call with runtime_error:annotation_failed,
-   * measured, benign calls included. So the dispatcher is never absent, and
-   * this option chooses which one rather than whether. The drift demo, which
-   * runs against `policy/manifest.drift.yaml` and its `drift_score`
-   * annotator, is the caller that supplies its own. */
+   * Omitting this no longer means "no annotator" -- it means the built-in
+   * `dispatchGuardianAnnotator` (`./deployment-bridge.ts`).
+   * `policy/manifest.yaml` declares an `egress` annotator, and a declared
+   * annotator the bridge dispatches nothing for denies EVERY call with
+   * runtime_error:annotation_failed, measured, benign calls included. So the
+   * dispatcher is never absent, and this option chooses which one rather than
+   * whether.
+   *
+   * The caller that supplies its own is the drift demo: it runs against
+   * `policy/manifest.drift.yaml`, whose declared annotator is `drift_score`
+   * rather than `egress`, and stands a fixed-score stub in for the
+   * behaviour-drift detector AGT's design puts outside the policy engine. Its
+   * code block lives in `docs/demos/v3-runbook.md` rather than in this tree --
+   * a JS callback cannot cross an environment variable, so the `bun run
+   * guardian` CLI cannot take one. `packages/guardian/test/server.test.ts`
+   * exercises that manifest through this option. */
   annotator?: Annotator;
   /** Overrides the bridge this Guardian evaluates snapshots against,
    * bypassing `createBridge(manifestPath, ...)` entirely -- and, with it,
@@ -414,11 +397,12 @@ export async function startGuardian({
   sessionContextLog,
   sessionContextStore: sessionContextStoreOverride,
 }: StartGuardianOptions): Promise<StartedGuardian> {
-  // Construct the bridge once at boot, not per request. The annotator is
-  // never `undefined`. See StartGuardianOptions.annotator: a
-  // manifest-declared annotator with no dispatcher is a total deny, not a
-  // no-op.
-  const bridge = bridgeOverride ?? createBridge(manifestPath, { annotator: annotator ?? dispatchGuardianAnnotator });
+  // Construct the bridge once at boot, not per request -- and through the
+  // shared recipe rather than assembling one here, so this Guardian and every
+  // other caller that evaluates this deployment's manifest get the identical
+  // bridge. `createDeploymentBridge` is where "the annotator is never absent"
+  // actually lives; see its own module.
+  const bridge = bridgeOverride ?? createDeploymentBridge(manifestPath, annotator);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
   // The session-context store is always the in-memory one, or the caller's
