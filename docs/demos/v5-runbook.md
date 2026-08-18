@@ -48,9 +48,16 @@ Rego authored, `policy/lib` byte-identical under `bun run verify:pin`, `data.agt
 unchanged, and zero lines changed in the Guardian, the bridge, or AGT — `bun run verify:zero-diff`
 proves that mechanically, captured near the end of this file.
 
-**Both gates are scoped `tools: [bash]`, which makes the two hosts symmetric rather than
-asymmetric.** Host #1 is `Bash`-only at both its hooks too, via the anchored `^Bash$` matcher in
-`hosts/claude-code/settings.json`. An earlier note in this project's own planning claimed the
+**Both gates carry a `tools:` scope, which makes the two hosts symmetric rather than asymmetric.**
+When this slice shipped that scope was `tools: [bash]` at both gates, matching host #1, which was
+`Bash`-only at both its hooks via the anchored `^Bash$` matcher in
+`hosts/claude-code/settings.json`. ⚠️ *Both halves of that sentence are stale as of V9 (slice #28),
+and the symmetry it describes survives the change: V9 widened each host's **request** gate to a
+second tool and left each host's **result** gate alone. Today OpenCode's request gate declares
+`tools: [bash, webfetch]` and its result gate `tools: [bash]`, while host #1's `PreToolUse` matcher
+is `^(Bash|WebFetch)$` and its `PostToolUse` matcher is still `^Bash$`. The asymmetry is now
+between the two gates rather than between the two hosts, and it is deliberate — see
+[`docs/demos/v9-runbook.md`](v9-runbook.md).* An earlier note in this project's own planning claimed the
 *request* gate needed no such list, because its hookmap paths (`$.tool`, `$.args`) resolve
 whatever tool ran — true, and irrelevant: the manifest's policy target is checked independently of
 the hookmap, and an unscoped request gate would not govern every tool, it would **deny every tool

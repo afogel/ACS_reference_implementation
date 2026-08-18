@@ -421,6 +421,52 @@ carries a non-empty `policy_references` and the second carries none at all — t
 presence/absence is the entire signal that a policy fired versus stayed silent, per R1.2
 and `mapping.yaml`'s `warn: { decision: allow, require_policy_references: true }`.
 
+> **Re-run (V9, slice #28) — the verdict is unchanged, and one field of the capture is not.**
+> V9 moved `policy/manifest.drift.yaml`'s `policy_target` — and its annotation's `from` — off
+> `$.tool_call.args.command` and onto the shared normalised leaf, because a target naming one
+> tool's own argument denies every call by a tool that has no such argument. The drift gate reads
+> an annotation rather than the target, so the verdict *should* be unaffected; "should be" is not
+> this repository's standard, so it was re-run rather than reasoned about.
+>
+> Same script above with its port changed to `8792`, same `drift.warn_threshold: 0.5` edit to
+> `policy/lib/data.json`, same `ls -la`, and the `request_id` deliberately set to this section's
+> own so the two blocks are comparable. The JSON-RPC `id` is the client's own and was not matched;
+> it is `1` below and this section's `request_id` above. Captured against commit `16a3ab0`:
+>
+> ```json
+> {
+>   "jsonrpc": "2.0",
+>   "id": 1,
+>   "result": {
+>     "type": "final",
+>     "acs_version": "0.1.0",
+>     "request_id": "64144466-0a20-4564-8e26-92c76e13a597",
+>     "decision": "allow",
+>     "reasoning": "This step was allowed, but flagged: the agent's behaviour drifted from its baseline. Policy: drift_detected, from AGT's stock bundle (agt_stock). AGT reported: drift_score 0.9 reached threshold 0.5.",
+>     "reason_codes": [
+>       "drift_detected"
+>     ],
+>     "policy_references": [
+>       {
+>         "policy_id": "agt_stock",
+>         "rule_id": "drift_detected"
+>       }
+>     ]
+>   }
+> }
+> ```
+>
+> `decision`, `reason_codes` and `policy_references` are identical to the capture above, which is
+> the whole of what the moved target could have broken. `reasoning` is not, and the cause is not
+> V9: `mapping.yaml` no longer sources that field from `verdict.message` verbatim but composes it
+> through `field_synthesis.reasoning`'s template and per-rule summaries. AGT's own sentence is
+> still in there, at the end, word for word. That change landed after V8 and before V9 (commit
+> `1534a59`); every `reasoning` string captured in this file predates it.
+>
+> The `ls -la` envelope also now carries `raw_command`, which V9 put on the wire. It changes
+> nothing here — this manifest declares a `drift_score` annotator, not an `egress` one — and it is
+> mentioned so the re-run's envelope is not mistaken for this section's original.
+
 ## Both failure postures, live: kill the Guardian mid-session
 
 This drives `hosts/claude-code/acs-hook.ts` directly on stdin, the same mechanism
