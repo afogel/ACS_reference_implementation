@@ -47,6 +47,7 @@ export { checkResponse, type ResponseCheck } from "./check-response.ts";
 export {
   assemblePreToolCallSnapshot,
   assemblePostToolCallSnapshot,
+  POLICY_TARGET_LEAF,
   type AgtPreToolCallSnapshot,
   type AgtPostToolCallSnapshot,
 } from "./assemble-snapshot.ts";
@@ -54,6 +55,7 @@ export {
   loadMapping,
   mapVerdict,
   resolveInterventionPoint,
+  resolvePolicyTargetArgument,
   type Mapping,
   type AcsDecision,
 } from "./map-verdict.ts";

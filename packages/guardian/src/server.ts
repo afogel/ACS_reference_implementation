@@ -6,13 +6,17 @@
  *
  * Composes the full pipeline, in order, for each ACS method it assembles a
  * snapshot for -- `steps/toolCallRequest` and `steps/toolCallResult`:
- *   validateEnvelope -> assemblePreToolCallSnapshot / assemblePostToolCallSnapshot ->
- *   bridge.evaluate(resolveInterventionPoint(method, mapping), snapshot) ->
- *   mapVerdict(verdict, mapping, point) -> response envelope.
+ *   validateEnvelope -> resolveInterventionPoint(method, mapping) ->
+ *   resolvePolicyTargetArgument(mapping, point, tool.name) ->
+ *   assemblePreToolCallSnapshot / assemblePostToolCallSnapshot ->
+ *   bridge.evaluate(point, snapshot) ->
+ *   mapVerdict(verdict, mapping, point, policyTargetArgument) -> response envelope.
  * The resolved point reaches mapVerdict because the ACS modification an AGT
  * transform becomes differs per gate: a tool argument override at the
- * request gate, a redaction on the result payload at the result gate. One
- * resolution, used by both consumers of it.
+ * request gate, a redaction on the result payload at the result gate. The
+ * resolved argument reaches both the assembler and mapVerdict for the same
+ * reason: it is the argument a policy target is read FROM and the argument an
+ * override is written TO, and asking twice would let the two answers differ.
  *
  * Every throw on this path is caught, in two places, because nothing may
  * escape the fetch handler. Bun.serve would answer an unhandled rejection with
@@ -71,7 +75,13 @@ import {
 } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
-import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
+import {
+  loadMapping,
+  mapVerdict,
+  resolveInterventionPoint,
+  resolvePolicyTargetArgument,
+  type Mapping,
+} from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
   isToolCallRequest,
@@ -731,11 +741,13 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
  * request gate, and a second copy of it is a second thing to keep true.
  *
  * Generic in the envelope, and the assembler is a function OF that envelope --
- * `E` and `(envelope: E, sourceLabels: IfcLabels) => GuardianSnapshot` rather
- * than an `AcsRequestEnvelope` and an independent thunk. `E` infers from the
- * narrowed variable each gate passes, both assemblers are assignable as they
- * stand, and the one miswiring this function could otherwise permit becomes
- * unrepresentable: `evaluateStep(raw, envelopeA, (_e, s) => assemblePreToolCallSnapshot(envelopeB, s), ...)`
+ * `E` and `(envelope: E, sourceLabels: IfcLabels, policyTargetArgument: string
+ * | undefined) => GuardianSnapshot` rather than an `AcsRequestEnvelope` and an
+ * independent thunk. `E` infers from the narrowed variable each gate passes,
+ * both assemblers are assignable as they stand (`assemblePostToolCallSnapshot`
+ * takes two parameters and a two-parameter function is assignable to a
+ * three-parameter function type), and the one miswiring this function could
+ * otherwise permit becomes unrepresentable: `evaluateStep(raw, envelopeA, (_e, s, p) => assemblePreToolCallSnapshot(envelopeB, s, p), ...)`
  * would have resolved the point from A's method and echoed A's ids while
  * evaluating B's snapshot -- the wrong policy against the wrong shape, which
  * this file's own comments call worse than a reported failure. In the inline
@@ -772,7 +784,7 @@ type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name:
 async function evaluateStep<E extends SteppedEnvelope>(
   raw: unknown,
   envelope: E,
-  assemble: (envelope: E, sourceLabels: IfcLabels) => GuardianSnapshot,
+  assemble: (envelope: E, sourceLabels: IfcLabels, policyTargetArgument: string | undefined) => GuardianSnapshot,
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   sessionContextStore: SessionContextStore,
@@ -788,13 +800,21 @@ async function evaluateStep<E extends SteppedEnvelope>(
       tool_name: envelope.params.payload.tool.name,
     });
 
+    // Resolved BEFORE the snapshot is assembled, where it used to be resolved
+    // after: the assembler needs to know which of this tool's arguments the
+    // policy target is read from, and mapVerdict needs the same answer to key
+    // any override it has to write back. One resolution, two readers -- asking
+    // twice would let them differ.
+    const point = resolveInterventionPoint(envelope.method, mapping);
+    const policyTargetArgument = resolvePolicyTargetArgument(mapping, point, envelope.params.payload.tool.name);
+
     const snapshot = assemble(
       envelope,
       supplySourceLabels(sessionContextStore, envelope.params.metadata.session_id),
+      policyTargetArgument,
     );
-    const point = resolveInterventionPoint(envelope.method, mapping);
     const verdict = await bridge.evaluate(point, snapshot);
-    const decision = mapVerdict(verdict, mapping, point);
+    const decision = mapVerdict(verdict, mapping, point, policyTargetArgument);
 
     // `verdict.result_labels` is `undefined` when the IFC gate did not run
     // at all and `[]` when it ran and propagated nothing; `persistIfcLabels`

@@ -71,9 +71,12 @@ type WrapMode = "array";
  * nothing, so `into` is still read from the mapping (not hardcoded) and
  * checked at synthesis time against the values this mapping can express.
  *
- * `into` is the discriminant, and the field beside it -- `into_argument` or
- * `into_path` -- names the same kind of slot on both rows: which thing of
- * that shape the rewrite lands in.
+ * `into` is the discriminant. The result gate's own field beside it,
+ * `into_path`, names which leaf of the result payload the rewrite lands in;
+ * the request gate's equivalent question -- which argument -- is answered by
+ * `policy_target_argument` on the same row rather than a field here, because
+ * that is the same argument `resolvePolicyTargetArgument` reads the policy
+ * target FROM, and one fact declared twice is two things that can disagree.
  *
  * This type expresses exactly two rewrite shapes, each added only together
  * with a checked value for its `into`, never by casting an arbitrary `into`
@@ -84,10 +87,12 @@ type ModificationsRule =
   | {
       from: string;
       when_path: string;
-      /** The request gate rewrites a tool ARGUMENT, named by the mapping. */
+      /** The request gate rewrites a tool ARGUMENT. WHICH argument is not
+       * declared here: it is `policy_target_argument` on the same row, because
+       * the argument an override lands on is the argument the policy target was
+       * read from, and one fact declared twice is two things that can
+       * disagree. */
       into: "parameter_overrides";
-      /** Which argument. */
-      into_argument: string;
     }
   | {
       from: string;
@@ -95,17 +100,17 @@ type ModificationsRule =
       /** The result gate rewrites the result payload's own leaf, addressed by
        * an ACS JSON pointer the mapping supplies. */
       into: "redactions";
-      /** Which leaf. */
       into_path: string;
     };
 
-/** One row of mapping.yaml's intervention_points table. `modifications` is
- * optional because most points have no synthesis rule: mapping.yaml declares
- * six methods with points and gives two of them one. Optional here, and a
- * throw at synthesis time -- not a silently empty MODIFY. */
+/** Which argument a tool's policy target lives in, for one intervention
+ * point. `default` covers every tool `by_tool` does not name. */
+type PolicyTargetArgument = { default: string; by_tool?: Record<string, string> };
+
 type InterventionPoint = {
   acs_method: string | null;
   note?: string;
+  policy_target_argument?: PolicyTargetArgument;
   modifications?: ModificationsRule;
 };
 
@@ -170,6 +175,53 @@ export function resolveInterventionPoint(acsMethod: string, mapping: Mapping): s
     );
   }
   return point;
+}
+
+/**
+ * Which argument this tool's policy target is read from, at this point.
+ *
+ * Told the tool NAME, never an envelope. Its callers already hold the name --
+ * the Guardian reads `payload.tool.name` for the session chain entry two
+ * statements earlier -- and a resolver that took an envelope would couple this
+ * module to the wire shape it currently knows nothing about.
+ *
+ * Answers `undefined` for a point that declares no table, which is the honest
+ * answer for the result gate: that gate rewrites a leaf of the result payload
+ * addressed by JSON pointer, and no tool argument is involved. A point the
+ * table has no row for at all is a different thing and throws, for the same
+ * reason `resolveInterventionPoint` throws rather than defaulting -- a mapping
+ * that cannot answer must say so rather than guess.
+ */
+export function resolvePolicyTargetArgument(
+  mapping: Mapping,
+  point: string,
+  toolName: string,
+): string | undefined {
+  const row = mapping.intervention_points?.[point];
+  if (row === undefined) {
+    throw new Error(
+      `mapping.yaml's intervention_points table has no row for AGT intervention point "${point}", so the ` +
+        `argument its policy target is read from cannot be resolved`,
+    );
+  }
+
+  const table = row.policy_target_argument;
+  if (table === undefined) {
+    return undefined;
+  }
+
+  const named = table.by_tool?.[toolName];
+  if (typeof named === "string") {
+    return named;
+  }
+
+  if (typeof table.default !== "string") {
+    throw new Error(
+      `mapping.yaml's intervention_points.${point}.policy_target_argument names no argument for tool ` +
+        `${JSON.stringify(toolName)} and declares no usable "default"`,
+    );
+  }
+  return table.default;
 }
 
 /** Resolves a field_synthesis `source: "verdict.<field>"` path against a verdict. */
@@ -237,7 +289,12 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
  * the value travels by, and `PolicyBridge.evaluate` answers with the verdict
  * alone.
  */
-function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: string): AcsModifications {
+function synthesizeModifications(
+  verdict: AgtVerdict,
+  mapping: Mapping,
+  point: string,
+  policyTargetArgument: string | undefined,
+): AcsModifications {
   const rule = mapping.intervention_points[point]?.modifications;
   if (!rule) {
     throw new Error(
@@ -267,7 +324,18 @@ function synthesizeModifications(verdict: AgtVerdict, mapping: Mapping, point: s
   // mapping actually declared without casting a checked value back out.
   const declaredInto: string = rule.into;
   if (rule.into === "parameter_overrides") {
-    return { [rule.into]: { [rule.into_argument]: transform.value } };
+    // A rewrite with no argument to land on is the one thing this function
+    // exists not to produce: a modification reported applied while the
+    // original ships. The Guardian's evaluation catch turns this throw into an
+    // honoured deny.
+    if (policyTargetArgument === undefined) {
+      throw new Error(
+        `mapping.yaml maps this verdict into an ACS parameter override, but its intervention_points row ` +
+          `for "${point}" declares no policy_target_argument, so there is no argument for the rewrite to ` +
+          `land on`,
+      );
+    }
+    return { [rule.into]: { [policyTargetArgument]: transform.value } };
   }
   if (rule.into === "redactions") {
     // ACS's redaction `replacement` is a string (modifications.json), and
@@ -366,7 +434,12 @@ function composeReasoning(
     .replaceAll("{detail}", () => detail);
 }
 
-export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string): AcsDecision {
+export function mapVerdict(
+  verdict: AgtVerdict,
+  mapping: Mapping,
+  point: string,
+  policyTargetArgument: string | undefined,
+): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
     throw new Error(`mapping.yaml has no verdict rule for AGT decision "${verdict.decision}"`);
@@ -413,7 +486,7 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping, point: string)
   }
 
   if (rule.decision === "modify") {
-    out.modifications = synthesizeModifications(verdict, mapping, point);
+    out.modifications = synthesizeModifications(verdict, mapping, point, policyTargetArgument);
   }
 
   return out;

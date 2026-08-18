@@ -3,6 +3,7 @@ import { createBridge } from "agt-bridge";
 import {
   assemblePostToolCallSnapshot,
   assemblePreToolCallSnapshot,
+  POLICY_TARGET_LEAF,
   type ToolCallRequestEnvelope,
   type ToolCallResultEnvelope,
 } from "../src/assemble-snapshot.ts";
@@ -67,10 +68,10 @@ describe("assemblePreToolCallSnapshot", () => {
       },
     });
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(snapshot.tool_call.name).toBe("run_shell");
-    expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /" });
+    expect(snapshot.tool_call.args).toEqual({ command: "rm -rf /", acs_policy_target: "rm -rf /" });
   });
 
   // AGT's stock pattern check reads input.policy_target.value and
@@ -79,7 +80,7 @@ describe("assemblePreToolCallSnapshot", () => {
   it("keeps tool_call.args.command a STRING, not a nested wrapper or object", () => {
     const envelope = makeEnvelope({ args: { command: { value: "rm -rf /" } } });
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(typeof snapshot.tool_call.args.command).toBe("string");
     expect(snapshot.tool_call.args.command).toBe("rm -rf /");
@@ -88,7 +89,7 @@ describe("assemblePreToolCallSnapshot", () => {
   it("always emits envelope.budgets with all four counters zeroed, even though the envelope says nothing about budgets", () => {
     const envelope = makeEnvelope();
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(snapshot.envelope).toEqual({
       budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 },
@@ -98,7 +99,7 @@ describe("assemblePreToolCallSnapshot", () => {
   it("carries params.request_id onto tool_call.id", () => {
     const envelope = makeEnvelope({ requestId: "2c3e4f50-1234-4abc-9def-000000000000" });
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(snapshot.tool_call.id).toBe("2c3e4f50-1234-4abc-9def-000000000000");
   });
@@ -111,11 +112,11 @@ describe("assemblePreToolCallSnapshot", () => {
 
     // No cast: assemblePreToolCallSnapshot returns a named snapshot message now, so what
     // these read is the type it declares rather than an anonymous dict.
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
 
     expect(Object.keys(snapshot).sort()).toEqual(["envelope", "input", "tool_call"]);
     expect(Object.keys(snapshot.envelope)).toEqual(["budgets"]);
-    expect(Object.keys(snapshot.tool_call).sort()).toEqual(["args", "id", "name"]);
+    expect(Object.keys(snapshot.tool_call).sort()).toEqual(["args", "id", "name", "raw_command"]);
 
     const serialized = JSON.stringify(snapshot);
     for (const forbidden of ["session_id", "session_state", "chain_hash", "agent_id", "metadata", "intent", "1b9d6bcd"]) {
@@ -132,7 +133,7 @@ describe("assemblePreToolCallSnapshot", () => {
       args: { command: { value: "rm -rf /", provenance: { source: "user" } } },
     });
 
-    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(envelope, EMPTY_SOURCE_LABELS, "command");
     const bridge = createBridge("policy/manifest.yaml");
     const verdict = await bridge.evaluate("pre_tool_call", snapshot);
 
@@ -338,7 +339,7 @@ const resultEnvelope = (): ToolCallResultEnvelope => makeResultEnvelope();
 
 describe("session state in the snapshot", () => {
   it("puts source labels where AGT's stock IFC library actually reads them", () => {
-    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), ["confidential"]);
+    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), ["confidential"], "command");
     // policy/lib/agt_ifc.rego: input.snapshot.input.ifc.source_labels.
     // Its own test pins that input.snapshot.ifc.source_labels reads as [].
     expect(snapshot.input.ifc.source_labels).toEqual(["confidential"]);
@@ -346,7 +347,7 @@ describe("session state in the snapshot", () => {
   });
 
   it("carries an empty list rather than omitting the member", () => {
-    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), EMPTY_SOURCE_LABELS);
+    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), EMPTY_SOURCE_LABELS, "command");
     expect(snapshot.input.ifc.source_labels).toEqual([]);
   });
 
@@ -357,13 +358,13 @@ describe("session state in the snapshot", () => {
 
   it("copies the labels, so a snapshot cannot be edited through the caller's array", () => {
     const labels = ["secret"];
-    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), labels);
+    const snapshot = assemblePreToolCallSnapshot(requestEnvelope(), labels, "command");
     labels.push("public");
     expect(snapshot.input.ifc.source_labels).toEqual(["secret"]);
   });
 
   it("leaves every pre-existing member of both snapshots exactly as it was", () => {
-    const pre = assemblePreToolCallSnapshot(requestEnvelope(), EMPTY_SOURCE_LABELS);
+    const pre = assemblePreToolCallSnapshot(requestEnvelope(), EMPTY_SOURCE_LABELS, "command");
     // requestEnvelope() is makeEnvelope() under its alias here, and
     // makeEnvelope()'s own default toolName is "run_shell" (see its
     // definition above) -- not "Bash", which is resultEnvelope()'s default.
@@ -372,5 +373,112 @@ describe("session state in the snapshot", () => {
     const post = assemblePostToolCallSnapshot(resultEnvelope(), EMPTY_SOURCE_LABELS);
     expect(post.tool_result.outputs).toHaveLength(1);
     expect((post as Record<string, unknown>).tool_call).toEqual({ name: "Bash" });
+  });
+});
+
+/**
+ * A request envelope built from an arbitrary tool name and arguments bag,
+ * for the leaf/raw-command tests below. Named `toolCallRequestEnvelope`
+ * rather than `requestEnvelope` -- that name is already bound above, as the
+ * alias four IFC-label tests use, and this helper answers a different need:
+ * an arbitrary tool shape rather than always `run_shell`/`command`.
+ */
+function toolCallRequestEnvelope(
+  toolName: string,
+  args: Record<string, unknown>,
+  rawCommand?: string,
+): ToolCallRequestEnvelope {
+  const payload: Record<string, unknown> = {
+    tool: { name: toolName },
+    arguments: Object.fromEntries(Object.entries(args).map(([k, v]) => [k, { value: v }])),
+  };
+  if (rawCommand !== undefined) payload.raw_command = rawCommand;
+  return {
+    jsonrpc: "2.0",
+    method: "steps/toolCallRequest",
+    id: 1,
+    params: {
+      acs_version: "0.1.0",
+      request_id: "11111111-1111-4111-8111-111111111111",
+      timestamp: "2026-08-18T00:00:00Z",
+      metadata: { session_id: "22222222-2222-4222-8222-222222222222" },
+      payload,
+    },
+  } as unknown as ToolCallRequestEnvelope;
+}
+
+describe("one fixed snapshot leaf, whatever the tool calls its argument", () => {
+  it("copies the named argument's value to the leaf the manifest targets", () => {
+    const snapshot = assemblePreToolCallSnapshot(
+      toolCallRequestEnvelope("WebFetch", { url: "https://docs.anthropic.com/x" }),
+      ["public"],
+      "url",
+    );
+    expect(snapshot.tool_call.args[POLICY_TARGET_LEAF]).toBe("https://docs.anthropic.com/x");
+  });
+
+  it("leaves the tool's own argument in place beside it", () => {
+    const snapshot = assemblePreToolCallSnapshot(
+      toolCallRequestEnvelope("WebFetch", { url: "https://docs.anthropic.com/x" }),
+      ["public"],
+      "url",
+    );
+    expect(snapshot.tool_call.args.url).toBe("https://docs.anthropic.com/x");
+  });
+
+  it("does the same for a shell tool, from the same one declaration", () => {
+    const snapshot = assemblePreToolCallSnapshot(
+      toolCallRequestEnvelope("Bash", { command: "echo hi" }),
+      ["public"],
+      "command",
+    );
+    expect(snapshot.tool_call.args[POLICY_TARGET_LEAF]).toBe("echo hi");
+  });
+
+  it("refuses a tool that already sends an argument by the leaf's own name, rather than overwriting it", () => {
+    expect(() =>
+      assemblePreToolCallSnapshot(
+        toolCallRequestEnvelope("Bash", { command: "echo hi", [POLICY_TARGET_LEAF]: "something the host sent" }),
+        ["public"],
+        "command",
+      ),
+    ).toThrow(/acs_policy_target/);
+  });
+
+  it("refuses a call missing the argument its policy target was declared to live in", () => {
+    expect(() =>
+      assemblePreToolCallSnapshot(toolCallRequestEnvelope("Bash", { script: "echo hi" }), ["public"], "command"),
+    ).toThrow(/"command"/);
+  });
+
+  it("refuses to assemble at all when the mapping declares no argument for this gate", () => {
+    expect(() =>
+      assemblePreToolCallSnapshot(toolCallRequestEnvelope("Bash", { command: "echo hi" }), ["public"], undefined),
+    ).toThrow(/policy_target_argument/);
+  });
+});
+
+describe("the raw command is always on the snapshot, present or empty", () => {
+  it("carries what the envelope sent", () => {
+    const snapshot = assemblePreToolCallSnapshot(
+      toolCallRequestEnvelope("Bash", { command: "curl https://exfil.test/x" }, "curl https://exfil.test/x"),
+      ["public"],
+      "command",
+    );
+    expect(snapshot.tool_call.raw_command).toBe("curl https://exfil.test/x");
+  });
+
+  // A manifest-declared annotator's own `from` path must resolve or AGT denies
+  // the whole call on runtime_error:path_missing before the annotator is ever
+  // dispatched -- measured, with zero annotator calls. An absent raw_command
+  // would therefore make every fetch a total deny wearing a runtime-error
+  // reason.
+  it("carries an empty string when the envelope sent none", () => {
+    const snapshot = assemblePreToolCallSnapshot(
+      toolCallRequestEnvelope("WebFetch", { url: "https://docs.anthropic.com/x" }),
+      ["public"],
+      "url",
+    );
+    expect(snapshot.tool_call.raw_command).toBe("");
   });
 });

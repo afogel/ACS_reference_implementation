@@ -16,18 +16,23 @@ policies:
     query: data.agt.defaults.verdict
 intervention_points:
   pre_tool_call:
-    # This leaf's argument name ("command") must agree with mapping.yaml's
-    # intervention_points.pre_tool_call.modifications.into_argument, which is
-    # how AGT's transform ($policy_target) lands as ACS parameter_overrides.
-    # Derived and checked in test/path-dialects.test.ts, so the agreement is a
-    # failing test rather than a comment asking a reader to compare two files.
+    # ONE target for every tool, which is all AGT's manifest schema allows:
+    # intervention_point is additionalProperties: false with exactly one
+    # policy_target, and AGT resolves it before any rule runs. So this target
+    # is NOT any host's argument -- it is the normalised leaf the Guardian
+    # writes, and mapping.yaml's policy_target_argument table is what says
+    # which of each tool's own arguments was copied into it.
     #
-    # That key sits per-intervention-point rather than in one shared table,
-    # because the same transform is a tool-argument override at this gate and
-    # a redaction at the result gate. This is the FIRST of the two places
-    # mapping.yaml and this file touch -- see post_tool_call below for the
-    # second.
-    policy_target: "$.tool_call.args.command"
+    # Measured, and the reason this is no longer "$.tool_call.args.command": a
+    # benign WebFetch call under that target is DENIED on
+    # runtime_error:path_missing, with no rule consulted. One literal argument
+    # name can only serve a deployment that governs one tool shape.
+    #
+    # test/path-dialects.test.ts checks the two agreements this leaf sits
+    # between: that this path names the leaf assemble-snapshot.ts writes, and
+    # that every argument mapping.yaml's by_tool table names is keyed by a tool
+    # this file's own tools: registry knows.
+    policy_target: "$.tool_call.args.acs_policy_target"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"
     policy:
@@ -56,10 +61,12 @@ intervention_points:
     # an ACS redaction: the two address the SAME leaf in two notations --
     # "$.tool_result.outputs[0].value" here is AGT's JSONPath over the
     # snapshot, "/outputs/0/value" there is the ACS JSON pointer into the
-    # result payload the host applies it to. This is the SECOND of the two
-    # places mapping.yaml and this file touch, exactly as
-    # into_argument is for the request gate above: change one and the
-    # other is wrong, and nothing in either FILE can tell.
+    # result payload the host applies it to. This is the one place
+    # mapping.yaml and this file still touch directly: the request gate's
+    # own leaf-name agreement above is now with assemble-snapshot.ts's
+    # POLICY_TARGET_LEAF constant, not with mapping.yaml, since mapping.yaml
+    # no longer names that leaf at all. Move this leaf and mapping.yaml is
+    # wrong, and nothing in either FILE can tell.
     #
     # test/path-dialects.test.ts is what tells: it derives the ACS pointer
     # from this JSONPath and fails if the two stop describing one leaf, for
@@ -113,4 +120,28 @@ tools:
   bash:
     type: Tool
     id: bash
+    security_labels: [shell]
+  # Claude Code's own real tool name for a web fetch, and OpenCode's, for the
+  # identical reason "Bash" and "bash" are both here: an unregistered
+  # tool_call.name fails AGT's evaluation closed on runtime_error:tool_unknown
+  # before any rule runs. Both spellings are registered because one manifest
+  # serves both hosts -- so this registry deliberately names more tools than
+  # either host dispatches.
+  #
+  # security_labels: [shell] is carried for the same reason every other entry
+  # carries it, and it matters more now than it did: with cfg.egress
+  # configured but its `allowlist` key absent, AGT's allowlist(rules) falls
+  # back to input.tool.security_labels and denies every destination.
+  # policy/lib/data.json configures no cfg.egress today (agt_default.rego's
+  # egress_verdict only fires when is_object(cfg.egress), and config carries
+  # no "egress" key), so that fallback is not live yet -- carried here so
+  # WebFetch is already covered the moment cfg.egress gets its own explicit
+  # allowlist.
+  WebFetch:
+    type: Tool
+    id: WebFetch
+    security_labels: [shell]
+  webfetch:
+    type: Tool
+    id: webfetch
     security_labels: [shell]

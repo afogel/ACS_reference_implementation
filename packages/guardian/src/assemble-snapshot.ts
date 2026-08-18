@@ -74,6 +74,17 @@ function zeroedBudgets(): AgtSnapshotBudgets {
 }
 
 /**
+ * The one snapshot leaf every tool's policy target is copied to.
+ *
+ * `policy/manifest.yaml`'s pre_tool_call `policy_target` names this, and
+ * mapping.yaml's `policy_target_argument` names the per-tool argument it is
+ * copied FROM. The `acs_` stem marks it as this side's construct rather than
+ * something a host sent, which is what stops a reader taking it for an
+ * argument some tool declared.
+ */
+export const POLICY_TARGET_LEAF = "acs_policy_target";
+
+/**
  * Where AGT reads the source labels, and why the shorter path is wrong.
  * `policy/lib/agt_ifc.rego` resolves `input.snapshot.input.ifc.source_labels`;
  * `policy/lib/agt_ifc_test.rego` pins that the upstream library's
@@ -111,6 +122,20 @@ export type AgtPreToolCallSnapshot = {
     name: string;
     args: Record<string, unknown>;
     id: string;
+    /**
+     * ACS's own `raw_command`, and ALWAYS present -- the empty string when the
+     * wire carried none.
+     *
+     * Not a convenience. A manifest-declared annotator's `annotations.<name>
+     * .from` path must resolve or AGT denies the entire call with
+     * runtime_error:path_missing BEFORE dispatching the annotator -- measured,
+     * with zero annotator calls -- so a snapshot that omitted this member for
+     * tools with no shell command would turn every one of those calls into a
+     * total deny wearing a runtime-error reason. An empty string resolves, and
+     * the annotator answers no destination for it, which is the behaviour that
+     * was wanted.
+     */
+    raw_command: string;
   };
   input: { ifc: { source_labels: string[] } };
 };
@@ -173,8 +198,16 @@ export type AgtPostToolCallSnapshot = {
 export function assemblePreToolCallSnapshot(
   envelope: ToolCallRequestEnvelope,
   sourceLabels: IfcLabels,
+  policyTargetArgument: string | undefined,
 ): AgtPreToolCallSnapshot {
   const { payload, request_id } = envelope.params;
+
+  if (policyTargetArgument === undefined) {
+    throw new Error(
+      `mapping.yaml declares no policy_target_argument for the request gate, so there is no argument to ` +
+        `copy to the "${POLICY_TARGET_LEAF}" leaf policy/manifest.yaml targets`,
+    );
+  }
 
   // Unwrap every argument. AGT reads raw values -- args.command has to be a
   // plain string for the stock pattern check's is_string guard, for instance --
@@ -184,6 +217,32 @@ export function assemblePreToolCallSnapshot(
     args[key] = wrapper.value;
   }
 
+  // Loudly, never silently. A tool genuinely sending an argument by this name
+  // would have its own value replaced by the policy target and never
+  // evaluated -- so the collision is reported here, where a manifest or
+  // hookmap author can still act on it.
+  if (Object.hasOwn(args, POLICY_TARGET_LEAF)) {
+    throw new Error(
+      `tool ${JSON.stringify(payload.tool.name)} sent an argument named ${JSON.stringify(POLICY_TARGET_LEAF)}, ` +
+        `which is the leaf this Guardian writes its policy target to -- one of the two would have to be ` +
+        `overwritten, and neither may be`,
+    );
+  }
+
+  // A tool whose declared policy-target argument is not among its arguments is
+  // a registration fault, not a policy decision. Throwing names the tool and
+  // the argument; leaving the leaf undefined would reach AGT as
+  // runtime_error:path_missing, which reads like a policy decision and says
+  // nothing about which declaration is wrong.
+  if (!Object.hasOwn(args, policyTargetArgument)) {
+    throw new Error(
+      `mapping.yaml reads tool ${JSON.stringify(payload.tool.name)}'s policy target from argument ` +
+        `${JSON.stringify(policyTargetArgument)}, but this call sent no such argument ` +
+        `(it sent: ${Object.keys(args).join(", ") || "none"})`,
+    );
+  }
+  args[POLICY_TARGET_LEAF] = args[policyTargetArgument];
+
   return {
     // budgets.rego fails closed on a present-but-wrong-typed counter, so
     // these are always real zeros, never undefined/null.
@@ -192,6 +251,7 @@ export function assemblePreToolCallSnapshot(
       name: payload.tool.name,
       args,
       id: request_id,
+      raw_command: payload.raw_command ?? "",
     },
     input: ifcMember(sourceLabels),
   };

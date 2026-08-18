@@ -3,9 +3,14 @@ import { AgentControl } from "agent-control-specification";
 import { createBridge, type EvidenceBridge, type PolicyBridge } from "../src/index.ts";
 import { buildConfigBundle, buildManifest } from "../../../test/helpers/config-bundle.ts";
 
+// `acs_policy_target` mirrors the leaf `packages/guardian/src/assemble-snapshot.ts`
+// copies a tool's policy-target argument to. policy/manifest.yaml's
+// pre_tool_call point targets that leaf, not `command` directly, so a
+// hand-built snapshot omitting it fails AGT's own path resolution with
+// runtime_error:path_missing before any rule this suite is about ever runs.
 const snapshotFor = (command: string) => ({
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
-  tool_call: { name: "run_shell", args: { command }, id: "t1" },
+  tool_call: { name: "run_shell", args: { command, acs_policy_target: command }, id: "t1" },
 });
 
 // The label the Guardian's own session seed would have supplied, spread

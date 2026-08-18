@@ -401,7 +401,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
     expect(governed.output).toEqual({
       reason: {
         text:
-          "A secret in this command was replaced before it ran. " +
+          "A secret in this step's arguments was replaced before it ran. " +
           "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
       },
     });
@@ -733,7 +733,7 @@ describe("a request-gate modify the hookmap gives no way to land -- the measured
       refuse: {
         denied: true,
         reason:
-          "A secret in this command was replaced before it ran. " +
+          "A secret in this step's arguments was replaced before it ran. " +
           "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
       },
     });

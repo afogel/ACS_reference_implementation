@@ -76,7 +76,7 @@ describe("the shipped bundle redacts at the result gate", () => {
     const bridge = createBridge(MANIFEST);
     const verdict = await bridge.evaluate("pre_tool_call", {
       envelope: budgets,
-      tool_call: { name: "Bash", args: { command: "rm -rf / " } },
+      tool_call: { name: "Bash", args: { command: "rm -rf / ", acs_policy_target: "rm -rf / " } },
       ...publicLabel,
     });
     expect(verdict.decision).toBe("deny");

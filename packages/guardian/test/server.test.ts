@@ -11,6 +11,7 @@ import {
   createMemorySessionContextStore,
   loadSessionContext,
   supplySourceLabels,
+  type AcsDecision,
 } from "../src/index.ts";
 import { toRepoRelativeMessage } from "../src/server.ts";
 
@@ -105,6 +106,31 @@ async function postAcs(url: string, body: unknown): Promise<JsonRpcResponse> {
  * `guardian.url` off the same value each time. */
 async function postStep(guardian: { url: string }, envelope: unknown): Promise<JsonRpcResponse> {
   return postAcs(guardian.url, envelope);
+}
+
+/**
+ * Posts a `steps/toolCallRequest` envelope for an arbitrary tool and its
+ * arguments, and answers with the decision off the final result.
+ *
+ * `extraPayload`, when given, is spread onto the request payload alongside
+ * `tool` and `arguments` -- the seam a later change uses to put `raw_command`
+ * on the wire.
+ */
+async function postToolCallRequest(
+  guardian: { url: string },
+  toolName: string,
+  args: Record<string, unknown>,
+  extraPayload?: Record<string, unknown>,
+): Promise<AcsDecision> {
+  const response = await postAcs(
+    guardian.url,
+    makeEnvelope("steps/toolCallRequest", {
+      tool: { name: toolName },
+      arguments: Object.fromEntries(Object.entries(args).map(([k, v]) => [k, { value: v }])),
+      ...extraPayload,
+    }),
+  );
+  return response.result as unknown as AcsDecision;
 }
 
 /** The options every session-state test starts from, spread with its own
@@ -1363,6 +1389,34 @@ describe("session state end to end", () => {
     } finally {
       await guardian.close();
       unlinkSync(blocker);
+    }
+  });
+});
+
+describe("a redaction lands on the argument the tool actually sent", () => {
+  it("rewrites the fetch's url, and names no argument the tool does not have", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", {
+        url: "https://docs.anthropic.com/?t=ghp_ABCDEF123456",
+      });
+      expect(decision.decision).toBe("modify");
+      expect(decision.modifications).toEqual({
+        parameter_overrides: { url: "https://docs.anthropic.com/?t=[REDACTED]" },
+      });
+      expect(Object.keys(decision.modifications?.parameter_overrides ?? {})).not.toContain("command");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("still rewrites a shell command's own argument, from the same declaration", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "echo ghp_ABCDEF123456" });
+      expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
+    } finally {
+      await guardian.close();
     }
   });
 });

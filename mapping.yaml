@@ -40,22 +40,51 @@ agt_version: "0.3.1-beta"
 intervention_points:
   pre_tool_call:
     acs_method: "steps/toolCallRequest"
-    # AGT's transform verdict carries {path, value}, where path is the
-    # literal "$policy_target": the leaf the manifest's intervention point
-    # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
-    # as modifications.parameter_overrides keyed by argument name, per
-    # modifications.json ("Replacement values for tool call arguments, keyed by
-    # argument name"). into_argument names which key, and must agree with
-    # policy/manifest.yaml's pre_tool_call policy_target -- this is one of the
-    # two places the two files touch, and the agreement is CHECKED rather than
-    # asked for: test/path-dialects.test.ts derives this value from that one and
-    # fails if either moves. That check is why this comment no longer ends by
-    # telling a reader to go and compare three files by hand.
+    # Which argument this gate's policy target lives in, per tool.
+    #
+    # AGT's manifest gives an intervention point exactly ONE policy_target
+    # (manifest.schema.json declares intervention_point with
+    # additionalProperties: false), and AGT resolves that path before any rule
+    # runs. Measured: a WebFetch call under a target of
+    # "$.tool_call.args.command" is DENIED on runtime_error:path_missing --
+    # not evaluated and allowed; denied, with no rule consulted. So a
+    # deployment governing two tools whose arguments disagree about their names
+    # cannot express both with one literal path.
+    #
+    # The answer is this table plus a normalised leaf. The Guardian reads the
+    # argument named here, copies its value to the fixed snapshot leaf
+    # policy/manifest.yaml's policy_target points at, and every gate stays live
+    # in one Guardian -- the property a second manifest per gate would have
+    # cost.
+    #
+    # THE SAME ENTRY IS READ A SECOND TIME, and that is the whole reason it is
+    # one entry. AGT's transform names the leaf it rewrote by the literal
+    # "$policy_target"; ACS expresses that as modifications.parameter_overrides
+    # keyed by ARGUMENT NAME (modifications.json: "Replacement values for tool
+    # call arguments, keyed by argument name"). The argument a target is read
+    # FROM and the argument an override is written TO are the same argument.
+    # That used to be a second declaration (`into_argument: command`), and with
+    # one governed tool the two could not disagree. Widening to a second tool is
+    # exactly when they can: measured through the shipped mapVerdict, a
+    # redaction of a WebFetch url came out as parameter_overrides.command -- a
+    # key the tool has no argument for -- while url, still carrying the secret,
+    # shipped untouched. One entry read twice cannot do that.
+    #
+    # `default` is what an unlisted tool gets. A tool listed here that
+    # policy/manifest.yaml does not register is a failing case in
+    # test/path-dialects.test.ts.
+    policy_target_argument:
+      default: command
+      by_tool:
+        run_shell: command
+        Bash: command
+        bash: command
+        WebFetch: url
+        webfetch: url
     modifications:
       from: verdict.transform
       when_path: "$policy_target"
       into: parameter_overrides
-      into_argument: command
   post_tool_call:
     acs_method: "steps/toolCallResult"
     # AGT's redact rule returns the FULLY substituted text (verified against
@@ -136,7 +165,7 @@ field_synthesis:
       approval_required: "This step needs human approval before it can run."
       drift_detected: "This step was allowed, but flagged: the agent's behaviour drifted from its baseline."
       redaction_applied:
-        pre_tool_call: "A secret in this command was replaced before it ran."
+        pre_tool_call: "A secret in this step's arguments was replaced before it ran."
         post_tool_call: "Secrets in this output were replaced before the model saw them."
     # AGT's message, rendered for the reader the sentence above is for. The
     # pattern form carries the regex that matched, which is the one part of

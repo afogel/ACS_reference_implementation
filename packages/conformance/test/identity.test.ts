@@ -107,12 +107,19 @@ describe("the request gate, measured rather than assumed to match the result gat
   // Same mechanism as REDACTABLE above, at the other of mapping.yaml's two
   // `modifications` rows: policy/lib/agt_default.rego's redact_verdict reads
   // input.policy_target.value regardless of intervention_point, and
-  // pre_tool_call's policy_target ("$.tool_call.args.command",
+  // pre_tool_call's policy_target ("$.tool_call.args.acs_policy_target",
   // policy/manifest.yaml) is a string a ghp_ token can appear in exactly the
-  // same way it appears in a tool_result value.
+  // same way it appears in a tool_result value. `acs_policy_target` mirrors
+  // what assemble-snapshot.ts copies a tool's own policy-target argument to;
+  // `command` rides along beside it because that is what a real Bash call's
+  // snapshot carries too.
   const REDACTABLE_COMMAND = {
     envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
-    tool_call: { name: "Bash", args: { command: "echo ghp_ONLYINCOMMAND999" }, id: "t1" },
+    tool_call: {
+      name: "Bash",
+      args: { command: "echo ghp_ONLYINCOMMAND999", acs_policy_target: "echo ghp_ONLYINCOMMAND999" },
+      id: "t1",
+    },
     input: { ifc: { source_labels: ["public"] } },
   };
 

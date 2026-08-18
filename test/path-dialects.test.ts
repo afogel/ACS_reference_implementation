@@ -1,13 +1,15 @@
 /**
- * One redacted leaf, three path dialects, and the two that can agree by
- * derivation.
+ * Three path dialects, and the agreements this file checks between them.
  *
- * A single rewrite is addressed three different ways along its route:
+ * A single rewrite is addressed several different ways along its route:
  *
- *   AGT   policy/manifest.yaml's `policy_target`, JSONPath over the SNAPSHOT
- *         (`$.tool_call.args.command`, `$.tool_result.outputs[0].value`)
- *   ACS   mapping.yaml's `into_argument` / `into_path`, addressing the ACS
- *         PAYLOAD (`command`, `/outputs/0/value`)
+ *   AGT   policy/manifest.yaml's `policy_target`, JSONPath over the SNAPSHOT.
+ *         For the request gate this is now always the one normalised leaf
+ *         (`$.tool_call.args.acs_policy_target`); for the result gate it is
+ *         still `$.tool_result.outputs[0].value`.
+ *   ACS   mapping.yaml's `policy_target_argument` table (per tool, at the
+ *         request gate) and `into_path` (at the result gate), addressing the
+ *         ACS PAYLOAD.
  *   host  the hookmap's `outputs.from` / `arguments`, addressing the HOST's own
  *         payload (`$.tool_response.stdout`)
  *
@@ -16,30 +18,47 @@
  * moving `policy_target` one field over would leave mapping.yaml describing a
  * leaf nothing targets, and the demo would simply stop redacting.
  *
- * WHAT IS CHECKED HERE, AND WHY IT IS ONLY TWO OF THE THREE. The AGT and ACS
- * dialects address the SAME document -- AGT's snapshot is assembled from the ACS
- * payload, member for member (assemble-snapshot.ts) -- so one is derivable from
- * the other, and this file derives it. The host dialect is not derivable and
- * must not be: `$.tool_response.stdout` addresses a document this project does
- * not define, whose shape is the host's own. Absorbing that difference is the
- * hookmap's entire job and the reason the same adapter serves a second host, so
- * a check that "derived" it would be asserting a coincidence of this one
- * deployment. What keeps THAT seam honest is a different mechanism, one gate
- * over: `assertOutputIsReplaceable` refuses, before any decision is sought, a
- * deployment whose hookmap cannot address a replaceable leaf in the payload it
- * was handed.
+ * THREE AGREEMENTS NOW, NOT ONE DERIVATION. The request gate's manifest
+ * target no longer names a host argument at all -- AGT allows an
+ * intervention point exactly one target, and two tools disagree about their
+ * argument names, so the target instead names the single normalised leaf the
+ * Guardian writes. What is checked for that gate is therefore that the
+ * manifest and the assembler (assemble-snapshot.ts's POLICY_TARGET_LEAF)
+ * name the same leaf, not that the manifest and mapping.yaml derive one
+ * another. The result gate keeps the original derivation: its target and
+ * mapping.yaml's `into_path` still address the same document, member for
+ * member, so one is still derivable from the other. And the by_tool table's
+ * own agreement with the manifest is checked too, but only for tool
+ * existence: the manifest registry can say WebFetch is registered, not that
+ * WebFetch takes a `url`.
+ *
+ * The host dialect is not derivable and must not be: `$.tool_response.stdout`
+ * addresses a document this project does not define, whose shape is the
+ * host's own. Absorbing that difference is the hookmap's entire job and the
+ * reason the same adapter serves a second host, so a check that "derived" it
+ * would be asserting a coincidence of this one deployment. What keeps THAT
+ * seam honest is a different mechanism, one gate over: `assertOutputIsReplaceable`
+ * refuses, before any decision is sought, a deployment whose hookmap cannot
+ * address a replaceable leaf in the payload it was handed.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { POLICY_TARGET_LEAF } from "../packages/guardian/src/assemble-snapshot.ts";
 
 type ManifestPoint = { policy_target?: string; policy_target_kind?: string };
-type Manifest = { intervention_points: Record<string, ManifestPoint> };
 
-type MappingRule =
-  | { into: "parameter_overrides"; into_argument: string }
-  | { into: "redactions"; into_path: string };
-type MappingPoint = { acs_method: string | null; modifications?: MappingRule };
+type MappingRule = { into: "parameter_overrides" } | { into: "redactions"; into_path: string };
+type PolicyTargetArgument = { default: string; by_tool?: Record<string, string> };
+type MappingPoint = {
+  acs_method: string | null;
+  policy_target_argument?: PolicyTargetArgument;
+  modifications?: MappingRule;
+};
 type Mapping = { intervention_points: Record<string, MappingPoint> };
+type Manifest = {
+  intervention_points: Record<string, ManifestPoint>;
+  tools: Record<string, unknown>;
+};
 
 const manifest = Bun.YAML.parse(readFileSync("policy/manifest.yaml", "utf8")) as Manifest;
 const mapping = Bun.YAML.parse(readFileSync("mapping.yaml", "utf8")) as Mapping;
@@ -82,36 +101,53 @@ describe("the AGT and ACS dialects address the same leaf", () => {
   const gated = Object.entries(mapping.intervention_points).filter(([, row]) => row.modifications !== undefined);
 
   it("covers every point mapping.yaml gives a modifications rule", () => {
-    // Not a fixed list: a third gate added to the table is a third row this
-    // file has to check, and discovering them from the table is what makes
-    // that automatic rather than remembered.
     expect(gated.map(([point]) => point).sort()).toEqual(["post_tool_call", "pre_tool_call"]);
   });
 
-  for (const [point, row] of gated) {
-    it(`${point}: mapping.yaml's land field is derivable from the manifest's policy_target`, () => {
-      const policyTarget = manifest.intervention_points[point]?.policy_target;
-      expect(policyTarget).toBeString();
+  // AGREEMENT ONE. The request gate's manifest target no longer names a host
+  // argument at all: it names the single normalised leaf the Guardian writes
+  // every tool's policy target to, because AGT allows an intervention point
+  // exactly one target and two tools disagree about their argument names. So
+  // what is derived here is that the manifest and the assembler name the SAME
+  // leaf -- one derivation, as before, of a different pair.
+  it("pre_tool_call: the manifest targets the leaf the assembler writes", () => {
+    const policyTarget = manifest.intervention_points.pre_tool_call?.policy_target;
+    expect(policyTarget).toBeString();
+    const derived = acsAddressOf(policyTarget as string);
+    expect(derived.kind).toBe("argument");
+    expect(derived.address).toBe(POLICY_TARGET_LEAF);
+  });
 
-      const derived = acsAddressOf(policyTarget as string);
-      const rule = row.modifications as MappingRule;
+  // AGREEMENT TWO, unchanged: the result gate rewrites a leaf of the result
+  // payload, addressed by an ACS JSON pointer derived from the same JSONPath.
+  it("post_tool_call: mapping.yaml's pointer is derivable from the manifest's policy_target", () => {
+    const policyTarget = manifest.intervention_points.post_tool_call?.policy_target;
+    expect(policyTarget).toBeString();
+    const derived = acsAddressOf(policyTarget as string);
+    const rule = mapping.intervention_points.post_tool_call?.modifications as { into: "redactions"; into_path: string };
+    expect(derived.kind).toBe("pointer");
+    expect(rule.into_path).toBe(derived.address);
+  });
 
-      if (rule.into === "parameter_overrides") {
-        expect(derived.kind).toBe("argument");
-        expect(rule.into_argument).toBe(derived.address);
-      } else {
-        expect(derived.kind).toBe("pointer");
-        expect(rule.into_path).toBe(derived.address);
+  // AGREEMENT THREE, and the honest half of it is stated in the test's own
+  // name. The registry can say WebFetch is registered; it cannot say WebFetch
+  // takes a `url`. Same limit the upstream watch measured for hookmap `tools`
+  // entries, and for the same reason: one manifest serves both hosts, so it
+  // names more tools than either dispatches.
+  it("every tool the by_tool table keys is one the manifest registry knows -- existence only, not argument shape", () => {
+    const registered = new Set(Object.keys(manifest.tools ?? {}));
+    for (const [point, row] of Object.entries(mapping.intervention_points)) {
+      for (const tool of Object.keys(row.policy_target_argument?.by_tool ?? {})) {
+        expect({ point, tool, registered: registered.has(tool) }).toEqual({ point, tool, registered: true });
       }
-    });
-  }
+    }
+  });
 
-  it("fails when the two files disagree, which is the whole point", () => {
-    // The drift this exists to catch, exercised directly: a manifest edited to
-    // target a different argument while mapping.yaml still names the old one.
-    expect(acsAddressOf("$.tool_call.args.script").address).not.toBe(
-      (mapping.intervention_points.pre_tool_call?.modifications as { into_argument: string }).into_argument,
-    );
+  it("declares a default argument for every gate that rewrites one", () => {
+    for (const [point, row] of gated) {
+      if ((row.modifications as MappingRule).into !== "parameter_overrides") continue;
+      expect({ point, declared: typeof row.policy_target_argument?.default }).toEqual({ point, declared: "string" });
+    }
   });
 
   it("refuses a policy_target shape it cannot express, rather than passing by default", () => {

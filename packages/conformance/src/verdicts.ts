@@ -37,7 +37,7 @@
  * make an honest gap indistinguishable from a defect and press the matrix
  * towards being all-expressed.
  */
-import { mapVerdict, type AcsDecision, type Mapping } from "guardian";
+import { mapVerdict, resolvePolicyTargetArgument, type AcsDecision, type Mapping } from "guardian";
 import type { AgtVerdict } from "agt-bridge";
 import { everyCell, type CoverageCell } from "./cells.ts";
 
@@ -49,6 +49,12 @@ const WARN_GUARDIAN_ONLY =
   "AGT's only stock warn gate reads input.annotations.drift_score, which reaches the policy input from a " +
   "manifest-declared annotator and never from the snapshot; no ACS v0.1.0 method payload carries a field a " +
   "drift score could be derived from, so the Guardian must originate it";
+
+/** A tool name `mapping.yaml`'s `by_tool` table deliberately does not carry,
+ * so this round trip reads the declared default rather than one tool's row.
+ * Passing a real tool name would make the measurement depend on which tools
+ * happen to be registered. */
+const CONFORMANCE_PROBE_TOOL = "conformance_probe";
 
 /**
  * Inverts mapping.yaml's `verdicts` table: ACS decision -> AGT verdict. Two
@@ -210,7 +216,7 @@ function roundTrip(
 
   let acs: AcsDecision;
   try {
-    acs = mapVerdict(agt, mapping, point);
+    acs = mapVerdict(agt, mapping, point, resolvePolicyTargetArgument(mapping, point, CONFORMANCE_PROBE_TOOL));
   } catch (error) {
     // mapVerdict's own sentence, either way: it names the row and the rule it
     // could not find better than a reason written here would, and rewriting

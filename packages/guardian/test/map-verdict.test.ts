@@ -1,11 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "../src/map-verdict.ts";
+import type { AgtVerdict } from "agt-bridge";
+import {
+  loadMapping,
+  mapVerdict,
+  resolveInterventionPoint,
+  resolvePolicyTargetArgument,
+  type Mapping,
+} from "../src/map-verdict.ts";
 
 const m = loadMapping("mapping.yaml");
 
 describe("mapVerdict", () => {
   it("maps allow to allow", () => {
-    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").decision).toBe("allow");
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call", "command").decision).toBe("allow");
   });
 
   it("maps deny, carrying reason and message into ACS fields", () => {
@@ -13,6 +20,7 @@ describe("mapVerdict", () => {
       { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X at offset 5" },
       m,
       "pre_tool_call",
+      "command",
     );
     expect(d.decision).toBe("deny");
     expect(d.reason_codes).toEqual(["destructive_shell_command_blocked"]);
@@ -25,6 +33,7 @@ describe("mapVerdict", () => {
       { decision: "warn", reason: "drift_detected", message: "drift 0.8" },
       m,
       "pre_tool_call",
+      "command",
     );
     expect(d.decision).toBe("allow");
     expect(d.policy_references?.length).toBeGreaterThan(0);
@@ -32,17 +41,18 @@ describe("mapVerdict", () => {
   });
 
   it("distinguishes warn-allow from clean allow by policy_references", () => {
-    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").policy_references ?? []).toHaveLength(0);
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call", "command").policy_references ?? []).toHaveLength(0);
   });
 
   it("maps escalate to ask and transform to modify", () => {
-    expect(mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call").decision)
+    expect(mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call", "command").decision)
       .toBe("ask");
     expect(
       mapVerdict(
         { decision: "transform", reason: "redacted", transform: { path: "$policy_target", value: "x" } },
         m,
         "pre_tool_call",
+        "command",
       ).decision,
     ).toBe("modify");
   });
@@ -56,7 +66,7 @@ describe("mapVerdict", () => {
         dec === "transform"
           ? { decision: dec, reason: "r", transform: { path: "$policy_target", value: "x" } }
           : { decision: dec, reason: "r" };
-      const out = mapVerdict(verdict, m, "pre_tool_call").decision;
+      const out = mapVerdict(verdict, m, "pre_tool_call", "command").decision;
       expect(out.toLowerCase()).toBe(out);
     }
   });
@@ -67,7 +77,7 @@ describe("mapVerdict", () => {
   // evaluation-failure catch (server.test.ts) has to survive without turning
   // it into an HTML 500 or a silent decision.
   it("throws when require_policy_references is set but verdict.reason is empty", () => {
-    expect(() => mapVerdict({ decision: "warn" }, m, "pre_tool_call")).toThrow(/require_policy_references/);
+    expect(() => mapVerdict({ decision: "warn" }, m, "pre_tool_call", "command")).toThrow(/require_policy_references/);
   });
 
   // Confirms mapVerdict reads `field_synthesis.reason_codes.wrap` from the
@@ -75,7 +85,7 @@ describe("mapVerdict", () => {
   // the table changes behaviour.
   describe("field_synthesis.reason_codes.wrap is read, not assumed", () => {
     it("wraps per the declared mode, on the shipped mapping", () => {
-      expect(mapVerdict({ decision: "deny", reason: "r" }, m, "pre_tool_call").reason_codes).toEqual(["r"]);
+      expect(mapVerdict({ decision: "deny", reason: "r" }, m, "pre_tool_call", "command").reason_codes).toEqual(["r"]);
     });
 
     it("throws for a wrap mode this mapping cannot express, rather than array-wrapping anyway", () => {
@@ -88,7 +98,7 @@ describe("mapVerdict", () => {
         field_synthesis: { ...m.field_synthesis, reason_codes: { source: "verdict.reason", wrap: "csv" } },
       } as unknown as Mapping;
 
-      expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode, "pre_tool_call")).toThrow(
+      expect(() => mapVerdict({ decision: "deny", reason: "r" }, unknownMode, "pre_tool_call", "command")).toThrow(
         /field_synthesis\.reason_codes\.wrap as "csv"/,
       );
     });
@@ -110,6 +120,7 @@ describe("mapVerdict", () => {
         },
         m,
         "pre_tool_call",
+        "command",
       );
       expect(d.reasoning).toBe(
         "This command was blocked because it matches a destructive-shell-command pattern. " +
@@ -127,11 +138,11 @@ describe("mapVerdict", () => {
         reason: "redaction_applied",
         transform: { path: "$policy_target", value: "echo [REDACTED]" },
       };
-      expect(mapVerdict(verdict, m, "pre_tool_call").reasoning).toBe(
-        "A secret in this command was replaced before it ran. " +
+      expect(mapVerdict(verdict, m, "pre_tool_call", "command").reasoning).toBe(
+        "A secret in this step's arguments was replaced before it ran. " +
           "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
       );
-      expect(mapVerdict(verdict, m, "post_tool_call").reasoning).toBe(
+      expect(mapVerdict(verdict, m, "post_tool_call", undefined).reasoning).toBe(
         "Secrets in this output were replaced before the model saw them. " +
           "Policy: redaction_applied, from AGT's stock bundle (agt_stock).",
       );
@@ -146,6 +157,7 @@ describe("mapVerdict", () => {
         { decision: "deny", reason: "some_future_agt_rule", message: "whatever AGT said" },
         m,
         "pre_tool_call",
+        "command",
       );
       expect(d.reasoning).toBe(
         "This step was decided by AGT's stock policy bundle. " +
@@ -154,7 +166,7 @@ describe("mapVerdict", () => {
     });
 
     it("omits the detail clause when AGT supplied no message", () => {
-      const d = mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call");
+      const d = mapVerdict({ decision: "escalate", reason: "approval_required" }, m, "pre_tool_call", "command");
       expect(d.reasoning).toBe(
         "This step needs human approval before it can run. " +
           "Policy: approval_required, from AGT's stock bundle (agt_stock).",
@@ -165,7 +177,7 @@ describe("mapVerdict", () => {
     // sentence for it would put reasoning on the one decision whose whole
     // signature is the absence of it.
     it("leaves a clean allow with no reasoning at all", () => {
-      expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").reasoning).toBeUndefined();
+      expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call", "command").reasoning).toBeUndefined();
     });
 
     // Composition is what a `template` asks for. A mapping that declares only
@@ -183,6 +195,7 @@ describe("mapVerdict", () => {
         { decision: "deny", reason: "destructive_shell_command_blocked", message: "matched pattern X at offset 5" },
         sourceOnly,
         "pre_tool_call",
+        "command",
       );
       expect(d.reasoning).toBe("matched pattern X at offset 5");
     });
@@ -265,6 +278,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
       },
       m,
       "pre_tool_call",
+      "command",
     );
     expect(decision.decision).toBe("modify");
     expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
@@ -275,6 +289,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
       { decision: "transform", reason: "redaction_applied", transform: { path: "$policy_target", value: "x" } },
       m,
       "pre_tool_call",
+      "command",
     );
     expect(decision.reason_codes).toEqual(["redaction_applied"]);
     expect(decision.policy_references).toEqual([{ policy_id: "agt_stock", rule_id: "redaction_applied" }]);
@@ -283,9 +298,9 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
   // A MODIFY with no modifications is invalid per §6, and silently emitting
   // one would make the host apply nothing while reporting a rewrite. Fail loudly.
   it("throws when a transform verdict carries no transform object", () => {
-    expect(() => mapVerdict({ decision: "transform", reason: "redaction_applied" }, m, "pre_tool_call")).toThrow(
-      /transform/,
-    );
+    expect(() =>
+      mapVerdict({ decision: "transform", reason: "redaction_applied" }, m, "pre_tool_call", "command"),
+    ).toThrow(/transform/);
   });
 
   it("throws when the transform names a path this mapping cannot express", () => {
@@ -294,19 +309,20 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
         { decision: "transform", reason: "x", transform: { path: "$.some.other.leaf", value: "y" } },
         m,
         "pre_tool_call",
+        "command",
       ),
     ).toThrow(/\$policy_target/);
   });
 
   it("leaves every other verdict's shape untouched", () => {
-    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call").modifications).toBeUndefined();
-    expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m, "pre_tool_call").modifications)
+    expect(mapVerdict({ decision: "allow" }, m, "pre_tool_call", "command").modifications).toBeUndefined();
+    expect(mapVerdict({ decision: "deny", reason: "r", message: "m" }, m, "pre_tool_call", "command").modifications)
       .toBeUndefined();
     // `escalate -> ask` is asserted above, in the test whose subject that is;
     // this line is about the same thing as its two neighbours -- that only a
     // `modify` grows a `modifications` object.
     expect(
-      mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m, "pre_tool_call")
+      mapVerdict({ decision: "escalate", reason: "approval_required", message: "m" }, m, "pre_tool_call", "command")
         .modifications,
     ).toBeUndefined();
   });
@@ -339,6 +355,7 @@ describe("mapVerdict — transform becomes a MODIFY that carries modifications",
         { decision: "transform", reason: "x", transform: { path: "$policy_target", value: "y" } },
         withUnsupportedInto,
         "pre_tool_call",
+        "command",
       ),
     ).toThrow(/modified_content/);
   });
@@ -359,7 +376,7 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
   } as const;
 
   it("maps a post-tool transform to a redaction on the output path", () => {
-    const decision = mapVerdict(transformVerdict, m, "post_tool_call");
+    const decision = mapVerdict(transformVerdict, m, "post_tool_call", undefined);
     expect(decision.decision).toBe("modify");
     expect(decision.modifications).toEqual({
       redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
@@ -371,6 +388,7 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
       { decision: "transform", reason: "redaction_applied", transform: { path: "$policy_target", value: "echo [REDACTED]" } },
       m,
       "pre_tool_call",
+      "command",
     );
     expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
   });
@@ -379,7 +397,7 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
   // would be rejected by the Guardian's own response validation.
   it("never emits both shapes at once", () => {
     for (const point of ["pre_tool_call", "post_tool_call"]) {
-      const mods = mapVerdict(transformVerdict, m, point).modifications as Record<string, unknown>;
+      const mods = mapVerdict(transformVerdict, m, point, "command").modifications as Record<string, unknown>;
       expect(["redactions", "parameter_overrides"].filter((k) => k in mods)).toHaveLength(1);
       expect("modified_content" in mods).toBe(false);
     }
@@ -416,7 +434,7 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
       "post_model_call",
       "no_such_point",
     ]) {
-      expect(() => mapVerdict(transformVerdict, m, point)).toThrow(/no modifications rule/);
+      expect(() => mapVerdict(transformVerdict, m, point, undefined)).toThrow(/no modifications rule/);
     }
   });
 
@@ -432,7 +450,69 @@ describe("mapVerdict — the modifications synthesis is per intervention point",
         { decision: "transform", reason: "x", transform: { path: "$policy_target", value: { some: "object" } } },
         m,
         "post_tool_call",
+        undefined,
       ),
     ).toThrow(/replacement/);
+  });
+});
+
+describe("which argument a tool's policy target is read from", () => {
+  const shipped = loadMapping("mapping.yaml");
+
+  it("answers the argument the table names for that tool", () => {
+    expect(resolvePolicyTargetArgument(shipped, "pre_tool_call", "WebFetch")).toBe("url");
+    expect(resolvePolicyTargetArgument(shipped, "pre_tool_call", "Bash")).toBe("command");
+  });
+
+  it("falls back to the default for a tool the table does not name", () => {
+    expect(resolvePolicyTargetArgument(shipped, "pre_tool_call", "SomeToolNobodyRegistered")).toBe("command");
+  });
+
+  it("answers nothing for a gate that rewrites a payload leaf rather than an argument", () => {
+    expect(resolvePolicyTargetArgument(shipped, "post_tool_call", "Bash")).toBeUndefined();
+  });
+
+  it("throws for a point the mapping has no row for at all", () => {
+    expect(() => resolvePolicyTargetArgument(shipped, "not_a_point", "Bash")).toThrow(/no row/);
+  });
+
+  it("throws when the table names neither a default nor an entry for this tool", () => {
+    const broken = {
+      intervention_points: {
+        pre_tool_call: { acs_method: "steps/toolCallRequest", policy_target_argument: { by_tool: { Bash: "command" } } },
+      },
+    } as unknown as Mapping;
+    expect(() => resolvePolicyTargetArgument(broken, "pre_tool_call", "WebFetch")).toThrow(/default/);
+  });
+});
+
+describe("a rewrite lands on the argument the tool actually sent it in", () => {
+  const shipped = loadMapping("mapping.yaml");
+  const redaction: AgtVerdict = {
+    decision: "transform",
+    reason: "redaction_applied",
+    transform: { path: "$policy_target", value: "https://docs.anthropic.com/?t=[REDACTED]" },
+  };
+
+  it("keys the parameter override by the resolved argument, not by a literal", () => {
+    expect(mapVerdict(redaction, shipped, "pre_tool_call", "url").modifications).toEqual({
+      parameter_overrides: { url: "https://docs.anthropic.com/?t=[REDACTED]" },
+    });
+  });
+
+  it("keys a shell rewrite the same way, from the same declaration", () => {
+    expect(mapVerdict(redaction, shipped, "pre_tool_call", "command").modifications).toEqual({
+      parameter_overrides: { command: "https://docs.anthropic.com/?t=[REDACTED]" },
+    });
+  });
+
+  it("refuses to report a rewrite with no argument to land it on", () => {
+    expect(() => mapVerdict(redaction, shipped, "pre_tool_call", undefined)).toThrow(/policy_target_argument/);
+  });
+
+  it("leaves the result gate's redaction pointer alone -- it addresses a payload leaf, not an argument", () => {
+    expect(mapVerdict(redaction, shipped, "post_tool_call", undefined).modifications).toEqual({
+      redactions: [{ path: "/outputs/0/value", replacement: "https://docs.anthropic.com/?t=[REDACTED]" }],
+    });
   });
 });
