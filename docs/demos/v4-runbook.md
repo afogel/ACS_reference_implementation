@@ -421,6 +421,59 @@ segment rather than the leaf:
 {"decision":"block","reason":"guardian's modifications could not be applied: modifications cannot be honoured as specified (§6.3): redaction path \"/outputs/9/value\" addresses \"/outputs/9\", which is not present in the ACS document these pointers address (this step's own request or result payload) -- applying it would add a field and leave the original value in place","hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":{"stdout":"[OUTPUT WITHHELD BY POLICY]","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false}}}
 ```
 
+## The two dispositions this gate cannot carry out either
+
+An `ask` and a `defer` are answerable at the *request* gate: Claude Code has a
+`permissionDecision: "ask"` there, and a call that has not run yet can wait. Neither move
+exists here. The tool has already run, its result has already formed, and there is no prompt
+for "the model has not read this yet — may it?", so an ask has nothing left to ask about and a
+defer has nothing to hold. What survives of both is the only part this host can act on: the
+output is not deliverable as it stands. So `PostToolUse`'s `ask` and `defer` entries render
+exactly what its `deny` renders.
+
+Both captured through the real shim, against a stub Guardian, with the same secret-bearing
+payload as above and a **`proceed`** posture negotiated — the ACS default, and the posture that
+makes the capture worth having:
+
+```bash
+printf '%s' '<the secret-bearing PostToolUse payload above>' \
+  | ACS_GUARDIAN_URL=<stub> bun run hosts/claude-code/acs-hook.ts
+```
+
+`{"decision":"ask","reasoning":"a human should see this output first","ask_details":{"approver":"security-team","question":"release this output?","timeout_seconds":300}}`:
+
+```json
+{"decision":"block","reason":"a human should see this output first","hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":{"stdout":"[OUTPUT WITHHELD BY POLICY]","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false}}}
+```
+
+`{"decision":"defer","reasoning":"waiting on an out-of-band approval","defer_details":{"reason":"awaiting change ticket","resolution_method":"external","resolution_timeout_ms":300000}}`:
+
+```json
+{"decision":"block","reason":"waiting on an out-of-band approval","hookSpecificOutput":{"hookEventName":"PostToolUse","updatedToolOutput":{"stdout":"[OUTPUT WITHHELD BY POLICY]","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false}}}
+```
+
+Both `ask_details` and `defer_details` are well-formed and inside their windows on purpose. An
+ask or defer whose window the host cannot read, or has already passed, never reaches these
+entries at all: `validateDecision` substitutes a `deny` for it, which withholds through
+machinery that was never in question. These captures are the entries themselves.
+
+**What this looked like before those two entries existed, and it is the reason they do.** The
+`decisions` block named `allow`, `deny` and `modify`. An ask arriving here matched none of them,
+so `renderDecision` threw, `governStep`'s render stage caught the throw, and the deployment's
+negotiated `on_decision_failure` posture answered it — under the shipped default, `proceed`,
+which renders an `allow`: **the full unredacted output delivered**, with an audit line reading
+`outcome: "proceeded"`, `failure.kind: "decision_unrenderable"`. A Guardian asking for a human
+to see the output first was answered by handing it to the model. The request gate fails both of
+these closed; this gate failed open, and the asymmetry was the defect.
+
+**And what it costs, which is a real loss rather than a technicality.** The question is not
+asked. There is no way on this host to put "may the model read this output" to a person, and no
+way to release the output afterwards — once `[OUTPUT WITHHELD BY POLICY]` has reached the model,
+the step's own answer is gone. So an ask a human would have approved is over-blocked here,
+silently. That is the side to be wrong on at a gate whose whole job is to stop a secret
+reaching a model, and it stops being the answer the moment a host can hold a formed result
+pending.
+
 ## What shipping the rule changed at the *request* gate
 
 `redact` now lives in the tracked config, and AGT's stock priority chain consults its
@@ -479,7 +532,7 @@ worth stating exactly, because the mechanism and the demo diverge here.
 
 The mechanism is closed. `PostToolUse`'s `modify` entry declares
 `hookSpecificOutput.additionalContext: { from: reasoning, type: string }`
-(`hosts/claude-code/claude-code.hookmap.yaml:183-186`) — this event's own field for text the
+(`hosts/claude-code/claude-code.hookmap.yaml:214-217`) — this event's own field for text the
 model reads — closing at the result gate the same asymmetry V3 closed for `PreToolUse`'s
 `modify`. It is exercised end to end, against a Guardian that sends a `reasoning`, by
 `hosts/claude-code/test/post-tool-use.test.ts`'s "says why it redacted" case.

@@ -54,13 +54,20 @@ rather than configuration:
   each `intervention_points` row. A point with **no** synthesis rule cannot express a transform
   at all, and `mapVerdict` throws into the honoured-deny path rather than returning a `modify`
   the host has nothing to apply.
-- **A deny at this gate has to withhold.** `decision: block` alone injects a reason and
-  suppresses nothing — the tool has already run and its result has already formed — so it would
-  *report* a withholding that never happened, the same "reported but never took effect" defect
-  V3 found when V1 copied a raw `modifications` object into `updatedInput`. A result-gate deny
-  renders `block` **and** a shape-preserving replacing output. The two modifications this host
-  cannot apply (`modified_content`, and a redaction that never reaches the projected leaf) both
-  become withholding denies for that reason.
+- **A decision that withholds at this gate has to withhold.** `decision: block` alone injects a
+  reason and suppresses nothing — the tool has already run and its result has already formed —
+  so it would *report* a withholding that never happened, the same "reported but never took
+  effect" defect V3 found when V1 copied a raw `modifications` object into `updatedInput`. So
+  every disposition that withholds here renders `block` **and** a shape-preserving replacing
+  output. Which dispositions those are is a rule rather than a list
+  (`withholdsAtResultGate`, `packages/host-adapter/src/result-output.ts`): a disposition
+  delivers at this gate only if it says what to deliver, so `allow` and `modify` deliver and
+  everything else withholds. That covers a policy `deny`, the two modifications this host cannot
+  apply (`modified_content`, and a redaction that never reaches the projected leaf), **and an
+  `ask` or an unexpired `defer`** — neither of which this gate can carry out at all, since there
+  is no permission left to seek once the tool has run and no state to hold a formed result in.
+  The shim's own load-time gate reads the same rule, so a hookmap entry that withholds without
+  saying so, or says so without withholding, is refused at exit 2 rather than at runtime.
 
 - **The handshake had to say the gate exists.** A slice that adds a method to the wire has not
   finished until the wire says so. Until V4 corrected them, the ClientHello offered
@@ -165,6 +172,15 @@ it are corrected in place there.
   unreachable outright: `redact.replacement` is user-editable, so a replacement equal to the
   matched text yields an identical value, at the cost of withholding a legitimate tool result
   entirely.
+- **A human in the loop over tool *output*.** An `ask` reaching this gate withholds, and nobody
+  is asked. Claude Code has no prompt for "the tool ran, may the model read what it produced"
+  and no way to release the output afterwards, so a Guardian that wants a person to see a result
+  before the model does gets a withholding instead of a question — and an ask that person would
+  have approved is over-blocked, silently, with the step's own answer gone once
+  `[OUTPUT WITHHELD BY POLICY]` has reached the model. The same over-block on the same safe side
+  as the preflight above, and for the same reason: the alternative is delivering an output a
+  policy asked to hold. It stops being the answer for a host that can hold a formed result
+  pending, and no host wired here can.
 - **A host that *acts* on the negotiated method set.** Both sides now declare the result method
   (see above), so the wire is honest for a host that reads `methods_evaluated` — but this host
   is not one: it asks the Guardian at every hook its hookmap maps, whatever the ServerHello
