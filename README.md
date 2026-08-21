@@ -94,8 +94,9 @@ This constructs the AGT bridge once, against the pinned stock policy bundle (`po
 
 ```
 Guardian listening at http://localhost:8787/acs
-Envelope log (S6): .acs/envelopes.jsonl
-Failure posture (D8): proceed   (override with ACS_ON_DECISION_FAILURE=deny)
+Envelope log: .acs/envelopes.jsonl
+Session context log: .acs/session-context.jsonl
+Failure posture: proceed   (override with ACS_ON_DECISION_FAILURE=deny)
 ```
 
 Leave it running. `hosts/claude-code/acs-hook.ts` defaults to exactly this URL; override with `ACS_GUARDIAN_URL` if it's listening elsewhere.
@@ -107,8 +108,10 @@ bun run inspector
 ```
 
 ```
-Envelope Inspector — tailing .acs/envelopes.jsonl
+Envelope Inspector — tailing .acs/envelopes.jsonl, .acs/audit.jsonl, and .acs/session-context.jsonl
 Ctrl-C to stop.
+
+last_observed_posture=(none observed)  fail-open proceeds=0
 ```
 
 Every ACS envelope crossing the Guardian's wire is printed here as it happens — request and response, with a decision badge on responses:
@@ -141,7 +144,7 @@ Ask it to run a destructive shell command, e.g. *"Use the Bash tool to run exact
 
 Watch the Inspector, not just the transcript, if the deny does not appear: the model may decline to issue the tool call at all on its own judgment, in which case no hook fires and the envelope log stays empty. And if you are scripting this rather than watching it, use `echo rm -rf /` as the payload — it matches the same pattern at offset 5 and is inert if it ever did execute, whereas an unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test.
 
-**What was actually run against this tree to write this quickstart.** Steps 1–3 were run end to end: `bun install` completes clean, `bun run guardian` prints all three lines above, and `bun run inspector` rendered every envelope quoted here — the badge line above is pasted from that run, not composed. Steps 4–5 were run twice, two different ways. (The Guardian's third startup line and the `PreToolUse` capture below were re-taken during V4; the third line arrived with V3's negotiated posture and this paragraph had gone on claiming two.)
+**What was actually run against this tree to write this quickstart.** Steps 1–3 were run end to end: `bun install` completes clean, `bun run guardian` prints all four lines above, and `bun run inspector` rendered every envelope quoted here — the badge line above is pasted from that run, not composed. Steps 4–5 were run twice, two different ways. (The Guardian's third startup line and the `PreToolUse` capture below were re-taken during V4; the third line arrived with V3's negotiated posture and this paragraph had gone on claiming two. The Guardian's fourth line and the Inspector's whole banner were re-taken during V6, which had given both processes a session-context log and re-transcribed neither. Twice is a pattern rather than an accident, so those two fenced blocks are now re-taken by the suite instead of by whoever remembers: [`test/readme-captures.test.ts`](test/readme-captures.test.ts) runs both processes and compares their real stdout against exactly those fences.)
 
 First, by piping a Claude Code–shaped `PreToolUse` payload on stdin straight into the hook shim against a running Guardian — the same way the project's own tests verify it. The shim never executes the command; it only asks the Guardian for a decision:
 
@@ -211,10 +214,12 @@ tool call.
 | `ACS_GUARDIAN_PORT` | `8787` | Port for the `POST /acs` JSON-RPC endpoint |
 | `ACS_MANIFEST_PATH` | `policy/manifest.yaml` | The AGT manifest, which names the policy bundle and any annotators. `policy/manifest.drift.yaml` is the second one V3 added to make `warn` reachable |
 | `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope log sink (S6) records every envelope crossing the wire, in both directions, before validation |
+| `ACS_SESSION_CONTEXT_LOG` | `.acs/session-context.jsonl` | Where the session-context log (V6) records one line per governed step — that session's hash-chain entry, which is what the Inspector renders as a chain and checks for breaks |
 
-**The Inspector** (`bun run inspector`): reads `ACS_ENVELOPE_LOG` and
-`ACS_AUDIT_LOG` with the same defaults, and both are overridable on the
-command line (`--envelope-log`, `--audit-log`), which takes precedence. It also
+**The Inspector** (`bun run inspector`): reads `ACS_ENVELOPE_LOG`,
+`ACS_AUDIT_LOG` and `ACS_SESSION_CONTEXT_LOG` with the same defaults, and all
+three are overridable on the command line (`--envelope-log`, `--audit-log`,
+`--session-context-log`), which takes precedence. It also
 honours the conventional `NO_COLOR`, and colours nothing when stdout is not
 a TTY.
 
@@ -243,7 +248,7 @@ V2 ("Envelope Inspector") is implemented: the Guardian records every ACS envelop
 
 V3 ("all five dispositions, and both failure postures") is implemented: AGT's five verdicts (`allow`, `deny`, `escalate`, `transform`, `warn`) all arrive over the ACS wire as real decisions, driven only from `data.agt.defaults.config` over the same pinned, unforked bundle — see [`slices/v3/README.md`](slices/v3/README.md) and [`docs/demos/v3-runbook.md`](docs/demos/v3-runbook.md) for the real captured output, one section per verdict, with the exact `data.json` diff behind each. `escalate` and `transform` needed only configuration (`data.agt.defaults.config`) against V1's own manifest, unchanged; `warn` needed one more thing — a manifest-declared annotator, dispatched through the SDK's `annotatorDispatcher` — because `input.annotations` never reaches policy input from the ACS snapshot itself. That annotator lives in a second, separate manifest ([`policy/manifest.drift.yaml`](policy/manifest.drift.yaml)); `policy/manifest.yaml` is untouched, so nothing about V1's or V2's existing behaviour changed. Also delivered: a negotiated, file-backed failure posture (`applyFailurePosture`, N6) that resolves what happens when no decision arrives at all — Guardian silent, transport dead, no usable response — auditing every fail-open `proceed` (S14), kept structurally separate from an AGT `deny` verdict, which is always honoured regardless of posture (R1.5).
 
-`.acs/` now holds three kinds of local artifact, all gitignored and none ever committed: the envelope log (`envelopes.jsonl`, S6, V2), the audit sink (`audit.jsonl`, S14, V3) recording every fail-open proceed and every posture-driven block, and the negotiated per-session config (`sessions/<session_id>.json`, S13, V3) that lets a fresh hook subprocess find the posture a previous one negotiated. `bun run inspector` tails **two** of them — the envelope log and the audit log — and derives its posture badge (U23, N51) from the second: the last posture an audit entry carried, plus a running count of audited fail-open proceeds. Nothing opens `.acs/sessions/`.
+`.acs/` now holds **four** kinds of local artifact, all gitignored and none ever committed: the envelope log (`envelopes.jsonl`, S6, V2), the audit sink (`audit.jsonl`, S14, V3) recording every fail-open proceed and every posture-driven block, the negotiated per-session config (`sessions/<session_id>.json`, S13, V3) that lets a fresh hook subprocess find the posture a previous one negotiated, and the session-context log (`session-context.jsonl`, V6) carrying each session's hash chain, one line per governed step. `bun run inspector` tails **three** of them — the envelope log, the audit log, and the session-context log — and derives its posture badge (U23, N51) from the audit log: the last posture an audit entry carried, plus a running count of audited fail-open proceeds. Nothing opens `.acs/sessions/`.
 
 **The two logs cannot be joined on `session_id`.** The audit log records the host's own raw session identifier — the same key the session config is filed under — while an envelope carries `metadata.session_id`, which ACS's schemas constrain to `format: uuid`, so a host session id that is not already a UUID has one derived from it on the way out. The Inspector labels the audit value `audit_session=` for exactly that reason, and never correlates the two. Making them joinable is V6's work, not this slice's.
 
