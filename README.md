@@ -212,6 +212,7 @@ tool call.
 |---|---|---|
 | `ACS_ON_DECISION_FAILURE` | `proceed` | The failure posture this deployment declares in its ServerHello — what a host should do when *no decision arrives at all*. `proceed` is the ACS default (R1.7, `handshake.json`'s own `default`); `deny` fails closed. Any other value **throws at startup** rather than falling back, because guessing which posture a typo meant is the silent bypass this project exists to remove |
 | `ACS_GUARDIAN_PORT` | `8787` | Port for the `POST /acs` JSON-RPC endpoint |
+| `ACS_GUARDIAN_HOST` | `127.0.0.1` | The interface the endpoint binds. Loopback by default because the wire is unauthenticated — no auth, no origin check, no request signing — so anything that can route to the port is both a policy oracle and a policy sink. Set it (`0.0.0.0`) only when a deployment genuinely needs a routable bind, and know that you are opting into that |
 | `ACS_MANIFEST_PATH` | `policy/manifest.yaml` | The AGT manifest, which names the policy bundle and any annotators. `policy/manifest.drift.yaml` is the second one V3 added to make `warn` reachable |
 | `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope log sink (S6) records every envelope crossing the wire, in both directions, before validation |
 | `ACS_SESSION_CONTEXT_LOG` | `.acs/session-context.jsonl` | Where the session-context log (V6) records one line per governed step — that session's hash-chain entry, which is what the Inspector renders as a chain and checks for breaks |
