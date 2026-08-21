@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 // see build-envelope.test.ts for the same arrangement.
 import { startGuardian, type StartedGuardian } from "guardian";
 import { buildEnvelope, loadHookmap, type Hookmap } from "../src/build-envelope.ts";
-import { createGuardianClient } from "../src/guardian-client.ts";
+import { createGuardianClient, GuardianResultCorrelationError } from "../src/guardian-client.ts";
 import { negotiateSessionConfig } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
 import { createSessionConfigStore } from "../src/session-config.ts";
@@ -87,6 +87,55 @@ describe("GuardianClient.post", () => {
     try {
       const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
       await expect(createGuardianClient(`http://localhost:${mock.port}/acs`).post(envelope)).rejects.toThrow();
+    } finally {
+      mock.stop(true);
+    }
+  });
+
+  it("throws when the transport id correlates but result.request_id names another request", async () => {
+    // The one a transport-only check cannot catch: `id` is echoed faithfully,
+    // so `fetch`'s own pairing and the JSON-RPC id check both pass, and what
+    // comes back is a real, well-formed decision -- about a different step.
+    // Answering this tool call with it is answering a question nobody asked.
+    const mock = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number };
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: { decision: "allow", request_id: crypto.randomUUID() },
+        });
+      },
+    });
+
+    try {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload("rm -rf /"), hookmap);
+      await expect(createGuardianClient(`http://localhost:${mock.port}/acs`).post(envelope)).rejects.toThrow(
+        GuardianResultCorrelationError,
+      );
+    } finally {
+      mock.stop(true);
+    }
+  });
+
+  it("leaves a ServerHello alone -- a result carrying no request_id is not an uncorrelated one", async () => {
+    // The check must not fire on the handshake, whose result is a ServerHello
+    // and has no request_id at all: `undefined` there means "this result is
+    // not about a step", not "this result is about someone else's step".
+    const mock = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number };
+        return Response.json({ jsonrpc: "2.0", id: body.id, result: { negotiated_version: "0.1.0" } });
+      },
+    });
+
+    try {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
+      const response = await createGuardianClient(`http://localhost:${mock.port}/acs`).post(envelope);
+
+      expect(response.result?.negotiated_version).toBe("0.1.0");
     } finally {
       mock.stop(true);
     }
@@ -177,6 +226,35 @@ describe("GuardianClient.requestDecision", () => {
 
     try {
       const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
+      const outcome = await createGuardianClient(`http://localhost:${mock.port}/acs`).requestDecision(envelope);
+
+      expect(outcome.decisionArrived).toBe(false);
+    } finally {
+      mock.stop(true);
+    }
+  });
+
+  it("answers 'no decision' for another request's decision, however well-formed it is", async () => {
+    // A decision that names a foreign request_id is not this step's decision,
+    // and the dangerous shape of it is `allow`: honouring it would let a
+    // benign step's verdict stand in for one this Guardian never ruled on.
+    // The throw from post lands in the same "no decision" answer as a dead
+    // transport, so the caller's posture path resolves it and nothing here
+    // has to invent a taxonomy for it.
+    const mock = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const body = (await req.json()) as { id: string | number };
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: { decision: "allow", request_id: crypto.randomUUID() },
+        });
+      },
+    });
+
+    try {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload("rm -rf /"), hookmap);
       const outcome = await createGuardianClient(`http://localhost:${mock.port}/acs`).requestDecision(envelope);
 
       expect(outcome.decisionArrived).toBe(false);

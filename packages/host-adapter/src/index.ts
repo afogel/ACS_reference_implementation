@@ -17,6 +17,7 @@ export {
 export {
   createGuardianClient,
   GuardianResponseMismatchError,
+  GuardianResultCorrelationError,
   type DecisionOrFailure,
   type GuardianClient,
   type JsonRpcRequest,

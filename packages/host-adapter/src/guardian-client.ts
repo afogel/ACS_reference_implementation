@@ -18,10 +18,17 @@
  * What a host DOES with `decisionArrived: false` -- negotiating and applying a
  * fail-open or fail-closed posture -- is not decided here.
  *
- * Correlation: buildEnvelope sets the envelope's top-level `id` equal to
+ * Correlation happens at two layers, because the two say different things.
+ * buildEnvelope sets the envelope's top-level `id` equal to
  * `params.request_id`. `fetch` already pairs one HTTP request with one
- * response, so the id check below is a defensive assertion against a Guardian
- * that echoes back the wrong id, not a lookup table for concurrent requests.
+ * response, so the transport-id check below is a defensive assertion against
+ * a Guardian that echoes back the wrong id, not a lookup table for concurrent
+ * requests. The ACS layer is a separate claim: `result.request_id` names the
+ * step the decision is ABOUT, and matching transport ids say nothing about
+ * it -- a Guardian, or anything else that reaches an unauthenticated socket,
+ * can answer with the right `id` and another step's decision. Both are
+ * checked, and both are checked in `post`, so no caller can hold a response
+ * that was never correlated.
  *
  * This module knows JSON-RPC, HTTP and ACS's decision vocabulary, nothing else
  * -- no policy-runtime vocabulary and no host vocabulary. It has no runtime
@@ -73,6 +80,21 @@ export class GuardianResponseMismatchError extends Error {
   }
 }
 
+/** Thrown when the Guardian's response correlates at the transport layer but
+ * its ACS result names a different request -- i.e. a real decision, about
+ * some other step. A sibling of GuardianResponseMismatchError rather than the
+ * same error: the transport id matching and the ACS request_id matching are
+ * different claims, and a reader of the message needs to know which one the
+ * Guardian broke. */
+export class GuardianResultCorrelationError extends Error {
+  constructor(requestId: unknown, resultRequestId: unknown) {
+    super(
+      `GuardianClient.post: result.request_id ${JSON.stringify(resultRequestId)} does not correlate with the request's request_id ${JSON.stringify(requestId)}`,
+    );
+    this.name = "GuardianResultCorrelationError";
+  }
+}
+
 /**
  * What came back when a decision was asked for. Exactly one of the two cases,
  * discriminated by the only question that matters at this seam: did a decision
@@ -107,8 +129,9 @@ export type GuardianClient = {
   requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure>;
   /**
    * The wire primitive: POSTs `envelope` as JSON, parses the JSON-RPC
-   * response, and returns it once its `id` is confirmed to match the
-   * request's. Throws for every delivery failure.
+   * response, and returns it once it is confirmed to answer this request --
+   * at the transport layer by `id`, and, when the result carries one, at the
+   * ACS layer by `request_id`. Throws for every delivery failure.
    *
    * For a method whose result is not a decision -- today only
    * `handshake/hello`, whose result is a ServerHello. A caller after a
@@ -131,6 +154,15 @@ export function createGuardianClient(url: string): GuardianClient {
 
     if (response.id !== envelope.id) {
       throw new GuardianResponseMismatchError(envelope.id, response.id);
+    }
+
+    // The ACS-layer claim, checked only when a result makes it: a ServerHello
+    // and a JSON-RPC error carry no request_id, and neither is broken here.
+    // `undefined !== envelope.params.request_id` would fire on a handshake,
+    // so the guard is on the result's field, not on the envelope's.
+    const resultRequestId = (response.result as { request_id?: unknown } | undefined)?.request_id;
+    if (resultRequestId !== undefined && resultRequestId !== envelope.params.request_id) {
+      throw new GuardianResultCorrelationError(envelope.params.request_id, resultRequestId);
     }
 
     return response;
