@@ -147,12 +147,19 @@ async function runHook(
  * A stub Guardian that negotiates a real session and then answers the step
  * call with `decision`.
  *
- * Used only for the two decisions the shipped bundle does not produce at this
- * gate -- a result-gate `deny`, and a `modify` whose redaction addresses a
- * field the result payload does not have. Both are decisions this host must
- * answer correctly, and a suite that could only exercise the bundle's own
- * `allow` and `modify` would leave them unpinned. Same precedent, and the same
+ * Used only for the decisions the shipped bundle does not produce at this gate
+ * -- a result-gate `deny`, a `modify` whose redaction addresses a field the
+ * result payload does not have, and an `ask` or a `defer` arriving where the
+ * step has already run. Every one of them is a decision this host must answer
+ * correctly, and a suite that could only exercise the bundle's own `allow` and
+ * `modify` would leave them unpinned. Same precedent, and the same
  * `handshake/hello` branch, as wire-shape.test.ts.
+ *
+ * `on_decision_failure: "proceed"` in that branch is load-bearing for the two
+ * ask/defer tests below rather than incidental: it is the ACS default and the
+ * posture this deployment ships, and it is the posture under which the gap
+ * those tests pin was a delivery. Under `deny` they would pass with the fix
+ * reverted, because the posture would withhold what the gate failed to.
  */
 async function answering<T>(decision: Record<string, unknown>, body: (url: string) => Promise<T>): Promise<T> {
   const stub = Bun.serve({
@@ -308,6 +315,102 @@ describe("the result gate, end to end through the real shim and a real Guardian"
     expect(JSON.parse(out.stdout)).toEqual({
       decision: "block",
       reason: "secret in output",
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: {
+          stdout: "[OUTPUT WITHHELD BY POLICY]",
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+          noOutputExpected: false,
+        },
+      },
+    });
+    expect(out.stdout).not.toContain("ghp_ABCDEF123456");
+  });
+
+  // AN ASK AT THE RESULT GATE, and the reason it is a withholding rather than a
+  // question. Claude Code has no way to ask a human about an output that
+  // already exists -- there is no permission left to grant at this event and no
+  // pending state to hold a formed result in -- so the only part of an ask this
+  // host can act on is that the output is not deliverable as it stands. The
+  // hookmap says so with the same three fields `deny` uses, and says at the site
+  // what that costs.
+  //
+  // WHAT THIS PINS, and it is not the mapping alone. Before it, the result
+  // gate's `decisions` block named `allow`, `deny` and `modify` and no more, so
+  // an ask arriving here threw at the render, `governStep`'s render stage caught
+  // it, and the negotiated posture answered -- which under the shipped default
+  // (`proceed`) DELIVERED the output in full, recorded as a decision that could
+  // not be rendered. The request gate fails both closed; this gate failed open,
+  // and the asymmetry was the defect.
+  //
+  // `ask_details` IS WHAT MAKES THIS TEST BITE. An ask carrying no usable
+  // `ask_details` never reaches a render as an ask at all: `resolveAsk`
+  // substitutes a deny for it, which withholds through the entry that was always
+  // there, and this test would then pass against the unfixed gate. Well-formed
+  // and unexpired is the only shape that reaches the hookmap's own `ask` entry.
+  it("withholds the output on an ask, which this host cannot put to a human at all", async () => {
+    const out = await answering(
+      {
+        decision: "ask",
+        reasoning: "a human should see this output first",
+        ask_details: { approver: "security-team", question: "release this output?", timeout_seconds: 300 },
+      },
+      (url) => runHook(postToolUsePayload("TOKEN=ghp_ABCDEF123456"), url),
+    );
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    expect(JSON.parse(out.stdout)).toEqual({
+      decision: "block",
+      // The policy's own sentence, not a substitution's: an ask that arrived
+      // intact renders through the hookmap's `ask` entry, so what reaches the
+      // transcript is what the Guardian said rather than an expiry message.
+      reason: "a human should see this output first",
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: {
+          stdout: "[OUTPUT WITHHELD BY POLICY]",
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+          noOutputExpected: false,
+        },
+      },
+    });
+    expect(out.stdout).not.toContain("ghp_ABCDEF123456");
+  });
+
+  // A DEFER INSIDE ITS WINDOW, which is the half `resolveDefer` deliberately
+  // does not touch: an unexpired defer is returned exactly as it arrived, so
+  // this host is handed a live "not yet" for an output that already exists. It
+  // has no state to hold one in, so "not yet" and "not at all" are the same
+  // delivery here, and the request gate above already reads a defer that way
+  // for the same reason -- ACS's own defer-details.json defaults an unresolved
+  // defer's timeout_decision to deny.
+  //
+  // `resolution_timeout_ms` is milliseconds and 300_000 of them will not elapse
+  // during a subprocess run, so this defer really is inside its window; a bare
+  // `defer` would be denied by `resolveDefer` for unreadable details and would
+  // pin nothing about the entry under test, exactly as a bare ask would.
+  it("withholds the output on a defer inside its window, having nowhere to hold it", async () => {
+    const out = await answering(
+      {
+        decision: "defer",
+        reasoning: "waiting on an out-of-band approval",
+        defer_details: {
+          reason: "awaiting change ticket",
+          resolution_method: "external",
+          resolution_timeout_ms: 300_000,
+        },
+      },
+      (url) => runHook(postToolUsePayload("TOKEN=ghp_ABCDEF123456"), url),
+    );
+
+    expect({ exitCode: out.exitCode, stderr: out.stderr }).toEqual({ exitCode: 0, stderr: "" });
+    expect(JSON.parse(out.stdout)).toEqual({
+      decision: "block",
+      reason: "waiting on an out-of-band approval",
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
         updatedToolOutput: {

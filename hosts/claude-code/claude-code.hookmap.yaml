@@ -150,6 +150,52 @@ hooks:
           decision:                             { value: block }
           reason:                               { from: reasoning, type: string }
           hookSpecificOutput.updatedToolOutput: { from: applied_output }
+      # WHY `ask` AND `defer` RENDER EXACTLY WHAT `deny` RENDERS. Both are the
+      # same three fields above, deliberately, and the reason is not that this
+      # gate is careless about the difference -- it is that at this gate there
+      # is no difference left to express. The tool has already run and its
+      # result has already formed: there is no permission left to grant, so an
+      # ask has nothing to ask about that has not already happened, and no
+      # pending state to hold an output in, so a defer has nothing to defer.
+      # What survives of either is the only part this host can act on -- the
+      # output is not deliverable as it stands -- and that is a withholding.
+      # The same least-wrong substitution the request gate above makes for
+      # `defer`, made here for one more disposition and for a stronger reason:
+      # there `ask` is a real answer Claude Code accepts, and here it is not a
+      # field this event has.
+      #
+      # WHAT IS LOST, and it is a real loss rather than a technicality: Claude
+      # Code has no way to ask a human about an output that already exists.
+      # There is no prompt for "the tool ran, may the model read what it
+      # produced" and no way to release the output afterwards if the answer is
+      # yes -- once the model has read `[OUTPUT WITHHELD BY POLICY]`, the step's
+      # own answer is gone. So an ask that a human would have approved is
+      # over-blocked here, silently, and a Guardian that wants a human in the
+      # loop over tool OUTPUT will not get one from this host until Claude Code
+      # grows a way to hold a formed result pending. Over-blocking is the side
+      # to be wrong on: the alternative is what this deployment did before these
+      # two entries existed -- neither was declared, so `renderDecision` threw,
+      # `governStep` answered the throw with the negotiated failure posture, and
+      # under the shipped default (`proceed`) the output an ask was raised about
+      # was delivered in full, recorded as a decision that could not be
+      # rendered.
+      #
+      # These two entries are why `withResultOutput` attaches a replacing output
+      # to every withholding rather than to `deny` alone: `from: applied_output`
+      # renders nothing when the decision does not carry one, so an ask entry
+      # declaring the block WITHOUT the adapter's widened rule would be exactly
+      # the log-line-pretending-to-be-a-suppression that acs-hook.ts's own gate
+      # refuses. The declaration and the mechanism are one change in two files.
+      ask:
+        output:
+          decision:                             { value: block }
+          reason:                               { from: reasoning, type: string }
+          hookSpecificOutput.updatedToolOutput: { from: applied_output }
+      defer:
+        output:
+          decision:                             { value: block }
+          reason:                               { from: reasoning, type: string }
+          hookSpecificOutput.updatedToolOutput: { from: applied_output }
       # The redaction itself. `applied_output` is the post-validation field
       # name, for the same reason `modify` at the request gate names
       # `applied_input` rather than `modifications`: what Claude Code accepts
@@ -162,8 +208,9 @@ hooks:
       # the model is handed altered text with nothing to say it was altered,
       # and may take `[REDACTED]` for the command's real answer.
       # `additionalContext` is this event's field for it, and the `allow`
-      # entry above already uses it, so the reason travels the same way at
-      # both dispositions of this gate.
+      # entry above already uses it, so the reason travels the same way at both
+      # dispositions of this gate that hand the model an output. The three that
+      # withhold one say why in `reason`, beside the block it belongs to.
       modify:
         output:
           hookSpecificOutput.updatedToolOutput: { from: applied_output }

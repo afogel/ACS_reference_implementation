@@ -89,6 +89,7 @@ import {
   loadHookmap,
   resolveSessionConfig,
   toSessionUuid,
+  withholdsAtResultGate,
   type Hookmap,
   type HostOutput,
   type SessionConfigStore,
@@ -165,8 +166,8 @@ function declaredAt(rule: DeclaredRule | undefined, outputPath: string): { value
  *   - `PostToolUse` sees what a step produced, and has no permission to grant.
  *     Its clean answer is genuinely nothing -- "deliver the output unchanged"
  *     -- so refusing an empty output there would exit 2 on every clean tool
- *     call. Its `deny` is the one that needs checking instead, because `block`
- *     alone reports a withholding that never happened.
+ *     call. Its withholding entries are the ones that need checking instead,
+ *     because `block` alone reports a withholding that never happened.
  *
  * Neither refusal is relaxed; each is asked of the gate it belongs to. A hook
  * this table has no entry for is a THROW, not a skip: an unchecked hook is an
@@ -226,39 +227,64 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
     emptyOutputIsHonest: false,
   },
   /**
-   * The result gate's own expectation, and it is about `deny` alone.
+   * The result gate's own expectation, and it is about the entries that
+   * withhold.
    *
    * Rendering deny as Claude Code's documented `{"decision":"block","reason":…}`
    * was tested directly against 2.1.227: the model received the real stdout AND
    * the block reason. The tool has already run and its result has already
    * formed, so `block` on its own REPORTS a suppression that did not happen:
    * it logs a withholding and performs none. Only the replacing output
-   * withholds anything, so a `deny` entry declaring one without the other is a
-   * hookmap that would log a withholding while delivering the secret.
+   * withholds anything, so an entry declaring one of the two without the other
+   * is a hookmap that would log a withholding while delivering the secret.
    *
-   * `allow` and `modify` need no check here: neither claims to withhold
+   * Asked of every entry that withholds here, not of `deny` by name, and the
+   * membership question is the adapter's to answer: `withholdsAtResultGate` is
+   * the same rule that decides which arriving decisions get a replacing output
+   * to render with, so a shim keeping its own copy could accept a hookmap whose
+   * `ask` declares a block the adapter never hands it anything to withhold with
+   * -- the exact log-line-pretending-to-be-a-suppression this check exists to
+   * refuse, reintroduced by the two ends drifting. Beyond `deny` the members are
+   * `ask` and `defer`: at an event where the tool has already run there is no
+   * permission left to seek and no pending state to hold an output in, so
+   * neither can be carried out and both withhold instead
+   * (claude-code.hookmap.yaml's own entries say what that costs).
+   *
+   * Both halves of the rule are refused, in both directions. An entry that
+   * withholds must declare the block AND the replacement -- one without the
+   * other is either a log line pretending to be a suppression or a suppression
+   * with nothing in the transcript saying why. And a declared block with no
+   * replacement is refused whichever entry declares it, including one this rule
+   * calls a delivery: an `allow` written that way would be the same false
+   * report.
+   *
+   * `allow` and `modify` need no check beyond that: neither claims to withhold
    * anything, and `loadHookmap` has already established that every entry
    * renders something.
    */
   PostToolUse: {
     assertDecisions(decisions, path, hookEventName) {
-      const named = `"hooks.${hookEventName}.decisions.deny"`;
-      const blockValue = declaredAt(decisions.deny, TOP_LEVEL_DECISION_PATH)?.value;
-      if (blockValue !== BLOCK) {
-        throw new Error(
-          `acs-hook: ${path}'s ${named} must declare a literal "${TOP_LEVEL_DECISION_PATH}" output field of ` +
-            `${JSON.stringify(BLOCK)}, and declares ${JSON.stringify(blockValue)} -- Claude Code reads a block ` +
-            `from the top level of this event's output, beside the "${HOOK_SPECIFIC_OUTPUT}" wrapper rather than ` +
-            `inside it.`,
-        );
-      }
-      if (declaredAt(decisions.deny, UPDATED_TOOL_OUTPUT_PATH) === undefined) {
-        throw new Error(
-          `acs-hook: ${path}'s ${named} declares "${TOP_LEVEL_DECISION_PATH}: ${BLOCK}" without a ` +
-            `"${UPDATED_TOOL_OUTPUT_PATH}" output field to replace the output with. The tool has already run at ` +
-            `this event, so a block injects a reason and suppresses nothing: a deny declared this way would report ` +
-            `a withholding that never happened while the original output was delivered.`,
-        );
+      for (const [decision, rule] of Object.entries(decisions)) {
+        const named = `"hooks.${hookEventName}.decisions.${decision}"`;
+        const blockValue = declaredAt(rule, TOP_LEVEL_DECISION_PATH)?.value;
+        const declaresReplacement = declaredAt(rule, UPDATED_TOOL_OUTPUT_PATH) !== undefined;
+        if (blockValue === BLOCK && !declaresReplacement) {
+          throw new Error(
+            `acs-hook: ${path}'s ${named} declares "${TOP_LEVEL_DECISION_PATH}: ${BLOCK}" without a ` +
+              `"${UPDATED_TOOL_OUTPUT_PATH}" output field to replace the output with. The tool has already run at ` +
+              `this event, so a block injects a reason and suppresses nothing: an entry declared this way would ` +
+              `report a withholding that never happened while the original output was delivered.`,
+          );
+        }
+        if (withholdsAtResultGate(decision) && blockValue !== BLOCK) {
+          throw new Error(
+            `acs-hook: ${path}'s ${named} must declare a literal "${TOP_LEVEL_DECISION_PATH}" output field of ` +
+              `${JSON.stringify(BLOCK)}, and declares ${JSON.stringify(blockValue)} -- an ACS ` +
+              `"${decision}" cannot be carried out at an event where the tool has already run, so what it can ` +
+              `do is withhold the output, and Claude Code reads the block that says so from the top level of ` +
+              `this event's output, beside the "${HOOK_SPECIFIC_OUTPUT}" wrapper rather than inside it.`,
+          );
+        }
       }
     },
     emptyOutputIsHonest: true,
@@ -335,7 +361,7 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
   const expectation = expectationFor(hookEventName);
   const wrapper = rendered[HOOK_SPECIFIC_OUTPUT];
 
-  // The runtime half of the result gate's two-part deny rule, and the case
+  // The runtime half of the result gate's two-part withholding rule, and the case
   // `emptyOutputIsHonest` would otherwise wave through. An empty wrapper means
   // "nothing to change, deliver the output as the tool produced it" -- which is
   // the honest answer for a clean result and a LIE beside `decision: block`. The

@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startGuardian } from "guardian";
+// The adapter's own rule for which dispositions withhold at a result gate,
+// read rather than restated: a copy here could pass a shipped hookmap the
+// shim's gate would refuse, or miss one it would accept.
+import { withholdsAtResultGate } from "host-adapter";
 
 const SHIM = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const MANIFEST = fileURLToPath(new URL("../../../policy/manifest.yaml", import.meta.url));
@@ -817,6 +821,67 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
+  // The third way the same rule can be broken, and the one that is not about
+  // `deny` at all: an entry for a disposition this event cannot carry out,
+  // declaring a DELIVERY. `additionalContext` alone is a perfectly renderable
+  // rule -- `loadHookmap` accepts it, the shim writes it, and Claude Code reads
+  // it and hands the model the output the tool produced with a note attached.
+  // For an `ask` that is a fail-open with a receipt: the Guardian said a human
+  // should see this first, and the model read it anyway.
+  //
+  // So the gate asks the adapter which dispositions withhold here rather than
+  // checking `deny` by name. Nothing about this hookmap is malformed, which is
+  // why nothing else would catch it: the two tests above both need an entry
+  // that says "block", and this one never does.
+  it("exits 2 (blocking) on a PostToolUse ask that declares a delivery instead of a withholding", async () => {
+    const dir = scratch();
+    const hookmapPath = join(dir, "ask-that-delivers.yaml");
+    writeFileSync(
+      hookmapPath,
+      "host: claude-code\n" +
+        "hooks:\n" +
+        "  PreToolUse:\n" +
+        "    acs_method: steps/toolCallRequest\n" +
+        "    tool_name: $.tool_name\n" +
+        "    arguments: $.tool_input\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.permissionDecision: { value: allow } } }\n" +
+        "      deny: { output: { hookSpecificOutput.permissionDecision: { value: deny } } }\n" +
+        "  PostToolUse:\n" +
+        "    acs_method: steps/toolCallResult\n" +
+        "    tool_name: $.tool_name\n" +
+        "    outputs: { from: $.tool_response.stdout, within: $.tool_response }\n" +
+        "    exit_status: { literal: success }\n" +
+        "    decisions:\n" +
+        "      allow: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n" +
+        "      deny:\n" +
+        "        output:\n" +
+        "          decision:                             { value: block }\n" +
+        "          hookSpecificOutput.updatedToolOutput: { from: applied_output }\n" +
+        // Renderable, honest-looking, and a delivery: the question is asked and
+        // the answer is handed over before anyone answers it.
+        "      ask: { output: { hookSpecificOutput.additionalContext: { from: reasoning, type: string } } }\n",
+    );
+    try {
+      const out = await runShim(resultPayload("TOKEN=ghp_ABCDEF123456"), {
+        ACS_GUARDIAN_URL: "http://127.0.0.1:1/acs",
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+        ACS_HOOKMAP_PATH: hookmapPath,
+      });
+      expect(out.exitCode).toBe(2);
+      expect(out.stdout).toBe("");
+      // Named by entry, not by the gate alone: the whole point is that the
+      // offending entry is the `ask` and not the `deny` beside it.
+      expect(out.stderr).toContain("hooks.PostToolUse.decisions.ask");
+      expect(out.stderr).toContain('"decision"');
+      expect(out.stderr).toContain("block");
+      expect(existsSync(join(dir, "sessions"))).toBe(false);
+    } finally {
+      unlinkSync(hookmapPath);
+    }
+  });
+
   // A fail-open, end to end. A result-gate `deny` withholds by carrying a
   // replacement for the output, and a leaf that is not prose is a leaf no
   // replacement can be expressed for. Discovering that at the render, with the
@@ -941,7 +1006,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
   // because Claude Code accepts different things at them. `PostToolUse` has no
   // permission to grant -- the tool has already run -- so requiring a
   // permissionDecision of it would be requiring a field that event does not
-  // have. What its `deny` needs instead is both halves of a withholding.
+  // have. What each of its WITHHOLDING entries needs instead is both halves of a
+  // withholding, and which entries those are is not a list this test keeps: it
+  // reads the adapter's own rule, the same one the shim's gate reads and the
+  // same one that decides which arriving decisions carry a replacing output. A
+  // shipped entry for a disposition that cannot be delivered at this event and
+  // declares no block fails here rather than at runtime -- which is exactly how
+  // `ask` and `defer` went missing from this block in the first place.
   it("still loads the real hookmap: every value each hook declares is one Claude Code accepts at that event", async () => {
     const declared = Bun.YAML.parse(readFileSync(REAL_HOOKMAP, "utf8")) as {
       hooks: Record<string, { decisions?: Record<string, { output?: Record<string, { value?: unknown }> }> }>;
@@ -961,12 +1032,25 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     expect(preToolUse).toEqual(preToolUse.map(({ decision }) => ({ decision, accepted: true })));
     expect(preToolUse.length).toBeGreaterThan(0);
 
-    const postToolUseDeny = declared.hooks.PostToolUse?.decisions?.deny?.output ?? {};
-    // `block` alone reports a withholding that did not happen -- the tool has
-    // already run. Both halves, or the entry is a log line pretending to be a
-    // suppression (Evidence 3).
-    expect(postToolUseDeny.decision?.value).toBe("block");
-    expect(postToolUseDeny["hookSpecificOutput.updatedToolOutput"]).toBeDefined();
+    // Every entry that withholds, not `deny` alone. `block` without the
+    // replacement reports a withholding that did not happen -- the tool has
+    // already run -- and the replacement without the block withholds while the
+    // transcript says nothing: both halves, or the entry is a log line
+    // pretending to be a suppression (Evidence 3).
+    const postToolUse = Object.entries(declared.hooks.PostToolUse?.decisions ?? {})
+      .filter(([decision]) => withholdsAtResultGate(decision))
+      .map(([decision, rule]) => ({
+        decision,
+        block: rule.output?.decision?.value,
+        withholds: rule.output?.["hookSpecificOutput.updatedToolOutput"] !== undefined,
+      }));
+    // The list itself, so a disposition dropped from the shipped file fails here
+    // -- an absent entry declares nothing, so a check that only walked what is
+    // present would pass on the very gap this pins.
+    expect(postToolUse.map(({ decision }) => decision).sort()).toEqual(["ask", "defer", "deny"]);
+    expect(postToolUse).toEqual(
+      postToolUse.map(({ decision }) => ({ decision, block: "block", withholds: true })),
+    );
 
     const dir = scratch();
     const out = await runShim(payload("ls -la"), {
