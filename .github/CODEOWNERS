@@ -1,0 +1,23 @@
+# Review is required where a silent change is a policy bypass rather than a
+# regression. That is a narrower set than "the whole repo": these are the paths
+# where a diff nobody read can make a governed tool call proceed ungoverned,
+# and nothing here will fail a test to tell you.
+#
+# Not a claim that everything else is unimportant — it is a claim that
+# everything else fails loudly.
+
+# The two sides of the wire. The Guardian decides; the adapter is the only
+# thing a host shim is allowed to trust about that decision.
+/packages/guardian/     @afogel
+/packages/host-adapter/ @afogel
+
+# Host shims. Each one is a process whose exit code an agent reads as
+# permission, so its failure modes are the fail-open surface.
+/hosts/                 @afogel
+
+# The policy bundle itself, the verdict-to-ACS translation table, and the
+# upstream pin. A change to any of these changes what is allowed without
+# changing a line of TypeScript.
+/policy/                @afogel
+/mapping.yaml           @afogel
+/agt.lock               @afogel
