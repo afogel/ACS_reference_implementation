@@ -59,12 +59,13 @@ export type HostOutputLocation = {
 };
 
 /**
- * What a result-gate `deny` puts in place of the output it withholds.
+ * What a withholding at a result gate puts in place of the output it
+ * withholds.
  *
- * A deny at this gate has to replace the output, not merely report a block:
- * the tool has already run and its result has already formed, so a block on
- * its own injects a reason and suppresses nothing (verified directly -- the
- * model received the real stdout and the block reason). The replacing
+ * A withholding at this gate has to replace the output, not merely report a
+ * block: the tool has already run and its result has already formed, so a
+ * block on its own injects a reason and suppresses nothing (verified directly
+ * -- the model received the real stdout and the block reason). The replacing
  * output is the half that actually withholds.
  *
  * Prose rather than an empty string, and prose that names policy rather than
@@ -76,9 +77,49 @@ export type HostOutputLocation = {
  */
 export const WITHHELD_OUTPUT = "[OUTPUT WITHHELD BY POLICY]";
 
-/** The ACS decision this module withholds an output for. Not a host value:
- * ACS's own disposition, the same string every other module here reads. */
-const DENY = "deny";
+/** The two ACS dispositions that hand a host something to deliver at a gate
+ * where the step has already run. Not host values: ACS's own dispositions,
+ * the same strings every other module here reads. Named as the delivering
+ * pair rather than as a list of withholdings because that is the direction
+ * the rule below runs in. */
+const DELIVERS_AS_PRODUCED = "allow";
+const DELIVERS_A_REPLACEMENT = "modify";
+
+/**
+ * Whether `decision` withholds the output at a gate where the step has already
+ * run -- the rule, stated once, that both the producer below and a host's own
+ * declaration gate read, so the two ends cannot come apart.
+ *
+ * A RULE AND NOT A LIST, so the next disposition ACS adds inherits it instead
+ * of needing an edit here: a disposition delivers at this gate only if it says
+ * what to deliver. `allow` says "what the tool produced" and `modify` carries a
+ * replacement of its own; everything else withholds. The default is the
+ * withholding one, which is also the fail-closed one -- a disposition this
+ * module has never heard of does not become a delivery by going unlisted.
+ *
+ * `ask` and `defer` are the two worth stating, because at the OTHER kind of
+ * gate neither withholds and both are answerable: a gate deciding whether a
+ * step RUNS can hold the call while a human is asked, or leave it pending.
+ * Here there is nothing left to hold. The step has run, its result exists, and
+ * there is no permission left to seek -- whatever an approver would say
+ * afterwards, the output is not deliverable now, and "not deliverable now" is
+ * what withholding means. So both collapse onto `deny`'s shape at this gate
+ * and only at this gate: a request gate keeps its three-valued ask, and that
+ * asymmetry is the honest part rather than an oversight.
+ *
+ * WHAT IT COSTS, stated because it is a real loss and not a technicality: the
+ * question stops being asked. An `ask` here becomes a withholding no human is
+ * invited to lift, so an output an approver would have released stays withheld
+ * and the step's own answer is gone -- nothing re-delivers it once the model
+ * has read the substitute. A `defer` resolves as though its window had already
+ * closed, which is the least-wrong reading available to a host with no pending
+ * state, and the same one `resolveDefer` reaches for a defer whose window did.
+ * The alternative is delivering the output while reporting that it was held,
+ * which is the failure this module exists to prevent.
+ */
+export function withholdsAtResultGate(decision: string): boolean {
+  return decision !== DELIVERS_AS_PRODUCED && decision !== DELIVERS_A_REPLACEMENT;
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -394,17 +435,32 @@ export function projectAppliedOutput(
 
 /**
  * A decision's last word before it is rendered, at a gate where the step has
- * already run: a `deny` here carries the output it withholds.
+ * already run: whatever withholds the output here carries the output it
+ * withholds.
  *
- * Applied to every decision on its way to a render, and it changes exactly one:
+ * Applied to every decision on its way to a render. Which ones it changes is
+ * `withholdsAtResultGate`'s rule and not a list kept here:
  *
- *   - `deny` gains a replacing output. Without it the rendered answer is a block
- *     with an empty wrapper -- a reported withholding that did not happen, while
- *     the secret is delivered. That covers a deny the policy runtime sent, a
- *     deny `resolveModify` substituted for a rewrite it could not apply, and a
- *     deny a negotiated fail-closed posture produced: all three are
- *     withholdings, and one of them arriving unable to withhold would be the
- *     same defect by a different route.
+ *   - anything that withholds gains a replacing output. Without it the rendered
+ *     answer is a block with an empty wrapper -- a reported withholding that did
+ *     not happen, while the secret is delivered. That covers a deny the policy
+ *     runtime sent, a deny `resolveModify` substituted for a rewrite it could
+ *     not apply, a deny a negotiated fail-closed posture produced, and an `ask`
+ *     or an unexpired `defer`, neither of which anything at this gate can carry
+ *     out: all of them are withholdings, and one arriving unable to withhold
+ *     would be the same defect by a different route.
+ *
+ *     The ask/defer route reached this function last and did not look like the
+ *     others: they were not undeliverable-yet-unwithholding, they were
+ *     UNDECLARED. The first host wired to this gate named `allow`, `deny` and
+ *     `modify` in its mapping and no more, so an ask arriving threw at the
+ *     render, the render stage's catch answered it with the deployment's
+ *     negotiated posture, and the shipped default (`proceed`) delivered the very
+ *     output it should have withheld -- audited as a decision that could not be
+ *     rendered, which reads like a mapping gap rather than a bypass. Fixed here
+ *     and not only in that mapping, because a declaration alone cannot withhold:
+ *     the replacement is the half that withholds, only a decision can carry one,
+ *     and this is the one function that attaches one.
  *   - `modify` is checked, not changed. Its replacement was built by
  *     `resolveModify`'s apply step, and a `modify` reaching a render without
  *     one would render an empty wrapper too -- a rewrite reported and never
@@ -412,32 +468,32 @@ export function projectAppliedOutput(
  *     location, which is why it is a throw and not a repair.
  *
  *     The two halves are not guarded the same way, and the asymmetry is worth
- *     knowing. The deny above cannot fail to build its replacement, structurally:
+ *     knowing. A withholding cannot fail to build its replacement, structurally:
  *     `assertOutputIsReplaceable` establishes that before any decision is sought.
  *     This one rests on a call-site invariant instead -- that whoever hands this
  *     function a location handed `validateDecision` the same one -- and if that ever
  *     broke, this throw would land in the render stage's catch and a delivery
- *     posture would answer a rewrite, which is exactly the shape the deny half no
- *     longer has. Left stated rather than closed: telling it apart from a
+ *     posture would answer a rewrite, which is exactly the shape the withholding
+ *     half no longer has. Left stated rather than closed: telling it apart from a
  *     legitimate hookmap gap, which the posture should answer, needs an error
  *     class, and that is machinery for a case one call site and one type already
  *     prevent.
- *   - everything else is returned untouched. An `allow` deliberately emits no
- *     replacement at all: the output is delivered as the tool produced it, and an
- *     unnecessary replacement is a chance to get the shape wrong for no benefit.
+ *   - `allow` is returned untouched, and deliberately emits no replacement at
+ *     all: the output is delivered as the tool produced it, and an unnecessary
+ *     replacement is a chance to get the shape wrong for no benefit.
  *
  * `location` is `undefined` at a gate that decides whether a step RUNS. Nothing is
  * withheld there -- the step's own output does not exist yet -- so every decision
- * passes through.
+ * passes through, including the `ask` that gate can genuinely put to a human.
  */
 export function withResultOutput(decision: AcsDecision, location: HostOutputLocation | undefined): AcsDecision {
   if (location === undefined) {
     return decision;
   }
-  if (decision.decision === DENY) {
+  if (withholdsAtResultGate(decision.decision)) {
     return { ...decision, applied_output: replacingOutput(location, WITHHELD_OUTPUT) } satisfies ValidatedAcsDecision;
   }
-  if (decision.decision === "modify" && (decision as ValidatedAcsDecision).applied_output === undefined) {
+  if (decision.decision === DELIVERS_A_REPLACEMENT && (decision as ValidatedAcsDecision).applied_output === undefined) {
     throw new Error(
       `result-output: a "modify" reached this gate's render carrying no applied output, so the rewrite it ` +
         `reports has nowhere to land -- the host would deliver the original output unchanged`,

@@ -91,9 +91,16 @@ export { applyModifications, ModificationsInvalidError } from "./modifications.t
 // one. `HostOutputLocation` is a member type of the exported
 // `ValidateDecisionContext`, so a caller that builds a context could not name it
 // through this barrel otherwise -- the same reason `AuditEvent` is above.
+//
+// `withholdsAtResultGate` is here for a host shim rather than for the adapter:
+// which dispositions withhold at a result gate is what a shim's own gate over
+// its mapping table has to know to tell a mapping that withholds from one that
+// only says it does, and a shim re-deriving that list would be a second copy of
+// the rule, free to drift from the one that attaches the replacement.
 export {
   projectAppliedOutput,
   replacingOutput,
+  withholdsAtResultGate,
   withResultOutput,
   WITHHELD_OUTPUT,
   type HostOutputLocation,

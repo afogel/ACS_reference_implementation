@@ -218,17 +218,19 @@ export async function governStep({
 
   /**
    * Every render in this function, and the one thing every render at a result
-   * gate has to do first: a `deny` there withholds the output, and withholding
-   * it means carrying a shape-preserving replacement (`withResultOutput`).
+   * gate has to do first: a decision that withholds the output there has to
+   * carry a shape-preserving replacement of it (`withResultOutput`, which owns
+   * the rule for which dispositions withhold).
    *
-   * One function rather than three call sites, because the three denies that can
-   * reach a render here arrive by different routes -- one the policy runtime
-   * sent, one `validateDecision` substituted for a rewrite it could not apply,
-   * one a negotiated fail-closed posture produced -- and all three are
-   * withholdings. A route that
-   * rendered a block without a replacement would report a withholding that never
-   * happened while the original output was delivered, and it would be the same
-   * defect whichever route reached it.
+   * One function rather than a check at each route, because the withholdings
+   * that can reach a render here arrive by different ones -- one the policy
+   * runtime sent, one `validateDecision` substituted for a rewrite it could not
+   * apply, one a negotiated fail-closed posture produced, and an ask or an
+   * unexpired defer that this kind of gate cannot put to anyone -- and every one
+   * of them is a withholding. A route that rendered a block without a
+   * replacement would report a withholding that never happened while the
+   * original output was delivered, and it would be the same defect whichever
+   * route reached it.
    */
   function render(decision: AcsDecision): HostOutput {
     return renderDecision(hookEventName, withResultOutput(decision, outputLocation), hookmap);

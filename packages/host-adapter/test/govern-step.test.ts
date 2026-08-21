@@ -52,6 +52,19 @@ const ON_RESULT: HookmapResultHookEntry = {
   decisions: {
     allow: { output: { outcome: { value: "go" } } },
     deny: { output: { outcome: { value: "stop" }, replacing_output: { from: "applied_output" } } },
+    // The withholdings a result gate has beyond `deny`. Declared, because an
+    // entry a hookmap does not declare is a render throw and a posture's
+    // answer to it -- which is a different property, pinned elsewhere in this
+    // file. What these two are here to pin is that an ask and a defer reaching
+    // this kind of gate carry the replacement their entry renders from, the
+    // same as a deny: this synthetic host has no more idea what to do with a
+    // question about a formed output than a real one does.
+    ask: { output: { outcome: { value: "stop" }, replacing_output: { from: "applied_output" } } },
+    defer: { output: { outcome: { value: "stop" }, replacing_output: { from: "applied_output" } } },
+    // And the other kind of replacement: a rewrite delivers, so its entry says
+    // "go" while carrying one. The pair is what makes it possible to tell a
+    // withholding from a redaction in the rendered output below.
+    modify: { output: { outcome: { value: "go" }, replacing_output: { from: "applied_output" } } },
   },
 };
 
@@ -407,6 +420,126 @@ describe("governStep — a result gate whose named output no replacement can be 
     expect(asked()).toBe(0);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ outcome: "proceeded", failure: { kind: "host_configuration" } });
+  });
+});
+
+/**
+ * The dispositions a result gate cannot carry out, and the reason they belong
+ * here rather than only in one host's suite: nothing about "an output that
+ * already exists cannot be held pending, and cannot be asked about" is specific
+ * to a host. A gate that decides whether a step RUNS answers an ask by asking
+ * and a defer by waiting; a gate that sees what a step PRODUCED has neither
+ * move available, so both are withholdings there, and a withholding carries a
+ * shape-preserving replacement of the output or it withholds nothing.
+ *
+ * The shape of the fail-open this closes: with these two treated as deliveries,
+ * a host's mapping either has no entry for them -- so the render throws, the
+ * render stage catches, and a `proceed` posture delivers the very output a
+ * Guardian raised a question about, audited as a decision that could not be
+ * rendered -- or it has an entry that renders a block with an empty wrapper,
+ * which reports a withholding and performs none. Both are the same delivery.
+ *
+ * `NEGOTIATED("proceed")` is the posture throughout, deliberately: it is the
+ * one under which the gap was a delivery, so a `deny` posture here would let
+ * these tests pass on the unfixed code.
+ *
+ * Both fixtures are WELL-FORMED and UNEXPIRED, which is what makes them reach a
+ * render as an ask and a defer at all. `validateDecision` substitutes a deny for
+ * either one whose window it cannot read or has already passed, and a deny
+ * withholds through machinery that was never in question -- so a bare
+ * `{decision: "ask"}` here would pass against the unfixed rule and pin nothing.
+ */
+describe("governStep — an ask or a defer at a gate where the step has already run", () => {
+  const resultHookmap: Hookmap = { host: "test-host", hooks: { OnResult: ON_RESULT } };
+
+  const withheld = { outcome: "stop", replacing_output: { text: "[OUTPUT WITHHELD BY POLICY]", truncated: false } };
+
+  it("withholds the output for an ask inside its window, honoured rather than postured", async () => {
+    const { sink, events } = recordingSink();
+    const governed = await govern(
+      answering({
+        decisionArrived: true,
+        decision: {
+          decision: "ask",
+          reasoning: "a human should see this output first",
+          ask_details: { approver: "security-team", question: "release this?", timeout_seconds: 300 },
+        },
+      }),
+      sink,
+      { config: NEGOTIATED("proceed"), failure: undefined },
+      { hookEventName: "OnResult", payload: resultPayload, hookmap: resultHookmap },
+    );
+
+    // "honoured" and still an ask: the decision that arrived is not rewritten
+    // into a deny -- what changes is only what it renders as, which is the
+    // mapping's business. An audit entry here would mean a posture answered.
+    expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
+      stage: "honoured",
+      decision: "ask",
+    });
+    // The whole object, because a replacement missing a sibling field is the one
+    // a host discards while delivering the original.
+    expect(governed.output).toEqual(withheld);
+    expect(events).toEqual([]);
+  });
+
+  it("withholds the output for a defer inside its window, having nowhere to hold it", async () => {
+    const { sink, events } = recordingSink();
+    const governed = await govern(
+      answering({
+        decisionArrived: true,
+        decision: {
+          decision: "defer",
+          reasoning: "waiting on an out-of-band approval",
+          defer_details: {
+            reason: "awaiting change ticket",
+            resolution_method: "external",
+            resolution_timeout_ms: 300_000,
+          },
+        },
+      }),
+      sink,
+      { config: NEGOTIATED("proceed"), failure: undefined },
+      { hookEventName: "OnResult", payload: resultPayload, hookmap: resultHookmap },
+    );
+
+    expect({ stage: governed.stage, decision: governed.decision.decision }).toEqual({
+      stage: "honoured",
+      decision: "defer",
+    });
+    expect(governed.output).toEqual(withheld);
+    expect(events).toEqual([]);
+  });
+
+  // The other side of the same rule, and the one that would fail if "withholds"
+  // had been written as "everything but allow": a `modify` delivers a
+  // replacement it built itself, and must not have it overwritten by the
+  // withholding one. Without this, a rule that withheld for `modify` too would
+  // pass every test above while silently turning every redaction into a
+  // withholding -- the output replaced by a policy marker instead of by the
+  // redacted text the Guardian asked for.
+  it("leaves a modify's own replacement alone", async () => {
+    const { sink, events } = recordingSink();
+    const governed = await govern(
+      answering({
+        decisionArrived: true,
+        decision: {
+          decision: "modify",
+          reasoning: "redaction_applied",
+          modifications: { redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }] },
+        },
+      }),
+      sink,
+      { config: NEGOTIATED("proceed"), failure: undefined },
+      { hookEventName: "OnResult", payload: resultPayload, hookmap: resultHookmap },
+    );
+
+    expect(governed.stage).toBe("honoured");
+    expect(governed.output).toEqual({
+      outcome: "go",
+      replacing_output: { text: "TOKEN=[REDACTED]", truncated: false },
+    });
+    expect(events).toEqual([]);
   });
 });
 
