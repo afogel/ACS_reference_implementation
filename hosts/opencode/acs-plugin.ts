@@ -68,6 +68,18 @@
  * `CARRIED_AT_RESULT_GATE` (below) for exactly what each decision may do at
  * each gate.
  *
+ * And one load-time check is about this file rather than about a hookmap.
+ * OpenCode dispatches to a plugin by reading hook names as OBJECT KEYS off
+ * whatever this factory returns, skipping any it does not find -- so a key
+ * that stops matching the name OpenCode fires disables that gate in total
+ * silence, with no throw, no exit code and no audit entry.
+ * `assertRegistrationMatchesIntent` (below) refuses at load unless the keys
+ * actually registered are exactly the hooks `HOOK_EXPECTATIONS` knows. It
+ * cannot see an upstream rename -- nothing inside this repository can, since
+ * the plugin API publishes no registry of event names to check against --
+ * and that limit is stated at the function rather than left for a reader to
+ * discover.
+ *
  * And a gate honours `tools` before any of that, except validating `tool`
  * itself: a hookmap entry that declares a `tools` list must return, without
  * building a payload or calling `resolveSessionConfig`/`governStep`, for any
@@ -97,7 +109,7 @@
  * against this file by name.
  */
 import { fileURLToPath } from "node:url";
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Hooks, Plugin } from "@opencode-ai/plugin";
 import {
   // The record a skip leaves. Called from `runExchange`'s own `governsTool`
   // check, because that check returns before `governStep` -- so without this
@@ -894,6 +906,14 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
  * registered with OpenCode at all. It would sit in the hookmap looking like
  * governance and govern nothing, silently, for the life of the deployment.
  * Refused rather than skipped, on both counts.
+ *
+ * "Returns exactly two hooks" is now checked rather than asserted in prose:
+ * `assertRegistrationMatchesIntent` (below) compares this table's own keys
+ * against the object the factory actually returns, so this comment cannot go
+ * stale against the registration it describes. The two functions are the two
+ * directions of one rule -- this one refuses a hookmap entry with no
+ * registered hook behind it, that one refuses a registered hook with no
+ * expectation in front of it.
  */
 function expectationFor(hookEventName: string, path: string): HookExpectation {
   // `hasOwnProperty`, not a bare index: a hookmap naming a hook `toString` or
@@ -962,6 +982,95 @@ function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
   for (const [hookEventName, entry] of Object.entries(hookmap.hooks ?? {})) {
     expectationFor(hookEventName, path).assertEntry(entry, path, hookEventName);
   }
+}
+
+/**
+ * Refuses at load unless the hooks this plugin actually registers are exactly
+ * the hooks it has expectations for -- the missing direction of
+ * `expectationFor`'s own rule, which refuses a hookmap entry for a hook this
+ * plugin never registers and had nothing to say about the converse.
+ *
+ * The fault this exists for. `AcsPlugin` returns its hooks as OBJECT KEYS,
+ * and OpenCode dispatches by reading them: for each loaded plugin it does the
+ * equivalent of `const hook = plugin[eventName]; if (!hook) continue;` --
+ * read out of OpenCode 1.18.18's own compiled `Plugin.trigger`, not inferred
+ * from its published types. A key that does not match the name OpenCode fires
+ * is simply never called. No throw, no exit code, no audit entry, no
+ * diagnostic: an entirely ungoverned session that looks like a quiet one. The
+ * Claude Code shim fails CLOSED in the same situation -- an event its own
+ * table has no expectation for reaches `govern-step`'s throw and exits 2 --
+ * so this host was the weaker of the two and nothing said so.
+ *
+ * WHAT IT CATCHES, and what it does not, stated precisely because the gap it
+ * leaves is bigger than the one it closes:
+ *
+ *   - It DOES catch this file disagreeing with itself: a hook key added to,
+ *     removed from, or renamed in the returned object without
+ *     `HOOK_EXPECTATIONS` moving with it. Either half is a real fault -- a
+ *     registered hook the table does not know is a gate whose decisions
+ *     nothing checks, and a known hook the plugin does not register is an
+ *     expectation that governs nothing. Both are conditions the rest of this
+ *     file's reasoning silently assumes and nothing verified.
+ *   - It DOES NOT catch an upstream rename, and cannot, until the hookmap or
+ *     this file is updated toward the new name. If OpenCode renames
+ *     `tool.execute.after`, this plugin's key and this table's key still
+ *     agree with each other -- and are now both wrong. The agreement is
+ *     internal, and internal agreement cannot observe a fourth party
+ *     changing. What it does buy is that a rename can no longer be
+ *     half-applied: the first edit toward the new name stops the deployment
+ *     at load instead of leaving one key stale and the session ungoverned.
+ *
+ * Why there is nothing stronger available here. The OpenCode plugin API hands
+ * a factory `{client, project, directory, $}` and takes back a bag of hook
+ * keys. It publishes no registry of valid event names, and the dispatcher
+ * asks the plugin for names rather than offering its own, so a plugin has
+ * nothing to interrogate: an assertion against the published types would only
+ * restate what this file's own keys already say. Closing the rest is
+ * OpenCode's to do -- a host that reported an unrecognised hook key instead
+ * of skipping it would turn the residual gap into a startup failure the way
+ * this gate turns the internal half into one.
+ *
+ * WHAT IS DELIBERATELY NOT CHECKED: that every hook this plugin registers is
+ * one the hookmap declares. It is a real gap -- a registered hook with no
+ * entry reaches `governStep` and finds none -- and refusing it here would be
+ * the wrong answer anyway, for the reason `satisfiesGate` (above) already
+ * gives about over-refusal on this host: a throw from this factory leaves the
+ * plugin unloaded and the WHOLE session ungoverned, so refusing a hookmap
+ * that declares one gate and not the other would trade "one gate governed,
+ * the other stopping loudly" for "nothing governed at all". And it stops
+ * loudly on its own: measured, `governsTool` answers `true` for an unmapped
+ * hook (no entry, so no `tools` list to be outside of) and `governStep`'s
+ * first guard then throws `hookmap has no entry for hook ...`, at the first
+ * call of that gate, before anything is asked or audited. Fail-closed
+ * already, at the cost of being per-call rather than at load -- which is the
+ * cheaper of the two costs on a host where load-time refusal means no
+ * governance at all.
+ *
+ * `HOOK_EXPECTATIONS`'s own key set is what "the set it intends" means, and
+ * deliberately not a third list beside it: that table already IS this shim's
+ * statement of which hooks it knows, and a separate constant would be one
+ * more thing to keep in step by hand -- the class of fault this function
+ * exists to make impossible.
+ */
+function assertRegistrationMatchesIntent(registered: readonly string[]): void {
+  const known = Object.keys(HOOK_EXPECTATIONS);
+  const unknownToThisShim = registered.filter((hook) => !known.includes(hook));
+  const knownButUnregistered = known.filter((hook) => !registered.includes(hook));
+  if (unknownToThisShim.length === 0 && knownButUnregistered.length === 0) {
+    return;
+  }
+  throw new Error(
+    `acs-plugin: the hooks this plugin registers and the hooks it has expectations for are not the same set -- ` +
+      `registered ${JSON.stringify(registered)}, expected ${JSON.stringify(known)}` +
+      `${unknownToThisShim.length === 0 ? "" : `; registered and unknown here: ${JSON.stringify(unknownToThisShim)}`}` +
+      `${knownButUnregistered.length === 0 ? "" : `; known here and never registered: ${JSON.stringify(knownButUnregistered)}`}` +
+      `. OpenCode dispatches by reading these keys off the object this factory returns, so a key it does not ` +
+      `fire is never called: no throw, no exit code, no audit entry, and every tool call for the rest of the ` +
+      `session runs ungoverned while the session looks quiet. Register exactly the hooks HOOK_EXPECTATIONS ` +
+      `names, or teach that table the hook before registering it -- a gate nothing checks is a gate nothing ` +
+      `governs. NOTE what this does NOT prove: that these names are the ones OpenCode still fires. They agree ` +
+      `with each other, and could be stale together -- see this function's own doc comment.`,
+  );
 }
 
 /**
@@ -1251,9 +1360,11 @@ async function runExchange(
  * the rest of the session's lifetime.
  *
  * A throw here -- an unreadable or invalid hookmap (`loadHookmap` shape-checks
- * everything statically decidable from the hookmap file alone, and
- * `assertHostAcceptsEveryDecision` adds this host's own such check, for both
- * of its gates) -- names the same "broken deployment, not a policy question"
+ * everything statically decidable from the hookmap file alone,
+ * `assertHostAcceptsEveryDecision` adds this host's own such check for both
+ * of its gates, and `assertRegistrationMatchesIntent` checks the hooks this
+ * factory is about to hand back against the ones this shim has expectations
+ * for) -- names the same "broken deployment, not a policy question"
  * fault the Claude Code shim's `BlockingConfigurationError`/exit 2 stops its
  * session for. This host does not stop, though: OpenCode's plugin loader
  * catches whatever a plugin module's factory throws during registration,
@@ -1294,7 +1405,13 @@ export const AcsPlugin: Plugin = async () => {
     store: createMemorySessionConfigStore(),
   };
 
-  return {
+  // Named as a const rather than returned inline, so `Object.keys` below
+  // reads the registration OpenCode will actually dispatch against, and
+  // annotated because the object literal otherwise loses the contextual
+  // typing the inline return gave it and both hook methods' parameters go
+  // implicitly `any`. `Hooks` is the package's own name for exactly this
+  // value -- the thing `Plugin` resolves to.
+  const hooks: Hooks = {
     // Both hooks are edges on one exchange: the seven moves they share --
     // validate `tool`, honour `tools`, validate `sessionID`, assemble the
     // payload, negotiate the session, govern the step, apply what comes
@@ -1389,4 +1506,16 @@ export const AcsPlugin: Plugin = async () => {
         live: { gate: "result", result: output as unknown as Record<string, unknown> },
       })),
   };
+
+  // Checked against the object that was actually built, not against a list
+  // of names typed out beside it: `Object.keys(hooks)` is what OpenCode will
+  // read, so this is the registration itself being asserted rather than a
+  // second description of it. Last, because it is a check ON the returned
+  // value; still load time, since nothing has fired yet and a throw here
+  // reaches OpenCode's plugin loader exactly as `loadHookmap`'s would.
+  // See `assertRegistrationMatchesIntent` for exactly which drift this
+  // catches, which it cannot, and which direction it deliberately leaves to
+  // `governStep`'s own unmapped-hook throw.
+  assertRegistrationMatchesIntent(Object.keys(hooks));
+  return hooks;
 };

@@ -17,9 +17,10 @@
  * such a hookmap never registers.
  */
 import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AcsPlugin } from "../acs-plugin.ts";
 
 const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-plugin-test-"));
@@ -1009,5 +1010,152 @@ describe("AcsPlugin's load-time gate, for a hook it has no expectation for", () 
     );
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/this shim has no expectation for/);
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/"constructor"/);
+  });
+});
+
+/**
+ * The registration itself, which is the one thing every other gate in this
+ * file assumes and none of them checks.
+ *
+ * `AcsPlugin` hands OpenCode its hooks as OBJECT KEYS, and OpenCode
+ * dispatches by reading them -- `const hook = plugin[eventName]; if (!hook)
+ * continue;`, out of 1.18.18's own compiled `Plugin.trigger`. A key that does
+ * not match the name OpenCode fires is never called: no throw, no exit code,
+ * no audit entry, an entirely ungoverned session that looks like a quiet one.
+ * So "this plugin registers what it thinks it registers" is a load-bearing
+ * claim, and `assertRegistrationMatchesIntent` is what turns it into a
+ * startup failure instead of an assumption.
+ *
+ * DEFECT INJECTED INTO A COPY OF THE REAL SOURCE, rather than by exporting
+ * the check. `acs-plugin.ts` exports exactly one symbol on purpose --
+ * test/invariants.test.ts pins that, because a second export makes OpenCode's
+ * loader mis-invoke it and disables governance for the whole session -- so
+ * neither the gate nor its two tables can be imported here. What a test CAN
+ * do is take the real file, rename one hook key in exactly the way an
+ * upstream rename would be half-applied, and load the result. That drives the
+ * real gate over real code, which is the claim; asserting against a
+ * reimplementation of the check would only pin the reimplementation.
+ *
+ * The copy is written BESIDE the original, in `hosts/opencode/`, and not into
+ * the scratch dir: `acs-plugin.ts` imports `./apply-opencode-output.ts` and
+ * resolves its default hookmap through `import.meta.url`, so only a sibling
+ * path resolves the way the original does. Uniquely named and removed in
+ * `finally`, so a failing assertion cannot leave one behind.
+ */
+describe("AcsPlugin's load-time gate, on the hooks it actually registers", () => {
+  const SHIM = fileURLToPath(new URL("../acs-plugin.ts", import.meta.url));
+  const SHIM_DIR = dirname(SHIM);
+
+  /**
+   * Loads a copy of the shim with `edit` applied to its source, and answers
+   * with whatever the factory did. The `edit` is asserted to have changed
+   * something: a search string that stopped matching would silently make
+   * every case below load an unmodified shim and pass for no reason.
+   */
+  async function loadMutatedShim(label: string, edit: (source: string) => string): Promise<unknown> {
+    const original = readFileSync(SHIM, "utf8");
+    const mutated = edit(original);
+    expect(mutated).not.toBe(original);
+
+    const copyPath = join(SHIM_DIR, `acs-plugin.${label}.${crypto.randomUUID()}.ts`);
+    const previous = process.env.ACS_HOOKMAP_PATH;
+    try {
+      writeFileSync(copyPath, mutated);
+      process.env.ACS_HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
+      // Dynamic because the specifier IS the runtime artifact: the module
+      // does not exist until the line above writes it, and the whole point
+      // is to load a deliberately-defective copy of the shim. A static
+      // import cannot name a file that is created per test case.
+      const module = (await import(copyPath)) as { AcsPlugin: typeof AcsPlugin };
+      return await module.AcsPlugin({} as never).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    } finally {
+      rmSync(copyPath, { force: true });
+      if (previous === undefined) {
+        delete process.env.ACS_HOOKMAP_PATH;
+      } else {
+        process.env.ACS_HOOKMAP_PATH = previous;
+      }
+    }
+  }
+
+  // The positive half, and not a formality: this is what says the two keys
+  // OpenCode is handed are the two names the rest of this file reasons
+  // about. A rename in either hook method fails here as well as at the gate.
+  it("registers exactly the two hooks the shipped hookmap declares", async () => {
+    const previous = process.env.ACS_HOOKMAP_PATH;
+    process.env.ACS_HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.meta.url));
+    try {
+      const hooks = await AcsPlugin({} as never);
+      expect(Object.keys(hooks).sort()).toEqual(["tool.execute.after", "tool.execute.before"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ACS_HOOKMAP_PATH;
+      } else {
+        process.env.ACS_HOOKMAP_PATH = previous;
+      }
+    }
+  });
+
+  // Direction one: a rename applied to the hook METHOD and not to the table.
+  // This is the shape an upstream rename takes while it is half-applied, and
+  // it is the shape that used to register silently -- OpenCode would have
+  // fired `tool.execute.after`, found no key, and skipped the result gate for
+  // the life of the session.
+  it("refuses when a registered hook name is one it has no expectation for", async () => {
+    const error = await loadMutatedShim("renamed-key", (source) =>
+      source.replace('    "tool.execute.after": async (input, output) =>', '    "tool.execute.after.v2": async (input, output) =>'),
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/not the same set/);
+    expect((error as Error).message).toMatch(/tool\.execute\.after\.v2/);
+    // Both halves named, so the message says which way round the drift is
+    // rather than leaving an operator to diff two JSON arrays by eye.
+    expect((error as Error).message).toMatch(/registered and unknown here/);
+    expect((error as Error).message).toMatch(/known here and never registered/);
+  });
+
+  // Direction two: the table knows a hook the plugin never registers -- an
+  // expectation that governs nothing, which is the exact fault
+  // `expectationFor`'s own doc comment describes for a hookmap entry ("would
+  // sit in the hookmap looking like governance and govern nothing") arriving
+  // one level up instead.
+  it("refuses when it has an expectation for a hook it never registers", async () => {
+    const error = await loadMutatedShim("extra-expectation", (source) =>
+      source.replace(
+        '  "tool.execute.after": {\n    assertEntry(entry, path, hookEventName) {',
+        '  "tool.execute.never.fired": { assertEntry() {} },\n  "tool.execute.after": {\n    assertEntry(entry, path, hookEventName) {',
+      ),
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/not the same set/);
+    expect((error as Error).message).toMatch(/known here and never registered.*tool\.execute\.never\.fired/);
+  });
+
+  // The residual gap, asserted rather than described, so nobody reads the
+  // gate for more than it is: rename BOTH sides -- the plugin's key and its
+  // expectation -- and the check is satisfied, because the agreement it
+  // verifies is internal. This is what an upstream rename looks like once it
+  // has been applied consistently to the wrong name, and no check inside this
+  // repository can see it: OpenCode's plugin API publishes no registry of
+  // event names to compare against.
+  it("does NOT catch a rename applied consistently -- the agreement it checks is internal", async () => {
+    const error = await loadMutatedShim("renamed-both", (source) =>
+      source
+        .replace('    "tool.execute.after": async (input, output) =>', '    "tool.execute.after.v2": async (input, output) =>')
+        .replace(
+          '  "tool.execute.after": {\n    assertEntry(entry, path, hookEventName) {',
+          '  "tool.execute.after.v2": {\n    assertEntry(entry, path, hookEventName) {',
+        ),
+    );
+    // It stops for the OTHER reason -- the shipped hookmap still declares the
+    // old name, which `expectationFor` refuses. That is the accident this
+    // test exists to distinguish from a check that saw the rename: the gate
+    // under test was satisfied, and something else caught it.
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/this shim has no expectation for/);
+    expect((error as Error).message).not.toMatch(/not the same set/);
   });
 });
