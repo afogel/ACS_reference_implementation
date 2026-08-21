@@ -26,6 +26,16 @@
  *
  * `defer` has no AGT verdict behind it at all and therefore never appears
  * here: this walks AGT's five, not ACS's.
+ *
+ * WHAT A FAILED ROUND TRIP RESOLVES TO. `contract_violated`, not
+ * `unexpressed`: a verdict that goes in and does not come back is this tree's
+ * declaration being wrong about itself, and it is the one thing here that
+ * fails `bun run conformance` (exit-code.ts's rule, and `cells.ts`'s
+ * `CellStatus` for the distinction). `unexpressed` is kept for the answers
+ * that are about ACS -- a point ACS v0.1.0 carries no method for, a transform
+ * this table declares it has no target for -- because failing on those would
+ * make an honest gap indistinguishable from a defect and press the matrix
+ * towards being all-expressed.
  */
 import { mapVerdict, type AcsDecision, type Mapping } from "guardian";
 import type { AgtVerdict } from "agt-bridge";
@@ -110,9 +120,11 @@ export function checkVerdicts(mapping: Mapping): CoverageCell[] {
  * trip, so a reader had to know that one of its five verdicts was answering
  * a second question.
  *
- * Applied only where the round trip held. A `warn` that failed to invert is
- * `unexpressed` for that reason, and this must not overwrite it with a
- * milder status: the drift-score finding is about a mapping that works.
+ * Applied only where the round trip held, which the `expressed` test below
+ * is: a `warn` that failed to invert is `contract_violated` for that reason
+ * and a `warn` at a point ACS cannot reach is `unexpressed` for that one, and
+ * this must not overwrite either with a milder status -- the drift-score
+ * finding is about a mapping that works.
  */
 function applyWarnDriftScoreFinding(
   verdict: string,
@@ -141,8 +153,13 @@ function roundTrip(
   // asking the question.
   const row = mapping.intervention_points[point];
   if (row === undefined) {
+    // NOT a gap in ACS, so not `unexpressed`: the axes are read off AGT's own
+    // SDK (cells.ts), and mapping.yaml declares a row for every point AGT
+    // names -- marking one ACS v0.1.0 cannot reach with `acs_method: null`
+    // and a note, which is a declaration. No row at all is the table failing
+    // to cover its own subject, a finding about this tree.
     return {
-      status: "unexpressed",
+      status: "contract_violated",
       reason: `mapping.yaml's intervention_points table has no row for AGT point "${point}"`,
     };
   }
@@ -176,11 +193,30 @@ function roundTrip(
       : {}),
   };
 
+  // WHICH THROWS ARE FINDINGS, and the declaration is what tells them apart.
+  // A verdict mapping.yaml sends to ACS `modify` can only be built where the
+  // point's own row declares a `modifications` rule, and mapping.yaml says so
+  // in the table itself: a row without one "cannot express a transform at
+  // all, and mapVerdict throws for one rather than answering with a MODIFY
+  // the host has nothing to apply". That throw is the declaration being read
+  // back truthfully -- ACS has no target for this rewrite here -- and
+  // mapVerdict is still ASKED rather than short-circuited on the table,
+  // because a refusal MEASURED at the runtime is the evidence and the table
+  // is only what says which of two things the refusal means. A throw anywhere
+  // else is the runtime failing at a mapping the table claims it can express,
+  // which is a finding rather than a gap.
+  const declaresNoTarget =
+    mapping.verdicts[verdict]?.decision === "modify" && row.modifications === undefined;
+
   let acs: AcsDecision;
   try {
     acs = mapVerdict(agt, mapping, point);
   } catch (error) {
-    return { status: "unexpressed", reason: error instanceof Error ? error.message : String(error) };
+    // mapVerdict's own sentence, either way: it names the row and the rule it
+    // could not find better than a reason written here would, and rewriting
+    // it would put a second spelling of the runtime's refusal in this file.
+    const reason = error instanceof Error ? error.message : String(error);
+    return declaresNoTarget ? { status: "unexpressed", reason } : { status: "contract_violated", reason };
   }
 
   const hasReferences = (acs.policy_references?.length ?? 0) > 0;
@@ -189,8 +225,14 @@ function roundTrip(
   // emptiness-qualified key.
   const back = inverse.get(acs.decision) ?? inverse.get(`${acs.decision}|${hasReferences}`);
   if (back !== verdict) {
+    // A round trip through the runtime and back out of the table that does
+    // not return what went in: the declaration is broken, not the
+    // specification silent. This is the case the exit rule exists to fail on
+    // (exit-code.ts) -- it read `unexpressed` here for as long as the two
+    // classes shared one name, which made the instrument unable to fail on
+    // its own headline finding.
     return {
-      status: "unexpressed",
+      status: "contract_violated",
       reason: `AGT "${verdict}" becomes ACS "${acs.decision}", which reads back as "${back ?? "nothing"}"`,
     };
   }

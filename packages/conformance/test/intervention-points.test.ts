@@ -51,10 +51,13 @@ describe("the intervention-point round trip", () => {
     }
   });
 
-  it("fails the round trip when a row's acs_method resolves back to a different point", () => {
+  it("resolves a resolver throw as a contract violation, not as a gap ACS has", () => {
     // Two rows naming one method: resolveInterventionPoint throws rather than
-    // picking by YAML key order, and this check records that as unexpressed rather
-    // than letting the throw escape and take the whole matrix with it.
+    // picking by YAML key order, and this check records that without letting
+    // the throw escape and take the whole matrix with it. It is a finding
+    // about this table rather than an answer about ACS, so it must NOT read
+    // `unexpressed` -- that status exits 0 (exit-code.ts), and a mapping this
+    // broken exiting 0 is the whole defect the split exists to close.
     const ambiguous = {
       ...mapping,
       intervention_points: {
@@ -64,8 +67,21 @@ describe("the intervention-point round trip", () => {
     };
     const broken = checkInterventionPoints(ambiguous).find((r) => r.point === "pre_tool_call");
 
-    expect(broken?.status).toBe("unexpressed");
-    expect(broken?.status === "unexpressed" && broken.reason).toMatch(/more than one/);
+    expect(broken?.status).toBe("contract_violated");
+    expect(broken?.status === "contract_violated" && broken.reason).toMatch(/more than one/);
+  });
+
+  it("resolves a point with no row at all as a contract violation, because AGT declares the point and this table does not answer for it", () => {
+    // The eight points come from AGT's SDK, not from mapping.yaml, so a table
+    // that drops a row still gets asked about that point. Dropping one used
+    // to read `unexpressed` -- indistinguishable from the honest
+    // `acs_method: null` rows two tests up, and equally exit 0.
+    const { agent_startup: _dropped, ...withoutAgentStartup } = mapping.intervention_points;
+    const missingRow = { ...mapping, intervention_points: withoutAgentStartup };
+    const result = checkInterventionPoints(missingRow).find((r) => r.point === "agent_startup");
+
+    expect(result?.status).toBe("contract_violated");
+    expect(result?.status === "contract_violated" && result.reason).toMatch(/has no row for AGT point/);
   });
 });
 
@@ -86,6 +102,22 @@ describe("the projection onto matrix coordinates", () => {
     for (const cell of cells) {
       expect(cell.status).toBe("unexpressed");
       expect(cell.measuredBy).toContain("intervention-point round trip");
+    }
+  });
+
+  it("carries a contract violation onto all five columns as a violation, never flattened to unexpressed", () => {
+    // The projection is the only place a point-level status becomes a cell
+    // status, so it is the only place the two unresolved classes could be
+    // collapsed back into one -- which would hand the exit rule an
+    // `unexpressed` cell for a table that contradicts itself.
+    const { agent_startup: _dropped, ...withoutAgentStartup } = mapping.intervention_points;
+    const cells = coverageCellsFromInterventionPoints(
+      checkInterventionPoints({ ...mapping, intervention_points: withoutAgentStartup }),
+    ).filter((cell) => cell.point === "agent_startup");
+
+    expect(cells).toHaveLength(AGT_VERDICTS.length);
+    for (const cell of cells) {
+      expect(cell.status).toBe("contract_violated");
     }
   });
 });

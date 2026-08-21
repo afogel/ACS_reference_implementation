@@ -46,12 +46,21 @@ describe("the conformance runner, in-process, with the schema leg disabled (no n
     expect(run.exitCode).toBe(0);
   });
 
-  it("is a fully resolved matrix -- no coordinate reads unexpressed for having no check measure it", async () => {
+  it("is a fully resolved matrix -- no coordinate unmeasured, and no declaration checked and found broken", async () => {
     delete process.env[PINNED_AGT_CLONE_ENV];
 
     const run = await main();
 
-    const holes = run.cells.filter((cell) => cell.status === "unexpressed" && cell.reason === "no check measured this cell");
-    expect(holes).toEqual([]);
+    // Read off `measuredBy` rather than off the sentence mergeCells writes
+    // beside a hole, for the same reason resolveExitCode does (exit-code.ts):
+    // a test that matches the prose passes again the moment the prose is
+    // reworded, whether or not the hole is still there.
+    expect(run.cells.filter((cell) => cell.measuredBy.length === 0)).toEqual([]);
+    // And the other half of the exit rule, on the live tables: every
+    // unexpressed cell this run publishes is a gap ACS v0.1.0 really has, not
+    // a declaration of ours that failed its own check. A failure here is a
+    // genuine finding about this tree, to be fixed in mapping.yaml rather
+    // than relaxed here.
+    expect(run.cells.filter((cell) => cell.status === "contract_violated")).toEqual([]);
   });
 });

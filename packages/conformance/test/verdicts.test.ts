@@ -71,14 +71,79 @@ describe("the verdict round trip", () => {
     expect(cell.reason).toMatch(/drift_score/);
   });
 
-  it("marks transform unexpressed at a point whose row declares no modifications rule", () => {
+  it("marks transform unexpressed -- not violated -- at a point whose row declares no modifications rule", () => {
     // agent_startup has an acs_method and no modifications rule, so mapVerdict
     // throws rather than answering with a MODIFY the host has nothing to apply.
+    // That throw is mapping.yaml's own declaration read back by the runtime --
+    // "a point with no modifications rule cannot express a transform at all",
+    // in the table's own words -- so it is a gap ACS has here, and it must stay
+    // `unexpressed`: the real mapping.yaml contains four cells of exactly this
+    // shape, and `bun run conformance` has to keep exiting 0 on them.
     expect(at("agent_startup", "transform").status).toBe("unexpressed");
     expect(at("agent_startup", "transform").reason).toMatch(/declares no modifications rule/);
     // ...and its other four verdicts are unaffected, which is what makes this
     // a per-cell fact rather than a per-point one.
     expect(at("agent_startup", "deny").status).toBe("expressed");
+  });
+
+  // The one way this table breaks its round trip while staying invertible:
+  // `allow` and `warn` share ACS "allow" and are told apart by whether
+  // policy_references is non-empty, so swapping which of the two declares
+  // require_policy_references leaves the inverse well-formed and sends each
+  // verdict back out as the other. Both cells below come from this one
+  // mapping, and each fails a different way -- which is why they are two
+  // assertions rather than one.
+  const swapped = {
+    ...mapping,
+    verdicts: {
+      ...mapping.verdicts,
+      allow: { decision: "allow" as const, require_policy_references: true },
+      warn: { decision: "allow" as const },
+    },
+  };
+
+  it("marks a verdict that does not survive its own round trip contract_violated, not unexpressed", () => {
+    // A stock AGT warn carries a reason, so mapVerdict synthesizes non-empty
+    // policy_references and the inverse -- now keyed the other way round --
+    // hands back `allow`. The verdict that went in is not the verdict that
+    // came out: this tree's own declaration is wrong, which is the finding the
+    // exit rule exists to fail on. It read `unexpressed` while both classes
+    // shared one status, so mapping.yaml could ship like this and
+    // `bun run conformance` would still exit 0.
+    const broken = checkVerdicts(swapped).find((c) => c.point === "pre_tool_call" && c.verdict === "warn")!;
+
+    expect(broken.status).toBe("contract_violated");
+    expect(broken.reason).toMatch(/reads back as "allow"/);
+  });
+
+  it("marks a mapVerdict throw the declaration does not predict contract_violated, unlike the one it does", () => {
+    // Same swapped table, the other cell: `allow` now declares
+    // require_policy_references, and a stock AGT allow carries no reason for
+    // any to be synthesized from, so mapVerdict refuses. A refusal at a
+    // mapping the table claims to express is a finding -- and it is the same
+    // `catch` that must stay `unexpressed` for the missing-modifications-rule
+    // throw the table itself predicts (the test above this one). Which of the
+    // two it is, is decided by reading the declaration, never by matching the
+    // error's text.
+    const broken = checkVerdicts(swapped).find((c) => c.point === "pre_tool_call" && c.verdict === "allow")!;
+
+    expect(broken.status).toBe("contract_violated");
+    expect(broken.reason).toMatch(/no policy_references could be synthesized/);
+  });
+
+  it("marks every verdict at a point the table has no row for contract_violated, because AGT declares the point", () => {
+    // The 40 coordinates come from AGT's SDK (cells.ts), so dropping a row
+    // does not narrow the questions asked -- it leaves this check reading a
+    // table that no longer answers one. Distinct from the `acs_method: null`
+    // rows, which answer it honestly and stay `unexpressed`.
+    const { output: _dropped, ...withoutOutput } = mapping.intervention_points;
+    const cells = checkVerdicts({ ...mapping, intervention_points: withoutOutput });
+
+    for (const verdict of AGT_VERDICTS) {
+      const cell = cells.find((c) => c.point === "output" && c.verdict === verdict)!;
+      expect(cell.status).toBe("contract_violated");
+      expect(cell.reason).toMatch(/has no row for AGT point "output"/);
+    }
   });
 
   it("marks every verdict unexpressed at a point ACS v0.1.0 has no wire method for", () => {

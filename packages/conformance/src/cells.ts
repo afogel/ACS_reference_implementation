@@ -26,13 +26,34 @@ export const AGT_VERDICTS: readonly string[] = Object.values(Decision).sort();
  *                  there), and the finding that AGT's enforced identity binds
  *                  to the document it rewrote rather than to anything a wire
  *                  consumer can check.
- *   unexpressed    it cannot, and `reason` says why.
+ *   unexpressed    it cannot, and `reason` says why. An answer ABOUT THE
+ *                  SPECIFICATION: a model-call point ACS v0.1.0 carries no
+ *                  method for, a transform `mapping.yaml`'s own row declares
+ *                  it has no target for. A gap the specification really has
+ *                  is a resolved cell, not a fault.
+ *   contract_violated
+ *                  a declaration THIS TREE makes about this coordinate was
+ *                  checked and does not hold -- a verdict that does not
+ *                  survive its own round trip, a point whose declared ACS
+ *                  method resolves back to a different point, a runtime that
+ *                  threw where the declaration says it answers, a table
+ *                  missing a row for a point AGT declares. Not a claim about
+ *                  ACS's expressive power at all: a claim that this
+ *                  repository is wrong.
  *
- * There is no fourth member and no default. `status` is required, so a cell
- * cannot come to read as expressed by having gone unmeasured -- the one way
- * a resolved matrix could quietly become a green one.
+ * THE LAST TWO ARE KEPT APART BECAUSE THE INSTRUMENT'S OWN EXIT STATUS
+ * DEPENDS ON THE DIFFERENCE. Filed under one name, `resolveExitCode`
+ * (exit-code.ts) could not fail on a violated contract without also failing
+ * on every honest gap -- and an instrument that fails on honest gaps is one
+ * pressured to have none, which is the all-expressed matrix the `green` note
+ * above refuses. So `unexpressed` exits 0, `contract_violated` does not, and
+ * neither is a shade of the other.
+ *
+ * Four members and no default. `status` is required, so a cell cannot come
+ * to read as expressed by having gone unmeasured -- the one way a resolved
+ * matrix could quietly become a green one.
  */
-export type CellStatus = "expressed" | "guardian_only" | "unexpressed";
+export type CellStatus = "expressed" | "guardian_only" | "unexpressed" | "contract_violated";
 
 export type CoverageCell = {
   point: string;
@@ -40,7 +61,12 @@ export type CoverageCell = {
   status: CellStatus;
   reason?: string;
   /** Which checks contributed to this cell. A cell no check touched is a
-   * defect the runner reports, not a cell that passed. */
+   * defect the runner reports, not a cell that passed -- and this empty
+   * array is what says so: `resolveExitCode` reads it, rather than the
+   * sentence `mergeCells` writes into `reason` beside it, so the hole rule
+   * cannot be broken by rewording a string. An `expressed` cell no check
+   * claims fails the run for the same reason: an unattributed claim is not
+   * a measurement. */
   measuredBy: string[];
 };
 

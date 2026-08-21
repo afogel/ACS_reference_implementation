@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { mergeCells } from "../src/merge-cells.ts";
-import { AGT_POINTS, AGT_VERDICTS } from "../src/cells.ts";
+import { AGT_POINTS, AGT_VERDICTS, type CellStatus } from "../src/cells.ts";
 
-const cell = (point: string, verdict: string, status: "expressed" | "guardian_only" | "unexpressed", by: string, reason?: string) =>
+const cell = (point: string, verdict: string, status: CellStatus, by: string, reason?: string) =>
   ({ point, verdict, status, measuredBy: [by], ...(reason ? { reason } : {}) }) as const;
 
 describe("mergeCells -- the worst status wins and every check is named", () => {
-  it("lets unexpressed beat guardian_only, and guardian_only beat expressed", () => {
+  it("lets contract_violated beat unexpressed, unexpressed beat guardian_only, and guardian_only beat expressed", () => {
     const merged = mergeCells(
       [cell("pre_tool_call", "warn", "expressed", "intervention-point round trip")],
       [cell("pre_tool_call", "warn", "guardian_only", "verdict round trip", "no wire source")],
@@ -16,6 +16,25 @@ describe("mergeCells -- the worst status wins and every check is named", () => {
     expect(at.status).toBe("guardian_only");
     expect(at.measuredBy).toEqual(["intervention-point round trip", "verdict round trip"]);
     expect(at.reason).toBe("no wire source");
+
+    // The rung the fourth status added, and the one that has to hold for the
+    // exit rule to see a finding at all: a check that found this tree's own
+    // declaration broken must not be outvoted by one that found the
+    // coordinate merely unreachable, or by one that found nothing wrong.
+    const withFinding = mergeCells(
+      [cell("output", "deny", "unexpressed", "intervention-point round trip", "no method here")],
+      [cell("output", "deny", "expressed", "deny fails closed")],
+      [cell("output", "deny", "contract_violated", "verdict round trip", "reads back as nothing")],
+    );
+    const finding = withFinding.find((c) => c.point === "output" && c.verdict === "deny")!;
+
+    expect(finding.status).toBe("contract_violated");
+    expect(finding.reason).toBe("reads back as nothing");
+    expect(finding.measuredBy).toEqual([
+      "intervention-point round trip",
+      "deny fails closed",
+      "verdict round trip",
+    ]);
   });
 
   it("carries both reasons when two checks land on the same status", () => {

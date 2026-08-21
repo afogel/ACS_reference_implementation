@@ -5,9 +5,10 @@
  * combines however many of them touched each coordinate into the one cell
  * the matrix reports for it.
  *
- * THE RULE: the worst status wins -- `unexpressed` beats `guardian_only`
- * beats `expressed` -- and every contributing check is named in
- * `measuredBy`, regardless of which status it individually landed on. Two
+ * THE RULE: the worst status wins -- `contract_violated` beats
+ * `unexpressed` beats `guardian_only` beats `expressed` -- and every
+ * contributing check is named in `measuredBy`, regardless of which status it
+ * individually landed on. Two
  * checks that land on the SAME status -- the one the coordinate resolves to
  * -- have both their DISTINCT reasons carried, joined by `"; "`: one check's
  * account does not silence another's. Identical text from two checks is
@@ -28,8 +29,15 @@ import { everyCell, type CellStatus, type CoverageCell, type CoverageMatrix } fr
 
 /** Worst first, best last -- the ordering `worseOf` resolves ties by. Not
  * exported: this ranking is the merge's own business, and nothing outside
- * this file needs to compare two statuses against each other. */
-const WORST_TO_BEST: readonly CellStatus[] = ["unexpressed", "guardian_only", "expressed"];
+ * this file needs to compare two statuses against each other.
+ *
+ * `contract_violated` ranks worst rather than merely differently: it is the
+ * one status that fails the run (exit-code.ts), so a coordinate where one
+ * check found a broken declaration and another found nothing wrong must
+ * resolve to the finding. Ranked anywhere else, a check asking an easier
+ * question could bury one asking a harder one -- the failure this whole
+ * ordering exists to prevent. */
+const WORST_TO_BEST: readonly CellStatus[] = ["contract_violated", "unexpressed", "guardian_only", "expressed"];
 
 function worseOf(a: CellStatus, b: CellStatus): CellStatus {
   return WORST_TO_BEST.indexOf(a) <= WORST_TO_BEST.indexOf(b) ? a : b;

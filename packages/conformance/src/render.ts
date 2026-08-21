@@ -116,26 +116,38 @@ export function renderMappingTable(mapping: Mapping): MappingTable {
   ].join("\n") as MappingTable;
 }
 
-/** One glyph per `CellStatus` (`cells.ts`) -- no fourth member, no default,
- * so every cell renders something and `Record` makes a missing entry a
- * compile error rather than an unmarked cell. */
+/** One glyph per `CellStatus` (`cells.ts`) -- no member without one and no
+ * default, so every cell renders something and `Record` makes a missing entry
+ * a compile error rather than an unmarked cell. That is what makes a new
+ * status impossible to add without deciding how the published table shows it:
+ * a status the renderer did not show would be an invisible finding, which is
+ * the same defect as a cell rendered blank. `‼` for `contract_violated`
+ * rather than a second ✖-like mark, because a reader scanning the grid must
+ * be able to see at a glance that it is not the same answer as `unexpressed`
+ * beside it -- one is a gap ACS has, the other is this tree contradicting
+ * itself. */
 const STATUS_SYMBOL: Record<CellStatus, string> = {
   expressed: "✔",
   guardian_only: "◐",
   unexpressed: "✖",
+  contract_violated: "‼",
 };
 
 /**
  * Only `guardian_only` is painted, and only that one, when colour is on.
- * `expressed` and `unexpressed` are deliberately left plain even with
- * `color: true` -- `cells.ts`'s own `CellStatus` doc records why "green" was
- * retracted as this matrix's success name (a matrix under pressure to stay
- * green is a matrix under pressure to redefine its claim), and painting
- * `expressed` green or `unexpressed` red here would reintroduce exactly that
- * framing one layer up, in the renderer, even though the type itself never
- * says either word. `guardian_only` gets the same qualifier colour the
- * Inspector uses for "policy fired" (`packages/inspector/src/render.ts`) --
- * a cell that asks for a second look, not a verdict on it.
+ * `expressed`, `unexpressed` and `contract_violated` are deliberately left
+ * plain even with `color: true` -- `cells.ts`'s own `CellStatus` doc records
+ * why "green" was retracted as this matrix's success name (a matrix under
+ * pressure to stay green is a matrix under pressure to redefine its claim),
+ * and painting `expressed` green or either of the other two red here would
+ * reintroduce exactly that framing one layer up, in the renderer, even though
+ * the type itself never says either word. `contract_violated` is the one
+ * status that fails the run, and it is still not painted red: the exit status
+ * and the footnote are how a finding is reported, and a red cell would invite
+ * reading the whole grid as a pass/fail colour field again. `guardian_only`
+ * gets the same qualifier colour the Inspector uses for "policy fired"
+ * (`packages/inspector/src/render.ts`) -- a cell that asks for a second look,
+ * not a verdict on it.
  */
 function statusColor(status: CellStatus): string | null {
   return status === "guardian_only" ? YELLOW : null;
@@ -149,7 +161,7 @@ function coordinateKey(point: string, verdict: string): string {
  * Renders the coverage matrix -- the 40 cells the other checks measure and
  * `mergeCells` resolves -- as one grid: an AGT intervention point (row)
  * against an AGT verdict (column), every cell exactly one of `cells.ts`'s
- * three statuses, never blank.
+ * four statuses, never blank.
  *
  * `cells`' own `point`/`verdict` values are what the grid's rows and columns
  * are drawn from -- not a second, separately imported copy of AGT's
@@ -256,7 +268,11 @@ export function renderCoverageMatrix(cells: CoverageMatrix, options: RenderOptio
     header,
     ...rows,
     "",
-    `Legend: ${STATUS_SYMBOL.expressed} expressed   ${STATUS_SYMBOL.guardian_only} guardian_only   ${STATUS_SYMBOL.unexpressed} unexpressed`,
+    `Legend: ${STATUS_SYMBOL.expressed} expressed   ${STATUS_SYMBOL.guardian_only} guardian_only   ` +
+      `${STATUS_SYMBOL.unexpressed} unexpressed   ${STATUS_SYMBOL.contract_violated} contract_violated`,
+    `${STATUS_SYMBOL.unexpressed} is an answer -- ACS v0.1.0 has no target here. ` +
+      `${STATUS_SYMBOL.contract_violated} is a finding -- a declaration in this repository was checked and ` +
+      `does not hold, and it is what makes this run exit non-zero.`,
     ...(footnotes.length > 0 ? ["", ...footnotes] : []),
   ].join("\n");
 }

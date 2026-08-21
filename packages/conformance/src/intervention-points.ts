@@ -21,11 +21,22 @@
  *
  * `coverageCellsFromInterventionPoints` therefore emits cells only where
  * this question does resolve the whole column set: a point with no usable
- * ACS method is `unexpressed` for all five verdicts, because no wire message
+ * ACS method is unresolved for all five verdicts, because no wire message
  * reaches it at all, whichever verdict AGT would have returned. A resolver
  * THROW is such an answer too, not an escaping error: an ambiguous table is
  * a real answer about that point, and letting the throw out would take the
  * whole matrix with it.
+ *
+ * TWO KINDS OF UNRESOLVED, AND THE DIFFERENCE IS WHAT FAILS THE RUN.
+ * `mapping.yaml` declaring `acs_method: null` is ACS v0.1.0 having nothing
+ * to offer this point -- `unexpressed`, a resolved cell, exit 0. A row that
+ * names a method which resolves back to a different point, a resolver that
+ * threw, or a point AGT declares and this table has no row for at all is
+ * this tree contradicting its own declaration -- `contract_violated`, which
+ * `resolveExitCode` (exit-code.ts) fails on. Both used to be `unexpressed`,
+ * which is precisely why breaking the table could not fail the instrument
+ * that exists to measure it; `cells.ts`'s `CellStatus` carries the
+ * distinction now.
  */
 import { resolveInterventionPoint, type Mapping } from "guardian";
 import { AGT_POINTS, AGT_VERDICTS, type CoverageCell } from "./cells.ts";
@@ -37,7 +48,8 @@ import { AGT_POINTS, AGT_VERDICTS, type CoverageCell } from "./cells.ts";
  */
 export type PointRoundTrip =
   | { point: string; status: "resolved" }
-  | { point: string; status: "unexpressed"; reason: string };
+  | { point: string; status: "unexpressed"; reason: string }
+  | { point: string; status: "contract_violated"; reason: string };
 
 export function checkInterventionPoints(mapping: Mapping): PointRoundTrip[] {
   return AGT_POINTS.map((point) => resolvePoint(point, mapping));
@@ -47,9 +59,11 @@ export function checkInterventionPoints(mapping: Mapping): PointRoundTrip[] {
  * The stage that turns point-level answers into matrix cells -- named for
  * being a projection rather than a second measurement.
  *
- * Only `unexpressed` points produce cells, and each produces all five. A
- * `resolved` point produces none: this check has nothing to say about any
- * individual column there.
+ * Only an unresolved point produces cells, and each produces all five,
+ * carrying whichever unresolved status the point itself landed on -- never
+ * flattened to one, or the exit rule this feeds would lose the difference the
+ * check just made. A `resolved` point produces none: this check has nothing
+ * to say about any individual column there.
  */
 export function coverageCellsFromInterventionPoints(results: PointRoundTrip[]): CoverageCell[] {
   return results.flatMap((result) =>
@@ -58,7 +72,7 @@ export function coverageCellsFromInterventionPoints(results: PointRoundTrip[]): 
       : AGT_VERDICTS.map((verdict) => ({
           point: result.point,
           verdict,
-          status: "unexpressed" as const,
+          status: result.status,
           reason: result.reason,
           measuredBy: ["intervention-point round trip"],
         })),
@@ -68,13 +82,19 @@ export function coverageCellsFromInterventionPoints(results: PointRoundTrip[]): 
 function resolvePoint(point: string, mapping: Mapping): PointRoundTrip {
   const row = mapping.intervention_points[point];
   if (row === undefined) {
+    // The eight points are read off AGT's own SDK (cells.ts), and this table
+    // declares one row per point -- `acs_method: null` where ACS v0.1.0
+    // cannot reach it. A point with no row is not a gap ACS has; it is this
+    // table failing to answer for a point it exists to answer for.
     return {
       point,
-      status: "unexpressed",
+      status: "contract_violated",
       reason: `mapping.yaml's intervention_points table has no row for AGT point "${point}"`,
     };
   }
   if (row.acs_method === null) {
+    // The one honest unresolved answer: the declaration says ACS v0.1.0 has
+    // nothing here, and the check agrees by having nothing to resolve.
     return {
       point,
       status: "unexpressed",
@@ -84,14 +104,24 @@ function resolvePoint(point: string, mapping: Mapping): PointRoundTrip {
   try {
     const resolved = resolveInterventionPoint(row.acs_method, mapping);
     if (resolved !== point) {
+      // The table named a method for this point and the runtime routes that
+      // method somewhere else: whichever of the two rows is wrong, a wire
+      // message would be governed by a policy neither row's reader expects.
       return {
         point,
-        status: "unexpressed",
+        status: "contract_violated",
         reason: `mapping.yaml maps "${point}" to ${row.acs_method}, which resolves back to "${resolved}"`,
       };
     }
     return { point, status: "resolved" };
   } catch (error) {
-    return { point, status: "unexpressed", reason: error instanceof Error ? error.message : String(error) };
+    // Still caught rather than let out -- one unresolvable point must not
+    // take the whole matrix with it -- but recorded as the finding it is: the
+    // resolver refused a method this table declares it resolves.
+    return {
+      point,
+      status: "contract_violated",
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 }

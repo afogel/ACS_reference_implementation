@@ -98,8 +98,10 @@ export type ConformanceRun = {
    * section from -- exposed alongside the text so a caller (this file's own
    * test) can assert its shape precisely instead of pattern-matching text. */
   cells: CoverageMatrix;
-  /** 0 for a fully resolved matrix, non-zero for a hole (exit-code.ts's own
-   * `resolveExitCode` -- see that file for the rule this reads). */
+  /** 0 for a fully resolved matrix, non-zero for a finding: a cell whose
+   * declaration was checked and does not hold, or a coordinate no check
+   * measured (exit-code.ts's own `resolveExitCode` -- see that file for the
+   * rule this reads, and why an `unexpressed` cell is neither). */
   exitCode: number;
 };
 
@@ -156,9 +158,11 @@ if (import.meta.main) {
   console.log(run.output);
   if (run.exitCode !== 0) {
     console.error(
-      `\nconformance: exit ${run.exitCode} -- the coverage matrix has a hole: a coordinate no check measured ` +
-        `(see the "no check measured this cell" cell(s) above). An unexpressed cell is resolved, not a hole, ` +
-        `and never makes this exit non-zero`,
+      `\nconformance: exit ${run.exitCode} -- this matrix carries a finding. Either a cell reads ` +
+        `contract_violated (a declaration this repository makes was checked and does not hold -- the grid's ` +
+        `own legend and footnotes above say which), or a coordinate has no check named against it at all. An ` +
+        `unexpressed cell is neither: it reports a gap ACS v0.1.0 really has, and never makes this exit ` +
+        `non-zero`,
     );
   }
   process.exit(run.exitCode);

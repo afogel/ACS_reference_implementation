@@ -44,7 +44,7 @@ describe("renderCoverageMatrix -- the published coverage matrix", () => {
     expect(table).toContain("AGT verdicts");
   });
 
-  it("names all three statuses on the legend line itself, not merely somewhere in the table", () => {
+  it("names all four statuses on the legend line itself, not merely somewhere in the table", () => {
     // Scoped to the legend line, and word-bounded: `table.toContain("expressed")`
     // is satisfied by the substring inside "unexpressed" and says nothing
     // about the legend specifically -- it would still pass if "expressed"
@@ -54,6 +54,24 @@ describe("renderCoverageMatrix -- the published coverage matrix", () => {
     expect(legendLine).toMatch(/\bexpressed\b/);
     expect(legendLine).toMatch(/\bguardian_only\b/);
     expect(legendLine).toMatch(/\bunexpressed\b/);
+    expect(legendLine).toMatch(/\bcontract_violated\b/);
+  });
+
+  it("renders a contract_violated cell with its own symbol, and says on the table's face that it is the status that fails the run", () => {
+    // A status the published table did not show would be an invisible
+    // finding -- the same defect as a blank cell, one layer up. And a reader
+    // who can see the symbol but not what separates it from ✖ has been shown
+    // a distinction without being told which one exits non-zero.
+    const violated = mergeCells([
+      ...contributions.filter((c) => !(c.point === "input" && c.verdict === "deny")),
+      cell("input", "deny", "contract_violated", 'AGT "deny" reads back as "escalate"'),
+    ]);
+    const violatedTable = renderCoverageMatrix(violated);
+
+    const inputRow = violatedTable.split("\n").find((line) => line.startsWith("input"))!;
+    expect(inputRow).toMatch(/‼\[\d+\]/);
+    expect(violatedTable).toContain('AGT "deny" reads back as "escalate"');
+    expect(violatedTable).toMatch(/contract_violated[\s\S]*exit non-zero/);
   });
 
   it("renders a guardian_only cell as a footnote marker beside its symbol, with ONE footnote line covering every cell sharing the identical reason", () => {
@@ -93,7 +111,7 @@ describe("renderCoverageMatrix -- the published coverage matrix", () => {
     const rows = table.split("\n").filter((line) => AGT_POINTS.some((point) => line.startsWith(point)));
     expect(rows).toHaveLength(AGT_POINTS.length);
     for (const row of rows) {
-      const symbols = [...row.matchAll(/[✔◐✖]/g)];
+      const symbols = [...row.matchAll(/[✔◐✖‼]/g)];
       expect(symbols).toHaveLength(AGT_VERDICTS.length);
     }
   });
