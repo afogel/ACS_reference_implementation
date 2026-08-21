@@ -179,6 +179,30 @@ describe("governStep — the three failure stages name three different incidents
     expect(events[0]?.rpc_id).toBeString();
   });
 
+  // A refusal is a delivery-stage event like any other -- nothing here
+  // branches on it, which is the property the module header claims -- but it
+  // is not a delivery FAILURE, so the posture must not answer it. The posture
+  // here is `proceed`, deliberately: under `deny` this passes unfixed, and the
+  // rendered output is the half a host actually writes.
+  it("blocks a refused step under a proceed posture, and renders the deny", async () => {
+    const { sink, events } = recordingSink();
+    const governed = await govern(
+      answering({ decisionArrived: false, failure: { code: -32020, message: "evaluation failed" } }),
+      sink,
+    );
+
+    expect(governed.stage).toBe("delivery");
+    expect(governed.decision.decision).toBe("deny");
+    expect(governed.output).toEqual({ outcome: "stop", note: governed.decision.reasoning });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      posture: "proceed",
+      outcome: "blocked",
+      method: "steps/toolCallRequest",
+      failure: { kind: "refused" },
+    });
+  });
+
   // "render": a decision DID arrive and was honoured in principle; only this
   // host's expression of it failed. Auditing that as "no decision arrived" would
   // send an incident reviewer to a Guardian that answered correctly.

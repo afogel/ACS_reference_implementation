@@ -23,10 +23,16 @@
  *   - An evaluation failure and a DELIVERY failure never merge. A `deny` the
  *     policy runtime produced -- including one it produced because its own
  *     evaluation failed -- is a decision, and travels the decision path. A
- *     silent Guardian, a dead transport, or an error carrying no decision is a
- *     delivery failure, and gets §6.4's negotiated `on_decision_failure`.
- *     Conflating them either breaks the policy layer's fail-closed invariant
- *     or halts production on a network blip.
+ *     silent Guardian or a dead transport is a delivery failure, and gets
+ *     §6.4's negotiated `on_decision_failure`. Conflating them either breaks
+ *     the policy layer's fail-closed invariant or halts production on a
+ *     network blip.
+ *   - An error carrying no decision is one or the other, and which one is not
+ *     this function's call. A code meaning the Guardian was alive and refused
+ *     the envelope fails closed regardless of posture; any other error is the
+ *     wire's business and gets the posture. `applyFailurePosture` makes that
+ *     distinction (see failure-kinds.ts), and every path here reaches it,
+ *     which is why nothing here has to know the difference.
  *   - Every step that proceeds without a decision is audited (§6.4 MUST), and a
  *     `proceed` that could not be audited is downgraded to `deny`. That is
  *     `applyFailurePosture`'s job, and every path here that has no decision
@@ -157,9 +163,16 @@ export async function governStep({
   const timeoutMs = session.config?.timeout_config.default_ms ?? DEFAULT_TIMEOUT_MS;
 
   /**
-   * The posture's answer to a failure, rendered. Every stage's catch ends here
-   * and nowhere else, which is what makes "no decision without an audit entry"
-   * a property of the control flow rather than of remembering to write one.
+   * `applyFailurePosture`'s answer to a failure, rendered. Every stage's catch
+   * ends here and nowhere else, which is what makes "no decision without an
+   * audit entry" a property of the control flow rather than of remembering to
+   * write one.
+   *
+   * Named for the posture because that is what answers almost every failure
+   * that reaches it, and the one exception is deliberately not this function's
+   * business: a Guardian that refused the envelope fails closed regardless of
+   * posture, decided inside `applyFailurePosture`, so nothing here branches on
+   * it and nothing here can forget to.
    *
    * The render here cannot fail: `loadHookmap` does not merely check that
    * `allow` and `deny` are present in the `decisions` block, it shape-checks

@@ -113,6 +113,27 @@ describe("createAuditSink", () => {
     expect(entry?.posture).toBe("deny");
   });
 
+  // The one entry shape an incident reviewer has to be able to read off the
+  // file alone: a step the Guardian refused. `posture: "proceed"` beside
+  // `outcome: "blocked"` is the pair no posture-driven entry can produce, and
+  // the Guardian's own code is in `failure.message` because that is the only
+  // place it travels -- there is no separate structured field for it, so if
+  // this line loses it, an incident review cannot tell which refusal happened.
+  it("records a refused step, keeping the refusal's kind and the guardian's code", () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path }).write({
+      ...EVENT,
+      posture: "proceed",
+      outcome: "blocked",
+      failure: { kind: "refused", message: "guardian refused the envelope with error -32020: evaluation failed" },
+    });
+    const [entry] = readEntries(path);
+    expect(entry?.outcome).toBe("blocked");
+    expect(entry?.posture).toBe("proceed");
+    expect(entry?.failure.kind).toBe("refused");
+    expect(entry?.failure.message).toContain("-32020");
+  });
+
   it("creates the directory it was pointed at", () => {
     const path = join(scratch(), "nested", "audit.jsonl");
     createAuditSink({ path }).write(EVENT);

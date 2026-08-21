@@ -1,7 +1,8 @@
 /**
  * The failure taxonomies one step's audit entry can name -- what went wrong on
- * the wire, on this side of it, and while establishing the session -- plus the
- * stage of the exchange each belongs to.
+ * the wire, what the Guardian refused, what went wrong on this side of the
+ * wire, and what went wrong while establishing the session -- plus the stage
+ * of the exchange each belongs to.
  *
  * A module of its own, so the writer and the classifier share one
  * declaration. `failure-posture.ts` builds these values and `audit-sink.ts`
@@ -13,23 +14,38 @@
  * role), so the shared vocabulary lives here, the same way
  * `decision-message.ts` holds the decision every module on this side speaks.
  *
- * These name failures of the wire and of this host. No policy-runtime
- * vocabulary -- a delivery failure is a property of the wire, not of whatever
- * evaluates policy on the other side of it.
+ * These name failures of the wire, refusals by the Guardian, and faults of
+ * this host. No policy-runtime vocabulary: a delivery failure is a property
+ * of the wire, and a refusal is a property of the Guardian's willingness to
+ * answer this envelope at all -- neither names a rule, a verdict, or
+ * anything else belonging to whatever evaluates policy on the other side.
+ *
+ * The wire/refusal split is the load-bearing one, and it did not exist at
+ * first: every no-decision outcome was a `DeliveryFailureKind`, so a
+ * Guardian that was alive and refused an envelope resolved exactly like a
+ * dead socket -- which under the shipped default posture (`proceed`) meant
+ * `allow`. A governance tool must not proceed because the thing governing it
+ * said no in a shape the host was not reading.
  */
 
 /**
  * What went wrong ON THE WIRE: a request went out and no usable decision came
- * back. §6.4's own case, and the only kinds `classifyDeliveryFailure` can
- * produce.
+ * back, because nothing usable came back at all. §6.4's own case, and the
+ * only kinds a delivery failure resolves under the negotiated posture.
  *
- * Deliberately narrow: `host_configuration` and `decision_unrenderable` are
- * not delivery failures at all -- both are precisely-known, entirely
- * host-side causes -- so including them here would mean `failure.kind`
- * presents them under a delivery-shaped name, and `classifyDeliveryFailure`
- * would advertise a return it never actually produces. A type that lies is a
- * lie the type system then teaches every reader. The two live in
- * `HostFailureKind` below.
+ * Deliberately narrow, in two directions. `host_configuration` and
+ * `decision_unrenderable` are not delivery failures at all -- both are
+ * precisely-known, entirely host-side causes -- so including them here would
+ * mean `failure.kind` presents them under a delivery-shaped name. And
+ * `refused` is not one either: something answered, so the wire worked. A type
+ * that lies is a lie the type system then teaches every reader. The first two
+ * live in `HostFailureKind` below, the third in `RefusalFailureKind`.
+ *
+ * `error_without_decision` is what is left of the JSON-RPC-error case once
+ * the refusals are taken out of it: an error whose code this host does not
+ * recognise as a refusal of this envelope. See REFUSAL_RPC_CODES in
+ * failure-posture.ts for why the recognised set is enumerated rather than
+ * inferred, and for what that leaves in this bucket.
  */
 export type DeliveryFailureKind = "timeout" | "transport" | "error_without_decision" | "unknown";
 
@@ -59,15 +75,37 @@ export type HostFailureKind =
   | "decision_unrenderable";
 
 /**
+ * What the Guardian did when it was ALIVE and would not answer this envelope
+ * with a decision: it answered, in JSON-RPC, with an error naming its refusal.
+ *
+ * Its own axis rather than a fifth `DeliveryFailureKind`, because the
+ * RESOLUTION differs and the type is where that difference has to be visible.
+ * A delivery failure is resolved by the negotiated posture (§6.4): nothing was
+ * heard, so the deployment's declared stance on silence governs. A refusal was
+ * heard. Applying a `proceed` posture to it would let a governance tool
+ * proceed on the Guardian's own "no" -- which is not a stance a deployment can
+ * declare, because §6.4 never offered it one: it is about a decision that
+ * failed to arrive, not about one that was withheld.
+ *
+ * One member, deliberately. What an incident reviewer needs from the record is
+ * that this was a refusal rather than an accident, and WHICH refusal -- and
+ * the second half is the JSON-RPC code, which travels in
+ * `AuditEntry.failure.message` (see classifyDeliveryFailure, which puts it
+ * there). Splitting the kind per code would carry the same fact twice and
+ * hand the Inspector a vocabulary to keep in step for nothing.
+ */
+export type RefusalFailureKind = "refused";
+
+/**
  * Everything `AuditEntry.failure.kind` can name about one step: the wire's
- * failures and this host's own.
+ * failures, the Guardian's refusals, and this host's own faults.
  *
  * A union rather than one widened `DeliveryFailureKind`, so the honest half
  * stays honest. A reader asking "what can a delivery failure be?" gets four
  * answers; a reader asking "what can an audit entry say about a step?" gets
- * six; and neither question is answered with the other one's list.
+ * seven; and neither question is answered with the other one's list.
  */
-export type StepFailureKind = DeliveryFailureKind | HostFailureKind;
+export type StepFailureKind = DeliveryFailureKind | RefusalFailureKind | HostFailureKind;
 
 /**
  * WHERE in the exchange the failure happened. Three materially different

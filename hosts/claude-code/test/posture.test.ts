@@ -331,15 +331,13 @@ describe("acs-hook — the negotiated posture, end to end", () => {
     }
   });
 
-  // The branch the shim takes whenever nothing arrived that names a decision
-  // -- a parse error, an envelope too broken to address a decision to, an
-  // outer-net `-32020` -- is covered only here, end to end, because a
-  // delivery-failure classification (e.g. `transport` vs. `unknown`) is only
-  // trustworthy once it has been verified against the runtime rather than
-  // reasoned about.
-  it("audits a JSON-RPC error carrying no decision as error_without_decision, and applies the posture", async () => {
-    const dir = scratch();
-    const stub = Bun.serve({
+  /** A stub Guardian that negotiates `proceed` and then answers every step
+   * with `error` and no result -- nothing that names a decision. The code is
+   * the variable, because whether the host reads it as the Guardian refusing
+   * this envelope or as an error it does not recognise is the whole
+   * distinction under test. */
+  function refusingStub(code: number) {
+    return Bun.serve({
       port: 0,
       async fetch(req) {
         const body = (await req.json()) as { id: string | number; method: string };
@@ -356,15 +354,56 @@ describe("acs-hook — the negotiated posture, end to end", () => {
             },
           });
         }
-        // An error and no result: nothing arrived that names a decision, so
-        // this is a delivery failure and the posture answers it.
-        return Response.json({
-          jsonrpc: "2.0",
-          id: body.id,
-          error: { code: -32020, message: "evaluation failed" },
-        });
+        return Response.json({ jsonrpc: "2.0", id: body.id, error: { code, message: "evaluation failed" } });
       },
     });
+  }
+
+  // The finding this test exists for, end to end through a real subprocess:
+  // the Guardian is UP and refusing, the deployment declared `proceed`, and
+  // the step must still be denied. Before the refusal axis, this exact
+  // exchange let `rm -rf /` through -- the Guardian's own "no" classified as
+  // a delivery failure and answered with the fail-open posture. Run under
+  // `proceed` deliberately: under `deny` it would pass unfixed.
+  it("denies a step the Guardian refused, even though the negotiated posture is proceed", async () => {
+    const dir = scratch();
+    const stub = refusingStub(-32020);
+    try {
+      const out = await runShim(payload("rm -rf /"), {
+        ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
+        ACS_SESSION_DIR: join(dir, "sessions"),
+        ACS_AUDIT_LOG: join(dir, "audit.jsonl"),
+      });
+      expect(expectQuietDecision(out).permissionDecision).toBe("deny");
+
+      const audit = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      expect(audit).toHaveLength(1);
+      // `posture: "proceed"` beside `outcome: "blocked"` is the pair no
+      // posture-driven entry can produce, and `refused` names it outright.
+      expect(audit[0]).toMatchObject({
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "blocked",
+        failure: { kind: "refused" },
+      });
+      // The Guardian's own error code and message survive into the record,
+      // which is the only thing that makes the entry actionable.
+      expect(audit[0].failure.message).toContain("-32020");
+      expect(audit[0].failure.message).toContain("evaluation failed");
+    } finally {
+      stub.stop(true);
+    }
+  });
+
+  // The other side of the split, end to end for the same reason: an error
+  // code the host does not recognise as a refusal is still the wire's
+  // business, so the negotiated posture still answers it. This is what stops
+  // the fix above from having been "fail closed on every JSON-RPC error" --
+  // and a delivery-failure classification is only trustworthy once it has
+  // been verified against the runtime rather than reasoned about.
+  it("audits an unrecognised error code as error_without_decision, and applies the posture", async () => {
+    const dir = scratch();
+    const stub = refusingStub(-32601);
     try {
       const out = await runShim(payload("rm -rf /"), {
         ACS_GUARDIAN_URL: `http://localhost:${stub.port}/acs`,
@@ -383,10 +422,7 @@ describe("acs-hook — the negotiated posture, end to end", () => {
         outcome: "proceeded",
         failure: { kind: "error_without_decision" },
       });
-      // The Guardian's own error code and message survive into the record,
-      // which is the only thing that makes the entry actionable.
-      expect(audit[0].failure.message).toContain("-32020");
-      expect(audit[0].failure.message).toContain("evaluation failed");
+      expect(audit[0].failure.message).toContain("-32601");
     } finally {
       stub.stop(true);
     }
@@ -690,11 +726,15 @@ describe("acs-hook — the negotiated posture, end to end", () => {
           });
         }
         // A delivery failure for the step itself, so the posture is what
-        // decides the outcome.
+        // decides the outcome. The code matters: it must be one the host does
+        // NOT read as the Guardian refusing this envelope, or the step would
+        // be denied whatever the posture said and this test would pass
+        // without the negotiated `deny` ever reaching it -- which is the one
+        // thing it exists to prove.
         return Response.json({
           jsonrpc: "2.0",
           id: body.id,
-          error: { code: -32020, message: "evaluation failed" },
+          error: { code: -32601, message: "Method not found" },
         });
       },
     });

@@ -80,8 +80,17 @@ export type AuditEntry = {
    *     difference is the entire thing §6.4 requires be visible.
    *
    * Past tense for the same reason: this field reports, it does not declare.
+   *
    * Derived from the posture in exactly one place (failure-posture.ts's
-   * RESOLUTION_BY_POSTURE), so the two can never disagree about a step.
+   * RESOLUTION_BY_POSTURE), so the two can never disagree about a step --
+   * with one exception, which is the one combination worth knowing how to
+   * read here. A step the Guardian REFUSED (`failure.kind: "refused"`) is
+   * `blocked` whatever the posture said, because the posture answers a
+   * decision that did not arrive and a refusal is one that was withheld. So
+   * `posture: "proceed"` beside `outcome: "blocked"` is a refusal, always:
+   * the only other route from a `proceed` posture to a blocked step is the
+   * unauditable-proceed downgrade, and that one denies precisely because the
+   * write failed, so it leaves no entry to read.
    */
   outcome: "proceeded" | "blocked";
   /**
@@ -89,13 +98,20 @@ export type AuditEntry = {
    *
    * `kind` carries the taxonomy rather than a bare `string`.
    * `applyFailurePosture` goes to some trouble to tell a delivery failure
-   * from a host-side one -- `DeliveryFailureKind` was deliberately narrowed
-   * for it, and `HostFailureKind` exists so a host misconfiguration is not
-   * filed as an unknown delivery failure -- and this is the only boundary
-   * that outlives the process, so a widening here is where all of that
-   * would have been lost. It is also the only place an incident review ever
-   * reads: a value this union does not contain is a value nothing
-   * downstream was written to interpret, and `string` invited exactly that.
+   * from a refusal and from a host-side fault -- `DeliveryFailureKind` was
+   * deliberately narrowed for it, `RefusalFailureKind` exists because a
+   * Guardian that answered "no" is not a Guardian that failed to answer, and
+   * `HostFailureKind` exists so a host misconfiguration is not filed as an
+   * unknown delivery failure -- and this is the only boundary that outlives
+   * the process, so a widening here is where all of that would have been
+   * lost. It is also the only place an incident review ever reads: a value
+   * this union does not contain is a value nothing downstream was written to
+   * interpret, and `string` invited exactly that.
+   *
+   * `message` is where the Guardian's own JSON-RPC error code survives, for a
+   * refusal as for any other error it answered with -- which of the refusals
+   * this was is a fact an incident reviewer needs, and this field is the one
+   * that already carries it into the record and onto the Inspector's line.
    */
   failure: { kind: StepFailureKind; message: string };
   /**

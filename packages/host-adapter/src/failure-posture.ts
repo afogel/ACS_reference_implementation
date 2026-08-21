@@ -9,6 +9,17 @@
  * same way -- apply the deployment's declared posture -- and that every step
  * which proceeds without a decision MUST be audited.
  *
+ * With ONE exception, which is not §6.4's case at all, and which is why this
+ * module now reads the failure before it reads the posture: a JSON-RPC error
+ * whose code means the Guardian was alive and REFUSED this envelope. §6.4 is
+ * about a decision that failed to arrive; a refusal is a decision withheld,
+ * by the very component this host defers to. So a refusal resolves to `deny`
+ * regardless of posture, and is still audited. Without that, a live Guardian
+ * answering `-32020 evaluation failed` and a dead socket were the same kind,
+ * and under the shipped default posture (`proceed`) both became `allow` --
+ * a governance tool proceeding on the Guardian's own "no". See
+ * REFUSAL_RPC_CODES for which codes mean that, and why the set is enumerated.
+ *
  * It is NOT reached when a decision arrived. A `deny` that arrives is
  * honoured regardless of posture, and that is enforced by the caller never
  * calling this on a decision.
@@ -25,13 +36,15 @@
  * with a write it was told did not happen.
  *
  * Nothing here knows the policy runtime behind the wire. A delivery failure
- * is a property of the wire, not of whatever evaluates policy on the other
- * side of it.
+ * is a property of the wire, and a refusal is a property of the Guardian's
+ * willingness to answer this envelope -- neither is a property of whatever
+ * evaluates policy on the other side of it, and nothing here names one.
  */
 import type { AuditEvent, AuditSink } from "./audit-sink.ts";
 import type {
   DeliveryFailureKind,
   FailureStage,
+  RefusalFailureKind,
   SessionFailureKind,
   StepFailureKind,
 } from "./failure-kinds.ts";
@@ -47,6 +60,7 @@ export type {
   DeliveryFailureKind,
   FailureStage,
   HostFailureKind,
+  RefusalFailureKind,
   SessionFailureKind,
   StepFailureKind,
 } from "./failure-kinds.ts";
@@ -92,18 +106,84 @@ const TRANSPORT_ERROR_CODES = new Set([
 ]);
 
 /**
- * Names which of §6.4's DELIVERY failure modes happened, for the audit entry.
- * Total: an unrecognised shape is "unknown", never a throw -- this runs while
- * the host is already handling a failure.
+ * The JSON-RPC error codes that mean the Guardian was ALIVE and refused this
+ * envelope, rather than that the wire failed. A response carrying one of
+ * these is a governance outcome and fails closed regardless of posture (see
+ * applyFailurePosture).
+ *
+ * Declared here by value rather than imported: this package has no runtime
+ * dependency on the Guardian and is not about to grow one for four integers
+ * -- the same arrangement DEFAULT_TIMEOUT_MS keeps with the Guardian's
+ * declared default. The four are the complete set this deployment's Guardian
+ * mints for a request it will not decide (packages/guardian/src/server.ts):
+ *
+ *   -32700  Parse error. Nothing the host sent was JSON. Answered with
+ *           `id: null`, since there is no envelope to read an id out of --
+ *           which is why guardian-client.ts's post() has to let an
+ *           unaddressed error through before its id-correlation check, or
+ *           this code could never reach this function at all.
+ *   -32010  The envelope failed schema validation and the Guardian could not
+ *           address a deny decision to it (no top-level id, or an id it
+ *           cannot put in a response), or the body exceeded the Guardian's
+ *           request cap. denyOnInvalidEnvelope converts the ADDRESSABLE
+ *           steps/* cases into honoured denies Guardian-side; this closes the
+ *           rest from the host's own side, which is what makes the
+ *           Guardian's inability to address every deny non-load-bearing.
+ *   -32011  The Guardian dispatched no handler for the method.
+ *   -32020  Evaluation itself failed -- mapVerdict's own checks, a policy
+ *           runtime error, or the outer net around dispatch.
+ *
+ * -32011 is the arguable one, so the reasoning is recorded rather than
+ * assumed. A host only ever sends methods its own hookmap maps, so a Guardian
+ * refusing to dispatch one is a misconfiguration of THIS deployment -- the
+ * hookmap and the Guardian disagree about what is governed -- and that is not
+ * a permission to proceed. The alternative reading, deliberately rejected:
+ * handshake.json's `methods_evaluated` says "Methods listed by the client but
+ * absent here are NOT evaluated ... Clients MAY still emit them for audit but
+ * MUST treat them as ALLOW-by-default", which would make an undispatched
+ * method an allow. That rule is about a method the ServerHello DECLARED it
+ * would not evaluate -- negotiated coverage, known before the step -- not
+ * about one the Guardian accepted at handshake and then refused at dispatch.
+ * A host that read the second as the first would fail open on precisely the
+ * disagreement it should surface.
+ *
+ * Enumerated rather than inferred ("any error object is a refusal"), for the
+ * reason TRANSPORT_ERROR_CODES is: the four above are checkable against a
+ * live Guardian, and client.test.ts drives each route to prove the list
+ * matches what the Guardian actually sends rather than what this file
+ * believes. An unrecognised code therefore stays `error_without_decision` and
+ * keeps the posture. That is a genuine remaining hole -- a future Guardian
+ * code would fail open under `proceed` until it is added here -- and it is
+ * preferred to guessing, because widening this to every error object would
+ * also fail closed on an intermediary's error the Guardian never sent.
+ */
+const REFUSAL_RPC_CODES = new Set([-32700, -32010, -32011, -32020]);
+
+/**
+ * Names what came back INSTEAD of a decision, for the audit entry. Total: an
+ * unrecognised shape is "unknown", never a throw -- this runs while the host
+ * is already handling a failure.
  *
  * Half of the `classify<Role>Failure` pair, with `classifySessionFailure`.
- * The role here really is delivery -- every kind it can return is a property
- * of the wire, not of the policy runtime behind it -- so the name states
- * exactly what it classifies. `classifyStepFailure` below is the genuinely
- * wider role, and it stays private because nothing outside this module
- * chooses a stage.
+ * "Delivery" names the STAGE this classifier serves -- a request went out and
+ * no decision came back -- and for three of its four kinds it is also the
+ * diagnosis. `refused` is the one answer that is not a property of the wire
+ * at all, and it lives here rather than in a sibling classifier on purpose:
+ * this is the single function every no-decision outcome passes through, so
+ * asking "was this a refusal?" cannot be the question a caller forgets.
+ * Splitting it out would make the fail-open reachable again by omission.
+ * `classifyStepFailure` below is the genuinely wider role, and it stays
+ * private because nothing outside this module chooses a stage.
+ *
+ * The Guardian's own code travels into `message`, and that is the only place
+ * it travels: `AuditEntry.failure.message` is durable and the Inspector
+ * already renders it, so a reviewer reading the log sees which refusal it
+ * was. A second structured copy of the same integer would have to be mirrored
+ * in the Inspector's independently-declared AuditEntry for no reader.
  */
-export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailureKind; message: string } {
+export function classifyDeliveryFailure(
+  failure: unknown,
+): { kind: DeliveryFailureKind | RefusalFailureKind; message: string } {
   try {
     if (failure instanceof GuardianTimeoutError) {
       return { kind: "timeout", message: failure.message };
@@ -124,9 +204,17 @@ export function classifyDeliveryFailure(failure: unknown): { kind: DeliveryFailu
     }
     if (typeof failure === "object" && failure !== null && "code" in failure) {
       const { code, message } = failure as ErrorLike;
+      // An error object means something answered: the wire worked, and the
+      // question is whether what answered was the Guardian refusing this
+      // envelope. `typeof code === "number"` is the guard, not a cast -- a
+      // non-conformant peer can put anything on `code`, and Set.has on a
+      // string that happens to read "-32020" would miss anyway.
+      const refused = typeof code === "number" && REFUSAL_RPC_CODES.has(code);
       return {
-        kind: "error_without_decision",
-        message: `guardian returned error ${String(code)}: ${String(message)}`,
+        kind: refused ? "refused" : "error_without_decision",
+        message: refused
+          ? `guardian refused the envelope with error ${String(code)}: ${String(message)}`
+          : `guardian returned error ${String(code)}: ${String(message)}`,
       };
     }
     return { kind: "unknown", message: String(failure) };
@@ -222,10 +310,15 @@ export function applyFailurePosture({
 }: ApplyFailurePostureInput): FailureResolvedAcsDecision {
   const { config: sessionConfig, failure: sessionFailure } = session;
   const posture = sessionConfig?.on_decision_failure ?? DEFAULT_POSTURE;
+  // Classified BEFORE the resolution is read, because for one kind it decides
+  // the resolution. Everything else is the wire's business and the posture's;
+  // a refusal is the Guardian's, and a governance tool does not proceed on it
+  // -- see REFUSAL_RPC_CODES and REFUSAL_RESOLUTION.
+  const classified = classifyStepFailure(stage, failure);
+  const refused = classified.kind === "refused";
   // One resolution, read once, in the three vocabularies it is expressed in --
   // see RESOLUTION_BY_POSTURE.
-  const { decision, outcome } = RESOLUTION_BY_POSTURE[posture];
-  const classified = classifyStepFailure(stage, failure);
+  const { decision, outcome } = refused ? REFUSAL_RESOLUTION : RESOLUTION_BY_POSTURE[posture];
 
   // Computed before the audit write, and written into it: "the guardian was
   // down for this whole session" (default) and "this deployment chose to
@@ -274,8 +367,10 @@ export function applyFailurePosture({
   // The "delivery" wording below is quoted verbatim in four
   // docs/demos/v3-runbook.md captures reproduced against a live Guardian.
   // It is not to be reworded without re-capturing them.
-  const cause =
-    stage === "request"
+  const cause = refused
+    ? `the guardian refused the envelope for ${method ?? "this step"} rather than deciding it ` +
+      `(${classified.kind}: ${classified.message})`
+    : stage === "request"
       ? `this host could not build a request for this step, so no decision was ever sought ` +
         `(${classified.kind}: ${classified.message})`
       : stage === "render"
@@ -288,6 +383,27 @@ export function applyFailurePosture({
       ? ""
       : ` this session's negotiated configuration could not be established or stored ` +
         `(${messageOf(sessionFailure)}), so any posture this deployment declared was unavailable to this step;`;
+
+  // Returns before both of the two exits below, because both of them speak
+  // about `on_decision_failure` -- what this deployment declared should happen
+  // when a decision does not arrive -- and a refusal is a decision withheld,
+  // not one lost. Saying "on_decision_failure=proceed, so this step was
+  // blocked" would read as a posture contradicting itself; saying it was
+  // blocked for want of an audit entry would name the wrong reason entirely.
+  // It is still audited -- the write above already happened -- and an
+  // unauditable refusal needs no downgrade for the same reason an unauditable
+  // deny does not: the step is blocked either way, and the failed write is
+  // reported by the sink's own error path.
+  if (refused) {
+    return {
+      decision,
+      reasoning:
+        `${cause};${sessionNote} the guardian was reachable and answered, so this is not a delivery failure ` +
+        `and on_decision_failure=${posture} does not apply -- a step the guardian would not decide is not a ` +
+        "step this host may proceed with, so it was blocked.",
+      reason_codes: [REFUSAL_REASON_CODE],
+    };
+  }
 
   // The audit requirement outranks the posture here, and this is the one
   // place the two can disagree. §6.4 makes the audit entry a MUST for a
@@ -329,6 +445,10 @@ export function applyFailurePosture({
  * `AuditEntry.outcome` is where that was weighed and why the audit rail keeps
  * its own. Both of this table's value types are read off `AuditEvent`'s own
  * declarations, so the table and the artifact cannot drift apart.
+ *
+ * Consulted for every failure except a refusal, which REFUSAL_RESOLUTION
+ * answers instead -- there is no posture row for it, because the deployment
+ * never got to declare one.
  */
 const RESOLUTION_BY_POSTURE: Record<
   AuditEvent["posture"],
@@ -338,6 +458,28 @@ const RESOLUTION_BY_POSTURE: Record<
   deny: { decision: "deny", outcome: "blocked" },
 };
 
+/**
+ * A refusal's resolution: the one that is not read out of a posture.
+ *
+ * `blocked` rather than a fourth outcome word, because `AuditEntry.outcome`
+ * reports what became of the step and the step was blocked -- inventing
+ * `refused` there would give the Inspector a badge stem to learn for a fact
+ * the entry already carries twice over, in `failure.kind` and in the code
+ * inside `failure.message`. A refusal-driven block stays distinguishable from
+ * a posture-driven one in the log without that: `failure.kind` names it
+ * outright, and `posture: "proceed"` beside `outcome: "blocked"` is a pair no
+ * posture-driven entry can produce (the unauditable-proceed downgrade denies
+ * only when the write failed, which is precisely when no entry exists).
+ *
+ * Shaped like a RESOLUTION_BY_POSTURE row, and read off the same `AuditEvent`
+ * declarations, so the two cannot drift into disagreeing about what a
+ * `blocked` step is.
+ */
+const REFUSAL_RESOLUTION: { decision: "allow" | "deny"; outcome: AuditEvent["outcome"] } = {
+  decision: "deny",
+  outcome: "blocked",
+};
+
 /** One reason code per stage, so the machine-readable half of the decision
  * carries the same distinction the prose does. */
 const REASON_CODE_BY_STAGE: Record<FailureStage, string> = {
@@ -345,6 +487,11 @@ const REASON_CODE_BY_STAGE: Record<FailureStage, string> = {
   request: "host_configuration",
   render: "decision_unrenderable",
 };
+
+/** A refusal's own code, not a stage's: it can only happen at the delivery
+ * stage, and `decision_failure` there would tell a machine reader that no
+ * decision arrived when the Guardian's refusal is exactly what did. */
+const REFUSAL_REASON_CODE = "guardian_refused";
 
 /**
  * The classified `{kind, message}` for one step, at the stage that failed --
