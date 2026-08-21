@@ -7,21 +7,59 @@ on:
     - cron: "17 6 * * 1"
   workflow_dispatch:
 
+# This job reads the repository and publishes to the step summary. The step
+# summary is a FILE, named by $GITHUB_STEP_SUMMARY -- writing it is not an API
+# call and needs no token scope, so read is the whole requirement. Stated
+# explicitly rather than inherited, because the repository default for
+# GITHUB_TOKEN is a setting elsewhere that can be read-and-write, and a job
+# whose only job is to look at things should not have write because someone
+# changed a checkbox.
+permissions:
+  contents: read
+
 jobs:
   watch:
     runs-on: ubuntu-latest
+    # Two shallow clones of AGT and a diff over eight files. Anything past
+    # this is a hung fetch, and without the key a hang runs to the 360-minute
+    # default before anyone finds out.
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      # Both actions pinned to the commit their moving major tag resolved to,
+      # with that tag kept as a comment so the next reader can re-resolve it.
+      # `@v4` is a tag someone else can move; a SHA is not.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Install trash
+        # scripts/run-upstream-watch.sh hard-requires `trash`: this repo does
+        # not permit `rm -rf`, so a scratch clone is cleaned up with `trash`
+        # or not at all. The version apt resolves here is whatever the
+        # archive currently holds -- unpinned, and the one unpinned thing
+        # left in this file.
         run: sudo apt-get update && sudo apt-get install -y trash-cli
       - run: bun install --frozen-lockfile
       - name: Watch AGT's declared surfaces
-        # No `pipefail` here on purpose: this slice reports and never
-        # refuses, so a shell-side failure (git fetch, the pinned ref gone
-        # upstream, AGT renaming main, jq missing) must still show up in the
-        # step summary rather than turning the job red. `2>&1` is what makes
-        # that failure visible in the summary at all -- stderr would
-        # otherwise be stranded in the raw log while tee's own exit status
-        # (not the pipeline's) keeps the job green with an empty summary.
+        # `shell: bash` is load-bearing, and it is the whole reason this key
+        # is written out. GitHub's implicit shell for `run:` is `bash -e {0}`;
+        # `pipefail` is added ONLY when `shell: bash` is stated. Without it
+        # the pipeline's status is `tee`'s, which is 0 whatever happened on
+        # the left -- measured: `bash -e -c 'false | tee /dev/null'` exits 0,
+        # `bash -eo pipefail -c` on the identical line exits 1. Every hard
+        # exit in scripts/run-upstream-watch.sh -- missing agt.lock, missing
+        # jq, missing trash, a fetch that never landed, the pinned ref gone
+        # from upstream -- was being thrown away here.
+        #
+        # This does NOT make drift fail the build, and the distinction is the
+        # point. Drift found upstream is this job's PRODUCT: a moved AGT
+        # surface is reported and the run exits 0, because the remedy is a
+        # human deciding whether to move the pin. What the two statuses now
+        # tell apart is a watcher that RAN and found nothing from a watcher
+        # that could not run at all. The comment that used to sit here
+        # defended the missing `pipefail` on the grounds that "this slice
+        # reports and never refuses" -- true of findings, false of failures,
+        # and it conflated the two into a gate that could not go red.
+        #
+        # `2>&1` stays, and is what puts a failure in the published summary
+        # at all: stderr would otherwise be stranded in the raw log.
+        shell: bash
         run: bun run watch:upstream 2>&1 | tee "$GITHUB_STEP_SUMMARY"
