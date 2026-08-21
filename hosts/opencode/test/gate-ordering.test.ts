@@ -103,6 +103,12 @@ type Gate = {
    * entry for this gate must name, since that log's readers know ACS and no
    * host's event names. */
   readonly acsMethod: string;
+  /** The `tools` list the SHIPPED hookmap declares for this gate, which the
+   * ungoverned entry records beside the tool that missed it. Per gate, not
+   * one constant: since V9 the request gate governs `webfetch` too and the
+   * result gate still governs `bash` alone, and an entry naming the wrong
+   * gate's list would misreport which declaration let the tool through. */
+  readonly tools: readonly string[];
   readonly freshLive: () => Record<string, unknown>;
   readonly fire: (hooks: Hooks, tool: unknown, sessionID: string, live: Record<string, unknown>) => Promise<void>;
 };
@@ -111,6 +117,7 @@ const GATES: readonly Gate[] = [
   {
     hook: "tool.execute.before",
     acsMethod: "steps/toolCallRequest",
+    tools: ["bash", "webfetch"],
     // The mutable `{args}` OpenCode hands the request gate -- the only place it
     // puts them at that gate.
     freshLive: () => ({ args: { command: "ls -la" } }),
@@ -123,6 +130,7 @@ const GATES: readonly Gate[] = [
   {
     hook: "tool.execute.after",
     acsMethod: "steps/toolCallResult",
+    tools: ["bash"],
     // The whole live `{title, output, metadata}` object, shaped as a real
     // `bash` result is (`metadata.exit`/`metadata.output`, measured on
     // OpenCode 1.18.15 -- opencode.hookmap.yaml's own table).
@@ -210,7 +218,7 @@ for (const gate of GATES) {
             method: gate.acsMethod,
             rpc_id: null,
             outcome: "ungoverned",
-            ungoverned: { tool: UNLISTED_TOOL, tools: ["bash"] },
+            ungoverned: { tool: UNLISTED_TOOL, tools: gate.tools },
           },
         ]);
       } finally {

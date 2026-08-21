@@ -218,7 +218,10 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
           method: "steps/toolCallRequest",
           rpc_id: null,
           outcome: "ungoverned",
-          ungoverned: { tool: "read", tools: ["bash"] },
+          // Both tools this gate governs since V9, not just `bash`: the list
+          // is the half of the entry that makes a drifting `tools` decl
+          // visible, so it has to be the shipped one.
+          ungoverned: { tool: "read", tools: ["bash", "webfetch"] },
         },
       ]);
     } finally {
