@@ -253,12 +253,14 @@ hooks:
       # THE WHOLE LINE IS NOW REFUSED AT LOAD IF IT IS WRONG, RATHER THAN ONLY
       # DOCUMENTED HERE. `acs-plugin.ts`'s `assertHostAcceptsEveryDecision` requires
       # `result: { from: applied_output }` EXACTLY -- that key, that source --
-      # on every decision this gate declares that withholds anything: `deny`,
-      # and `modify`. (`ask`/`defer` are held to a REFUSAL here instead if a
-      # hookmap ever declares them at this gate: `withResultOutput` attaches
-      # `applied_output` for `deny` alone and returns those two untouched, so
-      # a sink on either renders nothing however correctly it is written. This
-      # file declares neither, so nothing here exercises that branch.) The hook
+      # on every decision this gate declares that withholds anything -- which
+      # is `deny`, `modify`, `ask` and `defer`, i.e. everything but `allow`.
+      # `ask`/`defer` used to be held to a REFUSAL here instead, because
+      # `withResultOutput` attached `applied_output` for `deny` alone and
+      # returned those two untouched, so a sink on either rendered nothing
+      # however correctly it was written. `withholdsAtResultGate`
+      # (result-output.ts) ended that: the rule is now every disposition but
+      # `allow` and `modify`, and this file declares all four sinks. The hook
       # must also declare the `outputs:` block above: without it governStep
       # builds no output location, withResultOutput no-ops for EVERY decision,
       # and the sink below is unfillable by construction.
@@ -297,6 +299,28 @@ hooks:
       # plugin unloaded and the whole session ungoverned. This file replaces,
       # because replacing is the stronger of the two.
       deny:
+        output:
+          result: { from: applied_output }
+          reason.text: { from: reasoning, type: string }
+      # `ask` and `defer` replace here rather than refuse, and they are
+      # byte-identical to `deny` above because at this gate they ARE a deny.
+      # The step has already run: there is no permission left to seek and no
+      # pending state to hold, so what survives of both is that the output is
+      # not deliverable as it stands. `withholdsAtResultGate` in the adapter
+      # is the single statement of that rule, and `withResultOutput` attaches
+      # `applied_output` for every disposition it admits -- so these render
+      # the same patched clone `deny` does, leaf and mirror both.
+      #
+      # What it costs: OpenCode has no way to put a question to a human about
+      # an output that already exists, and no way to release one afterwards.
+      # An `ask` a human would have approved is over-blocked, silently. The
+      # request gate above keeps its own three-valued reading of `ask`; this
+      # asymmetry between the two gates is the honest part, not an oversight.
+      ask:
+        output:
+          result: { from: applied_output }
+          reason.text: { from: reasoning, type: string }
+      defer:
         output:
           result: { from: applied_output }
           reason.text: { from: reasoning, type: string }

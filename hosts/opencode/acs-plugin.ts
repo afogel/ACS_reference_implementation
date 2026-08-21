@@ -238,24 +238,27 @@ const CARRIED_AT_REQUEST_GATE: DecisionCarries = new Map([
 /**
  * The result gate (`tool.execute.after`), where the live half is `result`.
  *
- * `deny` and `modify` carry `applied_output` -- the whole patched clone of
- * the object at `outputs.within`, leaf and mirror both replaced. `deny` gets
- * one attached by `withResultOutput`; `modify` must already have one or
- * that function throws. Either may land it or refuse.
+ * Every decision that withholds here carries `applied_output` -- the whole
+ * patched clone of the object at `outputs.within`, leaf and mirror both
+ * replaced. `withResultOutput` attaches one for each of them; `modify` must
+ * already have its own or that function throws, because a modify's
+ * replacement is `resolveModify`'s and never this layer's. Any of them may
+ * land it or refuse.
  *
- * `ask` and `defer` carry nothing here: `withResultOutput` returns them
- * untouched, so a rule that required a sink for them would demand a
- * declaration that can never render -- measured delivering the secret in
- * the leaf and its mirror both. They are held to the refusal branch alone
- * here, exactly as the request gate's own three are, and for the identical
- * reason: nothing arrives for them to land. A hookmap declaring `ask`/
- * `defer` at this gate has a shape it can honestly use.
+ * `ask` and `defer` are in that set, not exempt from it. At a gate where the
+ * step has already run there is no permission left to grant and no pending
+ * state to hold, so what survives of both is "this output is not deliverable
+ * as it stands" -- a withholding, and the adapter's `withholdsAtResultGate`
+ * is the single statement of that rule. They previously carried nothing,
+ * which forced them onto the refusal branch and, when a hookmap declared a
+ * result sink for them anyway, was measured delivering the secret in the
+ * leaf and its mirror both.
  */
 const CARRIED_AT_RESULT_GATE: DecisionCarries = new Map([
   ["deny", "applied_output"],
   ["modify", "applied_output"],
-  ["ask", null],
-  ["defer", null],
+  ["ask", "applied_output"],
+  ["defer", "applied_output"],
 ]);
 
 /** One decision's declared `output` block, as this gate reads it off a loaded
@@ -848,22 +851,19 @@ const HOOK_EXPECTATIONS: Record<string, HookExpectation> = {
         "result",
         path,
         hookEventName,
+        // Unreachable at this gate, and kept honest rather than deleted: the
+        // parameter exists for the REQUEST gate, whose deny/ask/defer carry
+        // nothing and are held to a refusal. Every decision in
+        // CARRIED_AT_RESULT_GATE now carries "applied_output", so no decision
+        // here can route to this arm -- and if one ever does, that table and
+        // this factory have disagreed, which is worth saying outright instead
+        // of raising a message about a shape that is no longer the only one
+        // open to an author.
         (decisionName) =>
           new Error(
-            `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" declares no unconditional ` +
-              `"value:" output field under "refuse", and at this gate that is the ONLY shape open to it. ` +
-              `withResultOutput (result-output.ts) attaches "applied_output" for "deny" alone -- it throws for a ` +
-              `"modify" arriving without one, and returns "allow", "ask" and "defer" UNTOUCHED -- so a ` +
-              `${decisionName} here never carries anything this host could land, and ` +
-              `'result: { from: applied_output }' on it renders NOTHING however correctly it is written. ` +
-              `Measured: applier applies nothing, throws nothing, and the tool's own output -- the leaf AND its ` +
-              `metadata.output mirror -- is delivered, indistinguishable from a clean allow. Declare an ` +
-              `unconditional refusal instead ("refuse.denied: { value: true }"), which throws: weaker than ` +
-              `replacing, since OpenCode rebuilds metadata from its own pre-hook copy on that path and the ` +
-              `plaintext survives in its session record, but the model never sees the output and that is an ` +
-              `honest outcome. Or do not declare ${decisionName} at this hook at all -- an undeclared decision ` +
-              `makes renderDecision throw, which governStep answers with this deployment's posture, audited ` +
-              `either way.`,
+            `acs-plugin: ${path}'s "hooks.${hookEventName}.decisions.${decisionName}" was routed to the ` +
+              `carries-nothing branch, but CARRIED_AT_RESULT_GATE declares every decision at this gate to carry ` +
+              `"applied_output". The table and this branch disagree; one of them is wrong.`,
           ),
         (decisionName, output, sourceField) =>
           new Error(

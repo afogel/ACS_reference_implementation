@@ -179,9 +179,17 @@ describe("createAuditSink", () => {
     });
     const [entry] = readEntries(path);
     expect(entry?.outcome).toBe("blocked");
-    expect(entry?.posture).toBe("proceed");
-    expect(entry?.failure.kind).toBe("refused");
-    expect(entry?.failure.message).toContain("-32020");
+    // Narrowed off the discriminant, because V5 made `AuditEntry` a union: the
+    // ungoverned arm carries neither `posture` nor `failure`, so reading them
+    // through the union does not compile. Throwing rather than optional-
+    // chaining keeps the three assertions below load-bearing -- `entry?.failure`
+    // on the wrong arm would read `undefined` and quietly assert nothing.
+    if (entry === undefined || entry.outcome === "ungoverned") {
+      throw new Error(`expected a posture-resolved entry, got ${JSON.stringify(entry)}`);
+    }
+    expect(entry.posture).toBe("proceed");
+    expect(entry.failure.kind).toBe("refused");
+    expect(entry.failure.message).toContain("-32020");
   });
 
   it("creates the directory it was pointed at", () => {

@@ -927,7 +927,18 @@ describe("the shim's decision tables match the adapter's actual behaviour", () =
    */
   const EXPECTED_CARRIED = {
     "tool.execute.before": { allow: undefined, deny: null, ask: null, defer: null, modify: "applied_input" },
-    "tool.execute.after": { allow: undefined, deny: "applied_output", ask: null, defer: null, modify: "applied_output" },
+    // `ask`/`defer` carry `applied_output` at the RESULT gate and nothing at
+    // the request gate, and that asymmetry is the claim: a step that has
+    // already run leaves nothing to ask about and nothing to hold pending, so
+    // `withholdsAtResultGate` folds both onto the withholding side there while
+    // the request gate keeps its three-valued reading.
+    "tool.execute.after": {
+      allow: undefined,
+      deny: "applied_output",
+      ask: "applied_output",
+      defer: "applied_output",
+      modify: "applied_output",
+    },
   } as const;
 
   const OUTPUT_LOCATION: HostOutputLocation = {

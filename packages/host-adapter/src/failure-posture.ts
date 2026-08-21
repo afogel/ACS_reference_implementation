@@ -480,11 +480,14 @@ const RESOLUTION_BY_POSTURE: Record<
  * posture-driven entry can produce (the unauditable-proceed downgrade denies
  * only when the write failed, which is precisely when no entry exists).
  *
- * Shaped like a RESOLUTION_BY_POSTURE row, and read off the same `AuditEvent`
- * declarations, so the two cannot drift into disagreeing about what a
- * `blocked` step is.
+ * Shaped like a RESOLUTION_BY_POSTURE row, and read off the same
+ * `PostureResolvedAuditEvent` arm, so the two cannot drift into disagreeing
+ * about what a `blocked` step is. The ARM and not `AuditEvent` whole, for the
+ * reason RESOLUTION_BY_POSTURE gives: the union's other member carries
+ * `"ungoverned"`, and a refusal is a step this deployment governed and
+ * blocked -- the one thing it is certainly not is ungoverned.
  */
-const REFUSAL_RESOLUTION: { decision: "allow" | "deny"; outcome: AuditEvent["outcome"] } = {
+const REFUSAL_RESOLUTION: { decision: "allow" | "deny"; outcome: PostureResolvedAuditEvent["outcome"] } = {
   decision: "deny",
   outcome: "blocked",
 };

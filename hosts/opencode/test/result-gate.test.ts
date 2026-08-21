@@ -914,18 +914,21 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
     },
   );
 
-  // The sixth member of the class, and the one the gate itself mandates.
+  // The sixth member of the class, and the one that is no longer a member.
   //
-  // The result gate's rule requires a sink on `deny`/`modify`/`ask`/`defer`,
-  // but the sink it demands can never be filled for two of them.
-  // `withResultOutput` (result-output.ts) attaches `applied_output` for
-  // `deny` alone; it throws for a `modify` arriving without one, and it
-  // returns everything else -- `allow`, `ask`, `defer` -- untouched. So a
-  // result-gate `ask` or `defer` declaring `result: { from: applied_output }`,
-  // the exact declaration the gate requires, renders no `result` key at all.
+  // This pair used to measure the fail-open: the result gate's rule required
+  // a sink on `deny`/`modify`/`ask`/`defer`, and the sink it demanded could
+  // never be filled for two of them, because `withResultOutput` attached
+  // `applied_output` for `deny` alone and returned `ask`/`defer` untouched.
+  // A result-gate `ask` or `defer` declaring `result: { from: applied_output }`
+  // -- the exact declaration the gate required -- rendered no `result` key at
+  // all and delivered the secret in the leaf and its mirror both.
   //
-  // The same observable as the no-sink case above, reached through the
-  // mandated declaration instead.
+  // `withholdsAtResultGate` (result-output.ts) closed it: every disposition
+  // but `allow` and `modify` now carries `applied_output` at a result gate,
+  // on the reasoning that a step which has already run leaves nothing to ask
+  // about and nothing to hold pending. So the mandated declaration is now the
+  // one that works, and this asserts the withholding rather than the leak.
   //
   // Composed the way `governStep` composes it -- `renderDecision(hook,
   // withResultOutput(decision, outputLocation), hookmap)`, its own `render()`
@@ -933,7 +936,7 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
   // decision is constructed rather than Guardian-produced for the same reason
   // stated on the `ask`/`defer` no-sink case above.
   it.each(["ask", "defer"] as const)(
-    "a result-gate %s declaring a mandated result sink renders no result key -- withResultOutput never fills it",
+    "a result-gate %s declaring the mandated result sink withholds the output -- withResultOutput fills it",
     (decisionName) => {
       const yaml = NO_SINK_AT_ALL.replace(
         "      modify:\n" + "        output:\n" + "          reason.text: { from: reasoning, type: string }\n",
@@ -960,19 +963,27 @@ describe("a result-gate decision the hookmap gives no way to withhold with -- th
         { payload: { result }, outputs },
       );
 
-      // Untouched: no `applied_output` was attached, so the field the hookmap
-      // points at does not exist on the decision.
-      expect(Object.hasOwn(projected, "applied_output")).toBe(false);
+      // Attached: the field the hookmap points at now exists on the decision.
+      expect(Object.hasOwn(projected, "applied_output")).toBe(true);
 
       const rendered = renderDecision("tool.execute.after", projected, hookmap);
-      expect(Object.hasOwn(rendered, "result")).toBe(false);
+      expect(Object.hasOwn(rendered, "result")).toBe(true);
 
       expect(() =>
         applyOpenCodeOutput(rendered, { gate: "result", result: result as unknown as Record<string, unknown> }),
       ).not.toThrow();
-      // The secret delivered, in both places, from a hookmap that satisfied the
-      // gate's own requirement to the letter.
-      expect(result).toEqual(liveResult("TOKEN=ghp_SECRET123456"));
+
+      // The secret withheld, in the leaf and the mirror both, from the same
+      // hookmap that used to satisfy the gate's requirement and leak anyway.
+      expect(result.output).toBe("[OUTPUT WITHHELD BY POLICY]");
+      expect(result.metadata.output).toBe("[OUTPUT WITHHELD BY POLICY]");
+      expect(result.output).not.toContain("ghp_SECRET123456");
+      expect(result.metadata.output).not.toContain("ghp_SECRET123456");
+
+      // Every sibling this decision does not name, still untouched.
+      expect(result.title).toBe("cat .env");
+      expect(result.metadata.exit).toBe(0);
+      expect(result.attachments).toEqual([{ type: "file", path: "/tmp/note.txt" }]);
     },
   );
 

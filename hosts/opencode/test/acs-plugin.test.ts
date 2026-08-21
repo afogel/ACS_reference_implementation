@@ -300,17 +300,13 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
     await expect(runPlugin(hookmapPath)).rejects.toThrow(/renders that LITERAL and never reads "from" at all/);
   });
 
-  // `ask`/`defer`, when declared at this gate, are checked too. Not declaring
-  // them is the safe state (renderDecision throws, posture-answered,
-  // audited); declaring one without a sink is silent delivery. Measured in
-  // result-gate.test.ts.
-  //
-  // The requirement here is an unconditional refusal, not a `result` sink:
-  // `withResultOutput` can never fill one for `ask`/`defer` -- it attaches
-  // `applied_output` for `deny` alone -- so the same refusal requirement the
-  // request gate's own three decisions get applies here too. The hazard this
-  // test pins: a declared `ask` with only `reason.text` is refused for having
-  // no honest shape at all, not merely for missing one particular key.
+  // `ask`/`defer` at this gate are held to exactly what `deny` is held to.
+  // `withholdsAtResultGate` (result-output.ts) admits every disposition but
+  // `allow` and `modify`, so `withResultOutput` attaches `applied_output` for
+  // all three and the sink rule governs all three. Declaring one with only
+  // `reason.text` is therefore the same fault as declaring `deny` that way:
+  // the applier applies nothing, throws nothing, and the tool's own output is
+  // delivered in the leaf and its mirror.
   it.each(["ask", "defer"] as const)(
     "refuses a result-gate %s that declares no sink -- declared-but-unlandable, not merely undeclared",
     async (decisionName) => {
@@ -329,20 +325,24 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
           "          reason.text: { from: reasoning, type: string }\n",
       );
       await expect(runPlugin(hookmapPath)).rejects.toThrow(
-        /declares no unconditional "value:" output field under "refuse", and at this gate that is the ONLY shape/,
+        /"result" is the ONLY key that withholds anything/,
       );
       await expect(runPlugin(hookmapPath)).rejects.toThrow(new RegExp(`decisions\\.${decisionName}`));
-      // The message says WHY there is no other shape, naming the mechanism.
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(/attaches "applied_output" for "deny" alone/);
+      // Refused for the fault it actually has, and told both ways out -- the
+      // sink or an unconditional refusal -- rather than the single shape that
+      // was all this decision could take before it carried anything.
+      await expect(runPlugin(hookmapPath)).rejects.toThrow(/OR declare an\s+unconditional refusal/);
     },
   );
 
-  // A hookmap that declares a `result` sink on `ask`/`defer` anyway --
-  // `withResultOutput` still cannot fill it, so this must be refused for the
-  // same reason. Measured (result-gate.test.ts): the declaration renders no
-  // `result` key and delivers the secret in leaf and mirror.
+  // The inverse of the fault above, and the one that used to be refused. When
+  // `withResultOutput` attached `applied_output` for `deny` alone, this exact
+  // declaration -- the one the sink rule demands -- rendered no `result` key
+  // and delivered the secret; the gate refused it for that reason. Now it is
+  // the correct declaration, and refusing it would refuse the fix. Measured
+  // withholding leaf and mirror in result-gate.test.ts.
   it.each(["ask", "defer"] as const)(
-    "refuses a result-gate %s declaring a result sink -- withResultOutput never fills it",
+    "accepts a result-gate %s declaring the result sink -- withResultOutput fills it",
     async (decisionName) => {
       const hookmapPath = join(SCRATCH_DIR, `result-${decisionName}-mandated-sink.yaml`);
       writeFileSync(
@@ -358,11 +358,7 @@ describe("AcsPlugin's load-time gate, at the result gate", () => {
           "        output:\n" +
           "          result: { from: applied_output }\n",
       );
-      // Refused for the right reason: not "you named the wrong key" -- the key
-      // is right -- but "nothing ever arrives for you to put in it".
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(/that is the ONLY shape open to it/);
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(/attaches "applied_output" for "deny" alone/);
-      await expect(runPlugin(hookmapPath)).rejects.toThrow(new RegExp(`decisions\\.${decisionName}`));
+      await expect(runPlugin(hookmapPath)).resolves.toBeUndefined();
     },
   );
 

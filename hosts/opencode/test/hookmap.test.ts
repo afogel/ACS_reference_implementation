@@ -89,15 +89,18 @@ describe("opencode.hookmap.yaml", () => {
     expect(Object.keys(requestDecisions.modify!.output)).toContain("args");
     expect(refusePaths(Object.keys(requestDecisions.modify!.output))).toEqual([]);
 
-    // The result gate's `deny` and `modify` are governed by the result-sink
-    // rule. (`ask`/`defer` are not declared at this gate, so the rule has
-    // nothing to ask of them -- asserted below so that stays deliberate.)
-    for (const decisionName of ["deny", "modify"] as const) {
+    // The result gate's withholding decisions are governed by the result-sink
+    // rule, and `ask`/`defer` are now among them: `withholdsAtResultGate`
+    // admits every disposition but `allow` and `modify`, so all four declared
+    // here must name the sink rather than a refusal. Listing them explicitly,
+    // rather than walking whatever the file happens to declare, is what makes
+    // a dropped entry fail here -- an absent decision declares nothing, and a
+    // check that only walked what is present would pass on the gap.
+    expect(Object.keys(resultDecisions).sort()).toEqual(["allow", "ask", "defer", "deny", "modify"]);
+    for (const decisionName of ["deny", "modify", "ask", "defer"] as const) {
       expect(Object.keys(resultDecisions[decisionName]!.output)).toContain("result");
       expect(refusePaths(Object.keys(resultDecisions[decisionName]!.output))).toEqual([]);
     }
-    expect(resultDecisions.ask).toBeUndefined();
-    expect(resultDecisions.defer).toBeUndefined();
 
     // And the sinks are a renderable declaration, not merely the right key:
     // no `value` beside the `from`, and no `type` that a `typeof` check on an
