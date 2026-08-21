@@ -11,6 +11,12 @@
  * `hosts/claude-code/acs-hook.ts` assumes for `ACS_GUARDIAN_URL` when that
  * env var is unset, so the runbook and the shim agree without either
  * hardcoding the other's value.
+ *
+ * `ACS_GUARDIAN_HOST` is left unset by default, which leaves startGuardian's
+ * loopback bind in place -- see server.ts's header for why an unauthenticated
+ * endpoint defaults to the narrowest bind. This is where a deployment that
+ * needs a routable one says so, since env is this process's configuration
+ * surface and server.ts reads none itself.
  */
 import { startGuardian } from "./server.ts";
 
@@ -18,7 +24,8 @@ const DEFAULT_PORT = 8787;
 const DEFAULT_MANIFEST_PATH = "policy/manifest.yaml";
 
 const port = Number(process.env.ACS_GUARDIAN_PORT ?? DEFAULT_PORT);
+const hostname = process.env.ACS_GUARDIAN_HOST;
 const manifestPath = process.env.ACS_MANIFEST_PATH ?? DEFAULT_MANIFEST_PATH;
 
-const guardian = await startGuardian({ port, manifestPath });
+const guardian = await startGuardian({ port, hostname, manifestPath });
 console.log(`Guardian listening at ${guardian.url}`);

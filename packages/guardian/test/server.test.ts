@@ -211,3 +211,45 @@ describe("startGuardian POST /acs -- the intervention point comes from mapping.y
     }
   });
 });
+
+// PR #10 review, Critical: Bun.serve with no `hostname` binds `*` -- every
+// interface, dual-stack -- and this endpoint has no auth, no origin check and
+// no request signing, so every host that could route to the port was a policy
+// oracle and a policy sink. The observable that separates the two binds is
+// reachability, so that is what is asserted, rather than the label Bun prints
+// for the socket (`server.hostname` reads "localhost" for a wildcard bind,
+// which is exactly the reading that hid this).
+describe("startGuardian binds loopback only", () => {
+  async function reachable(url: string): Promise<boolean> {
+    try {
+      await fetch(url, { method: "POST", body: "{}", signal: AbortSignal.timeout(2000) });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  it("refuses a connection to ::1, which a wildcard bind accepts", async () => {
+    // `hostname: "::"` reproduces the pre-fix bind exactly: dual-stack
+    // wildcard, ::1 and 127.0.0.1 both answering. It is the control, and it
+    // is what stops the assertion below from passing vacuously on a machine
+    // with no IPv6 loopback -- there, this expectation fails first and says
+    // so, rather than letting an unreachable address look like a narrow bind.
+    const wildcard = await startGuardian({ port: 0, hostname: "::", manifestPath: "policy/manifest.yaml" });
+    const loopback = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+
+    try {
+      // Path and port both come from the url the Guardian reported, so the
+      // probe cannot drift from what it actually serves.
+      const wildcardEndpoint = new URL(wildcard.url);
+      const loopbackEndpoint = new URL(loopback.url);
+
+      expect(await reachable(`http://[::1]:${wildcardEndpoint.port}${wildcardEndpoint.pathname}`)).toBe(true);
+      expect(await reachable(`http://127.0.0.1:${loopbackEndpoint.port}${loopbackEndpoint.pathname}`)).toBe(true);
+      expect(await reachable(`http://[::1]:${loopbackEndpoint.port}${loopbackEndpoint.pathname}`)).toBe(false);
+    } finally {
+      await wildcard.close();
+      await loopback.close();
+    }
+  });
+});

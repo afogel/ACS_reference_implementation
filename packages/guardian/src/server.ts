@@ -24,6 +24,17 @@
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
  * and evaluated statelessly.
+ *
+ * The listening socket defaults to loopback (127.0.0.1). Bun.serve with no
+ * `hostname` binds `*` -- every interface, dual-stack -- and this endpoint has
+ * no authentication, no origin check and no request signing, so anything that
+ * can open the port is both a policy oracle (ask it what would be allowed)
+ * and a policy sink (feed it envelopes it evaluates as if a governed host had
+ * sent them). Until the wire is authenticated, reachability IS the access
+ * control, so the default is the narrowest bind a host shim on the same
+ * machine can still reach. A deployment that genuinely needs a routable bind
+ * -- a Guardian in its own container, say -- opts in explicitly through the
+ * `hostname` option (main.ts reads ACS_GUARDIAN_HOST for it).
  */
 import { fileURLToPath } from "node:url";
 import { createBridge, type PolicyBridge } from "agt-bridge";
@@ -55,6 +66,13 @@ const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.
 const HANDSHAKE_METHOD = "handshake/hello";
 const ACS_PATH = "/acs";
 
+/** The default bind address -- see the module header for why it is loopback
+ * and not `*`. Spelled as the literal address rather than "localhost": the
+ * name resolves to both ::1 and 127.0.0.1, and Bun binds only one of them,
+ * so the name would make which interfaces are listening a property of the
+ * machine's resolver rather than of this line. */
+const LOOPBACK_ONLY = "127.0.0.1";
+
 /**
  * ACS reserves -32000..-32099 for application errors (Specification §17),
  * but only enumerates named codes -32000..-32007 in the §17.1 registry
@@ -83,6 +101,11 @@ type JsonRpcFailure = {
 export type StartGuardianOptions = {
   port: number;
   manifestPath: string;
+  /** The address to bind. Defaults to loopback; set it only to widen the
+   * bind deliberately, and read the module header first -- the endpoint is
+   * unauthenticated, so widening it hands the policy decision to whoever can
+   * reach the port. main.ts threads ACS_GUARDIAN_HOST into this. */
+  hostname?: string;
   /** Overrides the mapping.yaml path this Guardian loads. Defaults to the
    * repo's real mapping.yaml; exists so tests can inject a deliberately
    * misconfigured mapping (e.g. require_policy_references on a decision
@@ -93,12 +116,18 @@ export type StartGuardianOptions = {
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
-export async function startGuardian({ port, manifestPath, mappingPath }: StartGuardianOptions): Promise<StartedGuardian> {
+export async function startGuardian({
+  port,
+  hostname,
+  manifestPath,
+  mappingPath,
+}: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
 
   const server = Bun.serve({
+    hostname: hostname ?? LOOPBACK_ONLY,
     port,
     async fetch(req) {
       const { pathname } = new URL(req.url);
