@@ -34,6 +34,44 @@
  * appender, and the Inspector tails the file it writes and re-declares the
  * entry type itself, so nothing about that view depends on the Guardian's
  * internals.
+ *
+ * The store is bounded, and the bound is on sessions rather than on entries.
+ * `maxSessions` caps how many sessions are retained; a new session that puts
+ * the map over the cap evicts the least recently written one whole. It began
+ * with no cap at all, and that is a live hazard rather than an untidiness: a
+ * Guardian that never forgets a session grows for the life of the process, a
+ * larger Guardian answers slower, and a Guardian slower than the host's
+ * negotiated `timeout_config.default_ms` produces no decision at all --
+ * which the default `proceed` posture resolves by running the tool
+ * ungoverned. Degradation turning itself into bypass is the whole reason
+ * there is a cap.
+ *
+ * Truncating entries within a session was the other candidate, and it is
+ * rejected because it breaks what the chain means. Dropping a session's
+ * oldest entries leaves a chain whose first surviving entry names a
+ * `prev_hash` there is nothing to compare against, and the Inspector's chain
+ * check (`checkSessionChainLink`, packages/inspector/src/render.ts)
+ * documents that it never marks a first entry -- so a front-truncated chain
+ * reads exactly like a complete one. That is evidence that looks like
+ * evidence, which is the one thing this chain exists not to be. Evicting a
+ * whole session cannot produce it: a retained session's chain is entire, and
+ * an evicted session's chain is absent.
+ *
+ * Eviction is therefore reported rather than silent, twice over. `onEvict`
+ * is called with the id of every evicted session and defaults to a stderr
+ * warning, so a deployment whose cap is too small says so instead of
+ * quietly forgetting. And an evicted session that takes another step starts
+ * again at `GENESIS_HASH` and `seq` 1, which the Inspector renders as a
+ * CHAIN BREAK rather than as a fresh session: it has already recorded a
+ * `hash` for that `session_id`, and a `prev_hash` of genesis does not match
+ * it.
+ *
+ * What the cap does not bound is one session's own chain, which still grows
+ * linearly in the steps that session takes -- that is the chain being an
+ * append-only chain, and the file the Inspector tails grows the same way.
+ * What is gone is the quadratic: `append` pushes onto the array it already
+ * keeps instead of rebuilding the history around each new entry, so a
+ * session's hundredth step costs what its first one did.
  */
 import {
   GENESIS_HASH,
@@ -88,10 +126,29 @@ export interface SessionProvenanceReader {
   provenance(sessionId: string): SessionProvenance;
 }
 
+/**
+ * How many sessions the memory store retains before it starts evicting. A
+ * ceiling, not a tuning knob: evicting a session that is still taking steps
+ * is the harmful direction, so this sits far above the number of sessions a
+ * laptop-scale deployment could plausibly have open at once. Its job is to
+ * make growth stop, not to keep the map small.
+ */
+const DEFAULT_MAX_SESSIONS = 1024;
+
 export type CreateMemorySessionContextStoreOptions = {
   now?: () => Date;
   /** Called once per appended entry with its JSON line, no trailing newline. */
   appendLine?: (line: string) => void;
+  /**
+   * How many sessions to retain before the least recently written one is
+   * evicted whole. Defaults to `DEFAULT_MAX_SESSIONS`.
+   */
+  maxSessions?: number;
+  /**
+   * Called with the id of each evicted session. Defaults to a stderr
+   * warning; what matters is that no default makes eviction silent.
+   */
+  onEvict?: (sessionId: string) => void;
 };
 
 /**
@@ -104,27 +161,74 @@ export function createMemorySessionContextStore(
 ): SessionContextStore & SessionIntentStore & SessionProvenanceReader {
   const now = options.now ?? (() => new Date());
   const appendLine = options.appendLine;
+  const maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+  const onEvict = options.onEvict ?? warnEvictedSession;
+  if (!Number.isInteger(maxSessions) || maxSessions < 1) {
+    // Thrown rather than clamped, for the reason `ACS_ON_DECISION_FAILURE`
+    // throws on a posture it does not recognise: a cap of 0 evicts every
+    // session the instant it is written, so guessing what the caller meant
+    // would turn a typo into a Guardian that remembers nothing and says so
+    // once per step.
+    throw new Error(`maxSessions must be a positive integer, got ${String(maxSessions)}`);
+  }
+  /**
+   * Insertion-ordered, and that order IS the eviction order: `ensure`
+   * re-inserts the session it finds, so the map's oldest key is the least
+   * recently written session. There is no second structure that could fall
+   * out of step with this one.
+   */
   const sessions = new Map<string, SessionState>();
 
-  /** A read: never creates a session, so asking about one is not writing one. */
+  /**
+   * A read: never creates a session, and never re-orders one either, so
+   * asking about a session neither writes it nor keeps it from being
+   * evicted. Reads are what the request path does to a session it is about
+   * to write anyway -- `sourceLabels` then `append` -- so write recency is
+   * the whole of what "idle" means here.
+   */
   const read = (sessionId: string): SessionState => sessions.get(sessionId) ?? emptySessionState(sessionId);
+
+  /**
+   * Only an insert can put the map over the cap, and only ever by one -- the
+   * loop is here so that stays true by construction rather than by a reader
+   * taking this comment's word for it.
+   */
+  const evictToCap = (): void => {
+    while (sessions.size > maxSessions) {
+      const oldest = sessions.keys().next();
+      if (oldest.done === true) return;
+      sessions.delete(oldest.value);
+      reportEviction(onEvict, oldest.value);
+    }
+  };
 
   const ensure = (sessionId: string): SessionState => {
     const existing = sessions.get(sessionId);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      // Deleted and re-set rather than merely returned: on a `Map` that is
+      // what moves a key to the young end of the insertion order, and the
+      // insertion order is what `evictToCap` reads.
+      sessions.delete(sessionId);
+      sessions.set(sessionId, existing);
+      return existing;
+    }
     const fresh = emptySessionState(sessionId);
     sessions.set(sessionId, fresh);
+    evictToCap();
     return fresh;
   };
 
   return {
     context(sessionId) {
-      return read(sessionId).context;
+      // Copied on the way out, like the labels below, and for one reason
+      // more: `append` pushes onto the stored array, so an uncopied
+      // `entries` would be a chain that grew while its reader held it.
+      return { session_id: sessionId, entries: [...read(sessionId).entries] };
     },
 
     append(sessionId, step) {
       const state = ensure(sessionId);
-      const previous = state.context.entries.at(-1);
+      const previous = state.entries.at(-1);
       const withoutHash: Omit<SessionContextEntry, "hash"> = {
         session_id: sessionId,
         seq: (previous?.seq ?? 0) + 1,
@@ -135,10 +239,11 @@ export function createMemorySessionContextStore(
         tool_name: step.tool_name,
       };
       const entry: SessionContextEntry = { ...withoutHash, hash: hashEntry(withoutHash) };
-      sessions.set(sessionId, {
-        ...state,
-        context: { ...state.context, entries: [...state.context.entries, entry] },
-      });
+      // Pushed onto the array this session already owns, rather than rebuilt
+      // around it. The rebuild cost one copy of the whole history per step --
+      // N per step, N^2 per session -- and the module doc above says what a
+      // Guardian that slow does to the decision that never arrives.
+      state.entries.push(entry);
       appendLine?.(JSON.stringify(entry));
       return entry;
     },
@@ -187,6 +292,37 @@ export function createMemorySessionContextStore(
       return { ...stored, ifc_labels: [...stored.ifc_labels] };
     },
   };
+}
+
+/**
+ * Calls the caller's eviction reporter without letting it break the append
+ * that triggered it. An `onEvict` that throws would surface as a Guardian
+ * failure on whichever unrelated step happened to be the one that overflowed
+ * the cap -- and a Guardian-side failure under the default posture is a tool
+ * call that runs ungoverned, so a broken reporter must not be able to cause
+ * the very thing the cap exists to prevent. Same guard, and the same reason,
+ * as `reportMalformedLine` in packages/inspector/src/tail-session-context.ts.
+ */
+function reportEviction(onEvict: (sessionId: string) => void, sessionId: string): void {
+  try {
+    onEvict(sessionId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`onEvict threw while reporting an evicted session (${message}): ${sessionId}`);
+  }
+}
+
+/**
+ * The default report. Names what a reader of the session-context log will
+ * see next if this session comes back, because the eviction and the chain
+ * break it causes are otherwise two unexplained facts in two different
+ * places.
+ */
+function warnEvictedSession(sessionId: string): void {
+  console.error(
+    `evicted session ${sessionId} from the session-context store: the retained-session cap was reached. ` +
+      `A further step on this session starts a new chain at seq 1, which the Inspector renders as a chain break.`,
+  );
 }
 
 /** The chain's reader, paired with `appendContextEntry`. */

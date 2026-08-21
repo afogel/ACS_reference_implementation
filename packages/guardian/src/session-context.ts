@@ -6,10 +6,12 @@
  * digests that link them. `Intent` holds the immutable first-message
  * baseline recorded for a session, and `SessionProvenance` holds the record
  * described below, including AGT's IFC labels. `SessionState` is what the
- * store holds for one session: the three together. Keeping `SessionContext`
- * scoped to just the chain matters because `loadSessionContext` returns
- * exactly that type, and its name should promise no more than what it
- * returns.
+ * store holds for one session: the three together, with the chain held as
+ * the array the store appends to rather than as a `SessionContext`, because
+ * the store pushes onto that array and a reader must not be handed
+ * something that grows underneath it. Keeping `SessionContext` scoped to
+ * just the chain matters because `loadSessionContext` returns exactly that
+ * type, and its name should promise no more than what it returns.
  *
  * This is declared in the Guardian's own package, not in `@acs/host-adapter`:
  * the adapter is what a host links against, and a host neither writes this
@@ -110,9 +112,16 @@ export type SessionContext = {
  * Everything `SessionContextStore` holds for one session: the chain, the
  * intent, and the provenance record together, named for the aggregate it is
  * rather than for any one of its three members.
+ *
+ * `entries` is the mutable array the store appends to, not a
+ * `SessionContext`: `append` pushes one entry onto it, which is what keeps a
+ * step's cost independent of how many steps came before it. `SessionContext`
+ * is the reader's view, built per read over its own copy -- so these are two
+ * types rather than one type twice, and which one you hold says whether you
+ * are the writer or a reader.
  */
 export type SessionState = {
-  context: SessionContext;
+  entries: SessionContextEntry[];
   intent: Intent | undefined;
   provenance: SessionProvenance;
 };
@@ -142,7 +151,7 @@ export function hashEntry(input: Omit<SessionContextEntry, "hash">): string {
 /** A session with no history yet: no entries, no intent, and its labels at the lattice floor. */
 export function emptySessionState(sessionId: string): SessionState {
   return {
-    context: { session_id: sessionId, entries: [] },
+    entries: [],
     intent: undefined,
     // `origin` names where data entered the system, and this record is one the
     // Guardian synthesizes to hold a session's labels -- so "system", with the

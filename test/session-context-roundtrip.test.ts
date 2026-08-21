@@ -17,15 +17,33 @@ import {
   tailSessionContextLog,
   type SessionContextLogEntry as InspectorSessionContextLogEntry,
 } from "../packages/inspector/src/tail-session-context.ts";
+import {
+  checkSessionChainLink,
+  createSessionChainState,
+  renderSessionChainRow,
+} from "../packages/inspector/src/render.ts";
 
 /**
- * The contract test that keeps two independent SessionContextLogEntry
- * declarations honest -- the same job test/audit-sink-roundtrip.test.ts and
+ * Two claims about the seam between the store that writes the
+ * session-context log and the Inspector that reads it. Both need both sides
+ * in one file.
+ *
+ * The first is the contract test that keeps two independent
+ * SessionContextLogEntry declarations honest -- the same job
+ * test/audit-sink-roundtrip.test.ts and
  * test/envelope-log-sink-roundtrip.test.ts do for their own pairs, and the
  * reason the Inspector's import boundary is meaningful rather than merely
  * inconvenient. The Inspector declares its own type because it must not
  * import the Guardian's; that duplication is only safe while something fails
  * when the two drift.
+ *
+ * The second is what makes the store's session cap honest. The store evicts
+ * whole sessions rather than truncating a session's entries, and the
+ * justification is that the shortening stays visible: an evicted session that
+ * comes back restarts at the genesis hash, and the Inspector reports that as
+ * a CHAIN BREAK rather than as a fresh session. That is a claim about the
+ * reader, so it is checked against the reader instead of being asserted in
+ * the writer's own header comment.
  *
  * This file is the only place in the tree that imports both sides.
  */
@@ -44,7 +62,8 @@ afterEach(() => {
 });
 
 /**
- * The first entry the Inspector's tailer yields, or a failure that SAYS SO.
+ * The first `count` entries the Inspector's tailer yields, or a failure that
+ * SAYS SO.
  *
  * Bounded rather than a bare `for await`, for the same reason
  * test/audit-sink-roundtrip.test.ts's own `firstEntry` is: if the Inspector's
@@ -52,10 +71,15 @@ afterEach(() => {
  * yielded, the loop never completes, and the test dies of a bun-test timeout
  * whose message points nowhere near the drift. Bounded here instead, so the
  * same drift fails with a sentence naming it.
+ *
+ * Takes a count rather than returning the first entry alone, because the
+ * chain-break claim below is about the third line's relation to the first,
+ * and one entry cannot express it.
  */
-async function firstEntry(path: string, timeoutMs = 1000): Promise<InspectorSessionContextLogEntry> {
+async function entriesFrom(path: string, count = 1, timeoutMs = 1000): Promise<InspectorSessionContextLogEntry[]> {
   const controller = new AbortController();
   const deadline = setTimeout(() => controller.abort(), timeoutMs);
+  const collected: InspectorSessionContextLogEntry[] = [];
   try {
     for await (const entry of tailSessionContextLog({
       path,
@@ -66,7 +90,8 @@ async function firstEntry(path: string, timeoutMs = 1000): Promise<InspectorSess
       // and its text is what makes the failure below diagnosable.
       onMalformedLine: (line, error) => rejected.push({ line, error }),
     })) {
-      return entry;
+      collected.push(entry);
+      if (collected.length === count) return collected;
     }
   } finally {
     clearTimeout(deadline);
@@ -74,11 +99,13 @@ async function firstEntry(path: string, timeoutMs = 1000): Promise<InspectorSess
   }
   const detail =
     rejected.length > 0
-      ? `its shape validator rejected the line the store wrote: ${String(
+      ? `its shape validator rejected a line the store wrote: ${String(
           rejected[0]?.error instanceof Error ? rejected[0]?.error.message : rejected[0]?.error,
         )} -- ${rejected[0]?.line}`
-      : "no line was rejected either, so the entry never reached the tailer at all";
-  throw new Error(`the Inspector's tailer yielded no entry within ${timeoutMs}ms: ${detail}`);
+      : "no line was rejected either, so the entries never reached the tailer at all";
+  throw new Error(
+    `the Inspector's tailer yielded ${collected.length} of ${count} entries within ${timeoutMs}ms: ${detail}`,
+  );
 }
 
 /** Populated by `firstEntry`'s malformed-line reporter; read only when it
@@ -145,6 +172,49 @@ describe("a write through the store and a read through the Inspector: every fiel
     // and drift is exactly what this test exists to catch. Compared against
     // the real object the store returned, not a hand-copied literal, so the
     // comparison cannot itself drift out of step with the writer's fields.
-    expect(await firstEntry(path)).toEqual(written);
+    expect(await entriesFrom(path)).toEqual([written]);
+  });
+});
+
+describe("an evicted session that comes back reads as a broken chain, not as a fresh one", () => {
+  it("makes the store's forgetting visible through the Inspector's own chain check", async () => {
+    const path = join(scratch(), "session-context.jsonl");
+    const step = (n: number) => ({
+      method: "steps/toolCallRequest",
+      request_id: `req-${n}`,
+      tool_name: "run_shell",
+    });
+    const store = createMemorySessionContextStore({
+      now: () => new Date("2026-08-10T12:00:00.000Z"),
+      appendLine: (line) => appendFileSync(path, `${line}\n`),
+      // A cap of one, so the second session evicts the first. The default
+      // `onEvict` reports to stderr and is asserted where it belongs, in
+      // packages/guardian/test/session-context.test.ts; silenced here because
+      // this test is about what the LOG says, which is the half a warning
+      // cannot cover.
+      maxSessions: 1,
+      onEvict: () => {},
+    });
+
+    appendContextEntry(store, "sess-1", step(1));
+    appendContextEntry(store, "sess-2", step(1));
+    appendContextEntry(store, "sess-1", step(2));
+
+    const entries = await entriesFrom(path, 3);
+    // One `SessionChainState` across the whole walk, exactly as the
+    // Inspector's live view keeps one for the life of the process -- the
+    // check has to remember a hash for `sess-1` across `sess-2`'s
+    // interleaved row for the break to be findable at all.
+    const state = createSessionChainState();
+    const links = entries.map((entry) => checkSessionChainLink(entry, state));
+
+    expect(entries.map((entry) => entry.session_id)).toEqual(["sess-1", "sess-2", "sess-1"]);
+    // The third line is `sess-1`'s second appearance in the log and links to
+    // genesis rather than to `sess-1`'s first hash. That is the whole reason
+    // the cap is allowed to evict: the shortening announces itself. Had the
+    // cap truncated entries within a session instead, every surviving link
+    // would still match and this row would read as unbroken.
+    expect(links.map((link) => link.broken)).toEqual([false, false, true]);
+    expect(renderSessionChainRow(entries[2]!, links[2]!)).toContain("CHAIN BREAK");
   });
 });
