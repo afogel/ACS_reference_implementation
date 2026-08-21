@@ -6,9 +6,14 @@
  *
  *   - `requestDecision` never throws. Every way of not getting a decision --
  *     a dead transport, an uncorrelated response, a JSON-RPC error, a result
- *     naming no decision -- becomes the same answer, so a caller cannot forget
- *     to handle one. Getting that wrong is a fail-open, because every branch
- *     that mishandles a decision ends with the tool call proceeding ungoverned.
+ *     naming no decision -- becomes the same answer SHAPE, so a caller cannot
+ *     forget to handle one. Getting that wrong is a fail-open, because every
+ *     branch that mishandles a decision ends with the tool call proceeding
+ *     ungoverned. One shape, not one meaning: the `failure` it carries is
+ *     handed on unflattened, because whether it names a refusal or an
+ *     accident is what decides the step (see failure-posture.ts). This module
+ *     makes no such judgement, and takes care not to destroy the evidence for
+ *     one.
  *   - `post` is the wire primitive underneath it, for the one caller whose
  *     result is not a decision: the handshake, whose result is a ServerHello
  *     (handshake.ts). It throws on every delivery failure, which is what that
@@ -29,6 +34,11 @@
  * can answer with the right `id` and another step's decision. Both are
  * checked, and both are checked in `post`, so no caller can hold a response
  * that was never correlated.
+ *
+ * A response the Guardian could not address at all -- `id: null` carrying an
+ * `error` -- is exempt from the transport-id assertion: there is no id there
+ * to be wrong, and the assertion was suppressing the refusal code that
+ * response exists to deliver.
  *
  * This module knows JSON-RPC, HTTP and ACS's decision vocabulary, nothing else
  * -- no policy-runtime vocabulary and no host vocabulary. It has no runtime
@@ -164,6 +174,14 @@ export type GuardianClient = {
    * at the transport layer by `id`, and, when the result carries one, at the
    * ACS layer by `request_id`. Throws for every delivery failure.
    *
+   * One exception to the id check, and it is a correctness fix rather than a
+   * relaxation: a response carrying `id: null` AND an `error` is returned
+   * as-is. That is the shape a Guardian answers with when it could not read
+   * an id out of the request at all, so its id can never correlate, and
+   * throwing on it destroyed the only thing in the response worth having --
+   * the code saying why the envelope was refused. See the check itself for
+   * what stays a throw.
+   *
    * For a method whose result is not a decision -- today only
    * `handshake/hello`, whose result is a ServerHello. A caller after a
    * decision uses `requestDecision` instead, and no caller in this package
@@ -201,6 +219,24 @@ export function createGuardianClient(url: string): GuardianClient {
         throw new GuardianTimeoutError(timeoutMs);
       }
       throw error;
+    }
+
+    // An error the Guardian could not address, let through to the caller
+    // rather than thrown away by the correlation check below. A JSON-RPC
+    // response MUST carry `id: null` when the request's id could not be
+    // determined, and for a parse error it never can be -- so the one
+    // response that names why the Guardian would not read this envelope is
+    // also the one response whose id can never match. Failing correlation on
+    // it replaced the refusal code with a mismatch error, which classifies as
+    // a plain delivery failure: a `-32700` could not reach the classifier at
+    // all, and under a `proceed` posture the step ran.
+    //
+    // Narrow deliberately, to an `id: null` that also carries an `error`. A
+    // null id on a RESULT is a genuine correlation failure -- a Guardian
+    // answering a decision it cannot say whose it is -- and that still throws
+    // below, which is the whole reason the check exists.
+    if (response.id === null && response.error !== undefined) {
+      return response;
     }
 
     if (response.id !== envelope.id) {
@@ -246,8 +282,12 @@ export function createGuardianClient(url: string): GuardianClient {
         return { decisionArrived: true, decision: arrived };
       }
 
-      // Anything with no decision in it is a delivery failure, and the `error`
-      // is used as the failure when there is one.
+      // Anything with no decision in it is a failure of this exchange, and the
+      // `error` is used as the failure when there is one -- unwrapped, the
+      // JSON-RPC error object itself, because its `code` is what tells the
+      // host whether the Guardian refused this envelope (fail closed) or
+      // merely failed to deliver a decision (apply the posture). Wrapping it
+      // in an Error here would flatten that distinction into a string.
       return {
         decisionArrived: false,
         failure: response.error ?? new Error("guardian's response carried neither a decision nor an error"),

@@ -4,9 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 // by packages/host-adapter/src, which must not depend on the Guardian --
 // see build-envelope.test.ts for the same arrangement.
 import { startGuardian, type StartedGuardian } from "guardian";
+import type { AuditEvent } from "../src/audit-sink.ts";
 import { buildEnvelope, loadHookmap, type Hookmap } from "../src/build-envelope.ts";
+import { applyFailurePosture, classifyDeliveryFailure } from "../src/failure-posture.ts";
 import {
   createGuardianClient,
+  GuardianResponseMismatchError,
   GuardianResultCorrelationError,
   GuardianTimeoutError,
 } from "../src/guardian-client.ts";
@@ -128,6 +131,50 @@ describe("GuardianClient.post", () => {
     }
   });
 
+  // The one response whose id can never correlate is also the only one that
+  // says why the Guardian would not read the envelope. Throwing on it replaced
+  // the refusal code with a mismatch error -- which classifies as a plain
+  // delivery failure, so a `-32700` could never reach the classifier at all,
+  // and under the shipped default posture the step ran.
+  it("returns an error the Guardian could not address (id: null) instead of failing correlation on it", async () => {
+    const mock = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+      },
+    });
+
+    try {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
+      const response = await createGuardianClient(`http://localhost:${mock.port}/acs`).post(envelope);
+      expect(response.error?.code).toBe(-32700);
+    } finally {
+      mock.stop(true);
+    }
+  });
+
+  // The exemption is for an error, not for a null id. A null id on a RESULT is
+  // a Guardian answering a decision it cannot say whose it is -- the exact
+  // case the correlation check exists for -- and widening the branch to every
+  // null id would let that through as an honoured decision.
+  it("still throws on a null id carrying a result, which is a real correlation failure", async () => {
+    const mock = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({ jsonrpc: "2.0", id: null, result: { decision: "allow" } });
+      },
+    });
+
+    try {
+      const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
+      await expect(createGuardianClient(`http://localhost:${mock.port}/acs`).post(envelope)).rejects.toThrow(
+        GuardianResponseMismatchError,
+      );
+    } finally {
+      mock.stop(true);
+    }
+  });
+
   it("leaves a ServerHello alone -- a result carrying no request_id is not an uncorrelated one", async () => {
     // The check must not fire on the handshake, whose result is a ServerHello
     // and has no request_id at all: `undefined` there means "this result is
@@ -184,6 +231,59 @@ describe("GuardianClient.requestDecision", () => {
     expect((outcome.decisionArrived === false ? outcome.failure : undefined) as { code?: number }).toHaveProperty(
       "code",
     );
+  });
+
+  // Against the REAL Guardian, because the refusal set in failure-posture.ts
+  // is a hand-written list of four integers and the only thing that makes it
+  // a fact rather than a belief is driving the route that produces one. This
+  // is `-32011`, the arguable member: a host only sends methods its own
+  // hookmap maps, so a Guardian refusing to dispatch one is a disagreement
+  // between this deployment's hookmap and its Guardian -- not a permission.
+  it("hands the error through so a refusal is classified as one, not as a delivery failure", async () => {
+    const envelope = buildEnvelope("PreToolUse", preToolUsePayload("ls -la"), hookmap);
+    const unknownMethod = { ...envelope, method: "steps/sessionStart" };
+
+    const outcome = await createGuardianClient(guardian.url).requestDecision(unknownMethod);
+
+    expect(outcome.decisionArrived).toBe(false);
+    const classified = classifyDeliveryFailure(outcome.decisionArrived === false ? outcome.failure : undefined);
+    expect(classified.kind).toBe("refused");
+    expect(classified.message).toContain("-32011");
+  });
+
+  // The other end of the same route, end to end through the posture: the
+  // Guardian is up, this one envelope is refused, and the step is denied even
+  // though the deployment declared `proceed`. Under `deny` this would pass
+  // against the unfixed code, which is why the posture here is `proceed`.
+  it("denies a refused step under a proceed posture, with the guardian up", async () => {
+    const envelope = buildEnvelope("PreToolUse", preToolUsePayload("rm -rf /"), hookmap);
+    const unknownMethod = { ...envelope, method: "steps/sessionStart" };
+
+    const outcome = await createGuardianClient(guardian.url).requestDecision(unknownMethod);
+    expect(outcome.decisionArrived).toBe(false);
+
+    const events: AuditEvent[] = [];
+    const decision = applyFailurePosture({
+      failure: outcome.decisionArrived === false ? outcome.failure : undefined,
+      session: {
+        config: {
+          negotiated_version: "0.1.0",
+          methods_evaluated: ["steps/toolCallRequest"],
+          selected_transport: "http",
+          timeout_config: { default_ms: 5000 },
+          on_decision_failure: "proceed",
+        },
+        failure: undefined,
+      },
+      sessionId: "sess-1",
+      method: unknownMethod.method,
+      rpcId: unknownMethod.id,
+      audit: { path: "test", write: (e) => (events.push(e), true) },
+    });
+
+    expect(decision.decision).toBe("deny");
+    expect(decision.reason_codes).toEqual(["guardian_refused"]);
+    expect(events[0]).toMatchObject({ posture: "proceed", outcome: "blocked", failure: { kind: "refused" } });
   });
 
   it("answers 'no decision' when the transport itself fails, rather than throwing", async () => {
