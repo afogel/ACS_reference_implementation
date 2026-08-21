@@ -168,14 +168,15 @@ function renderComparedRefs(env: Record<string, string | undefined>): string {
  *
  * Reading itself is wrapped, because `readSurfaces` throws on a missing or
  * relocated surface -- correctly: a watch that reported an absent surface as
- * "unchanged" would be exactly the silent rot this exists to catch. But an
- * uncaught throw here does not stay loud. The scheduled workflow runs this
- * through `tee "$GITHUB_STEP_SUMMARY"` with no `pipefail`, so an uncaught
- * throw on the left of that pipe still leaves the job green with an empty
- * summary and the real error stranded in the raw log -- silent rot of a
- * different kind, from the harness built to prevent it. So a read failure on
- * either side is caught and turned into a report naming which side and what
- * went missing, and the run answers `ran: false` rather than propagating.
+ * "unchanged" would be exactly the silent rot this exists to catch. Catching
+ * it here is what makes that failure legible rather than merely fatal: the
+ * scheduled workflow pipes this run's stdout into `$GITHUB_STEP_SUMMARY`, and
+ * an uncaught throw writes nothing there -- the published summary comes out
+ * empty and the real error is left in the raw log for someone to go and find.
+ * So a read failure on either side is caught and turned into a report naming
+ * which side and what went missing, and the run answers `ran: false` rather
+ * than propagating. `ran: false` is not a swallowed error: it is what the
+ * entry point at the bottom of this file turns into a non-zero exit status.
  *
  * The schema re-check is handled the same way for the same reason: it keeps
  * its own shipped behaviour of throwing on a genuine validation failure, and
@@ -195,7 +196,12 @@ function renderComparedRefs(env: Record<string, string | undefined>): string {
  * were not supplied when it was not -- so a clean diff is never mistaken for
  * a run that compared the wrong ref, or the same ref twice.
  *
- * This slice reports; it never refuses, and nothing here fails a build.
+ * This slice reports findings and never refuses them -- surface drift, a
+ * schema rejection against main, a hookmap tool missing from the registry all
+ * leave the build green, because each of those is a completed run with
+ * something for a human to decide. A run that did not happen is the one thing
+ * that does fail the job, and the entry point below is where that line is
+ * drawn.
  */
 export async function runUpstreamWatch(
   env: Record<string, string | undefined> = process.env,
@@ -254,7 +260,33 @@ export async function runUpstreamWatch(
   return { ran: true, diffs, schemaAgainstMain, output };
 }
 
+/**
+ * The process's answer to "did the watch run?", which is a different question
+ * from "did anything move?".
+ *
+ * Drift found upstream is this job's product, not its failure: a moved AGT
+ * surface is reported and still exits 0, because the remedy is a human
+ * deciding whether to move the pin, not a red job on a Monday morning. Every
+ * other finding this run can report -- a schema rejection against main, a
+ * hookmap tool missing from the policy manifest -- is the same shape and
+ * exits 0 for the same reason. A watch that could not RUN is the opposite: a
+ * clone that was never made, a surface relocated out from under
+ * `readSurfaces`, a fetch that never landed. Publishing that as a green run
+ * with an empty diff is precisely the silent rot this slice exists to catch,
+ * committed by the harness built to catch it -- so `ran: false` is the one
+ * answer that leaves the process non-zero.
+ *
+ * `ran` already draws that line inside the process. This carries it out to
+ * the only reader living outside, CI, which can see nothing but a status.
+ *
+ * `process.exitCode` rather than `process.exit`, because the workflow reads
+ * this run through a pipe into `$GITHUB_STEP_SUMMARY` and `process.exit` can
+ * tear the process down with that write still buffered. Letting the process
+ * end on its own flushes stdout first; a truncated step summary is the same
+ * class of defect as a status that could never go red.
+ */
 if (import.meta.main) {
   const run = await runUpstreamWatch();
   console.log(run.output);
+  process.exitCode = run.ran ? 0 : 1;
 }
