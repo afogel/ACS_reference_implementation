@@ -173,6 +173,11 @@ describe("startGuardian POST /acs -- denyOnInvalidEnvelope's boundary: what stay
 
     expect(body.result).toBeUndefined();
     expect(body.error?.code).toBe(-32700);
+    // The id the host adapter's correlation check has to make an exception
+    // for: nothing parseable arrived, so there was no id to echo. Pinned here
+    // because guardian-client.ts's post() depends on this exact shape to let
+    // the refusal code through instead of throwing a mismatch over it.
+    expect(body.id).toBeNull();
   });
 
   it("keeps an unaddressable invalid envelope a JSON-RPC error", async () => {
@@ -255,6 +260,96 @@ describe("startGuardian POST /acs -- denyOnInvalidEnvelope's boundary: what stay
       await guardian.close();
       unlinkSync(logPath);
     }
+  });
+});
+
+// An unbounded `req.json()` was a fail-open a client could pick by choosing
+// how much to send: the rejection past the runtime's own default limit
+// surfaces to the host as a bare failure, which under the shipped default
+// posture (`proceed`) is an allow. The cap turns it into an answer, and the
+// code is one the host reads as a refusal rather than as an accident.
+describe("startGuardian POST /acs -- the request body cap", () => {
+  /** A body over the 1 MiB cap. Built from the envelope shape rather than a
+   * bare blob, so what is refused is a request that is otherwise entirely
+   * well-formed -- the size is the only thing wrong with it. */
+  function oversizeEnvelope(): Record<string, unknown> {
+    return toolCallEnvelope("x".repeat(1_100_000));
+  }
+
+  it("refuses a body over the cap with -32010, so the host reads it as a refusal", async () => {
+    const response = await postAcs(url, oversizeEnvelope());
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+    // Unaddressed, like the parse error: nothing was read, so there is no
+    // envelope to take an id from.
+    expect(response.id).toBeNull();
+  });
+
+  // The declared length is only ever an early exit, so it must not be the
+  // ONLY check: a chunked body declares no length at all, and a client is
+  // free to declare one and send another. Sent as a stream, which is what
+  // makes fetch omit Content-Length and use chunked transfer encoding.
+  it("refuses a chunked body over the cap, which declares no length to check", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream({
+        start(controller) {
+          for (let i = 0; i < 20; i += 1) controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+      // Bun requires this for a streaming request body.
+      duplex: "half",
+    } as RequestInit);
+    const body = (await res.json()) as JsonRpcResponse;
+
+    expect(body.error?.code).toBe(-32010);
+    expect(body.error?.message).toContain("bytes read");
+  });
+
+  // A declaration above the cap is refused before the body is read at all,
+  // and the message says which of the two checks refused -- "you declared 4
+  // MiB" and "you sent 4 MiB having declared nothing" are different client
+  // bugs, and an operator reading the log needs to know which.
+  it("refuses on the declared length alone, naming the declaration rather than the bytes", async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": String(4 * 1024 * 1024) },
+      body: "x".repeat(4 * 1024 * 1024),
+    });
+    const body = (await res.json()) as JsonRpcResponse;
+
+    expect(body.error?.code).toBe(-32010);
+    expect(body.error?.message).toContain("content-length declared");
+  });
+
+  // The cap must not have become the governance path's new ceiling: an
+  // envelope the size of a real edit-a-file call (~64 KiB of content, measured
+  // in build-envelope terms) still evaluates, and a deny still denies.
+  it("still governs a large-but-legal envelope, so the cap is not a new refusal surface", async () => {
+    const response = await postAcs(url, toolCallEnvelope(`rm -rf / # ${"x".repeat(64 * 1024)}`));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("deny");
+  });
+
+  // The refusal must not take the connection down with it. An unread request
+  // body leaves the HTTP/1.1 message unfinished, and Bun answers the next
+  // request on that keep-alive connection with an empty 400 -- so a Guardian
+  // that cancelled or skipped the oversize body would turn one refusal into a
+  // delivery failure for the NEXT step, which a `proceed` posture allows.
+  // Refusing one body must not be a way to fail open on the one after it.
+  it("leaves the connection usable, so refusing one body does not break the next request", async () => {
+    const refused = await postAcs(url, oversizeEnvelope());
+    expect(refused.error?.code).toBe(-32010);
+
+    // Same client, same keep-alive connection, immediately afterwards.
+    const governed = await postAcs(url, toolCallEnvelope("rm -rf /"));
+    expect(governed.error).toBeUndefined();
+    expect(governed.result?.decision).toBe("deny");
   });
 });
 

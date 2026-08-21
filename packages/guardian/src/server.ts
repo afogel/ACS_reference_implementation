@@ -177,6 +177,31 @@ const METHOD_NOT_DISPATCHED_CODE = -32011;
  * The module header explains why none of this may become dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
+/**
+ * The largest request body this Guardian will read, in bytes.
+ *
+ * Chosen against measured envelopes rather than picked round. An ACS request
+ * envelope's fixed part -- jsonrpc, method, id, acs_version, request_id,
+ * timestamp, the metadata pair -- measures 355 bytes as
+ * packages/host-adapter/src/build-envelope.ts emits it, and a real
+ * `steps/toolCallRequest` for a shell command measures 388. The only
+ * unbounded member is the argument bag, whose largest realistic occupant is a
+ * file body in an edit-a-file tool call: one carrying 64 KiB of content
+ * measures 65,951 bytes. 1 MiB is roughly sixteen times that, and roughly
+ * 2,700 times the envelope a shell call actually sends, so no legitimate
+ * request is anywhere near it -- while a body above it is bounded to
+ * something this process can hold per connection rather than to whatever the
+ * runtime's own default happens to be.
+ *
+ * The authoritative check is the count of bytes actually READ, not the
+ * declared `Content-Length`. The header is a claim: a chunked body carries
+ * none at all, and a client is free to declare one length and send another.
+ * It is still consulted first, because a declaration above the cap lets this
+ * refuse before reading anything -- but it can only ever refuse early, never
+ * admit. See readCappedBody.
+ */
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
+
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
 type JsonRpcFailure = {
   jsonrpc: "2.0";
@@ -260,19 +285,27 @@ export async function startGuardian({
 }
 
 /**
- * Three phases, in order: parse, record the request, dispatch, record the
- * response. The envelope-log writes live here and only here -- `dispatch`
- * below leaves by eight routes (seven `return`s and one rethrow), since
- * each of dispatch's two catches (its EnvelopeValidationError catch and its
- * evaluation catch) can produce either a deny-decision response or a
- * bare-error response. Writing to the envelope log inside `dispatch` would
- * make totality something a future change has to remember rather than
- * something the structure guarantees.
+ * Four phases, in order: read the body under a cap, parse, record the
+ * request, dispatch, record the response. The envelope-log writes live here
+ * and only here -- `dispatch` below leaves by eight routes (seven `return`s
+ * and one rethrow), since each of dispatch's two catches (its
+ * EnvelopeValidationError catch and its evaluation catch) can produce either
+ * a deny-decision response or a bare-error response. Writing to the envelope
+ * log inside `dispatch` would make totality something a future change has to
+ * remember rather than something the structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
  * including the one that throws: the try/catch below ensures every route
  * out of `dispatch` produces a response object, and every response object
  * reaches the envelope log.
+ *
+ * The read comes before the parse because the parse is what an unbounded body
+ * is dangerous through: `req.json()` buffers whatever arrives, and the
+ * failure it raises past the runtime's own default limit reaches the host as
+ * a bare rejection -- which under a `proceed` posture is a fail-open, and one
+ * a client picks by choosing how much to send. Refusing above the cap turns
+ * that into an answer the host reads as a refusal (see
+ * MAX_REQUEST_BODY_BYTES).
  *
  * The sink itself is total (see envelope-log-sink.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
@@ -287,9 +320,29 @@ async function handleAcsRequest(
   envelopeLog: EnvelopeLogSink,
   onDecisionFailure?: "proceed" | "deny",
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
+  const body = await readCappedBody(req);
+  if (body.withinLimit === false) {
+    // Unpaired, for the same reason the parse error below is: nothing was
+    // read, so there is no request envelope to record it against.
+    //
+    // ENVELOPE_INVALID_CODE rather than a code of its own: this IS an invalid
+    // envelope -- one whose size alone disqualifies it -- and the host reads
+    // that code as the Guardian refusing the envelope, which is exactly what
+    // happened. A fresh code would mean a host classifying it as an
+    // unrecognised error and falling back on its posture, which for the
+    // shipped default is the fail-open this cap exists to close.
+    const tooLarge = errorResponse(
+      null,
+      ENVELOPE_INVALID_CODE,
+      `request body exceeds the ${MAX_REQUEST_BODY_BYTES}-byte limit (${body.detail})`,
+    );
+    envelopeLog.write("response", tooLarge, null);
+    return tooLarge;
+  }
+
   let raw: unknown;
   try {
-    raw = await req.json();
+    raw = JSON.parse(body.text) as unknown;
   } catch {
     // Nothing parseable arrived, so there is no request envelope to record
     // -- the response is deliberately recorded unpaired, which is what the
@@ -320,6 +373,98 @@ async function handleAcsRequest(
   }
   envelopeLog.write("response", response, method);
   return response;
+}
+
+/** What came back from the wire, before anything has tried to read it as an
+ * envelope. A union rather than a string plus a flag, so a caller that reads
+ * `text` without checking the limit does not compile. */
+type CappedBody =
+  | { readonly withinLimit: true; readonly text: string }
+  | { readonly withinLimit: false; readonly detail: string };
+
+/**
+ * Reads the request body, refusing anything past MAX_REQUEST_BODY_BYTES
+ * rather than buffering it.
+ *
+ * Streamed rather than `await req.text()` for the one reason the cap exists:
+ * `text()` has already buffered the whole body by the time its length can be
+ * measured, so measuring afterwards enforces nothing. Reading chunk by chunk
+ * and holding nothing past the cap is what makes the limit a limit.
+ *
+ * What the cap bounds is what this process HOLDS, not what a client may
+ * transmit -- and that distinction is forced, not chosen. The body is drained
+ * to its end even once it is refused, because leaving it unread (whether by
+ * cancelling the stream or by returning before touching it) leaves the
+ * HTTP/1.1 message unfinished: Bun then answers the NEXT request on that
+ * keep-alive connection with an empty 400, which a host reads as a delivery
+ * failure and resolves with its posture. Refusing one oversize body by
+ * breaking the next legitimate request would be a wider fail-open than the
+ * one this cap closes. So memory is bounded here, and total transfer stays
+ * bounded by the runtime's own per-request ceiling above this.
+ *
+ * Which check is authoritative, since there are two: the count of bytes
+ * actually read. `Content-Length` is a claim -- a chunked body declares none,
+ * and a client may declare one length and send another -- so it can refuse a
+ * body before anything is held, but it can never admit one. `detail` says
+ * which of the two refused, because "you declared 4 MiB" and "you sent 4 MiB
+ * having declared nothing" are different client bugs and an operator reading
+ * the log needs to know which.
+ */
+async function readCappedBody(req: Request): Promise<CappedBody> {
+  // `Number(null)` is 0, which is the reading wanted for an absent header:
+  // nothing was declared, so nothing is refused on this account and the byte
+  // count below is the only check. A malformed header is NaN, and `NaN >` is
+  // false, so that falls through to the byte count too rather than refusing a
+  // request whose body may be perfectly small.
+  const declared = Number(req.headers.get("content-length"));
+  const declaredTooLarge = declared > MAX_REQUEST_BODY_BYTES;
+
+  // A POST with no body at all: nothing to read, and the parse above is what
+  // rejects it -- as an unparseable body, which is what it is.
+  if (req.body === null) {
+    return declaredTooLarge
+      ? { withinLimit: false, detail: `content-length declared ${declared}` }
+      : { withinLimit: true, text: "" };
+  }
+
+  const reader = req.body.getReader();
+  // `{ stream: true }` per chunk: a chunk boundary can land mid-codepoint, and
+  // decoding each one in isolation would replace the split character with
+  // U+FFFD -- corrupting an envelope that was never too big at all.
+  const decoder = new TextDecoder();
+  let text = "";
+  let read = 0;
+  // Nothing is held for a body that already declared itself too large: the
+  // decision is made, and the loop below only has to finish the message.
+  let holding = !declaredTooLarge;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done === true) {
+        break;
+      }
+      read += value.byteLength;
+      if (read > MAX_REQUEST_BODY_BYTES && holding) {
+        // Released as soon as the cap is passed, not at the end of the read:
+        // a refusal that kept the first megabyte until the body finished
+        // arriving would be enforcing the cap on average rather than at all.
+        holding = false;
+        text = "";
+      }
+      if (holding) {
+        text += decoder.decode(value, { stream: true });
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (declaredTooLarge) {
+    return { withinLimit: false, detail: `content-length declared ${declared}` };
+  }
+  return read > MAX_REQUEST_BODY_BYTES
+    ? { withinLimit: false, detail: `${read} bytes read` }
+    : { withinLimit: true, text: text + decoder.decode() };
 }
 
 async function dispatch(
