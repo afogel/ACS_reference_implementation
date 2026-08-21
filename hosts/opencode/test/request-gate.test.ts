@@ -9,7 +9,7 @@
  * is the first one that calls the hook OpenCode itself would call.
  */
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,12 +46,14 @@ const HOOKMAP_PATH = fileURLToPath(new URL("../opencode.hookmap.yaml", import.me
 const TOOL = "bash";
 
 // Matching hosts/claude-code/test/hook.test.ts's own ACS_AUDIT_LOG redirect:
-// every test below expects a real decision to
-// arrive, so nothing here should ever write an entry -- but a handshake
-// failure mid-run would append raw tool arguments (a destructive command,
-// among them) to the developer's own real `.acs/audit.jsonl`, the exact file
-// `.gitignore` exists for because it carries them. Redirected regardless of
-// whether today's tests reach that path.
+// nearly every test below expects a real decision to arrive, so nearly
+// nothing here writes an entry -- the one exception is the `tools` skip,
+// which files an ungoverned line and therefore points at its own path rather
+// than this shared one, so "no entry" stays a claim about the test making it.
+// The redirect is unconditional regardless, because a handshake failure
+// mid-run would append raw tool arguments (a destructive command, in this
+// suite) to the developer's own `.acs/audit.jsonl`, whether or not today's
+// tests reach that path.
 const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-request-gate-test-"));
 const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
@@ -166,14 +168,19 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     expect(output.args.command).toBe("ls -la");
   });
 
-  it("skips a tool outside this gate's own tools list: no throw, args untouched, and no Guardian request goes out", async () => {
+  it("skips a tool outside this gate's own tools list: no throw, args untouched, no Guardian request -- and one line saying so", async () => {
     // "read" -- one of the real tool names measured alongside "bash" that
     // opencode.hookmap.yaml's request gate does not list. Args shaped the
     // way OpenCode's own "read" tool call actually is (the coordinator's own
     // measurement): {filePath}, not {command} -- this gate is never asked to
     // resolve `$.args` for it at all, so the shape does not matter to the
     // assertion, only that nothing here touches it.
-    const hooks = await AcsPlugin({} as never);
+    //
+    // Its own audit path, not this file's shared one: this is the one test
+    // here that writes an entry, and the shared log is what every other test
+    // asserts is absent.
+    const auditPath = join(SCRATCH_DIR, `audit-${crypto.randomUUID()}.jsonl`);
+    const previousAuditLog = process.env.ACS_AUDIT_LOG;
     const output = { args: { filePath: "/etc/passwd" } };
 
     // If the skip did not run before any envelope was built, a request would
@@ -183,14 +190,45 @@ describe('AcsPlugin\'s "tool.execute.before" hook -- the request gate, against a
     // it was called at all, not on what it returned.
     const fetchSpy = spyOn(globalThis, "fetch");
     try {
+      // Set before AcsPlugin runs, not merely before the hook fires: the
+      // sink is built in the plugin factory (acs-plugin.ts's own note).
+      process.env.ACS_AUDIT_LOG = auditPath;
+      const hooks = await AcsPlugin({} as never);
       await expect(
         hooks["tool.execute.before"]!({ tool: "read", sessionID: "ses-request-gate-unlisted", callID: "c1" }, output),
       ).resolves.toBeUndefined();
 
       expect(output.args).toEqual({ filePath: "/etc/passwd" });
       expect(fetchSpy).not.toHaveBeenCalled();
+
+      // Ungoverned, and recorded as exactly that: this gate declined to ask,
+      // so there is no failure to file and no posture that answered. What
+      // the line has to carry is the tool that arrived beside the list that
+      // declined it, since a `tools` list drifting away from the names
+      // OpenCode actually sends is otherwise invisible.
+      expect(existsSync(auditPath)).toBe(true);
+      const entries = readFileSync(auditPath, "utf8")
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(entries).toEqual([
+        {
+          seq: 1,
+          recorded_at: expect.any(String),
+          session_id: "ses-request-gate-unlisted",
+          method: "steps/toolCallRequest",
+          rpc_id: null,
+          outcome: "ungoverned",
+          ungoverned: { tool: "read", tools: ["bash"] },
+        },
+      ]);
     } finally {
       fetchSpy.mockRestore();
+      if (previousAuditLog === undefined) {
+        delete process.env.ACS_AUDIT_LOG;
+      } else {
+        process.env.ACS_AUDIT_LOG = previousAuditLog;
+      }
     }
   });
 

@@ -442,17 +442,26 @@ export function applyFailurePosture({
  * step by proximity alone.
  *
  * The three vocabularies are deliberately NOT collapsed into one; the note on
- * `AuditEntry.outcome` is where that was weighed and why the audit rail keeps
- * its own. Both of this table's value types are read off `AuditEvent`'s own
- * declarations, so the table and the artifact cannot drift apart.
+ * the posture arm's own `outcome` (audit-sink.ts) is where that was weighed
+ * and why the audit rail keeps its own. Both of this table's value types are
+ * read off that arm's declarations, so the table and the artifact cannot
+ * drift apart.
+ *
+ * The ARM, not `AuditEvent` whole: that type gained a second member for a
+ * step no posture was consulted for, and reading `AuditEvent["outcome"]`
+ * here would let this table's values widen to include `"ungoverned"` -- a
+ * word no posture can ever resolve to, admitted into the one table whose job
+ * is that the posture, the decision and the outcome agree by construction.
  *
  * Consulted for every failure except a refusal, which REFUSAL_RESOLUTION
  * answers instead -- there is no posture row for it, because the deployment
  * never got to declare one.
  */
+type PostureResolvedAuditEvent = Extract<AuditEvent, { outcome: "proceeded" | "blocked" }>;
+
 const RESOLUTION_BY_POSTURE: Record<
-  AuditEvent["posture"],
-  { decision: "allow" | "deny"; outcome: AuditEvent["outcome"] }
+  PostureResolvedAuditEvent["posture"],
+  { decision: "allow" | "deny"; outcome: PostureResolvedAuditEvent["outcome"] }
 > = {
   proceed: { decision: "allow", outcome: "proceeded" },
   deny: { decision: "deny", outcome: "blocked" },

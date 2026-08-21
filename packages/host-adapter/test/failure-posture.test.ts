@@ -10,12 +10,25 @@ import { GuardianTimeoutError } from "../src/guardian-client.ts";
 import { SessionConfigStoreFailedError, type ResolvedSessionConfig } from "../src/handshake.ts";
 import type { SessionConfig } from "../src/session-config.ts";
 
-function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
-  const events: AuditEvent[] = [];
+/** The arm of `AuditEvent` this module writes. `applyFailurePosture` answers
+ * a failure with a posture, and every entry it files is that; the other arm
+ * (`outcome: "ungoverned"`) belongs to a step no posture was consulted for
+ * and reaches the sink from `auditUngovernedStep` instead. Narrowed here so
+ * the assertions below can read `failure` and `posture` directly. */
+type PostureAuditEvent = Extract<AuditEvent, { outcome: "proceeded" | "blocked" }>;
+
+function recordingSink(): { sink: AuditSink; events: PostureAuditEvent[] } {
+  const events: PostureAuditEvent[] = [];
   return {
     sink: {
       path: "test",
       write: (e) => {
+        // Checked rather than cast: if this module ever starts writing the
+        // other arm, that is a change to what it records and it should fail
+        // here loudly rather than be narrowed away by an assertion.
+        if (e.outcome === "ungoverned") {
+          throw new Error(`applyFailurePosture wrote an ungoverned entry: ${JSON.stringify(e)}`);
+        }
         events.push(e);
         return true;
       },

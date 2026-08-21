@@ -58,9 +58,10 @@
  *     render actually does at each shipped applier and gate.
  *   - There are exactly three ways out: a `GovernedStep` for a step this gate
  *     governs, a `GovernedStep` for one it does not (`stage: "ungoverned"`, no
- *     decision, nothing asked and nothing audited), or a throw. A throw means
- *     this hookmap does not map the hook that fired (see the guard at the
- *     top of `governStep`), that it maps a result gate whose named output no
+ *     decision, nothing asked, and one audit entry saying so), or a throw. A
+ *     throw means this hookmap does not map the hook that fired (see the
+ *     guard at the top of `governStep`), that it maps a result gate whose
+ *     named output no
  *     replacement can be built for (see `assertOutputIsReplaceable`, asked
  *     before any decision is sought), or that the fallback render of a posture
  *     decision itself failed, which `loadHookmap` makes unreachable for a hook
@@ -237,21 +238,26 @@ export type GovernedStep =
        *                              object and its mirror still carry their
        *                              original content, and it is delivered.
        *
-       * Zero audit entries in all four, necessarily -- this member is returned
-       * before anything is audited.
+       * One audit entry in all four, and the same one: `auditUngovernedStep`
+       * files an `outcome: "ungoverned"` line naming the tool and the list
+       * that declined it, before this member is returned. The table above is
+       * about what the RENDER does, which is still nothing; the record is
+       * what stops those four rows from being indistinguishable from a
+       * session in which the hook never fired.
        *
-       * So an empty render guarantees nothing by itself: it does not mean the
-       * step was stopped, and it does not mean anything recorded that the step
-       * went ungoverned. On three of the four the tool call, or its output,
-       * proceeds with no decision and no audit trail; on the fourth it is a
-       * blocking stop, itself a side effect of that host's own rule against
-       * writing half an output rather than a deliberate policy about skips.
-       * Whether a skip is silent or loud is decided entirely in the applier --
-       * host #1 answers it differently per gate, on purpose, and host #2's
-       * applier simply has no branch for the case. That is host semantics,
-       * which is exactly why this module has no opinion about it: it knows ACS
-       * and hookmaps, nothing about what a given host does with an empty
-       * render.
+       * So an empty render still guarantees nothing by itself: it does not
+       * mean the step was stopped. On three of the four the tool call, or its
+       * output, proceeds with no decision; on the fourth it is a blocking
+       * stop, itself a side effect of that host's own rule against writing
+       * half an output rather than a deliberate policy about skips. What is
+       * no longer true is that it proceeds with no trail -- the entry is the
+       * trail, and it is the same entry whichever row this is.
+       * Whether a skip is silent or loud in the SESSION is decided entirely
+       * in the applier -- host #1 answers it differently per gate, on
+       * purpose, and host #2's applier simply has no branch for the case.
+       * That is host semantics, which is exactly why this module has no
+       * opinion about it: it knows ACS and hookmaps, nothing about what a
+       * given host does with an empty render.
        *
        * Only the host #2 request-gate row is exercised by a test today
        * (`hosts/opencode/test/apply-opencode-output.test.ts`, which hands
@@ -294,7 +300,8 @@ export type GovernedStep =
  *
  * What a skip costs: a tool call this gate does not govern at all. Nothing
  * stands between the model and that tool call at this gate -- a real gap, not
- * a formality.
+ * a formality, and `auditUngovernedStep` (below) is what puts it in the
+ * record rather than leaving it to be inferred from an absence.
  *
  * Why it is right anyway: a deployment's own policy configuration (this
  * repo's `policy/manifest.yaml`, outside this package) can bind evaluation to
@@ -310,13 +317,20 @@ export type GovernedStep =
  * same fail-open shape this module exists to prevent elsewhere, one call
  * later. Both callers therefore return before any envelope is built:
  * `governStep`'s own skip below, and each host shim's own check, one call
- * earlier, which additionally returns before it validates a session id or
- * negotiates a session config, so an out-of-scope tool costs no handshake
- * either. The shim's own check saves that work; this module's check is what a
- * shim that never wrote one still gets, provided it tells `governStep` which
- * tool the step is (`GovernStepInput.scopedTool`) -- see that field's own doc
- * comment for why the tool named here is always the caller's word, never
- * re-derived from the hookmap's own paths against the payload.
+ * earlier, which additionally returns before it negotiates a session config,
+ * so an out-of-scope tool costs no handshake either. The shim's own check
+ * saves that work; this module's check is what a shim that never wrote one
+ * still gets, provided it tells `governStep` which tool the step is
+ * (`GovernStepInput.scopedTool`) -- see that field's own doc comment for why
+ * the tool named here is always the caller's word, never re-derived from the
+ * hookmap's own paths against the payload.
+ *
+ * Both callers must also AUDIT the skip, through `auditUngovernedStep`
+ * below, and that is a requirement rather than a courtesy: the shim's early
+ * return is an optimisation, and an optimisation that changes what the
+ * durable record contains is a divergence, not a saving. A shim that skipped
+ * without auditing would produce exactly the silent session this entry
+ * exists to make visible, on the one host whose gates declare `tools` at all.
  *
  * `entry.tools` needs no further null-handling here: `loadHookmap` returns a
  * normalised hookmap in which a `tools` key written bare in YAML (which
@@ -340,6 +354,62 @@ export function governsTool(hookmap: Hookmap, hookEventName: string, tool: strin
   const entry = Object.prototype.hasOwnProperty.call(hooks, hookEventName) ? hooks[hookEventName] : undefined;
   const tools = entry?.tools;
   return tools === undefined || tools.includes(tool);
+}
+
+/**
+ * Records a step this gate declined to govern -- the `tools` skip, in the
+ * one log that outlives the process.
+ *
+ * Called by `governStep`'s own skip and by every host shim that skips one
+ * call earlier, so the record does not depend on which of the two got there
+ * first. Shared here rather than written twice for the reason `governsTool`
+ * itself is shared: a rule only a shim enacts is a rule the next host does
+ * not inherit.
+ *
+ * It does not change the skip. The decision behaviour is exactly what it was
+ * -- return, govern nothing, throw nothing -- and the sink's own totality
+ * contract means this cannot alter that even when the append fails. The
+ * boolean `write` returns is deliberately dropped here, and that is the one
+ * place this differs from `applyFailurePosture`, which downgrades an
+ * unrecorded proceed to a block: there, the step was about to bypass a
+ * decision the deployment wanted made, so an unrecordable bypass is one the
+ * spec does not permit. Here the deployment's own hookmap asked for the
+ * skip, and blocking a tool the operator deliberately scoped out -- on a host
+ * where this fires for every non-listed tool call -- would turn a scoping
+ * declaration into an outage.
+ *
+ * `tools` is read back off the entry rather than taken as an argument: the
+ * list that declined the tool is the hookmap's, and a caller passing its own
+ * copy could pass one that no longer matches the file this skip was decided
+ * against.
+ */
+export function auditUngovernedStep(input: {
+  hookmap: Hookmap;
+  hookEventName: string;
+  /** The tool the caller scoped on -- the same value `governsTool` answered
+   * `false` for, never a name re-derived from the payload. */
+  tool: string;
+  /** The host's own raw session identifier, as every other entry carries it. */
+  sessionId: string;
+  audit: AuditSink;
+}): void {
+  const hooks = input.hookmap.hooks ?? {};
+  const entry = Object.prototype.hasOwnProperty.call(hooks, input.hookEventName)
+    ? hooks[input.hookEventName]
+    : undefined;
+  input.audit.write({
+    session_id: input.sessionId,
+    // The gate's own ACS method, not the host's event name: an ACS-only
+    // reader has to be able to tell WHICH gate declined, and this is the
+    // only name for it that log's consumers speak.
+    method: entry?.acs_method ?? null,
+    // No request was built, so there is no id to pair this with in the
+    // envelope log -- the same `null` an entry written before a request
+    // could be built carries.
+    rpc_id: null,
+    outcome: "ungoverned",
+    ungoverned: { tool: input.tool, tools: entry?.tools ?? [] },
+  });
 }
 
 /**
@@ -436,17 +506,22 @@ export async function governStep({
   //
   // An empty `scopedTool` is refused here too, not merely a missing one:
   // `governsTool(hookmap, hook, "")` answers `false` against any declared
-  // list, so an empty told name would be a silent, unaudited skip of a step
-  // this gate actually governs. Refused only where a list is declared, since
-  // that is the only place the value decides anything -- with no list,
-  // `governsTool` answers `true` for every string including the empty one.
+  // list, so an empty told name would skip a step this gate actually governs
+  // -- and now that a skip files an audit entry, it would file one naming
+  // `""` as the tool the list declined. A record that describes an in-scope
+  // step as out of scope is worse than the silence it replaced, which is the
+  // same reason the guard at the top of this function refuses an unmapped
+  // hook before the posture can write a bypass that never happened. Refused
+  // only where a list is declared, since that is the only place the value
+  // decides anything -- with no list, `governsTool` answers `true` for every
+  // string including the empty one.
   if (entry?.tools !== undefined && (typeof scopedTool !== "string" || scopedTool.length === 0)) {
     throw new Error(
       `governStep: hookmap entry for hook "${hookEventName}" declares a "tools" list, so this gate governs some ` +
         `tools and not others -- and this call named no scoped tool (scopedTool is ${JSON.stringify(scopedTool)}). ` +
         `Pass the tool the caller already checked as "scopedTool". Deriving a second name from the payload is ` +
         `what let a hookmap pointing "tool_name" at another field skip a governed step as "ungoverned", with no ` +
-        `Guardian request, no decision and no audit entry`,
+        `Guardian request and no decision -- and the audit entry that skip now writes would name the wrong tool`,
     );
   }
 
@@ -457,14 +532,18 @@ export async function governStep({
   // question about a second value.
   //
   // Both host shims run this same check themselves, one call earlier -- see
-  // `governsTool`'s own doc comment for what each of the two call sites saves.
+  // `governsTool`'s own doc comment for what each of the two call sites saves,
+  // and for why both of them audit rather than only this one.
   //
   // The caller's word is final here, including when it is wrong: a told name
   // this list does not contain is skipped even where the payload's own
   // `tool_name` would have resolved to one it does. That is the cost of the
   // vocabulary being the caller's rather than this module's own -- see
-  // `GovernStepInput.scopedTool` for why that trade is made anyway.
+  // `GovernStepInput.scopedTool` for why that trade is made anyway. Recording
+  // the told name and the list side by side is what makes that cost readable
+  // afterwards instead of leaving it to be reconstructed from an absence.
   if (scopedTool !== undefined && !governsTool(hookmap, hookEventName, scopedTool)) {
+    auditUngovernedStep({ hookmap, hookEventName, tool: scopedTool, sessionId, audit });
     return { output: {}, decision: null, stage: "ungoverned" };
   }
 

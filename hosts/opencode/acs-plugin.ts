@@ -99,16 +99,22 @@
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "@opencode-ai/plugin";
 import {
+  // The record a skip leaves. Called from `runExchange`'s own `governsTool`
+  // check, because that check returns before `governStep` -- so without this
+  // call the one host whose gates declare `tools` would be the one host that
+  // never files the entry.
+  auditUngovernedStep,
   createAuditSink,
   createGuardianClient,
   createMemorySessionConfigStore,
   DEFAULT_TIMEOUT_MS,
   governStep,
   // The `tools` rule, as the adapter states it. Called from `runExchange`
-  // (below), the same call site early enough to skip session validation and
+  // (below), the same call site early enough to skip payload assembly and
   // the handshake for a tool this gate does not govern -- `governStep` also
   // asks this same function, about the value this call site passes it
-  // (`scopedTool`), so a shim that forgot to call it here would still skip.
+  // (`scopedTool`), so a shim that forgot to call it here would still skip,
+  // and would still audit.
   governsTool,
   loadHookmap,
   resolveSessionConfig,
@@ -1100,16 +1106,33 @@ type AssembledStep = {
  *     `Array.prototype.includes` does not throw on a malformed `tool` -- it
  *     answers a silent `false`, which reads as "out of scope" and turns an
  *     audited, posture-answered fault into a silent unaudited proceed.
- *   - `governsTool`'s early return before `assertUsableSessionId`, so a
- *     tool this gate does not govern costs no session validation and no
- *     handshake round trip. `governStep` asks the same function itself,
- *     about the very value this function hands it (`scopedTool`), so a
- *     shim that forgot would still skip; this call site is the only one
- *     early enough to skip the rest as well.
- *   - `assertUsableSessionId` before `governStep`, because `buildEnvelope`'s
- *     own throw on a missing `session_id` lands in `governStep`'s
- *     stage-"request" catch and is answered by the negotiated posture,
- *     where a proceed is an ungoverned step.
+ *   - `assertUsableSessionId` next, ahead of the `tools` check rather than
+ *     after it. It used to sit after, so a tool this gate does not govern
+ *     cost no session validation either -- and that stopped being right
+ *     when the skip started leaving a record: `auditUngovernedStep` files
+ *     the entry against a session, and a record filed under a missing or
+ *     empty session id is one an incident review cannot join to anything.
+ *     Nothing expensive moved. What the old ordering actually saved is the
+ *     handshake round trip (`resolveSessionConfig`, below), which still
+ *     happens only for a tool this gate governs; this check is a typeof and
+ *     a length. The behaviour it adds is that a broken `sessionID` now
+ *     refuses even for an out-of-scope tool, which is the same
+ *     "broken deployment, not a policy question" rule `assertUsableTool`
+ *     already applies unconditionally one line above.
+ *   - `assertUsableSessionId` before `governStep` for its original reason
+ *     too, which the move does not disturb: `buildEnvelope`'s own throw on
+ *     a missing `session_id` lands in `governStep`'s stage-"request" catch
+ *     and is answered by the negotiated posture, where a proceed is an
+ *     ungoverned step.
+ *   - `governsTool`'s early return before `assemble`/`resolveSessionConfig`,
+ *     so a tool this gate does not govern costs no payload assembly and no
+ *     handshake. `governStep` asks the same function itself, about the very
+ *     value this function hands it (`scopedTool`), so a shim that forgot
+ *     would still skip; this call site is the only one early enough to skip
+ *     the rest as well. It is NOT early enough to skip the record, though,
+ *     and must not be: see `auditUngovernedStep` (govern-step.ts) for why
+ *     an optimisation that changes the durable record is a divergence
+ *     rather than a saving.
  *
  * Payload assembly stays at the edge, called from here rather than done
  * here, because the two gates genuinely differ: the request gate reads
@@ -1143,17 +1166,38 @@ async function runExchange(
   // see `assertUsableTool`'s own doc comment for the asymmetry this closes.
   assertUsableTool(input.tool, hookEventName);
 
+  // Before the `tools` check below, not after it: the skip files an audit
+  // entry, and that entry is filed against a session. See this function's
+  // own doc comment for what moving this cost and what it did not.
+  assertUsableSessionId(input.sessionID, hookEventName);
+
   // A tool this gate's own `tools` list does not name is not governed here
-  // -- return before anything else, without validating a session id,
-  // without negotiating a session config, without building an envelope,
-  // and without asking the Guardian anything. See `governsTool`'s own doc
-  // comment (govern-step.ts) for what this costs and why it is right
-  // anyway.
+  // -- return before assembling a payload, before negotiating a session
+  // config, before building an envelope, and without asking the Guardian
+  // anything. See `governsTool`'s own doc comment (govern-step.ts) for what
+  // this costs and why it is right anyway.
+  //
+  // Recorded on the way out, through the adapter's own `auditUngovernedStep`
+  // rather than through anything written here. `governStep`'s own copy of
+  // this check files the identical entry, and this call site exists only to
+  // save the work below it -- so a skip has to leave the same record
+  // whichever of the two got there first, or this shim's optimisation is
+  // quietly deciding what the durable log contains. On THIS host that is not
+  // a hypothetical: both gates declare `tools`, OpenCode fires the result
+  // gate for every tool, and this early return is the one that actually
+  // runs. Every non-`bash` tool call therefore writes one of these, which is
+  // a lot of lines -- and is the honest count of the steps this deployment
+  // does not govern.
   if (!governsTool(deployment.hookmap, hookEventName, input.tool)) {
+    auditUngovernedStep({
+      hookmap: deployment.hookmap,
+      hookEventName,
+      tool: input.tool,
+      sessionId: input.sessionID,
+      audit: deployment.audit,
+    });
     return;
   }
-
-  assertUsableSessionId(input.sessionID, hookEventName);
 
   // One payload object, so `opencode.hookmap.yaml`'s `$.` paths have a
   // single thing to resolve against -- OpenCode hands a hook two

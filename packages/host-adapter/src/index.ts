@@ -36,6 +36,13 @@ export { renderDecision, type HostOutput } from "./render-decision.ts";
 export { type AcsDecision, type ValidatedAcsDecision } from "./decision-message.ts";
 export {
   governStep,
+  // The record a `tools` skip leaves, exported for the same reason
+  // `governsTool` is: a shim that skips one call earlier skips this module's
+  // own audit entry along with the work it was saving, and an optimisation
+  // that quietly changes the durable record is a divergence between the two
+  // hosts rather than a saving. A shim that asks `governsTool` must file this
+  // when the answer is no.
+  auditUngovernedStep,
   // The `tools` rule itself, exported because both sides of it are real: a
   // shim asks it before it validates a session id or negotiates a session
   // config, so an out-of-scope tool costs neither; `governStep` asks it again,
@@ -47,7 +54,8 @@ export {
   // A shim that never tells `governStep` which tool a step is does not skip
   // silently at a gate declaring `tools`: `governStep` refuses that call
   // outright, because it has no way to know which tool the step is. A
-  // forgetful shim gets a loud stop rather than an unaudited skip.
+  // forgetful shim gets a loud stop rather than a skip filed against the
+  // wrong tool.
   governsTool,
   type DecisionStage,
   type GovernStepInput,

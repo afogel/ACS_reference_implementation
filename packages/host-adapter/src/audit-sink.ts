@@ -1,7 +1,16 @@
 /**
  * The host-side audit sink. §6.4 makes one thing a MUST: every step that
  * proceeds without a decision is recorded, so a fail-open bypass is visible
- * rather than silent. That is the entire job.
+ * rather than silent.
+ *
+ * That is most of the job, and for a while it was thought to be all of it.
+ * It is not: a step can also proceed without a decision because no gate ever
+ * asked for one. A hookmap entry that declares a `tools` list skips every
+ * tool the list does not name (`governsTool`, govern-step.ts), and a list
+ * that stops matching the names a host actually sends skips everything --
+ * silently, since a skip builds no envelope, consults no posture and fails
+ * at nothing. Recorded here too, as its own outcome, so the log tells an
+ * ungoverned session apart from a quiet one.
  *
  * Total by construction, the same contract
  * packages/guardian/src/envelope-log-sink.ts's envelope log sink keeps. This
@@ -21,15 +30,18 @@
  *
  * Structurally the same as packages/guardian/src/envelope-log-sink.ts, and
  * deliberately not shared with it: that one is the Guardian's, recording the
- * wire; this one is the host's, recording the posture. They record different
- * things at different sides of the wire, and this package stays free of the
- * Guardian's imports.
+ * wire; this one is the host's, recording what became of a step the wire
+ * never answered for -- whether because a posture answered instead, or
+ * because no gate asked. They record different things at different sides of
+ * the wire, and this package stays free of the Guardian's imports.
  */
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { SessionFailureKind, StepFailureKind } from "./failure-kinds.ts";
 
-export type AuditEntry = {
+/** What every audit entry carries, whichever kind it is: which step, in
+ * which session, and how it pairs with the envelope log. */
+type AuditEntryIdentity = {
   /**
    * 1-based and per *session*: continued from the entries already in the log
    * when this sink first writes to it, not counted from zero per instance.
@@ -43,24 +55,26 @@ export type AuditEntry = {
   recorded_at: string;
   session_id: string;
   /**
-   * The ACS method whose decision failed to arrive, or `null` when the
-   * failure happened before a request could be built and so no ACS method
-   * was ever determined. It is never a host's own hook or event name: this
-   * field is read by consumers that know ACS and nothing else (the Inspector
-   * renders it verbatim), and a host name arriving here would make an
-   * ACS-only reader print one.
+   * The ACS method this step would have been asked under, or `null` when
+   * none was ever determined. It is never a host's own hook or event name:
+   * this field is read by consumers that know ACS and nothing else (the
+   * Inspector renders it verbatim), and a host name arriving here would make
+   * an ACS-only reader print one.
+   *
+   * Populated on an `ungoverned` entry from the hookmap entry's own
+   * `acs_method` rather than from an envelope, because a skipped step builds
+   * no envelope and the field is still determined: it is the method the gate
+   * maps to, which is what tells a reviewer WHICH gate declined.
    */
   method: string | null;
   rpc_id: string | number | null;
-  /** The posture in force -- negotiated, or the ACS default when nothing was. */
-  posture: "proceed" | "deny";
-  /** Whether `posture` was negotiated at handshake or is the ACS default
-   * because no handshake ever completed. The `reasoning` string a human
-   * reads in a transcript is ephemeral; this field carries the same
-   * distinction into the durable record, because "the guardian was down
-   * for this whole session" and "this deployment chose to fail open" are
-   * different incidents and the audit log is where that has to survive. */
-  posture_source: "negotiated" | "default";
+};
+
+/**
+ * A step that got no decision and was resolved by the negotiated posture --
+ * §6.4's own case, and every entry this log held before `ungoverned` existed.
+ */
+type PostureResolvedAuditEntry = AuditEntryIdentity & {
   /**
    * What became of the step. `proceeded` is the fail-open bypass §6.4 requires
    * be recorded.
@@ -76,7 +90,7 @@ export type AuditEntry = {
    *     became of this step.
    *   - Mirroring the ACS decision would badge the line `ALLOW`/`DENY`, which
    *     is the envelope stream's vocabulary for a step whose decision genuinely
-   *     arrived. Every line in THIS log is a step where none did, and that
+   *     arrived. Every line in THIS arm is a step where none did, and that
    *     difference is the entire thing §6.4 requires be visible.
    *
    * Past tense for the same reason: this field reports, it does not declare.
@@ -93,6 +107,15 @@ export type AuditEntry = {
    * write failed, so it leaves no entry to read.
    */
   outcome: "proceeded" | "blocked";
+  /** The posture in force -- negotiated, or the ACS default when nothing was. */
+  posture: "proceed" | "deny";
+  /** Whether `posture` was negotiated at handshake or is the ACS default
+   * because no handshake ever completed. The `reasoning` string a human
+   * reads in a transcript is ephemeral; this field carries the same
+   * distinction into the durable record, because "the guardian was down
+   * for this whole session" and "this deployment chose to fail open" are
+   * different incidents and the audit log is where that has to survive. */
+  posture_source: "negotiated" | "default";
   /**
    * What went wrong with THIS step, classified.
    *
@@ -129,7 +152,65 @@ export type AuditEntry = {
   session_failure?: { kind: SessionFailureKind; message: string };
 };
 
-export type AuditEvent = Omit<AuditEntry, "seq" | "recorded_at">;
+/**
+ * A step no gate ever asked about: the hook fired, the gate's own `tools`
+ * list did not name this tool, and the step ran with no envelope built, no
+ * Guardian contacted and no decision sought.
+ *
+ * A SEPARATE ARM rather than three more optional fields on the one above,
+ * because the two kinds of entry share nothing but their identity. Every
+ * field of the posture arm would be a lie here, not merely absent:
+ *
+ *   - `failure` -- nothing failed. A skip is what the deployment's own
+ *     hookmap asked for. Filing it under a failure kind would put a fault in
+ *     the one log an incident review reads, for a step that had none, and
+ *     inventing a kind for it would be a vocabulary entry describing an
+ *     outcome that did not happen -- the defect govern-step.ts's own
+ *     unmapped-hook guard exists to prevent.
+ *   - `posture`/`posture_source` -- no posture was consulted, and at the one
+ *     call site that skips earliest (a long-lived plugin shim's own
+ *     `governsTool` check) no handshake has run, so there is no negotiated
+ *     posture to report even dishonestly. Printing `posture=proceed` beside
+ *     `UNGOVERNED` would read as "this deployment chose to proceed", which
+ *     is not what happened: it chose not to ask.
+ *
+ * So `AuditEntry` is a union, and a reader narrows on `outcome`. The cost is
+ * that every consumer of `failure` or `posture` now says which arm it means;
+ * the alternative was five optional fields and a co-occurrence rule that only
+ * a comment enforced.
+ *
+ * VOLUME IS THE KNOWN COST, stated rather than discovered later. On a host
+ * whose gates fire for every tool and scope with `tools` (host #2, whose
+ * result gate lists `bash` alone), every call to every other tool writes one
+ * of these at each gate -- so an ordinary session's log is mostly this arm.
+ * That is the honest consequence of §6.4's own charter, which is about steps
+ * that proceeded without a decision and does not distinguish why. Not
+ * de-duplicated per session: the one host where a long-lived plugin could
+ * hold that state is not the one whose hooks are fresh subprocesses, so
+ * de-duplicating would make the two hosts record different things, which is
+ * the divergence this package exists to prevent.
+ */
+type UngovernedAuditEntry = AuditEntryIdentity & {
+  outcome: "ungoverned";
+  /**
+   * Which tool went ungoverned, and the list that declined it -- both,
+   * because either alone is unreadable. The tool name alone cannot be told
+   * from a legitimate out-of-scope call; the list alone does not say what
+   * missed it. Together they are the drift signal: a reviewer reading
+   * `bash_tool` against `["bash"]` sees a hookmap whose vocabulary stopped
+   * matching the host's, which is the fault that otherwise presents as a
+   * quiet session.
+   */
+  ungoverned: { tool: string; tools: string[] };
+};
+
+export type AuditEntry = PostureResolvedAuditEntry | UngovernedAuditEntry;
+
+/** `Omit` over a union collapses it to the keys its arms share, which would
+ * silently erase both arms' own fields. Distributed, so each arm keeps them. */
+type OmitPerArm<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+export type AuditEvent = OmitPerArm<AuditEntry, "seq" | "recorded_at">;
 
 export type AuditSink = {
   /** Where entries land, or null for the null sink. */

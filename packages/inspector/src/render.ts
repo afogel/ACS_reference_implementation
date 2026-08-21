@@ -289,13 +289,21 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
 }
 
 /**
- * One audit-log line as a header plus the failure that produced it. Every
- * AuditEntry carries an `outcome`, and the two are rendered distinctly
+ * One audit-log line as a header plus the reason it was written. Every
+ * AuditEntry carries an `outcome`, and the three are rendered distinctly
  * (`PROCEEDED` in the same warning colour as the posture badge's non-zero
- * count, `BLOCKED` in the deny colour) for the same reason
- * renderDecisionBadge refuses to render a fired policy identically to a
- * clean allow: the outcome that bypassed a decision is the one line here
- * that must not read like an ordinary one.
+ * count, `BLOCKED` in the deny colour, `UNGOVERNED` in the warning colour
+ * too) for the same reason renderDecisionBadge refuses to render a fired
+ * policy identically to a clean allow: the outcome that bypassed a decision
+ * is the one line here that must not read like an ordinary one.
+ *
+ * `UNGOVERNED` shares `PROCEEDED`'s colour rather than getting a fourth,
+ * and that is the honest pairing: both are steps that ran with no decision.
+ * They are separate WORDS because how they got there differs entirely --
+ * one bypassed a decision the deployment wanted made, the other was never
+ * asked for because the deployment's own hookmap scoped the tool out -- and
+ * an incident review acts on that difference. It is not `BLOCKED`'s colour
+ * because nothing was blocked.
  *
  * The audit log records the host's own raw session identifier, not the
  * UUID derived from it that the envelope log's envelopes carry (see
@@ -306,8 +314,8 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
  */
 export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;
-  const outcomeLabel = entry.outcome === "proceeded" ? "PROCEEDED" : "BLOCKED";
-  const outcomeColor = entry.outcome === "proceeded" ? YELLOW : RED;
+  const outcomeLabel = entry.outcome === "blocked" ? "BLOCKED" : entry.outcome === "proceeded" ? "PROCEEDED" : "UNGOVERNED";
+  const outcomeColor = entry.outcome === "blocked" ? RED : YELLOW;
   const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
   // Same fallback renderEnvelopeLogEntry uses for a log line with no method,
   // and for the same reason: an entry written before any request could be built
@@ -315,12 +323,29 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
   // on.
   const method = entry.method ?? "(no method)";
 
+  // No `posture=` on an ungoverned line, because no posture was consulted --
+  // printing this session's declared one there would read as "the deployment
+  // chose to proceed", which is not what happened. The writer does not carry
+  // the field on that arm at all, so this is the type being honest rather
+  // than this renderer choosing to omit something it was given.
+  const postureField = entry.outcome === "ungoverned" ? "" : `posture=${entry.posture}/${entry.posture_source}  `;
   const header = paint(
     `── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${outcomeLabel}  ${method}  ${id}  ` +
-      `posture=${entry.posture}/${entry.posture_source}  audit_session=${entry.session_id}`,
+      `${postureField}audit_session=${entry.session_id}`,
     outcomeColor,
     color,
   );
+
+  // The tool and the list that declined it, together: the drift this line
+  // exists to make visible is a `tools` list that stopped matching the names
+  // the host sends, and neither half shows it alone.
+  if (entry.outcome === "ungoverned") {
+    const declared = entry.ungoverned.tools.length === 0 ? "(none)" : entry.ungoverned.tools.join(", ");
+    return [header, paint(`ungoverned=${entry.ungoverned.tool}: not in this gate's tools [${declared}]`, DIM, color)].join(
+      "\n",
+    );
+  }
+
   const failureLine = paint(`failure=${entry.failure.kind}: ${entry.failure.message}`, DIM, color);
   // A second, separately labelled line rather than a merged one: the session's
   // configuration failing and this step's decision failing are different

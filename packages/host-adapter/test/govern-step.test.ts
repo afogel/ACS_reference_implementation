@@ -88,6 +88,22 @@ function recordingSink(): { sink: AuditSink; events: AuditEvent[] } {
   };
 }
 
+/**
+ * The posture arm of a recorded event, or a throw naming what turned up
+ * instead. `governStep` writes both arms -- a posture answering a failure,
+ * and a `tools` skip -- so the assertions that read `failure` or
+ * `session_failure` have to say which one they mean, and a test whose entry
+ * came back the other kind should fail as itself rather than as a confusing
+ * `undefined` diff.
+ */
+function postureEventAt(events: AuditEvent[], index: number): Extract<AuditEvent, { outcome: "proceeded" | "blocked" }> {
+  const event = events[index];
+  if (event === undefined || event.outcome === "ungoverned") {
+    throw new Error(`expected a posture-resolved audit entry at [${index}], got ${JSON.stringify(event)}`);
+  }
+  return event;
+}
+
 const NEGOTIATED = (posture: "proceed" | "deny"): SessionConfig => ({
   timeout_config: { default_ms: 5000 },
   on_decision_failure: posture,
@@ -314,7 +330,7 @@ describe("governStep — the three failure stages name three different incidents
       method: "steps/toolCallRequest",
       failure: { kind: "timeout" },
     });
-    expect(events[0]?.failure.message).toContain("120ms");
+    expect(postureEventAt(events, 0).failure.message).toContain("120ms");
     expect(events[0]?.rpc_id).toBeString();
   });
 
@@ -615,7 +631,7 @@ describe("governStep — the session's failure travels beside the step's own", (
 
     expect(governed.decision.decision).toBe("allow");
     expect(events[0]).toMatchObject({ posture: "proceed", posture_source: "default", outcome: "proceeded" });
-    expect(events[0]?.session_failure).toBeUndefined();
+    expect(postureEventAt(events, 0).session_failure).toBeUndefined();
   });
 
   // §6.4's MUST outranks the posture: a fail-open proceed that could not be
@@ -682,7 +698,7 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
     hooks: { OnStep: { ...ON_STEP, tools } },
   });
 
-  it("returns an empty output for a tool the list does not name, contacting no Guardian and auditing nothing", async () => {
+  it("returns an empty output for a tool the list does not name, contacting no Guardian and auditing the skip", async () => {
     const { sink, events } = recordingSink();
     const { guardian, asked } = unaskedGuardian();
 
@@ -693,11 +709,27 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
     // merge), `null` is what says no decision was sought, and "ungoverned"
     // is what a caller narrows on.
     expect(governed).toEqual({ output: {}, decision: null, stage: "ungoverned" });
-    // No round trip, and no audit entry: a step this gate declines to govern
-    // is not a failure, so there is nothing for a posture to answer and
-    // nothing for an entry to record. An audit line here would read as a
-    // fail-open proceed that never happened.
-    expect({ asked: asked(), events }).toEqual({ asked: 0, events: [] });
+    // No round trip -- there is nothing to ask about a step this gate
+    // declines to govern.
+    expect(asked()).toBe(0);
+    // But it IS recorded, and the whole entry is asserted rather than only
+    // its outcome. A skip is not a failure, so this must not read as one:
+    // no `failure`, no `posture`, no `posture_source`, because none of the
+    // three happened. What it must carry is the pair that makes hookmap
+    // drift readable -- the tool that arrived and the list that declined it
+    // -- since a `tools` list that stops matching the names a host sends
+    // otherwise presents as a quiet session rather than an ungoverned one.
+    expect(events).toEqual([
+      {
+        session_id: "sess-1",
+        // The gate's own ACS method, not the host's "OnStep": this log's
+        // readers know ACS and nothing else.
+        method: "steps/toolCallRequest",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "Bash", tools: ["Write"] },
+      },
+    ]);
   });
 
   it("governs a tool the list does name", async () => {
@@ -710,6 +742,9 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
     });
 
     expect(governed.stage).toBe("honoured");
+    // Nothing audited: a governed step whose decision arrived is neither a
+    // fail-open nor a skip. This is the control that keeps the entry above
+    // from being something every call writes.
     expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
   });
 
@@ -825,7 +860,13 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
         label,
         stage: governed.stage,
         asked: asked(),
-        audited: events.map((event) => ({ outcome: event.outcome, failureKind: event.failure?.kind ?? null })),
+        // `in`, not `?.`: `failure` is a field of one arm of `AuditEvent`,
+        // so a skip entry has no such property rather than an undefined one
+        // -- and this table is asserting that none of these rows IS a skip.
+        audited: events.map((event) => ({
+          outcome: event.outcome,
+          failureKind: "failure" in event ? event.failure.kind : null,
+        })),
       });
     }
 
@@ -915,7 +956,18 @@ describe("governStep — a gate governs only the tools its hookmap entry names",
     });
 
     expect(governed).toEqual({ output: {}, decision: null, stage: "ungoverned" });
-    expect({ asked: asked(), events }).toEqual({ asked: 0, events: [] });
+    // Skipped, not stopped -- and the skip is recorded, naming the result
+    // gate's own ACS method so a reviewer can tell WHICH gate declined.
+    expect(asked()).toBe(0);
+    expect(events).toEqual([
+      {
+        session_id: "sess-1",
+        method: "steps/toolCallResult",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "Bash", tools: ["Write"] },
+      },
+    ]);
   });
 });
 
@@ -974,7 +1026,8 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
 
     // Told, this is a step the gate really governs. Scoping on the
     // tool_name path instead of the caller's own word would silently drop
-    // it as `"ungoverned"`, with nothing asked and nothing audited.
+    // it as `"ungoverned"` -- now with an audit entry naming a tool the gate
+    // does govern, which is a false record rather than merely a missing one.
     expect(governed.stage).toBe("honoured");
     expect({ asked: asked(), events }).toEqual({ asked: 1, events: [] });
   });
@@ -992,7 +1045,19 @@ describe("governStep — the tool it scopes on is the one it was told", () => {
     });
 
     expect(governed).toEqual({ output: {}, decision: null, stage: "ungoverned" });
-    expect({ asked: asked(), events }).toEqual({ asked: 0, events: [] });
+    expect(asked()).toBe(0);
+    // The record names the tool the CALLER scoped on and the list as the
+    // hookmap declares it -- never the name `tool_name` happens to resolve
+    // to, which is the second source `scopedTool` exists to remove.
+    expect(events).toEqual([
+      {
+        session_id: "sess-1",
+        method: "steps/toolCallRequest",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "Bash", tools: ["ls -la"] },
+      },
+    ]);
   });
 
   /**

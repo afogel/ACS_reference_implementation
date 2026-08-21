@@ -108,9 +108,59 @@ describe("createAuditSink", () => {
   it("records a blocked step too, so the Inspector's posture badge can distinguish the two outcomes", () => {
     const path = join(scratch(), "audit.jsonl");
     createAuditSink({ path }).write({ ...EVENT, posture: "deny", outcome: "blocked" });
-    const [entry] = readEntries(path);
-    expect(entry?.outcome).toBe("blocked");
-    expect(entry?.posture).toBe("deny");
+    // `toMatchObject` on the whole entry rather than two field reads: `posture`
+    // belongs to one arm of the union now, so reading it off an unnarrowed
+    // entry would need a narrowing step that says nothing about this test.
+    expect(readEntries(path)[0]).toMatchObject({ outcome: "blocked", posture: "deny" });
+  });
+
+  // The other arm. A step the gate's own `tools` list declined never reaches
+  // a posture, so its entry carries no `posture`, no `posture_source` and no
+  // `failure` -- and the sink must write exactly that rather than filling in
+  // defaults, because a durable record that names a posture nobody consulted
+  // is a record of something that did not happen.
+  it("records an ungoverned step with no posture and no failure, only the tool and the list that declined it", () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") }).write({
+      session_id: "sess-1",
+      method: "steps/toolCallResult",
+      rpc_id: null,
+      outcome: "ungoverned",
+      ungoverned: { tool: "read", tools: ["bash"] },
+    });
+    expect(readEntries(path)).toEqual([
+      {
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallResult",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "read", tools: ["bash"] },
+      },
+    ]);
+  });
+
+  // One counter, both arms: `seq` is per session and gaps mean lost writes,
+  // so a skip that restarted the numbering -- or that did not advance it --
+  // would make the one field an incident review reads for lost entries lie.
+  it("numbers both kinds of entry on one sequence", () => {
+    const path = join(scratch(), "audit.jsonl");
+    const sink = createAuditSink({ path });
+    sink.write(EVENT);
+    sink.write({
+      session_id: "sess-1",
+      method: "steps/toolCallRequest",
+      rpc_id: null,
+      outcome: "ungoverned",
+      ungoverned: { tool: "read", tools: ["bash"] },
+    });
+    sink.write(EVENT);
+    expect(readEntries(path).map((e) => [e.seq, e.outcome])).toEqual([
+      [1, "proceeded"],
+      [2, "ungoverned"],
+      [3, "proceeded"],
+    ]);
   });
 
   // The one entry shape an incident reviewer has to be able to read off the

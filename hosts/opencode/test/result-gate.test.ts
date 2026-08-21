@@ -287,7 +287,7 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
     expect(response.result?.reason_codes).toEqual(["destructive_shell_command_blocked"]);
   });
 
-  it("skips a tool outside this gate's own tools list: no throw, result untouched, and no Guardian request goes out", async () => {
+  it("skips a tool outside this gate's own tools list: no throw, result untouched, no Guardian request -- and one line saying so", async () => {
     // "read" -- one of the real tool names measured alongside "bash" that
     // opencode.hookmap.yaml's result gate does not list (its own comment:
     // `metadata` is per-tool -- "read"'s carries {display, loaded, preview,
@@ -311,11 +311,36 @@ describe('AcsPlugin\'s "tool.execute.after" hook -- the result gate, against a l
 
       expect(result).toEqual(liveResult("some file preview text"));
       expect(fetchSpy).not.toHaveBeenCalled();
-      // No audit line either -- sound by construction (this skip returns
-      // before resolveSessionConfig/governStep are ever asked, so there is
-      // nothing for a posture to answer or an entry to record), pinned
-      // rather than left implicit.
-      expect(existsSync(auditPath)).toBe(false);
+
+      // And one audit line, which is the half that stops this from being
+      // indistinguishable from a session where the hook never fired. OpenCode
+      // fires this gate for EVERY tool, so on this host that silence was the
+      // ordinary case rather than a corner: every `read`, `grep` and `edit`
+      // call reached exactly this skip and left nothing behind. The entry
+      // names the tool that arrived and the list that declined it, which is
+      // what makes a `tools` list drifting away from OpenCode's own tool
+      // names readable rather than invisible.
+      expect(existsSync(auditPath)).toBe(true);
+      const entries = readFileSync(auditPath, "utf8")
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(entries).toEqual([
+        {
+          seq: 1,
+          recorded_at: expect.any(String),
+          session_id: "ses-result-gate-unlisted",
+          method: "steps/toolCallResult",
+          rpc_id: null,
+          outcome: "ungoverned",
+          ungoverned: { tool: "read", tools: ["bash"] },
+        },
+      ]);
+      // Not a failure, and the negative half is asserted rather than implied:
+      // nothing failed here, no posture was consulted, and an entry carrying
+      // either would describe an incident that did not happen.
+      expect(entries[0]).not.toHaveProperty("failure");
+      expect(entries[0]).not.toHaveProperty("posture");
     } finally {
       fetchSpy.mockRestore();
     }
