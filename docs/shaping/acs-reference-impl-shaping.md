@@ -68,8 +68,9 @@ This qualifies **R1.3**: the four snapshot-borne members are constructible from 
 | R1.4 | `enforced_identity` survives the adapter — approval binds to the action that executes | Must-have |
 | R1.5 | 🟡 AGT's evaluation-layer fail-closed survives: an AGT `deny` verdict is delivered as an ACS `deny` and honored regardless of wire posture | Must-have |
 | R1.6 | `transform`'s `$policy_target` bound survives as ACS `modify` | Must-have |
-| R1.7 | 🟡 Wire-delivery failure applies the negotiated `on_decision_failure` posture (ACS default `proceed`) with every fail-open proceed audited — never conflated with AGT's evaluation-layer fail-closed | Must-have |
+| R1.7 | 🟡 Wire-delivery failure applies the negotiated `on_decision_failure` posture (ACS default `proceed`) with every fail-open proceed audited — never conflated with AGT's evaluation-layer fail-closed. Delivery means the Guardian stayed silent, the transport died, or an error arrived whose code carries no verdict and does not say the Guardian refused | Must-have |
 | R1.8 | 🟡 The three ACS mandatory fail-closed cases hold: malformed `modifications`, `DEFER` expiry, `ASK` expiry | Must-have |
+| R1.9 | 🟡 **Added by review after V3 shipped.** A refusal is not a delivery failure: an error whose code says the Guardian was alive and REFUSED the envelope (`-32700`, `-32010`, `-32011`, `-32020`) is a governance outcome and denies **regardless of posture**, still audited. Filing these under R1.7 meant the shipped default (`proceed`) turned the Guardian's own "no" into `allow`. An unrecognised error code stays a delivery failure and keeps the posture — deliberately, since widening this to every error object would fail closed on an error the Guardian never sent | Must-have |
 | **R2** | 🟡 **Interop is real, and stays real** | Must-have |
 | R2.1 | AGT's published policy library decides, used as shipped — driven only through `data.agt.defaults.config` | Must-have |
 | R2.2 | AGT's engine runs unforked, at a pinned upstream version | Must-have |
@@ -522,6 +523,7 @@ flowchart TB
 | R1.5 — AGT's evaluation fail-closed survives | N27 returns an explicit `deny` **decision**, so §6.4's "honor any decision that arrives" carries AGT's invariant intact |
 | R1.7 — wire posture is negotiated, not hard-coded | N5/N14 negotiate it into S13/S15; N6/N15 apply it and audit every fail-open proceed to S14/S16 |
 | R1.8 — mandatory fail-closed cases | N7/N16 |
+| R1.9 — a refusal denies regardless of posture | N6 reads the failure before it reads the posture: `classifyDeliveryFailure` names the refusal, and it resolves to `deny` without consulting S13's `on_decision_failure`. Closes the four codes N27 cannot address a decision to, from the host's own side |
 | R2.5/R2.6 — drift is a named failure | N45, N46 → U31 |
 
 ---
