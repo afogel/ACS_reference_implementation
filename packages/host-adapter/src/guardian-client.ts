@@ -6,9 +6,14 @@
  *
  *   - `requestDecision` never throws. Every way of not getting a decision --
  *     a dead transport, an uncorrelated response, a JSON-RPC error, a result
- *     naming no decision -- becomes the same answer, so a caller cannot forget
- *     to handle one. Getting that wrong is a fail-open, because every branch
- *     that mishandles a decision ends with the tool call proceeding ungoverned.
+ *     naming no decision -- becomes the same answer SHAPE, so a caller cannot
+ *     forget to handle one. Getting that wrong is a fail-open, because every
+ *     branch that mishandles a decision ends with the tool call proceeding
+ *     ungoverned. One shape, not one meaning: the `failure` it carries is
+ *     handed on unflattened, because whether it names a refusal or an
+ *     accident is what decides the step (see failure-posture.ts). This module
+ *     makes no such judgement, and takes care not to destroy the evidence for
+ *     one.
  *   - `post` is the wire primitive underneath it, for the one caller whose
  *     result is not a decision: the handshake, whose result is a ServerHello
  *     (handshake.ts). It throws on every delivery failure, which is what that
@@ -29,6 +34,11 @@
  * can answer with the right `id` and another step's decision. Both are
  * checked, and both are checked in `post`, so no caller can hold a response
  * that was never correlated.
+ *
+ * A response the Guardian could not address at all -- `id: null` carrying an
+ * `error` -- is exempt from the transport-id assertion: there is no id there
+ * to be wrong, and the assertion was suppressing the refusal code that
+ * response exists to deliver.
  *
  * This module knows JSON-RPC, HTTP and ACS's decision vocabulary, nothing else
  * -- no policy-runtime vocabulary and no host vocabulary. It has no runtime
@@ -96,6 +106,37 @@ export class GuardianResultCorrelationError extends Error {
 }
 
 /**
+ * Thrown when the negotiated timeout elapses with no response (§6.4).
+ *
+ * Names a missing response, not a missing decision. This is `post`'s error
+ * -- the wire primitive -- and `post` also carries `handshake/hello`, whose
+ * result is a ServerHello and which never asked for a decision at all. A
+ * message like "no decision within ...ms" would be wrong there, and that
+ * string is not ephemeral: it becomes `AuditEntry.failure.message` through
+ * `classifyDeliveryFailure`, so a handshake that timed out would file a
+ * durable record blaming a missing decision on a round trip that never
+ * sought one. Where a decision genuinely was sought, `applyFailurePosture`
+ * already writes "no decision arrived from the guardian for <method>"
+ * around this, so nothing is lost by this layer reporting only what it
+ * knows: nothing came back.
+ */
+export class GuardianTimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`guardianClient.post: no response within ${timeoutMs}ms`);
+    this.name = "GuardianTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export type PostOptions = {
+  /** The negotiated `timeout_config` value for this method. Omitted means no
+   * timeout, the same way the handshake calls it -- the handshake has no
+   * negotiated timeout yet, by definition. */
+  timeoutMs?: number;
+};
+
+/**
  * What came back when a decision was asked for. Exactly one of the two cases,
  * discriminated by the only question that matters at this seam: did a decision
  * arrive?
@@ -126,31 +167,77 @@ export type GuardianClient = {
    * this method are ACS's vocabulary, and JSON-RPC is the transport it happens to
    * travel over (see JsonRpcRequest).
    */
-  requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure>;
+  requestDecision(envelope: AcsRequestEnvelope, options?: PostOptions): Promise<DecisionOrFailure>;
   /**
    * The wire primitive: POSTs `envelope` as JSON, parses the JSON-RPC
    * response, and returns it once it is confirmed to answer this request --
    * at the transport layer by `id`, and, when the result carries one, at the
    * ACS layer by `request_id`. Throws for every delivery failure.
    *
+   * One exception to the id check, and it is a correctness fix rather than a
+   * relaxation: a response carrying `id: null` AND an `error` is returned
+   * as-is. That is the shape a Guardian answers with when it could not read
+   * an id out of the request at all, so its id can never correlate, and
+   * throwing on it destroyed the only thing in the response worth having --
+   * the code saying why the envelope was refused. See the check itself for
+   * what stays a throw.
+   *
    * For a method whose result is not a decision -- today only
    * `handshake/hello`, whose result is a ServerHello. A caller after a
    * decision uses `requestDecision` instead, and no caller in this package
    * inspects a response for one.
    */
-  post(envelope: JsonRpcRequest): Promise<JsonRpcResponse>;
+  post(envelope: JsonRpcRequest, options?: PostOptions): Promise<JsonRpcResponse>;
 };
 
 /** Binds a Guardian's ACS endpoint and returns the client role for it. */
 export function createGuardianClient(url: string): GuardianClient {
-  async function post(envelope: JsonRpcRequest): Promise<JsonRpcResponse> {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(envelope),
-    });
+  async function post(envelope: JsonRpcRequest, options: PostOptions = {}): Promise<JsonRpcResponse> {
+    const { timeoutMs } = options;
+    let response: JsonRpcResponse;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(envelope),
+        // §6.4: the negotiated timeout bounds every failure mode. An
+        // unambiguous failure (a refused connection) still rejects
+        // immediately -- fetch does not wait out the clock for those.
+        signal: timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs),
+      });
+      // Inside the same try as the fetch, deliberately. The abort signal
+      // bounds the body too, and a Guardian whose headers beat the timeout
+      // while its body does not is still "no usable decision within the
+      // negotiated timeout" (§6.4). With this read outside, that case
+      // surfaced as a bare DOMException and was classified
+      // `error_without_decision` -- a wrong classification for a plain
+      // timeout, in the one field the audit log has for naming what went
+      // wrong.
+      response = (await res.json()) as JsonRpcResponse;
+    } catch (error) {
+      if (timeoutMs !== undefined && error instanceof Error && error.name === "TimeoutError") {
+        throw new GuardianTimeoutError(timeoutMs);
+      }
+      throw error;
+    }
 
-    const response = (await res.json()) as JsonRpcResponse;
+    // An error the Guardian could not address, let through to the caller
+    // rather than thrown away by the correlation check below. A JSON-RPC
+    // response MUST carry `id: null` when the request's id could not be
+    // determined, and for a parse error it never can be -- so the one
+    // response that names why the Guardian would not read this envelope is
+    // also the one response whose id can never match. Failing correlation on
+    // it replaced the refusal code with a mismatch error, which classifies as
+    // a plain delivery failure: a `-32700` could not reach the classifier at
+    // all, and under a `proceed` posture the step ran.
+    //
+    // Narrow deliberately, to an `id: null` that also carries an `error`. A
+    // null id on a RESULT is a genuine correlation failure -- a Guardian
+    // answering a decision it cannot say whose it is -- and that still throws
+    // below, which is the whole reason the check exists.
+    if (response.id === null && response.error !== undefined) {
+      return response;
+    }
 
     if (response.id !== envelope.id) {
       throw new GuardianResponseMismatchError(envelope.id, response.id);
@@ -171,12 +258,13 @@ export function createGuardianClient(url: string): GuardianClient {
   return {
     post,
 
-    async requestDecision(envelope: AcsRequestEnvelope): Promise<DecisionOrFailure> {
+    async requestDecision(envelope: AcsRequestEnvelope, options: PostOptions = {}): Promise<DecisionOrFailure> {
       let response: JsonRpcResponse;
       try {
-        response = await post(envelope);
+        response = await post(envelope, options);
       } catch (failure) {
-        // A dead transport, an uncorrelated response, a body that is not JSON.
+        // A timeout, a dead transport, an uncorrelated response, a body that is
+        // not JSON.
         // None of them carry a decision, so all of them are the same answer --
         // and turning the throw into that answer here is what stops a caller's
         // catch block from having to work out which stage of its own sequence
@@ -194,8 +282,12 @@ export function createGuardianClient(url: string): GuardianClient {
         return { decisionArrived: true, decision: arrived };
       }
 
-      // Anything with no decision in it is a delivery failure, and the `error`
-      // is used as the failure when there is one.
+      // Anything with no decision in it is a failure of this exchange, and the
+      // `error` is used as the failure when there is one -- unwrapped, the
+      // JSON-RPC error object itself, because its `code` is what tells the
+      // host whether the Guardian refused this envelope (fail closed) or
+      // merely failed to deliver a decision (apply the posture). Wrapping it
+      // in an Error here would flatten that distinction into a string.
       return {
         decisionArrived: false,
         failure: response.error ?? new Error("guardian's response carried neither a decision nor an error"),

@@ -131,19 +131,225 @@ describe("startGuardian POST /acs", () => {
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
   });
 
-  // Scope boundary: a Guardian-side validation failure must surface as a bare
-  // JSON-RPC error, never as an explicit ACS "deny" decision -- see
-  // validate-envelope.test.ts's identical guard.
-  it("an envelope that fails schema validation returns a JSON-RPC error in -32000..-32099, never a deny decision", async () => {
-    const bad = toolCallEnvelope("rm -rf /");
+  // A steps/* envelope that fails schema validation is a governance outcome,
+  // not a transport accident -- denyOnInvalidEnvelope turns it into an
+  // honoured deny decision instead of a bare JSON-RPC error.
+  // validate-envelope.test.ts's own guard stays accurate: validateEnvelope
+  // itself only ever throws. It is server.ts's dispatch, one layer up, that
+  // turns that throw into a decision.
+  it("answers a schema-invalid steps/* envelope with a deny decision, not a bare error", async () => {
+    const requestId = crypto.randomUUID();
+    const bad = toolCallEnvelope("rm -rf /", { requestId });
+    delete (bad.params as Record<string, unknown>).acs_version;
+
+    const response = await postAcs(url, bad);
+
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({
+      decision: "deny",
+      request_id: requestId,
+      reason_codes: ["envelope_invalid"],
+      policy_references: [],
+    });
+    expect(typeof response.result?.reasoning).toBe("string");
+    expect((response.result?.reasoning as string).length).toBeGreaterThan(0);
+  });
+});
+
+// The four cases that stay bare JSON-RPC errors even though a schema-invalid
+// steps/* envelope and an evaluation failure resolve to deny decisions.
+// Grouped together because each one is a distinct reason to stay an error,
+// not a variation on one reason: no envelope at all (parse failure), no id
+// of any kind to address a decision to, no step to decide about (handshake),
+// and no handler for a well-formed method (undispatched).
+describe("startGuardian POST /acs -- denyOnInvalidEnvelope's boundary: what stays a JSON-RPC error", () => {
+  it("keeps a JSON parse failure a JSON-RPC error — there is no envelope to decide about", async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    const body = (await res.json()) as JsonRpcResponse;
+
+    expect(body.result).toBeUndefined();
+    expect(body.error?.code).toBe(-32700);
+    // The id the host adapter's correlation check has to make an exception
+    // for: nothing parseable arrived, so there was no id to echo. Pinned here
+    // because guardian-client.ts's post() depends on this exact shape to let
+    // the refusal code through instead of throwing a mismatch over it.
+    expect(body.id).toBeNull();
+  });
+
+  it("keeps an unaddressable invalid envelope a JSON-RPC error", async () => {
+    // No top-level "id" and no params.request_id: denyOnInvalidEnvelope has
+    // nothing to address a decision to, so this must stay an error rather
+    // than synthesize an id.
+    const response = await postAcs(url, {
+      jsonrpc: "2.0",
+      method: "steps/toolCallRequest",
+      params: { acs_version: "0.1.0" },
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+  });
+
+  // Covers the HTTP-level half of this case; deny-on-invalid-envelope.test.ts
+  // covers the unit-level half. params.request_id present, top-level id
+  // absent -- the one shape where two correct-looking behaviours have to
+  // compose: denyOnInvalidEnvelope legitimately returns a decision (it found
+  // a usable params.request_id), and asDecisionResponse legitimately refuses
+  // to send it (a JSON-RPC *response* needs a non-null id of its own, and
+  // this envelope gives it none). The error response below is the honest
+  // answer -- pinned here so nobody "simplifies" asDecisionResponse into
+  // forwarding a decision the client could never correlate.
+  it("keeps an envelope addressable only by params.request_id a JSON-RPC error, since the response itself has no id to carry", async () => {
+    const response = await postAcs(url, {
+      jsonrpc: "2.0",
+      method: "steps/toolCallRequest",
+      params: { request_id: "req-1" },
+    });
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+  });
+
+  it("keeps a handshake failure a JSON-RPC error — a ServerHello is not a decision", async () => {
+    const bad = makeEnvelope("handshake/hello", {}, { id: 99 });
     delete (bad.params as Record<string, unknown>).acs_version;
 
     const response = await postAcs(url, bad);
 
     expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+  });
+
+  it("keeps an undispatched method a JSON-RPC error", async () => {
+    const response = await postAcs(url, makeEnvelope("steps/sessionStart", {}, { id: 7 }));
+
+    expect(response.result).toBeUndefined();
+    expect(response.id).toBe(7);
     expect(response.error).toBeDefined();
     expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
     expect(response.error?.code).toBeLessThanOrEqual(-32000);
+  });
+
+  // Envelope-log tapping: the response for the schema-invalid deny path is a
+  // JSON-RPC success rather than an error, so this confirms the tap still
+  // pairs request and response for it, the same as any other response.
+  it("pairs the request and response in the tap for the schema-invalid deny path, even though the response is now a success", async () => {
+    const logPath = join(GUARDIAN_PKG, "tmp-n27-tap-test.jsonl");
+    const guardian = await startGuardian({
+      port: 0,
+      manifestPath: "policy/manifest.yaml",
+      envelopeLogPath: logPath,
+    });
+
+    try {
+      const bad = toolCallEnvelope("rm -rf /", { id: 21 });
+      delete (bad.params as Record<string, unknown>).acs_version;
+
+      const response = await postAcs(guardian.url, bad);
+      expect(response.result?.decision).toBe("deny");
+
+      const lines = readFileSync(logPath, "utf8").trim().split("\n");
+      const entries = lines.map((line) => JSON.parse(line) as { direction: string; rpc_id: unknown });
+      expect(entries.map((e) => e.direction)).toEqual(["request", "response"]);
+      expect(entries.map((e) => e.rpc_id)).toEqual([21, 21]);
+    } finally {
+      await guardian.close();
+      unlinkSync(logPath);
+    }
+  });
+});
+
+// An unbounded `req.json()` was a fail-open a client could pick by choosing
+// how much to send: the rejection past the runtime's own default limit
+// surfaces to the host as a bare failure, which under the shipped default
+// posture (`proceed`) is an allow. The cap turns it into an answer, and the
+// code is one the host reads as a refusal rather than as an accident.
+describe("startGuardian POST /acs -- the request body cap", () => {
+  /** A body over the 1 MiB cap. Built from the envelope shape rather than a
+   * bare blob, so what is refused is a request that is otherwise entirely
+   * well-formed -- the size is the only thing wrong with it. */
+  function oversizeEnvelope(): Record<string, unknown> {
+    return toolCallEnvelope("x".repeat(1_100_000));
+  }
+
+  it("refuses a body over the cap with -32010, so the host reads it as a refusal", async () => {
+    const response = await postAcs(url, oversizeEnvelope());
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.code).toBe(-32010);
+    // Unaddressed, like the parse error: nothing was read, so there is no
+    // envelope to take an id from.
+    expect(response.id).toBeNull();
+  });
+
+  // The declared length is only ever an early exit, so it must not be the
+  // ONLY check: a chunked body declares no length at all, and a client is
+  // free to declare one and send another. Sent as a stream, which is what
+  // makes fetch omit Content-Length and use chunked transfer encoding.
+  it("refuses a chunked body over the cap, which declares no length to check", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream({
+        start(controller) {
+          for (let i = 0; i < 20; i += 1) controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+      // Bun requires this for a streaming request body.
+      duplex: "half",
+    } as RequestInit);
+    const body = (await res.json()) as JsonRpcResponse;
+
+    expect(body.error?.code).toBe(-32010);
+    expect(body.error?.message).toContain("bytes read");
+  });
+
+  // A declaration above the cap is refused before the body is read at all,
+  // and the message says which of the two checks refused -- "you declared 4
+  // MiB" and "you sent 4 MiB having declared nothing" are different client
+  // bugs, and an operator reading the log needs to know which.
+  it("refuses on the declared length alone, naming the declaration rather than the bytes", async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": String(4 * 1024 * 1024) },
+      body: "x".repeat(4 * 1024 * 1024),
+    });
+    const body = (await res.json()) as JsonRpcResponse;
+
+    expect(body.error?.code).toBe(-32010);
+    expect(body.error?.message).toContain("content-length declared");
+  });
+
+  // The cap must not have become the governance path's new ceiling: an
+  // envelope the size of a real edit-a-file call (~64 KiB of content, measured
+  // in build-envelope terms) still evaluates, and a deny still denies.
+  it("still governs a large-but-legal envelope, so the cap is not a new refusal surface", async () => {
+    const response = await postAcs(url, toolCallEnvelope(`rm -rf / # ${"x".repeat(64 * 1024)}`));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("deny");
+  });
+
+  // The refusal must not take the connection down with it. An unread request
+  // body leaves the HTTP/1.1 message unfinished, and Bun answers the next
+  // request on that keep-alive connection with an empty 400 -- so a Guardian
+  // that cancelled or skipped the oversize body would turn one refusal into a
+  // delivery failure for the NEXT step, which a `proceed` posture allows.
+  // Refusing one body must not be a way to fail open on the one after it.
+  it("leaves the connection usable, so refusing one body does not break the next request", async () => {
+    const refused = await postAcs(url, oversizeEnvelope());
+    expect(refused.error?.code).toBe(-32010);
+
+    // Same client, same keep-alive connection, immediately afterwards.
+    const governed = await postAcs(url, toolCallEnvelope("rm -rf /"));
+    expect(governed.error).toBeUndefined();
+    expect(governed.result?.decision).toBe("deny");
   });
 });
 
@@ -159,7 +365,7 @@ describe("startGuardian POST /acs", () => {
 // genuine AGT "allow" verdict for a benign command (which carries no
 // reason/message) makes mapVerdict throw inside handleAcsRequest for real.
 describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest", () => {
-  it("a real mapVerdict throw (require_policy_references unmet) still returns a parseable JSON-RPC error in -32000..-32099, not an HTML 500", async () => {
+  it("answers an evaluation failure with a deny decision", async () => {
     const guardian = await startGuardian({
       port: 0,
       manifestPath: "policy/manifest.yaml",
@@ -167,19 +373,26 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
     });
 
     try {
-      // res.json() below is exactly guardianClient.post's call. Before the
-      // fix, Bun.serve's unhandled-rejection page is text/html and this
-      // throws a SyntaxError instead of resolving -- the same failure mode
-      // the finding describes at guardian-client.ts:70.
-      const response = await postAcs(guardian.url, toolCallEnvelope("ls -la"));
+      // res.json() below is exactly guardianClient.post's call: an unhandled
+      // rejection reaching Bun.serve's default handler answers with a
+      // text/html error page, and res.json() throws a SyntaxError on that
+      // body instead of resolving (see guardian-client.ts:70).
+      // denyOnInvalidEnvelope turns the parseable error this catch produces
+      // into a deny decision when there is a request to address it to,
+      // keeping AGT's fail-closed evaluation (the real mapVerdict throw
+      // here) inside §6.4's honoured path.
+      const requestId = crypto.randomUUID();
+      const response = await postAcs(guardian.url, toolCallEnvelope("ls -la", { requestId }));
 
-      expect(response.result).toBeUndefined();
-      expect(response.error).toBeDefined();
-      expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
-      expect(response.error?.code).toBeLessThanOrEqual(-32000);
-      // Never a decision -- same scope boundary as the schema-validation
-      // guard above.
-      expect((response as Record<string, unknown>).decision).toBeUndefined();
+      expect(response.error).toBeUndefined();
+      expect(response.result).toMatchObject({
+        decision: "deny",
+        request_id: requestId,
+        reason_codes: ["evaluation_failed"],
+        policy_references: [],
+      });
+      expect(typeof response.result?.reasoning).toBe("string");
+      expect((response.result?.reasoning as string).length).toBeGreaterThan(0);
     } finally {
       await guardian.close();
     }
@@ -498,7 +711,14 @@ describe("startGuardian POST /acs -- the outer net around dispatch", () => {
     });
   });
 
-  it("carries no decision -- a Guardian-side failure is an error here, not a synthesized deny", async () => {
+  // This rethrow route bypasses denyOnInvalidEnvelope entirely: it only runs
+  // when validateEnvelope throws its own typed EnvelopeValidationError (a
+  // real schema mismatch). The ENOENT withSchemalessGuardian forces here is
+  // a Guardian bug -- a missing schema directory, not an invalid envelope --
+  // so dispatch's `instanceof EnvelopeValidationError` check is false and it
+  // rethrows unconditionally, landing in handleAcsRequest's outer net,
+  // which stays a bare JSON-RPC error.
+  it("carries no decision -- this rethrow bypasses denyOnInvalidEnvelope, since a missing schema directory is a Guardian bug, not an invalid envelope", async () => {
     await withSchemalessGuardian(async ({ url }) => {
       const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
 

@@ -1,11 +1,18 @@
 import { readFileSync } from "node:fs";
 import type { AgtVerdict } from "agt-bridge";
 
+export type AcsModifications = {
+  modified_content?: string;
+  redactions?: { path: string; replacement?: string }[];
+  parameter_overrides?: Record<string, unknown>;
+};
+
 export type AcsDecision = {
   decision: "allow" | "deny" | "modify" | "ask" | "defer";
   reasoning?: string;
   reason_codes?: string[];
   policy_references?: { policy_id: string; policy_version?: string; rule_id: string }[];
+  modifications?: AcsModifications;
 };
 
 type VerdictRule = {
@@ -26,6 +33,24 @@ type FieldLiteral = { literal: string };
  * can refuse everything outside it. */
 type WrapMode = "array";
 
+/** The mapping's declaration of how an AGT transform becomes ACS
+ * modifications. `when_path` is the only transform path this mapping can
+ * express; anything else is a mapping gap and must fail loudly rather than
+ * silently drop a rewrite. Same for `into`: the single-member union is the
+ * whole truth about what this mapping can build today -- one modification
+ * shape, keyed by argument name -- so a value the code cannot honour is a
+ * typecheck failure when written into code, not a runtime surprise. That
+ * guarantee doesn't reach mapping.yaml itself, though: loadMapping casts
+ * the parsed YAML with `as Mapping` and validates nothing, so `into` is
+ * still read from the mapping (not hardcoded) and checked at synthesis
+ * time against the one value this mapping can express. */
+type ModificationsRule = {
+  from: string;
+  when_path: string;
+  into: "parameter_overrides";
+  policy_target_argument: string;
+};
+
 export type Mapping = {
   acs_version: string;
   agt_version: string;
@@ -38,6 +63,7 @@ export type Mapping = {
       rule_id: FieldSource;
       policy_id: FieldLiteral;
     };
+    modifications: ModificationsRule;
   };
 };
 
@@ -116,6 +142,56 @@ function applyWrap(value: string, wrap: WrapMode, leaf: string): string[] {
   return [value];
 }
 
+/**
+ * The $policy_target bound survives as ACS modifications.
+ *
+ * AGT's transform names the leaf it rewrote by the literal "$policy_target",
+ * resolved against the manifest's intervention point. ACS expresses a
+ * rewritten tool argument as parameter_overrides keyed by argument name, so
+ * the mapping declares which argument that is and this copies the value in.
+ *
+ * The output key comes from rule.into, not a hardcoded literal, so this
+ * stays genuinely declaration-driven: mapping.yaml and this function can
+ * never quietly disagree about which modifications.json field the rewrite
+ * lands in. rule.into is still checked against the one value this mapping
+ * can express before use, because loadMapping validates nothing at runtime
+ * -- the same reason transform.path is checked against rule.when_path
+ * above rather than trusted.
+ *
+ * Note what is NOT here: re-applying the substitution. `verdict.transform.value`
+ * is already the finished string -- AGT's own rule applies the substitution
+ * before the verdict is formed, confirmed against the pinned bundle by the
+ * SDK also reporting it as `transformedPolicyTarget` beside the verdict -- so
+ * this moves a value rather than recomputing one. The bridge does not forward
+ * that second field: it is the SDK's evidence for the claim, not the channel
+ * the value travels by, and `PolicyBridge.evaluate` answers with the verdict
+ * alone.
+ */
+function synthesizeModifications(verdict: AgtVerdict, rule: ModificationsRule): AcsModifications {
+  const transform = verdict.transform;
+  if (!transform || typeof transform !== "object") {
+    throw new Error(
+      `mapping.yaml maps this verdict to ACS "modify", which requires modifications, ` +
+        // `rule.from` is a fully-qualified path ("verdict.transform"), so the
+        // sentence has to read around it rather than append it to "carries no".
+        `but ${rule.from} is absent`,
+    );
+  }
+  if (transform.path !== rule.when_path) {
+    throw new Error(
+      `mapping.yaml can express a transform of ${JSON.stringify(rule.when_path)} only, ` +
+        `but the verdict rewrote ${JSON.stringify(transform.path)}`,
+    );
+  }
+  if (rule.into !== "parameter_overrides") {
+    throw new Error(
+      `mapping.yaml declares field_synthesis.modifications.into as ${JSON.stringify(rule.into)}, ` +
+        `but this mapping can only express "parameter_overrides"`,
+    );
+  }
+  return { [rule.into]: { [rule.policy_target_argument]: transform.value } };
+}
+
 export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
   const rule = mapping.verdicts[verdict.decision];
   if (!rule) {
@@ -145,6 +221,10 @@ export function mapVerdict(verdict: AgtVerdict, mapping: Mapping): AcsDecision {
       `mapping.yaml declares require_policy_references for AGT decision "${verdict.decision}", ` +
         `but no policy_references could be synthesized (verdict.reason was empty)`,
     );
+  }
+
+  if (rule.decision === "modify") {
+    out.modifications = synthesizeModifications(verdict, fs.modifications);
   }
 
   return out;

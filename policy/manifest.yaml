@@ -15,6 +15,10 @@ policies:
     query: data.agt.defaults.verdict
 intervention_points:
   pre_tool_call:
+    # R1.6 -- this leaf's argument name ("command") must agree with
+    # mapping.yaml's field_synthesis.modifications.policy_target_argument,
+    # which is how AGT's transform ($policy_target) lands as ACS
+    # parameter_overrides.
     policy_target: "$.tool_call.args.command"
     policy_target_kind: tool_args
     tool_name_from: "$.tool_call.name"

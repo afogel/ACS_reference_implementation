@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   outcomeMessageOf,
+  renderAuditEntry,
   renderDecisionBadge,
   renderEnvelopeLogEntry,
   renderOutcome,
+  renderPostureBadge,
   renderRpcError,
   type OutcomeMessage,
   type RenderOptions,
@@ -262,5 +264,124 @@ describe("renderEnvelopeLogEntry", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe("── #3  12:04:31.221  ← RESPONSE  steps/toolCallRequest  id=1");
     expect(lines[1]).toBe("(no envelope recorded)");
+  });
+});
+
+describe("renderPostureBadge", () => {
+  it("shows the last observed posture and a zero count before anything fails", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: false }))
+      .toBe("last_observed_posture=proceed  fail-open proceeds=0");
+  });
+
+  // The number that matters. A fail-open bypass is invisible unless something
+  // counts it, and §6.4 exists because it must not be invisible.
+  it("counts audited fail-open proceeds", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 3 }, { color: false }))
+      .toBe("last_observed_posture=proceed  fail-open proceeds=3");
+  });
+
+  // A label of "posture=(not negotiated)" would be false in the healthiest
+  // case there is -- a session that negotiated `deny` and had zero delivery
+  // failures writes no audit entry at all, so the badge would say "not
+  // negotiated" forever while the negotiated value sat in the session
+  // store. The badge reports what it can actually see: the last posture
+  // observed in the audit log, and its absence.
+  it("says nothing has been observed yet, rather than claiming nothing was negotiated", () => {
+    const badge = renderPostureBadge({ posture: null, proceeds: 0 }, { color: false });
+    expect(badge).toBe("last_observed_posture=(none observed)  fail-open proceeds=0");
+    expect(badge).not.toContain("negotiated");
+  });
+
+  it("paints a non-zero proceed count as a warning and zero as clean", () => {
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 1 }, { color: true })).toContain(String.fromCharCode(27) + "[33m");
+    expect(renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true })).not.toContain(String.fromCharCode(27) + "[33m");
+  });
+
+  it("paints the deny posture distinctly from proceed", () => {
+    const deny = renderPostureBadge({ posture: "deny", proceeds: 0 }, { color: true });
+    const proceed = renderPostureBadge({ posture: "proceed", proceeds: 0 }, { color: true });
+    expect(deny).not.toBe(proceed);
+  });
+
+  it("is byte-identical with color off, whatever the state", () => {
+    for (const posture of ["proceed", "deny", null] as const) {
+      for (const proceeds of [0, 1, 42]) {
+        const out = renderPostureBadge({ posture, proceeds }, { color: false });
+        expect(out).not.toContain(String.fromCharCode(27));
+      }
+    }
+  });
+});
+
+describe("renderAuditEntry", () => {
+  it("renders a proceeded entry with the failure that caused it", () => {
+    const line = renderAuditEntry(
+      {
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallRequest",
+        rpc_id: "req-1",
+        posture: "proceed",
+        posture_source: "negotiated",
+        outcome: "proceeded",
+        failure: { kind: "timeout", message: "no response within 5000ms" },
+      },
+      { color: false },
+    );
+    expect(line).toContain("PROCEEDED");
+    expect(line).toContain("steps/toolCallRequest");
+    expect(line).toContain("timeout");
+  });
+
+  it("renders a blocked entry distinctly", () => {
+    const line = renderAuditEntry(
+      { seq: 2, recorded_at: "2026-08-10T12:00:01.000Z", session_id: "s", method: "m", rpc_id: null,
+        posture: "deny", posture_source: "negotiated", outcome: "blocked",
+        failure: { kind: "transport", message: "gone" } },
+      { color: false },
+    );
+    expect(line).toContain("BLOCKED");
+  });
+
+  // Rendering `method` verbatim from the entry would print a host's event
+  // name at runtime: the writer puts its own hook event name there when no
+  // request was ever built, and this package's whole claim is that it
+  // names no host, even though the grep gate over its own source would
+  // stay green. It reads null instead, and this is the fallback.
+  it("labels an entry with no ACS method rather than printing whatever was in the field", () => {
+    const line = renderAuditEntry(
+      { seq: 1, recorded_at: "2026-08-10T12:00:00.000Z", session_id: "s", method: null, rpc_id: null,
+        posture: "proceed", posture_source: "default", outcome: "proceeded",
+        failure: { kind: "host_configuration", message: "no entry for this hook" } },
+      { color: false },
+    );
+    expect(line).toContain("(no method)");
+    expect(line).not.toContain("null");
+  });
+
+  it("renders a session_failure on its own labelled line, and nothing when absent", () => {
+    const base = {
+      seq: 1,
+      recorded_at: "2026-08-10T12:00:00.000Z",
+      session_id: "s",
+      method: "steps/toolCallRequest",
+      rpc_id: null,
+      posture: "proceed",
+      posture_source: "default",
+      outcome: "proceeded",
+      failure: { kind: "timeout", message: "no response within 5000ms" },
+    } as const;
+
+    const withSessionFailure = renderAuditEntry(
+      { ...base, session_failure: { kind: "session_config_unstored", message: "EACCES: permission denied" } },
+      { color: false },
+    );
+    expect(withSessionFailure.split("\n")).toHaveLength(3);
+    expect(withSessionFailure).toContain("session_failure=session_config_unstored: EACCES: permission denied");
+    // The step's own failure is still reported as the step's own.
+    expect(withSessionFailure).toContain("failure=timeout: no response within 5000ms");
+
+    expect(renderAuditEntry(base, { color: false }).split("\n")).toHaveLength(2);
   });
 });

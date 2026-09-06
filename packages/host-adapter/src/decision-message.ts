@@ -1,18 +1,39 @@
 /**
- * The ACS decision message this adapter speaks. Kept in a module of its own so
- * every module that touches one -- render-decision.ts (which renders one),
- * guardian-client.ts (which receives one off the wire), and whatever later
- * slices add between them -- speaks the same message rather than each
- * declaring its own shape of it.
+ * The ACS decision message this adapter speaks, and the one deny it
+ * substitutes. Kept in a module of its own so validate-decision.ts (the
+ * orchestrator), decision-expiry.ts (one of the collaborators it sequences),
+ * render-decision.ts (which renders one), guardian-client.ts (which receives
+ * one off the wire) and failure-posture.ts (which produces one in place of an
+ * absent one) can all speak the same message -- and without a `deny` that
+ * means something subtly different on each side of a seam.
  *
- * Deliberately not an import of the Guardian's own `AcsDecision`. The Guardian
+ * One stem, with adjectives for stage. There is one public noun for "the ACS
+ * decision for this step", and every refinement of it still contains that
+ * noun:
+ *
+ *   AcsDecision                 the message as it arrives, and the type every
+ *                               path hands the host
+ *   ValidatedAcsDecision        after `validateDecision`'s validation and
+ *                               §6.3's apply (below)
+ *   FailureResolvedAcsDecision  after `applyFailurePosture` answered an
+ *                               absent one (failure-posture.ts)
+ *
+ * A single stem keeps a reader following one decision through the stack from
+ * learning a new name at every hop for a role that never actually changes; a
+ * suffix here describes processing stage or origin, never a different
+ * message.
+ *
+ * This is not an import of the Guardian's own `AcsDecision`. The Guardian
  * declares the same message (packages/guardian/src/map-verdict.ts) as a strict
  * union of the five ACS dispositions, because it is the side that *builds*
  * one. This side reads one off HTTP, so it is deliberately loose: only
  * `decision` is required, and everything else a caller touches is named by the
- * hookmap rather than assumed to exist under a fixed key. The Guardian's type
- * is assignable to this one; the two share the NAME rather than an import,
- * because this package must not depend on the Guardian's type graph.
+ * hookmap's `from:` declarations rather than assumed to exist under a fixed
+ * key. The two are structurally compatible in the direction that matters (the
+ * Guardian's is assignable to this one), and they share the NAME rather than
+ * an import, because this package must not depend on the Guardian's type
+ * graph. Same deliberate structural duplication as the Inspector's
+ * AuditEntry and EnvelopeLogEntry, for the same reason.
  *
  * One noun for "the ACS decision for this step", across both sides of the
  * seam. Any later refinement should stay an adjective containing this stem
@@ -26,3 +47,23 @@
  * see the module header: only `decision` is required.
  */
 export type AcsDecision = { decision: string } & Record<string, unknown>;
+
+/** An `AcsDecision` after `validateDecision` has had its last word on it:
+ * §6.3's rewrite applied under the post-validation field name the hookmap
+ * renders from, and any expired ask/defer outcome already substituted. */
+export type ValidatedAcsDecision = AcsDecision & { applied_input?: Record<string, unknown> };
+
+/**
+ * Denies with `reason_codes` set to exactly `[code]` -- every fail-closed
+ * substitution across these modules reports one specific reason, never a
+ * general one, so an audit reader can tell the mandatory cases apart.
+ *
+ * Here rather than in one of the two modules that call it, because both do:
+ * decision-expiry.ts denies an ask or defer whose window it cannot read, and
+ * validate-decision.ts denies a rewrite that could not be honoured. A copy per
+ * module is a `deny` free to drift on what it carries, in the one direction
+ * that matters -- a deny whose `reason_codes` a machine reads.
+ */
+export function deny(reasoning: string, code: string): ValidatedAcsDecision {
+  return { decision: "deny", reasoning, reason_codes: [code] };
+}

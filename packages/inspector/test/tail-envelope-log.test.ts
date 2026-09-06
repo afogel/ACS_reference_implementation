@@ -389,18 +389,24 @@ describe("tailEnvelopeLog", () => {
     });
   });
 
-  // `poll()`'s outer try/catch is reachable, and does not need a lost race
-  // to get there: pointing the tail at a directory makes `existsSync` true
-  // and `statSync().size` non-zero, so the read is attempted and `readSync`
-  // throws EISDIR every tick. Without the catch, that throw would leave a
-  // bare timer callback and take the process down. `poll()`'s outer catch
-  // warns on every failed tick (`envelope log poll
-  // failed, retrying next tick ...`) -- the "warns and retries" behaviour
-  // this test's own name claims. Spied and silenced so the several EISDIR
-  // ticks below do not print real stderr into a clean `bun test` run, and
-  // asserted on (loosely: the exact tick count is timing-dependent) so the
-  // warning is checked at the call site instead of only inferred from the
-  // process surviving.
+  // `poll()`'s outer try/catch was carried through the task loop as "possibly
+  // unreachable, definitely untested". It is reachable, and it does not need
+  // a lost race to get there: pointing the tail at a directory makes
+  // `existsSync` true and `statSync().size` non-zero, so the read is
+  // attempted and `readSync` throws EISDIR every tick. Without the catch,
+  // that throw leaves a bare timer callback and takes the process down.
+  // `poll()`'s outer catch warns and retries (`envelope log poll failed,
+  // retrying next tick ...`) -- the behaviour this test's own name claims.
+  // Spied and silenced so the several EISDIR ticks below do not print real
+  // stderr into a clean `bun test` run.
+  //
+  // It used to warn on EVERY failed tick, and the count was asserted loosely
+  // for that reason. A directory in place of a log is a standing condition,
+  // not a lost race, so that was one identical stderr line per poll interval
+  // for as long as the Inspector ran -- the same noise the missing-log case
+  // was fixed for, through a different branch. Now it warns once per
+  // transition into failure, so the count is exact and asserted exactly:
+  // "warns at all" would pass either way.
   it("survives a read that throws every tick, and resyncs once the path becomes a real file", async () => {
     await withTempDir(async (_dir, path) => {
       const errorSpy = spyOn(console, "error").mockImplementation(() => {});
@@ -417,8 +423,8 @@ describe("tailEnvelopeLog", () => {
 
         // Several ticks against the unreadable path. The process is still
         // alive on the other side of this sleep, which is the assertion.
-        await Bun.sleep(POLL_MS * 5);
-        expect(errorSpy).toHaveBeenCalled();
+        await Bun.sleep(POLL_MS * 8);
+        expect(errorSpy).toHaveBeenCalledTimes(1);
         expect(errorSpy.mock.calls[0]?.[0]).toContain("retrying next tick");
 
         unlinkSync(join(asDirectory, "child"));

@@ -9,6 +9,8 @@
       },
       "devDependencies": {
         "bun-types": "^1.3.14",
+        "guardian": "workspace:*",
+        "host-adapter": "workspace:*",
         "typescript": "^7.0.2",
       },
     },

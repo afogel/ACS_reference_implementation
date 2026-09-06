@@ -123,6 +123,13 @@ export function tailEnvelopeLog({
   // Bytes, not a string: a poll can land mid-line and, worse, mid-codepoint.
   // Decoding only complete lines keeps multi-byte UTF-8 intact.
   let pending = Buffer.alloc(0);
+  // True from the tick a read first fails until the tick one succeeds. A
+  // failing read here is a standing condition (a permission error, a path
+  // that is a directory), and warning once per `pollMs` for as long as it
+  // lasts buries the entries this tool exists to show. Reported once per
+  // transition into failure instead -- the same discipline
+  // tail-audit-log.ts applies to a log that goes missing.
+  let pollFailing = false;
 
   // Entries the timer has parsed but nobody has consumed yet, and the
   // wake-up the drain loop below is currently parked on while that queue is
@@ -188,6 +195,11 @@ export function tailEnvelopeLog({
           }
         }
       }
+
+      // Reached only when this tick read the log without throwing. `sizeOf`
+      // is total, so a log that simply does not exist yet reaches here too
+      // and clears nothing that was not already clear.
+      pollFailing = false;
     } catch (error) {
       // A read can lose a race against a file that vanished between the
       // size check above and the read itself. There is no promise here for
@@ -198,11 +210,18 @@ export function tailEnvelopeLog({
       // own.
       //
       // The only route here is a failed read: a caller-supplied
-      // `onMalformedLine` is guarded at its own call site above, so it never
-      // reaches this catch and never abandons the rest of a batch. The
-      // tail-envelope-log tests cover this branch through a deterministic
-      // EISDIR rather than through a lost race.
-      warnPollError(error);
+      // `onMalformedLine` is guarded at its own call site (finding 5), so it
+      // no longer reaches this catch and no longer abandons the rest of a
+      // batch. The tail-envelope-log tests cover this branch through a
+      // deterministic EISDIR rather than through a lost race.
+      //
+      // Warned once per transition into failure, not once per tick: a lost
+      // race is a single event, but a directory or an unreadable file is a
+      // standing condition, and this branch could not tell them apart.
+      if (!pollFailing) {
+        pollFailing = true;
+        warnPollError(error);
+      }
     }
   }
 

@@ -1,15 +1,19 @@
 /**
  * acs-hook.ts -- Claude Code's PreToolUse hook shim.
  *
- * Deliberately thin: read the hook JSON Claude Code sends on stdin, call
- * buildEnvelope -> createGuardianClient(...).requestDecision -> renderDecision
- * (all three from `host-adapter`, packages/host-adapter), wrap what comes
- * back into the JSON Claude Code expects, and write it to stdout. All logic lives
- * in the adapter -- this file is only the wiring a Claude Code hook process
- * needs (stdin, stdout, exit code, which hookmap file to load) plus the one
- * thing the adapter must not know: this host's own output shape. A second
- * host is another shim this thin against the same, unchanged adapter, so any
- * logic added here is logic that host would have to duplicate.
+ * Thin, and actually thin: read the hook JSON Claude Code sends on stdin,
+ * hand it to `resolveSessionConfig` -> `governStep` (both from `host-adapter`,
+ * packages/host-adapter), wrap the output that comes back into the JSON Claude
+ * Code expects, and write it to stdout. This file branches on nothing about a
+ * decision: inspecting the response for one, and tracking which stage of an
+ * exchange failed, are both `govern-step.ts`'s job, host-agnostically, and
+ * everything it has to preserve is documented there rather than here -- so a
+ * second shim gets it by calling the function instead of by copying this
+ * file. What remains here is the wiring a Claude Code hook process needs
+ * (stdin, stdout, exit code, which hookmap file to load) plus the one thing
+ * the adapter must not know: this host's own output shape. A second host
+ * arrives as another shim this thin against the same, unchanged adapter;
+ * any logic added here is logic that host would have to duplicate.
  *
  * This file is host-specific by definition (it may name Claude Code
  * freely) but must not reach into AGT -- it never imports `agt-bridge` or
@@ -17,9 +21,8 @@
  * and talks to the Guardian only over HTTP, through the client role
  * `createGuardianClient` returns.
  *
- * Claude Code's hook protocol (see the task brief and
- * docs/demos/v1-runbook.md): stdin is one JSON object
- * `{ session_id, transcript_path, cwd, hook_event_name, tool_name,
+ * Claude Code's hook protocol (see docs/demos/v1-runbook.md): stdin is one
+ * JSON object `{ session_id, transcript_path, cwd, hook_event_name, tool_name,
  * tool_input }`; stdout is one JSON object
  * `{ hookSpecificOutput: { hookEventName, permissionDecision, ... } }`;
  * the process **always exits 0** for a real decision -- "deny" travels in
@@ -28,18 +31,74 @@
  * policy deny is expressed, so getting this wrong would make a deny look
  * like a crash.
  *
- * Guardian-unreachable handling is a placeholder, not a considered posture.
- * If anything above throws -- the Guardian is down, it returns a JSON-RPC
- * error, or the stdin payload is malformed -- this shim writes the error to
- * stderr and exits 1 ("non-blocking error" per the hook protocol) with
- * nothing on stdout, so Claude Code proceeds as though the hook had not
- * fired. Negotiating a fail-open or fail-closed posture, and auditing a
- * bypass when one is taken, is not implemented here yet.
+ * On failure there are exactly two exit shapes, never a third.
+ *
+ *   - Exit 2 ("blocking error"), stderr only, empty stdout: this shim
+ *     cannot trust its own input or its own configuration enough to make a
+ *     governed decision at all -- stdin is not JSON, the payload is missing
+ *     a string `hook_event_name`/`session_id`, the hookmap fails to load,
+ *     or `session_id` is unsafe to use as a path segment. Every one of
+ *     those is a broken deployment, not a policy question, and a loud,
+ *     blocking stop beats a silent, ungoverned proceed.
+ *
+ *     Exit 1 never appears anywhere in this file, including for anything
+ *     unexpected that escapes `main`. Claude Code reads exit 1
+ *     ("non-blocking error") as "the hook did not fire" and proceeds --
+ *     ungoverned and unaudited -- and a governance hook that cannot read
+ *     its own input has no honest reason to prefer "proceed" to "block". A
+ *     `session_id` that is present but unsafe already blocks (the case just
+ *     above); treating a missing `session_id` any differently would put two
+ *     members of the same class -- "this deployment's `session_id` cannot
+ *     be used" -- on opposite sides of the fail-open/fail-closed line.
+ *   - Exit 0, a decision on stdout: every remaining case, with no
+ *     exception. A Guardian that is down, a response carrying an error
+ *     instead of a decision, a request that times out, or a decision this
+ *     host cannot even render (an unrecognised decision string, or a
+ *     hookmap gap) all leave this hook with nothing it can honour. A
+ *     `deny` that arrives is honoured regardless of what follows, and a
+ *     delivery failure never gets dressed up as one. Every such failure is
+ *     resolved by the deployment's own negotiated `on_decision_failure`
+ *     posture (`applyFailurePosture`) -- proceed or deny -- and every
+ *     fail-open `proceed` taken this way is written to the audit log
+ *     first, so the bypass is visible rather than silent. The posture's
+ *     own "allow"/"deny" is guaranteed renderable: loadHookmap doesn't just
+ *     require both to exist in every hookmap's `decisions` block, it
+ *     shape-checks every entry it accepts, and `assertHostAcceptsEveryDecision`
+ *     below then checks each accepted value against the three Claude Code
+ *     actually honours -- so this tier can never recurse into itself, and
+ *     can never emit a value the host will silently discard.
+ *
+ *     They are resolved the same way; they are not recorded as the same
+ *     thing. The posture takes one of three `stage`s (failure-posture.ts's
+ *     FailureStage), because "no request was ever built", "a request went
+ *     out and nothing came back", and "a decision arrived and this host
+ *     could not express it" are three different incidents, and an audit
+ *     entry that files one under another sends an incident review to the
+ *     wrong process. Which stage a failure belongs to is `governStep`'s to
+ *     know -- each stage is its own guarded step there, so the stage is
+ *     wherever the failure was caught, not something re-inferred afterwards
+ *     from leftover variables.
  */
 import { fileURLToPath } from "node:url";
-import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type HostOutput } from "host-adapter";
+import {
+  createAuditSink,
+  createFileSessionConfigStore,
+  createGuardianClient,
+  DEFAULT_TIMEOUT_MS,
+  governStep,
+  loadHookmap,
+  resolveSessionConfig,
+  toSessionUuid,
+  type Hookmap,
+  type HostOutput,
+  type SessionConfigStore,
+} from "host-adapter";
 
-const HOOKMAP_PATH = fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
+// Override with ACS_HOOKMAP_PATH to point this shim at a different hookmap
+// -- e.g. a test proving the exit-2 path for a hookmap that fails to load,
+// without touching the real file every other test and the real deployment
+// read off this default.
+const HOOKMAP_PATH = process.env.ACS_HOOKMAP_PATH ?? fileURLToPath(new URL("./claude-code.hookmap.yaml", import.meta.url));
 
 // Matches packages/guardian/src/main.ts's own default port -- the runbook
 // and this shim agree on 8787 without either hardcoding the other's value.
@@ -55,11 +114,12 @@ const DEFAULT_GUARDIAN_URL = "http://localhost:8787/acs";
  * knowing ACS decisions and nothing about this host. That is what lets a
  * second host arrive as a shim and a hookmap rather than a fork of the
  * shared module -- and it is only true while these names appear on this side
- * of the seam. The two inside the wrapper appear as data in
- * claude-code.hookmap.yaml's output paths; here the wrapper itself is the one
- * name this shim needs, because it is the shim that wraps.
+ * of the seam. Both appear as data in claude-code.hookmap.yaml's output paths;
+ * here they appear as the wrapper this shim adds and the one output path whose
+ * declared value this shim has to check against Claude Code's own enum.
  */
 const HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput";
+const PERMISSION_DECISION_PATH = `${HOOK_SPECIFIC_OUTPUT}.permissionDecision`;
 
 /**
  * Wraps the adapter's host-agnostic output into the exact JSON Claude Code
@@ -74,7 +134,7 @@ const HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput";
  * is a function of the decision and the hookmap".
  *
  * It goes first, and any field the hookmap declared under the wrapper
- * follows; a field the hookmap declared OUTSIDE the wrapper (a top-level key
+ * follows; a field the hookmap declared outside the wrapper (a top-level key
  * alongside it) travels untouched, which is the second half of what the
  * generic output shape bought.
  *
@@ -83,6 +143,14 @@ const HOOK_SPECIFIC_OUTPUT = "hookSpecificOutput";
  * would hand Claude Code JSON it reads as no decision at all, and it would
  * then let the tool call proceed. Half an output is the one thing this hook
  * must never write.
+ *
+ * It is also unreachable by construction now that the gate below reads the
+ * declared output path: `assertHostAcceptsEveryDecision` requires every
+ * renderable decision to declare a literal under this wrapper, so the wrapper
+ * is always an object by the time a decision is rendered. Still a throw rather
+ * than a repair, and it escapes to `main().catch`, which exits 2 and blocks --
+ * so even the unreachable failure mode is a stopped tool call rather than an
+ * ungoverned one.
  */
 function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOutput {
   const wrapper = rendered[HOOK_SPECIFIC_OUTPUT];
@@ -96,51 +164,198 @@ function asClaudeCodeOutput(rendered: HostOutput, hookEventName: string): HostOu
 }
 
 /**
- * Turns whatever stood in for a decision into one line of stderr. `failure` is
- * `unknown` by design -- it is a throw from the wire, a JSON-RPC `error`
- * object, or an Error this shim never constructed -- so this formats all three
- * rather than assuming any one of them.
+ * Thrown when this shim cannot trust its own input or its own configuration
+ * enough to make a governed decision at all -- stdin that is not a hook
+ * payload, a payload missing a usable `hook_event_name`/`session_id`, a
+ * hookmap that fails to load, or a `session_id` unsafe to use as a path
+ * segment. `main().catch` below exits 2 ("blocking error") for all of it,
+ * which stops the tool call and surfaces stderr instead of silently letting
+ * it through.
+ *
+ * This class does not select the exit code: exit 2 is the only non-zero
+ * code this shim produces. It still names the failure class deliberately,
+ * so a future edit that adds a failure here has to decide whether it
+ * belongs to this class rather than inheriting a default by accident.
  */
-function describeFailure(failure: unknown): string {
-  if (failure instanceof Error) {
-    return failure.message;
+class BlockingConfigurationError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "BlockingConfigurationError";
   }
-  return typeof failure === "string" ? failure : JSON.stringify(failure);
+}
+
+/**
+ * The only three `permissionDecision` values Claude Code accepts on a
+ * PreToolUse hookSpecificOutput -- the same three claude-code.hookmap.yaml's
+ * own header comment names ("Claude Code's PreToolUse hookSpecificOutput
+ * only accepts permissionDecision \"allow\" | \"deny\" | \"ask\" (see Claude
+ * Code's own hook docs)"). The hookmap says it; until now nothing checked it.
+ */
+const ACCEPTED_PERMISSION_DECISIONS = new Set(["allow", "deny", "ask"]);
+
+/**
+ * Rejects a hookmap that does not declare, for every decision, a literal
+ * `permissionDecision` this host actually accepts -- and this is a fail-open
+ * guard, not a tidiness check.
+ *
+ * A one-character typo in the hookmap (`{ value: dney }`) renders a real
+ * policy deny as
+ * `{"hookSpecificOutput":{...,"permissionDecision":"dney",...}}` with exit 0.
+ * Claude Code does not recognise the value, so it treats the hook as having
+ * produced no decision at all and proceeds: a policy that fired and denied
+ * becomes an allowed tool call, silently, behind plausible-looking JSON and a
+ * success exit code. Same shape as every other fail-open found here -- the
+ * host receives no honoured decision and the tool call runs ungoverned.
+ *
+ * Two cases this catches that a per-entry `permissionDecision` field check
+ * could not, both of which enter through the hookmap's generic output shape
+ * and both of which are the same bypass by another route:
+ *
+ *   - An entry declaring no `permissionDecision` path at all. Legal for a host
+ *     whose output has no such field; for this one it renders JSON Claude Code
+ *     reads as no decision.
+ *   - An entry sourcing it `from:` a decision field instead of a literal.
+ *     Present-looking in the YAML, absent at runtime whenever the decision
+ *     does not carry that field.
+ *
+ * `loadHookmap` deliberately stops one step short of all of this: it checks
+ * that every declared entry renders something at all (a non-empty `output`
+ * block whose every field names a literal `value` or a non-empty `from`),
+ * but never checks a value against a host's enum, because the adapter must
+ * not know one -- or, since the output shape is generic, any host's field
+ * names at all. That boundary is enforced mechanically by
+ * test/invariants.test.ts's vocabulary gate over packages/host-adapter/src.
+ * This shim is host-specific by definition and already names Claude Code
+ * freely, so the enum and the path live here and only here.
+ *
+ * Raised as a BlockingConfigurationError, so it exits 2 ("blocking error")
+ * like every other broken-configuration case rather than exiting 0 with an
+ * output the host will discard.
+ */
+function assertHostAcceptsEveryDecision(hookmap: Hookmap, path: string): void {
+  for (const [decision, rule] of Object.entries(hookmap.decisions ?? {})) {
+    // loadHookmap has already guaranteed a well-formed output block here;
+    // this reads it defensively anyway, because a hookmap it rejects is
+    // exactly what this function must name rather than crash on.
+    const field = (rule as { output?: Record<string, { value?: unknown } | null> } | null)?.output?.[
+      PERMISSION_DECISION_PATH
+    ];
+    const permissionDecision = field?.value;
+    if (typeof permissionDecision !== "string" || !ACCEPTED_PERMISSION_DECISIONS.has(permissionDecision)) {
+      throw new Error(
+        `acs-hook: ${path}'s "decisions.${decision}" must declare a literal "${PERMISSION_DECISION_PATH}" ` +
+          `output field, and declares ${JSON.stringify(permissionDecision)}, which Claude Code does not accept ` +
+          `-- it accepts exactly "allow", "deny" or "ask". Claude Code reads a missing or unrecognised value as ` +
+          `no decision at all and lets the tool call proceed, so this hookmap would silently turn decisions ` +
+          `into ungoverned tool calls.`,
+      );
+    }
+  }
 }
 
 async function main(): Promise<void> {
-  const input = await Bun.stdin.text();
-  const payload = JSON.parse(input) as Record<string, unknown>;
-
-  const hookEventName = payload.hook_event_name;
-  if (typeof hookEventName !== "string") {
-    throw new Error('acs-hook: stdin payload is missing a string "hook_event_name" field');
+  // Step 1: read the hook payload. A hook fired, so something governs this
+  // tool call or nothing does -- and a shim that cannot read its own input
+  // is in no position to say which. Unparseable stdin and a payload with no
+  // usable `hook_event_name`/`session_id` are the same broken deployment as
+  // an unloadable hookmap below, and they block the same way (exit 2), not
+  // with the exit-1 "the hook didn't fire" that let the call through.
+  let payload: Record<string, unknown>;
+  let hookEventName: string;
+  let sessionId: string;
+  try {
+    payload = JSON.parse(await Bun.stdin.text()) as Record<string, unknown>;
+    if (typeof payload?.hook_event_name !== "string") {
+      throw new Error('acs-hook: stdin payload is missing a string "hook_event_name" field');
+    }
+    if (typeof payload.session_id !== "string") {
+      throw new Error('acs-hook: stdin payload is missing a string "session_id" field');
+    }
+    hookEventName = payload.hook_event_name;
+    sessionId = payload.session_id;
+  } catch (error) {
+    throw new BlockingConfigurationError(error);
   }
 
-  const hookmap = loadHookmap(HOOKMAP_PATH);
-  const envelope = buildEnvelope(hookEventName, payload, hookmap);
-
-  const guardian = createGuardianClient(process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL);
-
-  // Told whether a decision arrived, rather than handed a JSON-RPC bag to
-  // interrogate. This shim never reads `.error`, casts `.result`, or decides
-  // which of those means "no decision" -- getting that branch wrong is a
-  // fail-open, and a second host would inherit it by copying this file.
-  const outcome = await guardian.requestDecision(envelope);
-  if (!outcome.decisionArrived) {
-    // Placeholder: this throw lands in main().catch below, which exits 1.
-    // Deciding what a delivery failure means -- the negotiated fail-open or
-    // fail-closed posture, and auditing a bypass when one is taken -- is not
-    // implemented here. See this file's header.
-    throw new Error(`acs-hook: no decision arrived from the Guardian: ${describeFailure(outcome.failure)}`);
+  // Step 2: a hookmap that fails to load, a hookmap declaring a decision
+  // value this host cannot emit, or an unsafe session_id all make a governed
+  // decision impossible -- a broken deployment, not a policy question -- so
+  // all three become a BlockingConfigurationError and exit 2, not the silent
+  // proceed a non-blocking exit code would produce. Nothing is written
+  // anywhere before this succeeds: createFileSessionConfigStore's
+  // InvalidSessionIdError throws synchronously, before its first write.
+  let hookmap: Hookmap;
+  let store: SessionConfigStore;
+  try {
+    hookmap = loadHookmap(HOOKMAP_PATH);
+    assertHostAcceptsEveryDecision(hookmap, HOOKMAP_PATH);
+    store = createFileSessionConfigStore({
+      dir: process.env.ACS_SESSION_DIR ?? ".acs/sessions",
+      sessionId,
+    });
+  } catch (error) {
+    throw new BlockingConfigurationError(error);
   }
 
-  const rendered = renderDecision(outcome.decision, hookmap);
+  // Step 3: the audit log -- total by construction, so building it cannot
+  // itself throw, and a write to it never happens unless a fail-open
+  // proceed (or a negotiated fail-closed deny) actually occurs below.
+  const audit = createAuditSink({ path: process.env.ACS_AUDIT_LOG ?? ".acs/audit.jsonl" });
 
-  process.stdout.write(JSON.stringify(asClaudeCodeOutput(rendered, hookEventName)));
+  const guardianUrl = process.env.ACS_GUARDIAN_URL ?? DEFAULT_GUARDIAN_URL;
+  const guardian = createGuardianClient(guardianUrl);
+
+  // Step 4: this session's negotiated config, and whatever went wrong getting
+  // it -- one call, and this shim is told both rather than running the
+  // negotiation and then interrogating whatever it threw. What that
+  // resolution has to preserve -- a handshake failure is not this step's
+  // failure; a config that arrived and could not be persisted still governs
+  // the step that negotiated it -- is stated where it happens, in
+  // `resolveSessionConfig`, so a second host inherits it instead of
+  // re-deriving it from an `instanceof` and an `error.config`.
+  //
+  // metadata.session_id is schema-constrained to "uuid" (the same rule
+  // buildEnvelope's own toSessionUuid honours); the store itself keys on the
+  // raw host session_id, per the session config store's own contract.
+  // agentId is the hookmap's own `host` field -- the same identity
+  // buildEnvelope sends for the step call, so the two never diverge.
+  // Bounded by the ACS default timeout: there is no
+  // negotiated timeout yet, since negotiating one is what this call is for --
+  // without a bound, a Guardian that accepts the connection and never answers
+  // would hang this hook until Claude Code's own hook timeout kills the
+  // process.
+  const session = await resolveSessionConfig(
+    {
+      guardian,
+      agentId: hookmap.host,
+      sessionId: toSessionUuid(sessionId),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    store,
+  );
+
+  // Step 5: resolve the attempt. One call, one answer, and this shim branches
+  // on nothing: `governStep` builds the ACS request, asks the Guardian for a
+  // decision, honours whatever arrives, and renders it -- answering any failure
+  // along the way with this session's negotiated posture, audited, at the stage
+  // that failed. There are exactly two ways it can end, and both are handled
+  // here: an output to write, or a throw that reaches `main().catch` and exits
+  // 2. Which stage a failure belongs to, and what response the failure-mode
+  // rules produce for it, is stated once inside `governStep`, host-agnostically,
+  // so a second host inherits it by calling the function rather than
+  // reimplementing it.
+  const governed = await governStep({ hookEventName, payload, hookmap, guardian, session, sessionId, audit });
+
+  process.stdout.write(JSON.stringify(asClaudeCodeOutput(governed.output, hookEventName)));
 }
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  // Exit 2 ("blocking error") for everything, with no second tier. Anything
+  // that reaches here is either a BlockingConfigurationError (this shim
+  // cannot trust its input or its configuration) or something unforeseen
+  // escaping `main` -- and in both cases the honest answer to "should this
+  // tool call run?" is "this hook cannot say", which Claude Code must read
+  // as a block, not as the hook never having fired.
+  process.exit(2);
 });

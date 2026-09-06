@@ -70,3 +70,16 @@ field_synthesis:
       source: verdict.reason
     policy_id:
       literal: agt_stock
+  # R1.6 -- AGT's transform verdict carries {path, value}, where path is the
+  # literal "$policy_target": the leaf the manifest's intervention point
+  # declared (policy_target: "$.tool_call.args.command"). ACS expresses that
+  # as modifications.parameter_overrides keyed by argument name, per
+  # modifications.json ("Replacement values for tool call arguments, keyed by
+  # argument name"). policy_target_argument names which key, and must agree
+  # with policy/manifest.yaml's policy_target -- this is the one place the
+  # two files touch.
+  modifications:
+    from: verdict.transform
+    when_path: "$policy_target"
+    into: parameter_overrides
+    policy_target_argument: command

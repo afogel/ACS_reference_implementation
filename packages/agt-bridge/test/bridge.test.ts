@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll } from "bun:test";
 import { AgentControl } from "agent-control-specification";
 import { createBridge, type PolicyBridge } from "../src/index.ts";
+import { buildConfigBundle, buildManifest } from "../../../test/helpers/config-bundle.ts";
 
 const snapshotFor = (command: string) => ({
   envelope: { budgets: { tool_call_count: 0, token_count: 0, elapsed_seconds: 0, cost_usd: 0 } },
@@ -66,11 +67,11 @@ describe("agt-bridge", () => {
   });
 
   it("a caller that never touches createBridge can satisfy the role too", async () => {
-    // The property that matters for V5 and V7: the Guardian depends on
-    // something it can be told to evaluate, not on this package's factory. A
-    // stand-in written by hand type-checks and answers, with no AGT in it --
-    // which is what makes `PolicyBridge` a role rather than a synonym for
-    // `ReturnType<typeof createBridge>` (PR #10 review).
+    // The property that matters: the Guardian depends on something it can be
+    // told to evaluate, not on this package's factory. A stand-in written by
+    // hand type-checks and answers, with no AGT in it -- which is what makes
+    // `PolicyBridge` a role rather than a synonym for
+    // `ReturnType<typeof createBridge>`.
     const standIn: PolicyBridge = {
       async evaluate(point, snapshot) {
         return { decision: "deny", reason: `${point}:${Object.keys(snapshot).sort().join(",")}` };
@@ -79,5 +80,47 @@ describe("agt-bridge", () => {
 
     const verdict = await standIn.evaluate("pre_tool_call", snapshotFor("ls -la"));
     expect(verdict.reason).toBe("pre_tool_call:envelope,tool_call");
+  });
+});
+
+// The bridge's annotator wiring, tested directly against createBridge rather
+// than through the Guardian (test/dispositions.test.ts covers the wire-level
+// round trip for all five verdicts, including this one) -- these two cases
+// belong here because they are about the bridge's own contract for its
+// `annotator` option, not about how a verdict maps onto an ACS decision.
+describe("agt-bridge — the optional annotator dispatcher", () => {
+  it("a successful annotator's return value reaches policy input, producing the verdict the config predicts", async () => {
+    const bundle = buildConfigBundle({ drift: { warn_threshold: 0.5 } });
+    try {
+      const manifestPath = buildManifest({ bundleDir: bundle.dir, annotator: true });
+      const bridge = createBridge(manifestPath, { annotator: () => 0.9 });
+      const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
+      expect(verdict).toMatchObject({ decision: "warn", reason: "drift_detected" });
+    } finally {
+      bundle.cleanup();
+    }
+  });
+
+  // Confirmed empirically against the real SDK (not assumed): a throw
+  // inside the caller's annotator function surfaces as AGT's OWN
+  // fail-closed handling -- a `deny` verdict reasoned
+  // "runtime_error:annotation_failed" -- never as an uncaught exception out
+  // of `bridge.evaluate`. That is the whole point of wrapping the caller's
+  // function before handing it to the SDK (see index.ts's own comment).
+  it("a throwing annotator surfaces as AGT's own annotation_failed deny, not an uncaught exception", async () => {
+    const bundle = buildConfigBundle({ drift: { warn_threshold: 0.5 } });
+    try {
+      const manifestPath = buildManifest({ bundleDir: bundle.dir, annotator: true });
+      const bridge = createBridge(manifestPath, {
+        annotator: () => {
+          throw new Error("boom");
+        },
+      });
+      const verdict = await bridge.evaluate("pre_tool_call", snapshotFor("ls -la"));
+      expect(verdict.decision).toBe("deny");
+      expect(verdict.reason).toBe("runtime_error:annotation_failed");
+    } finally {
+      bundle.cleanup();
+    }
   });
 });

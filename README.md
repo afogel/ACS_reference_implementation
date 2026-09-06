@@ -22,6 +22,15 @@ This repository shows the other shape. A host implements [ACS](https://github.co
 | R5.1 — every hook firing is inspectable as an ACS envelope, in both directions, including envelopes that fail validation | The Guardian records every envelope crossing its wire to `.acs/envelopes.jsonl` before validation, and `bun run inspector` renders it live ([`test/envelope-log-sink-roundtrip.test.ts`](test/envelope-log-sink-roundtrip.test.ts), [`packages/guardian/test/envelope-log-sink-wiring.test.ts`](packages/guardian/test/envelope-log-sink-wiring.test.ts)) |
 | R5.2 — an ACS-first reader can trace one action end to end without reading AGT source | The Inspector imports nothing from the Guardian or the AGT bridge and names neither AGT nor any host — enforced by two gates in [`test/invariants.test.ts`](test/invariants.test.ts) |
 
+**Delivered in V3** — all five AGT verdicts, live over the wire, and both failure postures.
+
+| Claim | How it is demonstrated |
+|---|---|
+| R1.2 — AGT's five verdicts (`allow`, `deny`, `escalate`, `transform`, `warn`) all arrive over the ACS wire as real decisions, driven only from `data.agt.defaults.config` over the pinned, unforked bundle — including `warn` arriving as `allow` with a **non-empty** `policy_references`, the only thing distinguishing it from a clean allow | [`test/dispositions.test.ts`](test/dispositions.test.ts) drives all five through a live Guardian; [`docs/demos/v3-runbook.md`](docs/demos/v3-runbook.md) has the real captured output for each, with the exact `data.json` diff that produced it |
+| R1.6 — a `transform` verdict's rewrite lands as the host's actual rewritten tool argument, not merely a reported one | `mapVerdict` synthesizes `modifications.parameter_overrides` from AGT's `transform`; the host adapter's `applyModifications` (N7) applies it ([`packages/guardian/test/map-verdict.test.ts`](packages/guardian/test/map-verdict.test.ts), [`packages/host-adapter/test/modifications.test.ts`](packages/host-adapter/test/modifications.test.ts)) |
+| R1.5/§6.4 — an AGT `deny` verdict is always honoured regardless of the negotiated failure posture, and a Guardian-side failure (schema, or evaluation itself throwing) never slips through as a bare, unaudited error | `N27 denyOnInvalidEnvelope()` turns both failure classes into honoured `deny` decisions instead ([`packages/guardian/test/server.test.ts`](packages/guardian/test/server.test.ts), [`packages/guardian/test/deny-on-invalid-envelope.test.ts`](packages/guardian/test/deny-on-invalid-envelope.test.ts)) |
+| §6.4's MUST — every fail-open `proceed` taken when no decision arrives at all is audited, and the failure posture is negotiated per session rather than hardcoded | `applyFailurePosture` (N6) + a file-backed, cross-process session store (S13) + the audit sink (S14); `bun run inspector` renders the last posture an audit entry carried and an exact count of audited fail-open proceeds (U23, N51) — [`hosts/claude-code/test/posture.test.ts`](hosts/claude-code/test/posture.test.ts) |
+
 **Planned, not yet built** — the rest of the claim this project is working toward. None of the following exists yet, and there is no CI in this repository at all.
 
 | Claim | Slice |
@@ -122,10 +131,41 @@ echo '{"session_id":"demo","hook_event_name":"PreToolUse","tool_name":"Bash","to
 
 Second, through the real `claude` CLI with `.claude/settings.json` installed — Claude Code spawning `acs-hook.ts` as an actual `PreToolUse` subprocess and honouring the decision. That run was **headless** (`claude -p '<prompt>' --allowedTools Bash`), not an interactive TUI session, and the payload was `echo rm -rf /` rather than `rm -rf /`: the configured pattern matches the raw command string with no argv parse, so it is denied by the same rule at offset 5 while being inert if it ever did execute. An unattended `rm -rf /` is only safe for as long as the hook works, which is the thing under test. The interactive TUI session was not run, so nothing here describes how the TUI renders the block. See [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md) for the full captured output of both.
 
+### Configuration
+
+Everything above runs with no configuration at all. These are the environment
+variables the three processes read, each with the default it falls back to —
+the quickstart uses every default.
+
+**The host shim** (`hosts/claude-code/acs-hook.ts`, run by Claude Code as a
+subprocess per hook):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ACS_GUARDIAN_URL` | `http://localhost:8787/acs` | Where the shim POSTs its ACS envelopes. Matches the Guardian's own default port, so neither hardcodes the other |
+| `ACS_SESSION_DIR` | `.acs/sessions` | Where the negotiated ServerHello (S13) is filed, one JSON file per host `session_id`, so a fresh hook subprocess finds the posture a previous one negotiated |
+| `ACS_AUDIT_LOG` | `.acs/audit.jsonl` | Where the audit sink (S14) appends every fail-open proceed and every posture-driven block — §6.4's MUST |
+| `ACS_HOOKMAP_PATH` | `hosts/claude-code/claude-code.hookmap.yaml` | **Repoints the governance mapping itself.** The hookmap decides which ACS method each hook fires and how each ACS decision renders as a Claude Code `permissionDecision`, so this variable changes what governance *means* for this host, not merely where a file lives. It exists for tests that need a deliberately broken hookmap; a deployment should leave it unset |
+
+**The Guardian** (`bun run guardian`):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ACS_ON_DECISION_FAILURE` | `proceed` | The failure posture this deployment declares in its ServerHello — what a host should do when *no decision arrives at all*. `proceed` is the ACS default (R1.7, `handshake.json`'s own `default`); `deny` fails closed. Any other value **throws at startup** rather than falling back, because guessing which posture a typo meant is the silent bypass this project exists to remove |
+| `ACS_GUARDIAN_PORT` | `8787` | Port for the `POST /acs` JSON-RPC endpoint |
+| `ACS_MANIFEST_PATH` | `policy/manifest.yaml` | The AGT manifest, which names the policy bundle and any annotators. `policy/manifest.drift.yaml` is the second one V3 added to make `warn` reachable |
+| `ACS_ENVELOPE_LOG` | `.acs/envelopes.jsonl` | Where the envelope log sink (S6) records every envelope crossing the wire, in both directions, before validation |
+
+**The Inspector** (`bun run inspector`): reads `ACS_ENVELOPE_LOG` and
+`ACS_AUDIT_LOG` with the same defaults, and both are overridable on the
+command line (`--envelope-log`, `--audit-log`), which takes precedence. It also
+honours the conventional `NO_COLOR`, and colours nothing when stdout is not
+a TTY.
+
 ### Verify
 
 ```bash
-bun test          # 169 tests across 17 files (168 pass, 1 skip), including the R3.2/R3.3
+bun test          # 397 tests across 29 files (396 pass, 1 skip), including the R3.2/R3.3
                   # and R5.1/R5.2 gates below
                   # the skip is the byte-identity check, which needs UPSTREAM_BUNDLE — see verify:pin
 bun run typecheck # whole-workspace strict TypeScript check, zero errors
@@ -137,11 +177,19 @@ bun run typecheck # whole-workspace strict TypeScript check, zero errors
 
 V1 ("one host, one hook") is implemented: a Claude Code `PreToolUse` hook, a Guardian process serving ACS over HTTP, and AGT's unforked stock policy bundle deciding behind it — see the quickstart above and [`slices/v1/README.md`](slices/v1/README.md).
 
-V2 ("Envelope Inspector") is implemented: the Guardian records every ACS envelope crossing its wire to `.acs/envelopes.jsonl`, and `bun run inspector` tails and renders it live — see [`slices/v2/README.md`](slices/v2/README.md) and [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md). One boundary worth stating up front: a schema-invalid envelope surfaces as a JSON-RPC **error**, not a `deny` decision. `N27 denyOnInvalidEnvelope()`, which turns Guardian-side failures into honoured ACS decisions, is V3.
+V2 ("Envelope Inspector") is implemented: the Guardian records every ACS envelope crossing its wire to `.acs/envelopes.jsonl`, and `bun run inspector` tails and renders it live — see [`slices/v2/README.md`](slices/v2/README.md) and [`docs/demos/v2-runbook.md`](docs/demos/v2-runbook.md). One boundary worth stating up front: a schema-invalid `steps/*` envelope now surfaces as an honoured `deny` **decision**, not a bare JSON-RPC error — `N27 denyOnInvalidEnvelope()` (V3) turns a Guardian-side failure (bad schema, or evaluation itself throwing) into a decision the host's decision path honours regardless of its negotiated failure posture. That boundary still has real edges, though: a JSON parse failure and an envelope that names neither a `params.request_id` nor a usable JSON-RPC `id` stay bare JSON-RPC errors, since there is no envelope, or no request to address a decision to, either way.
 
 Four of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host *output* vocabulary in it either, and no host vocabulary in the AGT bridge), and R5.1 and R5.2 (the Inspector imports nothing from the Guardian or the AGT bridge, and names neither AGT nor any host).
 
-Slices V3–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
+V3 ("all five dispositions, and both failure postures") is implemented: AGT's five verdicts (`allow`, `deny`, `escalate`, `transform`, `warn`) all arrive over the ACS wire as real decisions, driven only from `data.agt.defaults.config` over the same pinned, unforked bundle — see [`slices/v3/README.md`](slices/v3/README.md) and [`docs/demos/v3-runbook.md`](docs/demos/v3-runbook.md) for the real captured output, one section per verdict, with the exact `data.json` diff behind each. `escalate` and `transform` needed only configuration (`data.agt.defaults.config`) against V1's own manifest, unchanged; `warn` needed one more thing — a manifest-declared annotator, dispatched through the SDK's `annotatorDispatcher` — because `input.annotations` never reaches policy input from the ACS snapshot itself. That annotator lives in a second, separate manifest ([`policy/manifest.drift.yaml`](policy/manifest.drift.yaml)); `policy/manifest.yaml` is untouched, so nothing about V1's or V2's existing behaviour changed. Also delivered: a negotiated, file-backed failure posture (`applyFailurePosture`, N6) that resolves what happens when no decision arrives at all — Guardian silent, transport dead, no usable response — auditing every fail-open `proceed` (S14), kept structurally separate from an AGT `deny` verdict, which is always honoured regardless of posture (R1.5).
+
+`.acs/` now holds three kinds of local artifact, all gitignored and none ever committed: the envelope log (`envelopes.jsonl`, S6, V2), the audit sink (`audit.jsonl`, S14, V3) recording every fail-open proceed and every posture-driven block, and the negotiated per-session config (`sessions/<session_id>.json`, S13, V3) that lets a fresh hook subprocess find the posture a previous one negotiated. `bun run inspector` tails **two** of them — the envelope log and the audit log — and derives its posture badge (U23, N51) from the second: the last posture an audit entry carried, plus a running count of audited fail-open proceeds. Nothing opens `.acs/sessions/`.
+
+**The two logs cannot be joined on `session_id`.** The audit log records the host's own raw session identifier — the same key the session config is filed under — while an envelope carries `metadata.session_id`, which ACS's schemas constrain to `format: uuid`, so a host session id that is not already a UUID has one derived from it on the way out. The Inspector labels the audit value `audit_session=` for exactly that reason, and never correlates the two. Making them joinable is V6's work, not this slice's.
+
+Five of this project's architectural claims are enforced by [`test/invariants.test.ts`](test/invariants.test.ts) rather than left to inspection: R3.2 and R3.3 (no AGT vocabulary in the host adapter, no host vocabulary in the AGT bridge), R5.1 and R5.2 (the Inspector imports nothing from the Guardian, the AGT bridge, or the host adapter, and names neither AGT nor any host), and R3.2 from the host's own side (a host shim imports the adapter only — never the AGT bridge, never the Guardian, which is what makes a second host cost zero AGT code).
+
+Slices V4–V8 are shaped and sliced but not started; they are tracked as issues on the project board, each with a stacked pull request.
 
 ## License
 

@@ -59,9 +59,118 @@ export type AcsRequestEnvelope = {
 
 const ACS_VERSION = "0.1.0";
 
-/** Loads and parses a hookmap YAML file, e.g. claude-code.hookmap.yaml. */
+/**
+ * A hookmap's `decisions` block must declare at least `allow` and `deny`
+ * -- the only two decisions a delivery-failure posture
+ * (applyFailurePosture) ever produces -- and every entry it DOES
+ * declare must actually be renderable, not merely present. "Renderable"
+ * means shaped like render-decision.ts's own `DecisionRenderRule`: a
+ * non-null object naming a non-empty string `permissionDecision`, the one
+ * field renderDecision writes into Claude Code's output unconditionally.
+ * Presence alone is not enough to guarantee that: `allow: null` still
+ * satisfies `"allow" in decisions`, and then renderDecision throws on the
+ * non-object entry; `allow: {}` also satisfies it and renderDecision does
+ * NOT throw, but writes `permissionDecision: undefined`, which
+ * `JSON.stringify` then drops entirely -- stdout ends up with no decision
+ * in it at all, defeating "always a decision on stdout" exactly as surely
+ * as a missing entry does, just more quietly.
+ *
+ * Every declared entry is checked here, not only `allow` and `deny`: a
+ * malformed `modify` (or `ask`, or `defer`) entry would otherwise only
+ * surface when a Guardian actually returns that decision, and by then the
+ * throw lands inside the shim's own catch, gets treated as a delivery
+ * failure, and the posture answers it as a fail-open proceed -- an
+ * arriving policy decision silently degraded into the exact bypass this
+ * project exists to remove. Checking every entry at load time closes that
+ * before it can happen, for the cost of one loop.
+ *
+ * What this actually guarantees, once it passes: every entry `loadHookmap`
+ * accepted is renderable. That is what lets a caller's own fallback render
+ * of `applyFailurePosture`'s "allow"/"deny" output be trusted never to
+ * throw -- not because `allow` and `deny` merely exist, but because
+ * existing here means shape-checked here.
+ *
+ * What "shape-checked" means is the hookmap's own declarative output shape:
+ * an entry carries a non-empty `output` block, and every
+ * field in it names either a literal `value` or a non-empty `from`. It is
+ * deliberately not a check for any particular host field -- this module names
+ * none, and test/invariants.test.ts gates that -- so the check is that the
+ * rule is renderable, not that it renders anything in particular.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function assertRenderableDecisions(hookmap: Hookmap, path: string): void {
+  const decisions = hookmap.decisions;
+  if (typeof decisions !== "object" || decisions === null) {
+    throw new Error(`loadHookmap: ${path} has no "decisions" block`);
+  }
+  for (const required of ["allow", "deny"] as const) {
+    if (!(required in decisions)) {
+      throw new Error(`loadHookmap: ${path}'s "decisions" block has no "${required}" entry`);
+    }
+  }
+  for (const [decision, rule] of Object.entries(decisions)) {
+    if (!isPlainObject(rule)) {
+      throw new Error(
+        `loadHookmap: ${path}'s "decisions.${decision}" entry must be an object carrying an "output" block, got ${JSON.stringify(rule)}`,
+      );
+    }
+    const output = rule.output;
+    if (!isPlainObject(output) || Object.keys(output).length === 0) {
+      throw new Error(
+        `loadHookmap: ${path}'s "decisions.${decision}" entry needs a non-empty "output" block, got ${JSON.stringify(output)}`,
+      );
+    }
+    // The same rule renderDecision enforces per field, checked here so that
+    // "loadHookmap accepted it" and "renderDecision can render it" cannot come
+    // apart. A field naming neither source is a hookmap typo; the decision it
+    // belongs to would render an output missing a field its author believes is
+    // there, and for `modify` or `ask` that is a policy decision arriving and
+    // being silently degraded.
+    for (const [field, source] of Object.entries(output)) {
+      if (!isPlainObject(source)) {
+        throw new Error(
+          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must be an object naming ` +
+            `"value" or "from", got ${JSON.stringify(source)}`,
+        );
+      }
+      const hasValue = Object.prototype.hasOwnProperty.call(source, "value");
+      const hasFrom = typeof source.from === "string" && source.from.length > 0;
+      if (!hasValue && !hasFrom) {
+        throw new Error(
+          `loadHookmap: ${path}'s "decisions.${decision}" output field "${field}" must name a literal "value" ` +
+            `or a non-empty string "from", got ${JSON.stringify(source)}`,
+        );
+      }
+    }
+  }
+}
+
+/** Loads and parses a hookmap YAML file (e.g. claude-code.hookmap.yaml).
+ * Throws if `decisions` is missing `allow` or `deny`, or if any declared
+ * entry is not a renderable rule -- see assertRenderableDecisions. */
 export function loadHookmap(path: string): Hookmap {
-  return Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
+  const hookmap = Bun.YAML.parse(readFileSync(path, "utf8")) as Hookmap;
+  assertRenderableDecisions(hookmap, path);
+  return hookmap;
+}
+
+/**
+ * Unwraps ACS's `{value, provenance?}` argument shape back into a plain
+ * `{argName: value}` bag -- the same values `buildEnvelope` just put on the
+ * wire. Knowledge of the ACS argument wrapper belongs here, next to the
+ * type that defines it, not duplicated in every host shim that needs the
+ * unwrapped form (e.g. to hand a `modify` decision's `parameter_overrides`
+ * something to apply against, for `validateDecision`).
+ */
+export function unwrapArguments(envelope: AcsRequestEnvelope): Record<string, unknown> {
+  const originalArguments: Record<string, unknown> = {};
+  for (const [key, argument] of Object.entries(envelope.params.payload.arguments)) {
+    originalArguments[key] = argument.value;
+  }
+  return originalArguments;
 }
 
 /**

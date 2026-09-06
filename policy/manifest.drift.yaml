@@ -1,0 +1,68 @@
+# The V3 drift-demo manifest. Not policy/manifest.yaml (which stays
+# untouched on the ordinary path, per Global Constraint 5): this is a
+# separate, sibling manifest so a deployment that wants no annotator has
+# none, and every existing V1/V2 demo continues to read exactly the
+# manifest it always has.
+#
+# Same bundle, same query as policy/manifest.yaml -- `bundle: lib` here
+# resolves to this file's own directory (policy/), i.e. the same pinned
+# policy/lib this whole project vendors, per agt.lock. This file adds
+# exactly two blocks on top of that: an `annotators` declaration, and a
+# `pre_tool_call.annotations` entry wiring it in. Nothing else differs.
+#
+# WHY A DEDICATED MANIFEST, PLAINLY: AGT's own stock drift gate
+# (policy/lib/drift.rego) reads `input.annotations.drift_score`, and
+# `annotations` reaches policy input from exactly one place -- a
+# manifest-declared annotator, dispatched through the SDK's
+# `annotatorDispatcher` (see packages/agt-bridge/src/index.ts). Five other
+# placements were tried against the ACS snapshot during this task's
+# planning and every one was dropped silently; none of them are how
+# `annotations` actually arrives.
+#
+# WHY A HOST-SUPPLIED SCORE, PLAINLY (P4, R4.3) -- this is a fact about ACS
+# v0.1.0's wire coverage, never a deficiency in AGT: the `steps/toolCallRequest`
+# payload (spec/acs/specification/v0.1.0/hooks/tool-call-request.json) carries
+# `tool`, `operation`, `capability`, `arguments`, `raw_command`, `intent` --
+# nothing a drift score could be derived from on this wire. That is not an
+# oversight this manifest works around; it is AGT's own design working as
+# intended. AGT's specification puts behaviour-drift detection OUTSIDE the
+# policy engine on purpose (see policy/lib/drift.rego's own header: "Hosts
+# run a behaviour-drift detector outside the policy engine and attach its
+# score under `input.annotations.drift_score`"). The `classifier` annotator
+# type below is exactly that seam: a deployment wires its own drift
+# detector to it; this project's demo wires a stub that returns a fixed
+# score, to make the wiring visible without building a real detector.
+#
+# Zero Rego authored here either: the drift THRESHOLD and the annotator's
+# wiring are both configuration (this manifest, and policy/lib/data.json's
+# `agt.defaults.config.drift.warn_threshold`), never a new Rego rule.
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: "acs-reference-implementation-drift-demo"
+policies:
+  agt_stock:
+    type: rego
+    bundle: lib
+    query: data.agt.defaults.verdict
+annotators:
+  drift_score:
+    type: classifier
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args.command"
+    policy_target_kind: tool_args
+    tool_name_from: "$.tool_call.name"
+    annotations:
+      drift_score:
+        from: "$.tool_call.args.command"
+    policy:
+      id: agt_stock
+tools:
+  run_shell:
+    type: Tool
+    id: run_shell
+    security_labels: [shell]
+  Bash:
+    type: Tool
+    id: Bash
+    security_labels: [shell]

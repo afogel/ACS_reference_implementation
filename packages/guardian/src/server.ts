@@ -29,8 +29,13 @@
  *     writes the failure response through the same envelope-log call as any
  *     other response.
  *
- * Neither catch turns the failure into an ACS `deny` decision: which
- * disposition a Guardian-side failure should carry is a separate question.
+ * Two DIFFERENT catches inside `dispatch` -- the evaluation catch above and
+ * dispatch's own EnvelopeValidationError catch, around `validateEnvelope` --
+ * turn a steps/* failure into an honoured ACS `deny` decision via
+ * denyOnInvalidEnvelope: see the module comment on `dispatch` below. The
+ * outer net here is deliberately left untouched: it exists for a `dispatch`
+ * rethrow -- a bug in the Guardian itself (e.g. a missing schema directory),
+ * not an invalid envelope -- so it stays a bare JSON-RPC error.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -48,9 +53,10 @@
  * `hostname` option (main.ts reads ACS_GUARDIAN_HOST for it).
  */
 import { fileURLToPath } from "node:url";
-import { createBridge, type PolicyBridge } from "agt-bridge";
+import { createBridge, type Annotator, type PolicyBridge } from "agt-bridge";
 import { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
+import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
 import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
@@ -171,6 +177,31 @@ const METHOD_NOT_DISPATCHED_CODE = -32011;
  * The module header explains why none of this may become dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
+/**
+ * The largest request body this Guardian will read, in bytes.
+ *
+ * Chosen against measured envelopes rather than picked round. An ACS request
+ * envelope's fixed part -- jsonrpc, method, id, acs_version, request_id,
+ * timestamp, the metadata pair -- measures 355 bytes as
+ * packages/host-adapter/src/build-envelope.ts emits it, and a real
+ * `steps/toolCallRequest` for a shell command measures 388. The only
+ * unbounded member is the argument bag, whose largest realistic occupant is a
+ * file body in an edit-a-file tool call: one carrying 64 KiB of content
+ * measures 65,951 bytes. 1 MiB is roughly sixteen times that, and roughly
+ * 2,700 times the envelope a shell call actually sends, so no legitimate
+ * request is anywhere near it -- while a body above it is bounded to
+ * something this process can hold per connection rather than to whatever the
+ * runtime's own default happens to be.
+ *
+ * The authoritative check is the count of bytes actually READ, not the
+ * declared `Content-Length`. The header is a claim: a chunked body carries
+ * none at all, and a client is free to declare one length and send another.
+ * It is still consulted first, because a declaration above the cap lets this
+ * refuse before reading anything -- but it can only ever refuse early, never
+ * admit. See readCappedBody.
+ */
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
+
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
 type JsonRpcFailure = {
   jsonrpc: "2.0";
@@ -198,6 +229,23 @@ export type StartGuardianOptions = {
    * working tree. `packages/guardian/src/main.ts` -- the demo path --
    * passes it. */
   envelopeLogPath?: string;
+  /** Overrides the declared `on_decision_failure` posture this Guardian's
+   * ServerHello carries, bypassing `buildServerHello`'s own
+   * `process.env.ACS_ON_DECISION_FAILURE` read entirely. Explicit rather
+   * than an env-shaped bag on purpose: a test that needs a Guardian
+   * declaring `deny` can pass one here instead of mutating `process.env`,
+   * which would leak into every other test sharing that process. Omitted
+   * means the real deployment path: `buildServerHello()` is called with no
+   * argument and reads the actual environment, exactly as
+   * `packages/guardian/src/main.ts` needs it to. */
+  onDecisionFailure?: "proceed" | "deny";
+  /** A host-supplied annotator, threaded straight to `createBridge` (which
+   * wraps it before handing it to AGT). Optional and off by default: the
+   * main manifest (`policy/manifest.yaml`) declares no annotator, so a
+   * Guardian that omits this option behaves exactly as it did before this
+   * option existed -- see `policy/manifest.drift.yaml` and its own header
+   * for the one manifest that does declare one. */
+  annotator?: Annotator;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
@@ -207,9 +255,11 @@ export async function startGuardian({
   manifestPath,
   mappingPath,
   envelopeLogPath,
+  onDecisionFailure,
+  annotator,
 }: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
-  const bridge = createBridge(manifestPath);
+  const bridge = createBridge(manifestPath, annotator ? { annotator } : undefined);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
 
@@ -221,7 +271,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure);
       return Response.json(response);
     },
   });
@@ -235,17 +285,27 @@ export async function startGuardian({
 }
 
 /**
- * Three phases, in order: parse, record the request, dispatch, record the
- * response. The envelope-log writes live here and only here: `dispatch`
- * below leaves by six routes (five `return`s and one rethrow), and future
- * dispatch outcomes will add more, so writing to the envelope log inside it
- * would make totality something a future change has to remember rather than
- * something the structure guarantees.
+ * Four phases, in order: read the body under a cap, parse, record the
+ * request, dispatch, record the response. The envelope-log writes live here
+ * and only here -- `dispatch` below leaves by eight routes (seven `return`s
+ * and one rethrow), since each of dispatch's two catches (its
+ * EnvelopeValidationError catch and its evaluation catch) can produce either
+ * a deny-decision response or a bare-error response. Writing to the envelope
+ * log inside `dispatch` would make totality something a future change has to
+ * remember rather than something the structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
  * including the one that throws: the try/catch below ensures every route
  * out of `dispatch` produces a response object, and every response object
  * reaches the envelope log.
+ *
+ * The read comes before the parse because the parse is what an unbounded body
+ * is dangerous through: `req.json()` buffers whatever arrives, and the
+ * failure it raises past the runtime's own default limit reaches the host as
+ * a bare rejection -- which under a `proceed` posture is a fail-open, and one
+ * a client picks by choosing how much to send. Refusing above the cap turns
+ * that into an answer the host reads as a refusal (see
+ * MAX_REQUEST_BODY_BYTES).
  *
  * The sink itself is total (see envelope-log-sink.ts): these two calls cannot
  * throw, so they cannot turn a governed tool call into an ungoverned one.
@@ -258,10 +318,31 @@ async function handleAcsRequest(
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   envelopeLog: EnvelopeLogSink,
+  onDecisionFailure?: "proceed" | "deny",
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
+  const body = await readCappedBody(req);
+  if (body.withinLimit === false) {
+    // Unpaired, for the same reason the parse error below is: nothing was
+    // read, so there is no request envelope to record it against.
+    //
+    // ENVELOPE_INVALID_CODE rather than a code of its own: this IS an invalid
+    // envelope -- one whose size alone disqualifies it -- and the host reads
+    // that code as the Guardian refusing the envelope, which is exactly what
+    // happened. A fresh code would mean a host classifying it as an
+    // unrecognised error and falling back on its posture, which for the
+    // shipped default is the fail-open this cap exists to close.
+    const tooLarge = errorResponse(
+      null,
+      ENVELOPE_INVALID_CODE,
+      `request body exceeds the ${MAX_REQUEST_BODY_BYTES}-byte limit (${body.detail})`,
+    );
+    envelopeLog.write("response", tooLarge, null);
+    return tooLarge;
+  }
+
   let raw: unknown;
   try {
-    raw = await req.json();
+    raw = JSON.parse(body.text) as unknown;
   } catch {
     // Nothing parseable arrived, so there is no request envelope to record
     // -- the response is deliberately recorded unpaired, which is what the
@@ -278,13 +359,15 @@ async function handleAcsRequest(
 
   let response: JsonRpcSuccess | JsonRpcFailure;
   try {
-    response = await dispatch(raw, bridge, mapping);
+    response = await dispatch(raw, bridge, mapping, onDecisionFailure);
   } catch (error) {
-    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`
-    // decision -- turning a validation failure into an explicit deny is a
-    // separate concern. What this buys is that the client can parse the
-    // answer at all, and that the envelope log holds a response line paired
-    // with the request line above it.
+    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`:
+    // this route is `dispatch` rethrowing entirely past denyOnInvalidEnvelope
+    // -- a bug in the Guardian itself (e.g. a missing schema directory), not
+    // an invalid envelope, so denyOnInvalidEnvelope never runs. What this
+    // buys is that the client can parse the answer at all, and that the
+    // envelope log holds a response line paired with the request line above
+    // it.
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
@@ -292,10 +375,103 @@ async function handleAcsRequest(
   return response;
 }
 
+/** What came back from the wire, before anything has tried to read it as an
+ * envelope. A union rather than a string plus a flag, so a caller that reads
+ * `text` without checking the limit does not compile. */
+type CappedBody =
+  | { readonly withinLimit: true; readonly text: string }
+  | { readonly withinLimit: false; readonly detail: string };
+
+/**
+ * Reads the request body, refusing anything past MAX_REQUEST_BODY_BYTES
+ * rather than buffering it.
+ *
+ * Streamed rather than `await req.text()` for the one reason the cap exists:
+ * `text()` has already buffered the whole body by the time its length can be
+ * measured, so measuring afterwards enforces nothing. Reading chunk by chunk
+ * and holding nothing past the cap is what makes the limit a limit.
+ *
+ * What the cap bounds is what this process HOLDS, not what a client may
+ * transmit -- and that distinction is forced, not chosen. The body is drained
+ * to its end even once it is refused, because leaving it unread (whether by
+ * cancelling the stream or by returning before touching it) leaves the
+ * HTTP/1.1 message unfinished: Bun then answers the NEXT request on that
+ * keep-alive connection with an empty 400, which a host reads as a delivery
+ * failure and resolves with its posture. Refusing one oversize body by
+ * breaking the next legitimate request would be a wider fail-open than the
+ * one this cap closes. So memory is bounded here, and total transfer stays
+ * bounded by the runtime's own per-request ceiling above this.
+ *
+ * Which check is authoritative, since there are two: the count of bytes
+ * actually read. `Content-Length` is a claim -- a chunked body declares none,
+ * and a client may declare one length and send another -- so it can refuse a
+ * body before anything is held, but it can never admit one. `detail` says
+ * which of the two refused, because "you declared 4 MiB" and "you sent 4 MiB
+ * having declared nothing" are different client bugs and an operator reading
+ * the log needs to know which.
+ */
+async function readCappedBody(req: Request): Promise<CappedBody> {
+  // `Number(null)` is 0, which is the reading wanted for an absent header:
+  // nothing was declared, so nothing is refused on this account and the byte
+  // count below is the only check. A malformed header is NaN, and `NaN >` is
+  // false, so that falls through to the byte count too rather than refusing a
+  // request whose body may be perfectly small.
+  const declared = Number(req.headers.get("content-length"));
+  const declaredTooLarge = declared > MAX_REQUEST_BODY_BYTES;
+
+  // A POST with no body at all: nothing to read, and the parse above is what
+  // rejects it -- as an unparseable body, which is what it is.
+  if (req.body === null) {
+    return declaredTooLarge
+      ? { withinLimit: false, detail: `content-length declared ${declared}` }
+      : { withinLimit: true, text: "" };
+  }
+
+  const reader = req.body.getReader();
+  // `{ stream: true }` per chunk: a chunk boundary can land mid-codepoint, and
+  // decoding each one in isolation would replace the split character with
+  // U+FFFD -- corrupting an envelope that was never too big at all.
+  const decoder = new TextDecoder();
+  let text = "";
+  let read = 0;
+  // Nothing is held for a body that already declared itself too large: the
+  // decision is made, and the loop below only has to finish the message.
+  let holding = !declaredTooLarge;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done === true) {
+        break;
+      }
+      read += value.byteLength;
+      if (read > MAX_REQUEST_BODY_BYTES && holding) {
+        // Released as soon as the cap is passed, not at the end of the read:
+        // a refusal that kept the first megabyte until the body finished
+        // arriving would be enforcing the cap on average rather than at all.
+        holding = false;
+        text = "";
+      }
+      if (holding) {
+        text += decoder.decode(value, { stream: true });
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (declaredTooLarge) {
+    return { withinLimit: false, detail: `content-length declared ${declared}` };
+  }
+  return read > MAX_REQUEST_BODY_BYTES
+    ? { withinLimit: false, detail: `${read} bytes read` }
+    : { withinLimit: true, text: text + decoder.decode() };
+}
+
 async function dispatch(
   raw: unknown,
   bridge: ReturnType<typeof createBridge>,
   mapping: Mapping,
+  onDecisionFailure?: "proceed" | "deny",
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
@@ -303,19 +479,31 @@ async function dispatch(
   try {
     // validateEnvelope checks the general request-envelope.json shape for
     // every method, plus -- only for steps/toolCallRequest -- the
-    // hook-specific payload schema. Failure is a thrown typed error, never a
-    // decision: we turn it into a bare JSON-RPC error below, rather than into
-    // {decision: "deny"}.
+    // hook-specific payload schema. Failure is a THROWN typed error, never
+    // a decision itself -- validateEnvelope stays total to its own contract
+    // (see its doc comment) -- but the catch below (denyOnInvalidEnvelope)
+    // turns a steps/* failure into an honoured ACS `deny` decision rather
+    // than a bare JSON-RPC error, since there is an identifiable step to
+    // answer for. A handshake failure and an undispatched method are not
+    // steps/*, so they always fall through to the JSON-RPC error unchanged.
     envelope = validateEnvelope(raw);
   } catch (error) {
     if (error instanceof EnvelopeValidationError) {
+      if (isStepMethod(raw)) {
+        const denial = denyOnInvalidEnvelope(raw, { reasonCode: "envelope_invalid", message: error.message });
+        const decisionResponse = asDecisionResponse(rpcId, denial);
+        if (decisionResponse) {
+          return decisionResponse;
+        }
+      }
       return errorResponse(rpcId, ENVELOPE_INVALID_CODE, error.message, { pointer: error.pointer });
     }
     throw error;
   }
 
   if (envelope.method === HANDSHAKE_METHOD) {
-    return successResponse(envelope.id, buildServerHello());
+    const env = onDecisionFailure === undefined ? undefined : { ACS_ON_DECISION_FAILURE: onDecisionFailure };
+    return successResponse(envelope.id, buildServerHello(env));
   }
 
   // `isToolCallRequest`, not a method comparison spelled out again here: the
@@ -339,10 +527,18 @@ async function dispatch(
 
       return successResponse(envelope.id, finalResult(envelope.params, decision));
     } catch (error) {
-      // See the module header. Deliberately a bare JSON-RPC error rather than
-      // an ACS `deny` decision -- all this guarantees is that the client gets
-      // a parseable envelope back instead of an HTML 500.
+      // This catch (see the module-level comment above) keeps an evaluation
+      // failure a parseable JSON-RPC error rather than an HTML 500.
+      // denyOnInvalidEnvelope goes one step further: AGT's evaluation layer
+      // fails CLOSED, and this catch is where that failure surfaces, so it
+      // is delivered as an honoured `deny` decision rather than a bare
+      // error, keeping it in §6.4's honoured path.
       const message = toRepoRelativeMessage(error);
+      const denial = denyOnInvalidEnvelope(raw, { reasonCode: "evaluation_failed", message });
+      const decisionResponse = asDecisionResponse(rpcId, denial);
+      if (decisionResponse) {
+        return decisionResponse;
+      }
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }
   }
@@ -391,6 +587,40 @@ function extractMethod(raw: unknown): string | null {
     if (typeof method === "string") {
       return method;
     }
+  }
+  return null;
+}
+
+/** Whether the raw envelope names a `steps/*` method -- read before
+ * validation, so it is a string test and nothing more. denyOnInvalidEnvelope
+ * only turns a schema-validation failure into a deny decision for steps/*:
+ * a handshake failure is not a governance decision (there is no step to
+ * decide about), and an undispatched method is answered separately, below. */
+function isStepMethod(raw: unknown): boolean {
+  const method = extractMethod(raw);
+  return typeof method === "string" && method.startsWith("steps/");
+}
+
+/**
+ * Turns a `denyOnInvalidEnvelope` result into a JSON-RPC success response,
+ * or `null` when it cannot be delivered as one -- in which case the caller
+ * falls back to its own JSON-RPC error response instead.
+ *
+ * Two distinct reasons produce `null`, not one:
+ *   - `denial.kind === "unaddressable"` -- denyOnInvalidEnvelope found no
+ *     request_id and no usable JSON-RPC id anywhere on the envelope.
+ *   - `denial.kind === "decision"` but `rpcId` is `null` -- the decision
+ *     found an id (via `params.request_id`), but that id did not come from
+ *     the envelope's own JSON-RPC `id`. `successResponse` requires a
+ *     non-null id for the *response*, and a JSON-RPC response with a null
+ *     id cannot be correlated by the client either -- so this is not a
+ *     cast to paper over (`rpcId as string | number`), it is a real case
+ *     the addressability rule exists for, and it is handled the same way
+ *     `unaddressable` is: by falling back to the error response.
+ */
+function asDecisionResponse(rpcId: string | number | null, denial: DenyOnInvalidEnvelopeResult): JsonRpcSuccess | null {
+  if (denial.kind === "decision" && (typeof rpcId === "string" || typeof rpcId === "number")) {
+    return successResponse(rpcId, denial.result);
   }
   return null;
 }

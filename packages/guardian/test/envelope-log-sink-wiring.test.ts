@@ -104,8 +104,12 @@ describe("Guardian envelope log wiring", () => {
 
   // The envelope that fails validation is the most useful thing an
   // ACS-first reader can see; recording it after the validator is exactly
-  // what would hide it.
-  it("records a schema-invalid request, then its JSON-RPC error response", async () => {
+  // what would hide it. This envelope names steps/* and carries a
+  // request_id, so it is addressable -- the schema failure arrives as an
+  // honoured deny decision (a JSON-RPC success), not a bare error. Still
+  // recorded in both directions the same as any other response (asserted
+  // below).
+  it("records a schema-invalid steps/* request, then its deny decision", async () => {
     await withGuardian(logIn, async (url, logPath) => {
       const bad = toolCallEnvelope("rm -rf /", { id: 12 });
       delete (bad.params as Record<string, unknown>).acs_version;
@@ -116,9 +120,12 @@ describe("Guardian envelope log wiring", () => {
       expect(entries.length).toBe(2);
       expect(entries[0]?.direction).toBe("request");
       expect((entries[0]?.envelope as { params: Record<string, unknown> }).params.acs_version).toBeUndefined();
-      const error = (entries[1]?.envelope as { error?: { code: number } }).error;
-      expect(error?.code).toBeLessThanOrEqual(-32000);
-      expect(error?.code).toBeGreaterThanOrEqual(-32099);
+      expect(entries[1]?.direction).toBe("response");
+      const result = (entries[1]?.envelope as { result?: { decision?: string; reason_codes?: string[]; policy_references?: unknown[] } })
+        .result;
+      expect(result?.decision).toBe("deny");
+      expect(result?.reason_codes).toEqual(["envelope_invalid"]);
+      expect(result?.policy_references).toEqual([]);
     });
   });
 

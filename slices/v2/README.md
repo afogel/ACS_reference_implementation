@@ -45,9 +45,11 @@ Three properties make this worth more than a log viewer:
   that turns Guardian-side schema and bridge failures into honoured ACS `deny`
   **decisions** — is **V3**, alongside `N6 applyFailurePosture()` and
   `N7 validateDecision()`.
-- **U23, the posture badge**, and **N51 `tailAuditSinks()`** — the negotiated
-  `on_decision_failure` and the count of audited fail-open proceeds — are **V3**. There
-  is no considered fail-open/fail-closed posture in this tree yet.
+- **U23, the posture badge**, and **N51 `tailAuditLog()`** — the `on_decision_failure`
+  posture and the count of audited fail-open proceeds — are **V3**. There is no considered
+  fail-open/fail-closed posture in this tree yet. (V3 shipped both; the badge reports the
+  last posture *observed* in the audit log rather than the negotiated one, for the reason
+  [`slices/v3/README.md`](../v3/README.md) records.)
 - **U22, the session chain view** — SessionContext entries and lineage — is **V6**,
   which is where session state and provenance carriage land.
 - **No log rotation.** S6 grows without bound. Accepted for V2 and recorded in the

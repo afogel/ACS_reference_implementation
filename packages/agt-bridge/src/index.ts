@@ -1,4 +1,4 @@
-import { AgentControl } from "agent-control-specification";
+import { AgentControl, type JsonValue } from "agent-control-specification";
 
 export type AgtVerdict = {
   decision: "allow" | "deny" | "warn" | "escalate" | "transform";
@@ -43,17 +43,60 @@ export type PolicyBridge<S extends InterventionSnapshot = InterventionSnapshot> 
 };
 
 /**
- * Construct once at boot, evaluate per decision. Stateless: nothing is
- * retained between evaluate() calls.
+ * A host-supplied annotator, called by name for every `annotators.<name>`
+ * entry a manifest's intervention point declares via `annotations`. Its
+ * return value lands at `input.annotations.<name>` for policy to read --
+ * this is the only way `annotations` reaches policy input at all (five
+ * other placements were tried against the snapshot and all were dropped;
+ * see the drift manifest's own header). Deliberately a plain function, not
+ * the SDK's own `AnnotatorDispatcher` interface: that shape is an
+ * AGT-specific type this package's own callers should not have to import.
+ * This bridge carries no host-specific code, and by the same token should
+ * not force a host-shaped caller to reach into AGT's types either.
  */
-export function createBridge(manifestPath: string): PolicyBridge {
+export type Annotator = (name: string, config: unknown, preliminary: unknown) => unknown;
+
+export type CreateBridgeOptions = {
+  annotator?: Annotator;
+};
+
+/**
+ * Construct once at boot, then call `evaluate` once per decision. Stateless:
+ * nothing is retained between `evaluate()` calls.
+ */
+export function createBridge(manifestPath: string, options?: CreateBridgeOptions): PolicyBridge {
   if (manifestPath.includes("/./")) {
     throw new Error(
       `manifest path contains "/./": ${manifestPath}. AGT joins this verbatim and OPA ` +
         `then drops the bundle's data document, silently disabling policy.`,
     );
   }
-  const control = AgentControl.fromPath(manifestPath);
+
+  // Adapts the caller's plain function into the SDK's AnnotatorDispatcher
+  // shape ({ dispatch(...) }), wrapped in `async` so a throw inside the
+  // caller's function -- synchronous or not -- always arrives at the SDK
+  // as a rejected promise rather than a synchronous exception escaping this
+  // call directly. The SDK's own dispatcher contract already turns a throw
+  // or a rejected promise into its own `runtime_error:annotation_failed`
+  // fail-closed verdict; this wrapping is what makes sure every failure
+  // shape actually reaches that handling, rather than some throwing one way
+  // this project happens to exercise today and some other way it doesn't.
+  const annotatorDispatcher = options?.annotator
+    ? {
+        // The cast at the return is the one place this function's result
+        // meets the SDK's own `JsonValue`-shaped contract -- `Annotator`
+        // itself stays `unknown` so nothing about AGT's types leaks into
+        // this option's public shape. A caller returning something that
+        // genuinely isn't JSON-shaped (a function, a class instance) is a
+        // caller bug this cast does not catch; it exists to satisfy the
+        // SDK's declared parameter type, not to validate the return value.
+        async dispatch(name: string, config: unknown, preliminary: unknown): Promise<JsonValue> {
+          return (await options.annotator!(name, config, preliminary)) as JsonValue;
+        },
+      }
+    : undefined;
+
+  const control = AgentControl.fromPath(manifestPath, annotatorDispatcher);
 
   return {
     async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {

@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { existsSync, mkdtempSync, rmdirSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Test-only import: stands up a real Guardian so this test proves the wire
 // contract for real, not against a hand-copied shape -- same precedent as
@@ -10,6 +13,18 @@ import { buildEnvelope, createGuardianClient, loadHookmap, renderDecision, type 
 
 const SHIM_PATH = fileURLToPath(new URL("../acs-hook.ts", import.meta.url));
 const HOOKMAP_PATH = fileURLToPath(new URL("../claude-code.hookmap.yaml", import.meta.url));
+
+// The shim negotiates a session, persisting it to the session config store,
+// and can audit a fail-open to the audit log; both default to `.acs/...`
+// under the process cwd when unset -- which would otherwise scatter real
+// files into the repo's working tree on every run of this suite. Both tests
+// below share one session id
+// ("abc123"), so the only path either can create is `sessions/abc123.json`
+// under this scratch dir; no audit file is expected, since both tests
+// exercise a decision that actually arrives.
+const SCRATCH_DIR = mkdtempSync(join(tmpdir(), "acs-hook-test-"));
+const SESSION_DIR = join(SCRATCH_DIR, "sessions");
+const AUDIT_LOG = join(SCRATCH_DIR, "audit.jsonl");
 
 /** The real PreToolUse payload shape Claude Code delivers on stdin, with
  * `tool_name: "Bash"` -- what Claude Code actually sends, and what
@@ -37,7 +52,7 @@ async function runHook(
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, ACS_GUARDIAN_URL: guardianUrl },
+    env: { ...process.env, ACS_GUARDIAN_URL: guardianUrl, ACS_SESSION_DIR: SESSION_DIR, ACS_AUDIT_LOG: AUDIT_LOG },
   });
   proc.stdin.write(JSON.stringify(payload));
   proc.stdin.end();
@@ -57,6 +72,21 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await guardian.close();
+  // Named cleanup, not recursive: the only path either test above can
+  // create is enumerated in the SCRATCH_DIR comment. Removing anything
+  // unexpected is not this cleanup's job -- an unknown leftover should fail
+  // `rmdirSync` loudly rather than be swept away silently.
+  const sessionFile = join(SESSION_DIR, "abc123.json");
+  if (existsSync(sessionFile)) {
+    unlinkSync(sessionFile);
+  }
+  if (existsSync(SESSION_DIR)) {
+    rmdirSync(SESSION_DIR);
+  }
+  if (existsSync(AUDIT_LOG)) {
+    unlinkSync(AUDIT_LOG);
+  }
+  rmdirSync(SCRATCH_DIR);
 });
 
 describe("acs-hook.ts -- the Claude Code hook shim, run as a real subprocess", () => {

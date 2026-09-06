@@ -38,7 +38,7 @@ Guardian listening at http://localhost:8787/acs
 
 Leave this running for the rest of the demo. `hosts/claude-code/acs-hook.ts` defaults to exactly this URL (`http://localhost:8787/acs`); set `ACS_GUARDIAN_URL` if you need the Guardian on a different port.
 
-**What happens if you skip this step, or the Guardian dies mid-demo:** V1 does not implement a considered fail-open/fail-closed posture for an unreachable Guardian (that negotiation is N6/N7, slice V3). The hook shim writes an error to stderr and exits 1 — Claude Code's "non-blocking error" — with nothing on stdout, so the tool call proceeds **ungoverned**, exactly as if the hook had never fired. If the demo's `rm -rf /` unexpectedly seems to go through unblocked, this is the first thing to check.
+**What happens if you skip this step, or the Guardian dies mid-demo:** V1 did not implement a considered fail-open/fail-closed posture for an unreachable Guardian — the hook shim wrote an error to stderr, exited 1 (Claude Code's "non-blocking error") with nothing on stdout, and the tool call proceeded **ungoverned**, exactly as if the hook had never fired. **That is no longer what this tree does**, and this paragraph is kept because it is what the demo used to look like: V3 shipped that posture (N6/N7), so an unreachable Guardian now produces a decision on stdout with exit 0 — allow or deny per the deployment's negotiated `on_decision_failure`, audited to `.acs/audit.jsonl` either way. See [`docs/demos/v3-runbook.md`](v3-runbook.md). If the demo's `rm -rf /` seems to go through unblocked, check that log first: a fail-open proceed is recorded there, so the bypass is visible rather than silent.
 
 ## Step 2 — wire the hook into Claude Code
 
