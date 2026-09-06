@@ -127,7 +127,7 @@ The literal reading of the spec. Hosts are ACS clients; a Guardian is a server; 
 | A1.2 | OpenCode: same shape, driven from `tool.execute.before` / `.after` in-process plugin hooks | |
 | **A2** | ACS Guardian service: JSON-RPC 2.0 over HTTP, validates every envelope against the v0.1.0 schemas | |
 | **A3** | Session layer in the Guardian: SessionContext hash chain, Intent, provenance lineage; persists AGT `result_labels` and re-supplies as `input.ifc.source_labels` | |
-| **A4** | AGT bridge: embeds the AGT Python SDK; ACS envelope → 5-member policy input; `evaluate_intervention_point`; verdict → ACS decision | |
+| **A4** | AGT bridge: embeds the AGT **Node** SDK ⚠️ *amended, was Python*; ACS envelope → 5-member policy input; `evaluateInterventionPoint`; verdict → ACS decision | |
 | **A5** | Envelope tap: every request and response rendered as pretty JSON in a live viewer | |
 | **A6** | Demo runbook: one AGT policy bundle, both hosts, side by side with AGT's native packages | |
 
@@ -181,6 +181,7 @@ Post-spike. All flags cleared, so the check now discriminates.
 - R5 fails B: envelopes that are never serialized are not inspectable on the wire, which is what R5.1 asks for.
 - R6 fails B: an in-process Guardian sharing a heap with the host adapter makes the stateless/stateful split an assertion rather than an observable property.
 - **C is selected.** It carries every requirement A does and is the only shape that proves R1.
+- ⚠️ **A4's SDK choice is load-bearing for R1.4, discovered during V1 planning.** AGT's PyO3 binding surfaces only `action_identity`, collapsing `input_identity` and `enforced_identity`; the Node binding serializes both. Every shape embeds A4, so on the Python SDK R1.4 ("`enforced_identity` survives the adapter") would be unverifiable in *all three* columns and C's R1 ✅ would not survive contact with C2's harness. A4 is amended to the Node SDK and the verdicts stand as written. No other row moves.
 
 ---
 
@@ -201,7 +202,7 @@ All resolved — see `spike-agt-integration.md`.
 |---|------|
 | F1 | Confirm by hand that Claude Code `PostToolUse.updatedToolOutput` rewrites tool results as documented |
 | F2 | Confirm an OpenCode plugin can express deny and modify through `tool.execute.before` / `.after` |
-| F3 | Decide Rego (canonical, needs `opa` CLI) versus Cedar (zero extra binary) for the demo bundle |
+| ~~F3~~ | ✅ **Resolved: Rego.** The premise was wrong — the SDK bundles OPA 0.70.0 as a platform package, so Rego needs no external binary and Cedar's only advantage disappears. Stock bundle verified 105/105 under the bundled OPA and system OPA 1.18.2. Closes D7 |
 
 ---
 
@@ -242,16 +243,16 @@ All resolved — see `spike-agt-integration.md`.
 |---|-------|-----------|------------|---------|-----------|------------|
 | N1 | P1 | acs-hook shim | generic hook entrypoint, reads hook JSON on stdin | call | → N2 | — |
 | N2 | P1 | `@acs/host-adapter` | `buildEnvelope(event, payload, hookmap)` | call | → N4 | — |
-| N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` → `hookSpecificOutput` on stdout | call | → U2, → U3 | — |
-| N4 | P1 | `@acs/host-adapter` | `guardianClient.post()` JSON-RPC over HTTP | call | → N20 | → N7 |
-| N5 | P1 | `@acs/host-adapter` | `handshake()` — `handshake/hello`; negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
+| N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` → the host's output object on stdout, every field name read from the hookmap | call | → U2, → U3 | — |
+| N4 | P1 | `@acs/host-adapter` | `createGuardianClient(url).requestDecision()` JSON-RPC over HTTP | call | → N20 | → N7 |
+| N5 | P1 | `@acs/host-adapter` | `negotiateSessionConfig()` — `handshake/hello`; negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
 | N6 | P1 | `@acs/host-adapter` | `applyFailurePosture()` — no decision within timeout → negotiated posture (default `proceed`); writes an audit event on every fail-open proceed | call | → S14, → N3 | — |
 | N7 | P1 | `@acs/host-adapter` | `validateDecision()` — malformed `modifications` → `DENY`; `ASK`/`DEFER` expiry → their `timeout_*` defaults | call | → N3, → N6 | — |
 | N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
 | N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — **same module as N2** | call | → N13 | — |
 | N12 | P2 | `@acs/host-adapter` | `renderDecision()` — **same module as N3** | call | → U11, → U12 | — |
-| N13 | P2 | `@acs/host-adapter` | `guardianClient.post()` — **same module as N4** | call | → N20 | → N16 |
-| N14 | P2 | `@acs/host-adapter` | `handshake()` — **same module as N5** | call | → N28 | → S15 |
+| N13 | P2 | `@acs/host-adapter` | `createGuardianClient().requestDecision()` — **same module as N4** | call | → N20 | → N16 |
+| N14 | P2 | `@acs/host-adapter` | `negotiateSessionConfig()` — **same module as N5** | call | → N28 | → S15 |
 | N15 | P2 | `@acs/host-adapter` | `applyFailurePosture()` — **same module as N6** | call | → S16, → N12 | — |
 | N16 | P2 | `@acs/host-adapter` | `validateDecision()` — **same module as N7** | call | → N12, → N15 | — |
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
@@ -262,9 +263,9 @@ All resolved — see `spike-agt-integration.md`.
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
 | N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
-| N28 | P3 | guardian | `handshakeResponder()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
-| N30 | P3.1 | agt-bridge | `evaluate_intervention_point(point, snapshot)` | call | — | → N24 |
-| N31 | P3.1 | agt-bridge | `AgentControl.from_path(manifest.yaml)` at boot | call | — | → N30 |
+| N28 | P3 | guardian | `buildServerHello()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
+| N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
+| N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
@@ -316,8 +317,8 @@ flowchart TB
         N1["N1: acs-hook shim"]
         N2["N2: buildEnvelope()"]
         N3["N3: renderDecision()"]
-        N4["N4: guardianClient.post()"]
-        N5["N5: handshake()"]
+        N4["N4: createGuardianClient().requestDecision()"]
+        N5["N5: negotiateSessionConfig()"]
         N6["N6: applyFailurePosture()"]
         N7["N7: validateDecision()"]
         S1["S1: claude-code.hookmap.yaml"]
@@ -332,8 +333,8 @@ flowchart TB
         N10["N10: acs-plugin shim"]
         N11["N11: buildEnvelope() — same module as N2"]
         N12["N12: renderDecision() — same as N3"]
-        N13["N13: guardianClient.post() — same as N4"]
-        N14["N14: handshake() — same as N5"]
+        N13["N13: createGuardianClient().requestDecision() — same as N4"]
+        N14["N14: negotiateSessionConfig() — same as N5"]
         N15["N15: applyFailurePosture() — same as N6"]
         N16["N16: validateDecision() — same as N7"]
         S2["S2: opencode.hookmap.yaml"]
@@ -350,15 +351,15 @@ flowchart TB
         N25["N25: persistResultLabels()"]
         N26["N26: writeEnvelopeTap()"]
         N27["N27: denyOnInvalidEnvelope()"]
-        N28["N28: handshakeResponder()"]
+        N28["N28: buildServerHello()"]
         S3["S3: sessionContext chain"]
         S4["S4: intent"]
         S5["S5: provenance + result_labels"]
         S6["S6: envelope log"]
 
         subgraph P31["P3.1: AGT bridge"]
-            N30["N30: evaluate_intervention_point()"]
-            N31["N31: AgentControl.from_path()"]
+            N30["N30: evaluateInterventionPoint()"]
+            N31["N31: AgentControl.fromPath()"]
             S7["S7: manifest.yaml"]
             S8["S8: data.agt.defaults.config"]
             S9["S9: AGT stock bundle (pinned)"]
@@ -523,5 +524,6 @@ flowchart TB
 | D4 | R1.1 — spec `steps/modelCall` for v0.2 as part of this work, or map AGT's two model-call points onto existing hooks and declare the seam | Open | Decides whether this is an implementation project or a spec-and-implementation project |
 | D5 | R7.3 — determinism | Open | A scripted transcript demos reliably; a live model demos honestly |
 | D6 | Shape selection | **Decided: C** | C is the only shape that proves R1 rather than asserting it |
-| D7 | F3 — Rego or Cedar for the demo bundle | Open | Rego is the canonical default binding; Cedar removes an external binary from setup |
-| D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly |
+| ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
+| D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open, leaning `proceed` | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly. V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6), so the decision is only needed by V3 |
+| D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |

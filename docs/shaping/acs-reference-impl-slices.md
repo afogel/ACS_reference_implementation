@@ -31,6 +31,8 @@ Every slice ends in something demo-able.
 
 **Demo:** In Claude Code, ask for a destructive shell command. AGT's stock policy denies it; the deny reason appears in the transcript.
 
+**⚠️ Framing correction (R4.4).** The stock bundle ships **no** shell or command patterns — `patterns.rego` carries generic PII regexes only. What is stock is the *deciding module* (`agt.patterns`) and the priority chain in `agt_default.rego`; the destructive-command regex list is ours, supplied as configuration. R2.1 still holds exactly — zero Rego authored, behaviour driven only through `data.agt.defaults.config` — but the demo must be narrated as "AGT's stock policy engine, configured", never as "Microsoft ships an `rm -rf` deny-list". Overclaiming here would breach R4.4.
+
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
 | U1 | P1 | claude-code | prompt input | type | → N1 | — |
@@ -38,26 +40,34 @@ Every slice ends in something demo-able.
 | N1 | P1 | acs-hook shim | generic hook entrypoint, reads hook JSON on stdin | call | → N2 | — |
 | N2 | P1 | `@acs/host-adapter` | `buildEnvelope(event, payload, hookmap)` | call | → N4 | — |
 | N3 | P1 | `@acs/host-adapter` | `renderDecision(decision, hookmap)` | call | → U2 | — |
-| N4 | P1 | `@acs/host-adapter` | `guardianClient.post()` JSON-RPC over HTTP | call | → N20 | → N3 |
-| N5 | P1 | `@acs/host-adapter` | `handshake()` — negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
+| N4 | P1 | `@acs/host-adapter` | `createGuardianClient(url).requestDecision()` JSON-RPC over HTTP | call | → N20 | → N3 |
+| N5 | P1 | `@acs/host-adapter` | `negotiateSessionConfig()` — negotiates `timeout_config`, `on_decision_failure`, profiles | call | → N28 | → S13 |
 | N20 | P3 | guardian | `POST /acs` JSON-RPC 2.0 endpoint | call | → N21 | — |
-| N28 | P3 | guardian | `handshakeResponder()` — ServerHello | call | — | → N5 |
+| N28 | P3 | guardian | `buildServerHello()` — ServerHello | call | — | → N5 |
 | S13 | P1 | store | `negotiated session config` | — | — | → N6 (V3) |
 | N21 | P3 | guardian | `validateEnvelope()` against v0.1.0 schemas | call | → N23 | — |
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope → AGT snapshot | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision | call | — | → N4 |
-| N30 | P3.1 | agt-bridge | `evaluate_intervention_point(point, snapshot)` | call | — | → N24 |
-| N31 | P3.1 | agt-bridge | `AgentControl.from_path(manifest.yaml)` at boot | call | — | → N30 |
+| N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` | call | — | → N24 |
+| N31 | P3.1 | agt-bridge | `AgentControl.fromPath(manifest.yaml)` at boot | call | — | → N30 |
 | S1 | P1 | store | `claude-code.hookmap.yaml` | — | — | → N2, N3 |
-| S7 | P3.1 | store | `manifest.yaml`, binding `rego` → `data.agt.defaults.verdict` | — | — | → N31 |
-| S8 | P3.1 | store | `data.agt.defaults.config` | — | — | → N31 |
-| S9 | P3.1 | store | AGT stock bundle at pinned ref | — | — | → N31 |
+| S7 | P3.1 | store | `manifest.yaml`, binding `rego` → `data.agt.defaults.verdict`; `policy_target` **must** resolve to a leaf string (`$.tool_call.args.command`) | — | — | → N31 |
+| S8 | P3.1 | store | `data.agt.defaults.config`, shipped as `policy/lib/data.json` **inside** the bundle directory | — | — | → N31 |
+| S9 | P3.1 | store | AGT stock bundle at pinned ref, every `.rego` byte-identical | — | — | → N31 |
 | S10 | shared | store | `mapping.yaml` | — | — | → N23, N24 |
 | S11 | shared | store | `agt.lock` | — | — | → N31 |
 
 **Scope note.** Only `pre_tool_call` is wired. No session state, no tap, no second host. `N23` assembles the snapshot from the envelope alone; it starts reading S3/S4/S5 in V6.
 
-**Setup cost this slice absorbs:** the `opa` CLI on PATH (S9 needs it), the pinned AGT checkout, and the first cut of `mapping.yaml`.
+**Setup cost this slice absorbs:** ⚠️ *amended* — the `opa` CLI is **no longer a setup cost*. The npm package pulls `agent-control-specification-opa-darwin-arm64`, which ships OPA 0.70.0, overridable via `ACS_OPA_PATH` / `ACS_OPA_NO_BUNDLE`. The stock bundle passes 105/105 under both it and system OPA 1.18.2. What remains: the pinned AGT checkout and the first cut of `mapping.yaml`. **This closes D7 as Rego** — Cedar's only advantage was removing an external binary, and there is no external binary.
+
+**⚠️ Watch-for — `bundle:` resolves against the manifest's own directory.** Discovered during V1 execution, after the `./` landmine below: `bundle:` is relative to the directory holding `manifest.yaml`, not the process cwd. With the manifest at `policy/manifest.yaml`, `bundle: policy/lib` resolves to `policy/policy/lib` and every call hard-fails `runtime_error:policy_invocation_failed`. The correct value is `bundle: lib`. This failure is *loud* — unlike the `./` landmine, it denies rather than silently allowing — but the two are easily confused because both stem from how AGT joins this one field.
+
+**⚠️ Watch-for — the `./` landmine.** `policies.<id>.bundle` must **not** begin with `./`. AGT joins the manifest directory to the literal value, yielding `<dir>/./policy/lib`; OPA's bundle loader mis-derives the data mount path from the `/./` segment and silently drops `data.json`. The policy then matches nothing and **every decision becomes `allow`** — a fail-open with no error, in a governance tool. Measured: `./policy/lib` loads, `/abs/policy/lib` loads, `/abs/./policy/lib` is UNDEFINED. `createBridge` throws on `/./`, and V1's deny test is the backstop.
+
+**⚠️ Amendment — the config lives inside the bundle.** `data_paths` cannot deliver `data.agt.defaults.config` while `bundle:` is set: the stock bundle ships no `.manifest`, so its roots default to `""`, it owns the whole data tree, and the `--data` document is discarded. S8 therefore ships as `policy/lib/data.json`. Every stock `.rego` stays byte-identical; `data.json` is the only added file, so R2.1/R2.3 hold — we author a data document, not policy.
+
+**⚠️ Amendment — the bridge embeds the Node SDK, not the Python SDK.** The PyO3 binding sets only `action_identity`; the Node binding sets `input_identity` and `enforced_identity` distinctly (`sdk/node/native/lib.rs:191-204`). On Python, R1.4 is unverifiable and V7's N43 is impossible. This also makes the whole repo one TypeScript toolchain. Amends shaping A4.
 
 ---
 
@@ -91,6 +101,8 @@ Every slice ends in something demo-able.
 | S14 | P1 | store | `audit sink` — every fail-open proceed, per §6.4's MUST | — | — | → N51 |
 
 **Two failure domains, kept separate.** AGT fails closed on *evaluation* — bad policy output, invalid transform, missing paths — and that produces a `deny` **verdict**, which §6.4 says the host MUST honor regardless of posture. N27 exists so Guardian-side failures also arrive as decisions rather than bare errors, keeping them in that honored path. `on_decision_failure` only governs *delivery*: Guardian silent, transport dead, error with no decision. Conflating the two would either break AGT's invariant or halt production on a network blip.
+
+**⚠️ Blocker discovered in V1 — S13 has no home across processes.** V1 built `S13` as an in-process store, but the Claude Code shim is a **fresh subprocess per hook invocation**, so an in-memory negotiated session config can never survive to the next hook. `negotiateSessionConfig()` is also not called on the real path in V1 at all. `N6 applyFailurePosture()` reads S13, so V3 cannot work until this is resolved: either persist the negotiated config (a session-keyed file), or have the shim talk to a session-scoped daemon. The choice ripples — V5's second host is in-process and would not share the constraint, and V6's session chain sits on the same seam. Decide this before V3 starts.
 
 **Rest of the slice is data, not structure.** Disposition coverage lives in S1 (every ACS decision → `permissionDecision` / `updatedInput`) and S8 (stock rules configured to actually fire allow, deny, escalate, transform, and drift-warn). Once the adapter is generic, coverage is configuration.
 
@@ -126,8 +138,8 @@ New entries in S1 for `PostToolUse` → `steps/toolCallResult`, and in S8 for th
 | N10 | P2 | acs-plugin shim | OpenCode plugin hooks: `session.start`, `event`, `tool.execute.before/after/error` | call | → N11 | — |
 | N11 | P2 | `@acs/host-adapter` | `buildEnvelope()` — same module as N2 | call | → N13 | — |
 | N12 | P2 | `@acs/host-adapter` | `renderDecision()` — same module as N3 | call | → U11, → U12 | — |
-| N13 | P2 | `@acs/host-adapter` | `guardianClient.post()` — same module as N4 | call | → N20 | → N16 |
-| N14 | P2 | `@acs/host-adapter` | `handshake()` — same module as N5 | call | → N28 | → S15 |
+| N13 | P2 | `@acs/host-adapter` | `createGuardianClient().requestDecision()` — same module as N4 | call | → N20 | → N16 |
+| N14 | P2 | `@acs/host-adapter` | `negotiateSessionConfig()` — same module as N5 | call | → N28 | → S15 |
 | N15 | P2 | `@acs/host-adapter` | `applyFailurePosture()` — same module as N6 | call | → S16, → N12 | — |
 | N16 | P2 | `@acs/host-adapter` | `validateDecision()` — same module as N7 | call | → N12, → N15 | — |
 | S2 | P2 | store | `opencode.hookmap.yaml` | — | — | → N11, N12 |
@@ -175,6 +187,8 @@ Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
 | N47 | P5 | conformance | `renderMatrix()` | call | → U30 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 
+**⚠️ Gap discovered in V1 — the Guardian's outbound envelopes are validated by nothing.** Inbound requests get Ajv against all 43 v0.1.0 schemas (N21), but responses are hand-built objects checked by no schema. The conformance harness would therefore measure a wire format that was never itself contract-checked — which quietly weakens exactly the claim C2 exists to prove. Add response validation before the matrix is published. Related: V1 found that `response-envelope.json`'s `result` unconditionally `$ref`s `AcsResult`, which requires `decision` — a ServerHello has no such field, so a handshake response cannot satisfy it. That looks like a genuine v0.1.0 spec gap (no discriminated union for non-decision methods) and is worth an upstream ACS issue, not just a red cell.
+
 **Expect two cells to be honestly red.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target — see D4. Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` in v0.2.
 
 R5.3 lands here: the matrix *is* the profile declaration.
@@ -204,9 +218,12 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 |---|------|-------|----------|
 | 1 | `updatedToolOutput` does not behave as documented | V4 | Confirm early (F1). V4 drops cleanly if it fails |
 | 2 | OpenCode plugin cannot express modify | V5 | Confirm early (F2). Falls back to deny-only, weakening but not breaking V5 |
-| 3 | `opa` CLI dependency raises setup friction | V1 | Cedar is the built-in fallback with a parity library — that is D7 |
+| 3 | ~~`opa` CLI dependency raises setup friction~~ | ~~V1~~ | ✅ **Retired.** The SDK ships OPA 0.70.0 in `agent-control-specification-opa-<platform>`. No external binary, so D7 closes as Rego |
 | 4 | Two model-call cells cannot go green on v0.1.0 | V7 | Ship red with a stated reason; drive `steps/modelCall` into v0.2 |
 | 5 | Upstream AGT breaks the contract mid-project | all | V8 exists for this, but lands late — consider pulling N45/N46 forward if upstream churn shows up during V1 |
+| 6 | ⚠️ A `./`-prefixed `bundle:` path silently disables policy — every decision becomes `allow`, with no error | V1 | `createBridge` throws on `/./`; V1's deny test is the backstop. Worth reporting upstream: a fail-open in a governance tool |
+| 7 | ⚠️ `enforced_identity` bisection is unavailable over AGT's Python binding | V7 | Resolved by embedding the **Node** SDK, which serializes `input_identity` and `enforced_identity` distinctly. Had we stayed on Python, R1.4 would be unverifiable and N43 impossible |
+| 8 | ⚠️ AGT's verdict carries no `rule_id` / `reason_codes` / `reasoning` | V1, V7 | `mapVerdict` synthesizes them from `reason` / `message`, and `mapping.yaml` is where that synthesis is declared — so V7 measures it rather than assuming it |
 
 ## Open decisions carried from shaping
 
@@ -216,4 +233,7 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | D3 | Hook coverage beyond AGT's eight | V7 scope |
 | D4 | Spec `steps/modelCall` for v0.2 as part of this work | V7 red cells |
 | D5 | Determinism of the demo | V1 onward |
-| D7 | Rego versus Cedar for the demo bundle | V1 |
+| ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
+| D8 | 🟡 Which `on_decision_failure` ships as default — V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6). Leaning to the spec default `proceed`, paired with U23's audit count | V3 |
+
+**Correction log.** V1 planning verified the AGT surface by running it rather than reading it, and produced ten corrections — the SDK choice, the `./` landmine, config-inside-the-bundle, the absent stock shell patterns, the leaf `policy_target`, AGT's missing `rule_id`/`reason_codes`/`reasoning`, lowercase wire decisions, `steps/toolCallRequest` and the 19-hook count, the retired `opa` setup cost, and the Python identity collapse. Each is recorded above at the row it governs, with its evidence, in `docs/superpowers/plans/2026-08-09-v1-one-host-one-hook.md`.

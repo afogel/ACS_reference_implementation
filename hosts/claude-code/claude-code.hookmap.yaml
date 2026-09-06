@@ -1,0 +1,84 @@
+# S1 -- the ONLY per-host artifact besides the hook shim (N1, Task 9).
+#
+# Pure data: maps Claude Code's own hook names and payload shape onto ACS
+# methods/arguments (the `hooks` block, read by buildEnvelope / N2), and
+# maps ACS decisions onto the output Claude Code reads back (the `decisions`
+# block, read by renderDecision / N3, Task 8).
+#
+# `tool_name` and `arguments` are JSONPath-lite references (`$.<field>`)
+# into the raw hook payload Claude Code delivers on stdin for this event --
+# see the real PreToolUse payload shape in the Task 7 brief.
+host: claude-code
+hooks:
+  PreToolUse:
+    acs_method: steps/toolCallRequest
+    tool_name: $.tool_name
+    arguments: $.tool_input
+# PR #10 review, Critical: the `decisions` block below is now where Claude
+# Code's output field names live, and they appear nowhere in the adapter.
+# Each entry declares an `output` block whose keys are dotted paths into the
+# JSON object this host writes on stdout, and whose values say where each
+# field's content comes from -- `value:` for a literal, `from:` for a field
+# of the arriving ACS decision (copied only when the decision carries it,
+# and only when it has the declared `type:`).
+#
+# The adapter assembles that object without knowing one name in it, which is
+# what makes slice V5's second host a shim and a hookmap rather than a fork
+# of the shared module. A host that nests its decision differently, or names
+# a field alongside the wrapper rather than inside it, or has no
+# permission-style field at all, writes different paths here and changes no
+# code.
+#
+# `hookEventName` is deliberately NOT declared here: it is not derived from
+# the decision, it is the name of the hook that asked, and acs-hook.ts adds
+# it as it wraps. Everything below is a function of the decision alone.
+#
+# `type: string` on every reason field is what keeps a Guardian that puts a
+# non-string in `reasoning` from producing an output Claude Code cannot read:
+# the field is left off instead, exactly as it is for a decision that carries
+# no reasoning at all. It is where the old `reason_from` rule's own
+# `typeof === "string"` check went, now declared rather than hardcoded.
+#
+# WHAT IS DELIBERATELY UNCHANGED HERE. `allow` and `modify` still name no
+# reason field, so an allow or a policy-ordered rewrite that carries
+# `reasoning` says nothing in the transcript a human reads, and `modify`
+# still hands `updatedInput` ACS's raw `modifications` object rather than a
+# tool input Claude Code can apply. Both are real gaps and both belong to the
+# slice that owns dispositions (V3, N27/N6/N7); this change moves where the
+# field names live and changes no rendering.
+# hosts/claude-code/test/wire-shape.test.ts pins every one of these outputs
+# as a literal, so whichever slice fixes them has to say so there.
+#
+# Fix wave finding 5: Claude Code's PreToolUse output only accepts
+# permissionDecision "allow" | "deny" | "ask" (see Claude Code's own hook
+# docs) -- there is no "defer" value on the wire, so a `defer` entry
+# declaring `permissionDecision: defer` was never a legal Claude Code
+# output. It was unreachable in V1 (no verdict in mapping.yaml produces an
+# ACS "defer" decision today) but would have broken the moment one did.
+# ACS's own defer-details.json defaults an unresolved defer's
+# `timeout_decision` to "deny", so `deny` is the spec-consistent fail-closed
+# choice for a host (like Claude Code) with no native defer/pending state --
+# NOT a considered posture, just the least-wrong mapping until a host that
+# can actually represent deferral exists. V3, which owns posture and
+# disposition decisions (N27, N6/N7), should treat this as a known gap
+# rather than rediscovering it.
+decisions:
+  allow:
+    output:
+      hookSpecificOutput.permissionDecision:       { value: allow }
+  deny:
+    output:
+      hookSpecificOutput.permissionDecision:       { value: deny }
+      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+  ask:
+    output:
+      hookSpecificOutput.permissionDecision:       { value: ask }
+      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+  defer:
+    output:
+      hookSpecificOutput.permissionDecision:       { value: deny }
+      hookSpecificOutput.permissionDecisionReason: { from: reasoning, type: string }
+  modify:
+    output:
+      hookSpecificOutput.permissionDecision:       { value: allow }
+      hookSpecificOutput.updatedInput:             { from: modifications }

@@ -1,0 +1,43 @@
+# Dependency updates for a repository whose decision path runs through third
+# party code: Ajv decides whether an ACS envelope is schema-valid, and AGT's
+# published policy library decides everything after that. A silent drift there
+# is a change in what this project allows.
+#
+# Ecosystem is `bun`, not `npm`. Dependabot separated the two: `bun` is its own
+# ecosystem, keyed on the text-based `bun.lock` (the legacy binary `bun.lockb`
+# is unsupported), requiring bun >= 1.1.39 — this repo uses 1.3.x and the
+# text-based lockfile. Pointing `npm` at this tree would read `package.json`,
+# find no npm or yarn lockfile, and open PRs that move a declared range while
+# leaving `bun.lock` behind — the two would then disagree about what is
+# installed, which is the exact failure the exact pins in
+# packages/guardian/package.json exist to prevent.
+#
+# One caveat worth knowing rather than discovering: Dependabot supports
+# *version* updates for bun but not *security* updates. A published CVE in Ajv
+# will not open its own PR here; it arrives with the ordinary weekly version
+# bump, or not at all.
+#
+# The github-actions entry is deliberately ahead of its subject: this
+# repository has no workflows yet (V8 adds the drift harness). It is a no-op
+# until then, and live the day the first workflow lands, which is better than
+# remembering to add it that day.
+version: 2
+updates:
+  - package-ecosystem: "bun"
+    # Listed explicitly rather than relying on workspace traversal from the
+    # root manifest. `bun.lock` is at the root, but the dependency that matters
+    # most — Ajv — is declared in packages/guardian, and `directories` (which,
+    # unlike `directory`, takes globs) covers both without assuming how
+    # Dependabot resolves a workspace.
+    directories:
+      - "/"
+      - "/packages/*"
+      - "/hosts/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

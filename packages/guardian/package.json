@@ -1,0 +1,13 @@
+{
+  "name": "guardian",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "agt-bridge": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

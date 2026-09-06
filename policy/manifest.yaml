@@ -1,0 +1,41 @@
+agent_control_specification_version: "0.3.1-beta"
+metadata:
+  name: "acs-reference-implementation"
+policies:
+  agt_stock:
+    type: rego
+    # Relative to this manifest's own directory (policy/), NOT the process
+    # cwd — confirmed empirically by tracing the opa subprocess AGT spawns.
+    # "policy/lib" here would join to ".../policy/policy/lib" and every
+    # evaluation would hard-fail with runtime_error:policy_invocation_failed
+    # (opa: no such file or directory) instead of allow/deny. No leading
+    # "./" either — see C2: OPA's bundle loader mis-derives the data mount
+    # path from a literal "/./ " segment and silently drops data.json.
+    bundle: lib
+    query: data.agt.defaults.verdict
+intervention_points:
+  pre_tool_call:
+    policy_target: "$.tool_call.args.command"
+    policy_target_kind: tool_args
+    tool_name_from: "$.tool_call.name"
+    policy:
+      id: agt_stock
+tools:
+  run_shell:
+    type: Tool
+    id: run_shell
+    security_labels: [shell]
+  # Task 8 addition: an unregistered tool_call.name fails AGT's own
+  # evaluation closed with a generic runtime_error:tool_unknown deny --
+  # discovered by Task 8's real host -> wire -> policy -> host test, which
+  # posts a real Claude Code PreToolUse envelope (tool.name "Bash", per
+  # Task 7's own fixture) through a live Guardian. "run_shell" above is
+  # AGT's own stock example name and stays for the existing bridge/guardian
+  # tests that fixture against it; "Bash" is Claude Code's actual tool name
+  # for shell execution and must be registered too for the real demo (Task
+  # 9) to evaluate real Claude Code payloads rather than fail closed on an
+  # unknown tool before the destructive-command pattern check ever runs.
+  Bash:
+    type: Tool
+    id: Bash
+    security_labels: [shell]

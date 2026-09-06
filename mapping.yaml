@@ -1,0 +1,72 @@
+# mapping.yaml — the ACS↔AGT translation table.
+#
+# This file is the single source of truth for how an AGT verdict becomes an
+# ACS decision. It is read by two consumers that must never disagree:
+#   1. The runtime (packages/guardian/src/map-verdict.ts), at decision time.
+#   2. The conformance harness (V7), which publishes a machine-checked
+#      ACS↔AGT mapping table from this same file.
+#
+# Any change to the verdict/field_synthesis tables below is a behavior
+# change for both consumers. mapVerdict must implement exactly this table —
+# no verdict names, decisions, or field derivations hardcoded in code that
+# aren't declared here.
+
+acs_version: "0.1.0"
+agt_version: "0.3.1-beta"
+
+# ACS intervention points AGT can be wired to. acs_method: null marks a
+# point AGT supports that ACS v0.1.0 has no equivalent for (D4).
+#
+# READ BY THE RUNTIME, not only by V7 (PR #10 review, Critical). The Guardian
+# resolves the AGT intervention point for an arriving ACS method out of this
+# table (map-verdict.ts's resolveInterventionPoint, called from server.ts) --
+# it used to hardcode "pre_tool_call" while this table sat here claiming to be
+# the mapping, so the two could disagree and nothing would fail. Changing a
+# row below now changes which policy actually evaluates that method, which is
+# the only condition under which V7's published matrix can be trusted.
+#
+# One method must map to at most one point: two rows naming the same
+# acs_method is a throw, not a first-match win.
+intervention_points:
+  pre_tool_call: { acs_method: "steps/toolCallRequest" }
+  post_tool_call: { acs_method: "steps/toolCallResult" }
+  agent_startup: { acs_method: "steps/sessionStart" }
+  agent_shutdown: { acs_method: "steps/sessionEnd" }
+  input: { acs_method: "steps/userMessage" }
+  output: { acs_method: "steps/agentResponse" }
+  pre_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
+  post_model_call: { acs_method: null, note: "no ACS v0.1.0 target — D4, V7 red cell" }
+
+# AGT decision -> ACS decision. decision values are lowercase on the wire
+# (C7). require_policy_references marks a verdict for which a non-empty
+# policy_references is load-bearing (R1.2): it is what distinguishes an
+# observe-only allow (AGT warn) from a clean allow (AGT allow).
+verdicts:
+  allow: { decision: allow }
+  deny: { decision: deny }
+  warn: { decision: allow, require_policy_references: true }
+  escalate: { decision: ask }
+  transform: { decision: modify }
+
+# AGT carries no rule_id / reason_codes / reasoning (C6) — its verdict is
+# just {decision, reason, message, transform?, evidence?, result_labels?},
+# where `reason` is a single low-cardinality string and `message` is the
+# human-facing text. ACS's richer fields are synthesized from those two.
+#
+# Each leaf is either:
+#   { source: "verdict.<field>" }              — copy the field verbatim
+#   { source: "verdict.<field>", wrap: array }  — wrap the field in a
+#                                                  single-element array
+#   { literal: <value> }                        — a fixed value, not read
+#                                                  from the verdict at all
+field_synthesis:
+  reasoning:
+    source: verdict.message
+  reason_codes:
+    source: verdict.reason
+    wrap: array
+  policy_references:
+    rule_id:
+      source: verdict.reason
+    policy_id:
+      literal: agt_stock
