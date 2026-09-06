@@ -20,7 +20,7 @@ import {
   SessionConfigNotStoredError,
 } from "../src/handshake.ts";
 import { renderDecision } from "../src/render-decision.ts";
-import { createSessionConfigStore } from "../src/session-config.ts";
+import { createMemorySessionConfigStore } from "../src/session-config.ts";
 
 const hookmap: Hookmap = loadHookmap("hosts/claude-code/claude-code.hookmap.yaml");
 
@@ -431,7 +431,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
     }
   });
 
-  // `await res.json()` sits INSIDE the try that maps a TimeoutError onto
+  // `await res.json()` sits inside the try that maps a TimeoutError onto
   // GuardianTimeoutError, so a Guardian whose headers beat the timeout while
   // its body does not is still classified as `timeout`, not
   // `error_without_decision`. §6.4 defines a decision failure by the
@@ -475,7 +475,7 @@ describe("GuardianClient.post — the negotiated timeout (§6.4)", () => {
 
 describe("negotiateSessionConfig", () => {
   it("sends handshake/hello and stores timeout_config and on_decision_failure into the session config store", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     expect(store.get()).toBeUndefined();
 
     const sessionConfig = await negotiateSessionConfig(
@@ -506,7 +506,7 @@ describe("negotiateSessionConfig", () => {
     });
 
     try {
-      const store = createSessionConfigStore();
+      const store = createMemorySessionConfigStore();
 
       await expect(
         negotiateSessionConfig(
@@ -527,14 +527,14 @@ describe("negotiateSessionConfig", () => {
 });
 
 // Storing an unusable ServerHello without checking it would be harmless for
-// READS -- `get()` re-validates, so a junk file returns undefined -- but the
+// reads -- `get()` re-validates, so a junk file returns undefined -- but the
 // consequence nothing would surface is that every `get()` afterwards returns
 // undefined, so every hook re-handshakes, forever, while the deployment runs
 // on the ACS default rather than the posture its Guardian keeps declaring.
 // Silently.
 describe("handshake — a ServerHello that is not a usable session config", () => {
   /** A stub answering `handshake/hello` with whatever `result` it is given. */
-  async function handshakeAgainst(result: unknown, store = createSessionConfigStore()) {
+  async function handshakeAgainst(result: unknown, store = createMemorySessionConfigStore()) {
     const server = Bun.serve({
       port: 0,
       async fetch(req) {
@@ -615,7 +615,7 @@ describe("handshake — the negotiated timeout (§6.4)", () => {
       },
     });
     try {
-      const store = createSessionConfigStore();
+      const store = createMemorySessionConfigStore();
       const url = `http://localhost:${server.port}/acs`;
       await expect(
         negotiateSessionConfig(
@@ -668,7 +668,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
     }
   }
 
-  function resolveVia(url: string, store: ReturnType<typeof createSessionConfigStore>) {
+  function resolveVia(url: string, store: ReturnType<typeof createMemorySessionConfigStore>) {
     return resolveSessionConfig(
       { guardian: createGuardianClient(url), agentId: "claude-code", sessionId: crypto.randomUUID() },
       store,
@@ -676,13 +676,13 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   }
 
   it("negotiates when the store is empty, and reports no failure", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await against(HELLO, (url) => resolveVia(url, store));
     expect(resolved).toEqual({ config: HELLO, failure: undefined });
   });
 
   it("does not negotiate at all when the store already holds a config", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     store.set(HELLO);
     // An unreachable Guardian, so a handshake attempt would surface as a
     // failure rather than passing silently.
@@ -691,7 +691,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   });
 
   // `set()` throws, `get()` stays undefined, and the posture the
-  // Guardian just declared has to reach THIS step anyway -- otherwise a
+  // Guardian just declared has to reach this step anyway -- otherwise a
   // deployment that asked to fail closed fails open on the very step whose
   // posture it negotiated, and does so on every hook, forever.
   it("applies a config it could not store to the step that negotiated it, and still reports the failure", async () => {
@@ -712,7 +712,7 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   // to this step either, and `config` must stay undefined so the ACS default
   // governs.
   it("reports an unusable ServerHello with no config to apply", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await against({ on_decision_failure: "maybe" }, (url) => resolveVia(url, store));
     expect(resolved.config).toBeUndefined();
     expect(resolved.failure).toBeInstanceOf(ServerHelloInvalidError);
@@ -721,11 +721,11 @@ describe("resolveSessionConfig — the session, as a message rather than a throw
   });
 
   it("answers rather than throwing when the Guardian was never reachable", async () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     const resolved = await resolveVia("http://127.0.0.1:1/acs", store);
     expect(resolved.config).toBeUndefined();
     expect(resolved.failure).toBeInstanceOf(Error);
-    // NOT a member of the not-stored family: nothing arrived, so nothing was
+    // Not a member of the not-stored family: nothing arrived, so nothing was
     // negotiated, and `classifySessionFailure` files it as `handshake_failed`.
     expect(resolved.failure).not.toBeInstanceOf(SessionConfigNotStoredError);
   });
@@ -739,6 +739,7 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
+      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
     ) as { hookSpecificOutput: Record<string, unknown> };
@@ -755,6 +756,7 @@ describe("host -> wire -> policy -> host, end to end", () => {
     expect(response.error).toBeUndefined();
 
     const { hookSpecificOutput } = renderDecision(
+      "PreToolUse",
       response.result as { decision: string } & Record<string, unknown>,
       hookmap,
     ) as { hookSpecificOutput: Record<string, unknown> };

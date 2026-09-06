@@ -210,12 +210,31 @@ export async function negotiateSessionConfig(
       request_id: requestId,
       timestamp: new Date().toISOString(),
       metadata: { agent_id: options.agentId, session_id: options.sessionId },
-      // ClientHello shape (handshake.json's $defs.ClientHello). Not schema-
-      // enforced on this method by the Guardian's own validateEnvelope
+      // ClientHello shape (handshake.json's $defs.ClientHello). Not
+      // schema-enforced on this method by the Guardian's own validateEnvelope
       // today, but supplied honestly rather than left empty.
+      //
+      // "Honestly" is the whole point of the field: this adapter builds both
+      // step envelopes -- `buildEnvelope` has a request-shaped and a
+      // result-shaped hookmap entry, and the shipped Claude Code hookmap maps
+      // a hook to each -- so this list has to name both methods.
+      // Under-declaring here is the direction that breaks the exchange rather
+      // than merely misdescribing it: handshake.json defines the Guardian's
+      // `methods_evaluated` as a "Subset of the client's methods_implemented",
+      // so a Guardian that does evaluate result envelopes could not say so
+      // without answering with a method this hello never offered.
+      //
+      // Deliberately a property of the adapter, not of one deployment's
+      // hookmap: it says what this client can produce envelopes for, which is
+      // what the field asks. A hookmap that maps fewer hooks emits fewer
+      // methods and declares no less -- the Guardian narrows, per the sentence
+      // above. What must never happen is a hookmap mapping a method this list
+      // omits, which is what
+      // test/handshake-declares-what-it-evaluates.test.ts checks against the
+      // shipped hookmap.
       payload: {
         acs_versions_supported: [ACS_VERSION],
-        methods_implemented: ["steps/toolCallRequest"],
+        methods_implemented: ["steps/toolCallRequest", "steps/toolCallResult"],
         transports_supported: ["http"],
         provenance_producer: "none",
       },

@@ -384,4 +384,52 @@ describe("renderAuditEntry", () => {
 
     expect(renderAuditEntry(base, { color: false }).split("\n")).toHaveLength(2);
   });
+
+  // The third outcome, and the two things that must NOT appear on its line:
+  // a posture (none was consulted -- printing this session's declared one
+  // would read as "the deployment chose to proceed") and a failure (nothing
+  // failed; the hookmap asked for the skip).
+  it("renders an ungoverned entry with the tool and the list that declined it, and no posture", () => {
+    const line = renderAuditEntry(
+      {
+        seq: 3,
+        recorded_at: "2026-08-10T12:00:02.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallResult",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "read", tools: ["bash"] },
+      },
+      { color: false },
+    );
+    expect(line).toContain("UNGOVERNED");
+    expect(line).toContain("steps/toolCallResult");
+    expect(line).toContain("ungoverned=read: not in this gate's tools [bash]");
+    expect(line).not.toContain("posture=");
+    expect(line).not.toContain("failure=");
+    // Header plus the one explanatory line, the same two-line shape a
+    // posture-resolved entry with no session failure renders as.
+    expect(line.split("\n")).toHaveLength(2);
+  });
+
+  // A gate whose entry declares no `tools` list never skips, so an empty list
+  // reaches this renderer only from a hand-built or corrupted line. `[]`
+  // would render as `[]` and read as a list that names nothing, which is
+  // true but says nothing; `(none)` says it out loud.
+  it("names an empty tools list rather than rendering an empty bracket", () => {
+    const line = renderAuditEntry(
+      {
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "s",
+        method: null,
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "read", tools: [] },
+      },
+      { color: false },
+    );
+    expect(line).toContain("[(none)]");
+    expect(line).toContain("(no method)");
+  });
 });

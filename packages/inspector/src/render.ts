@@ -2,9 +2,16 @@
  * This module renders four things: the envelope stream, the decision badge,
  * the posture badge, and the audit-entry line.
  *
- * Every function here is pure: no clock, no env, no process. The CLI decides
- * whether the terminal wants ANSI and passes `color`; tests assert exact
- * plain strings. Nothing here knows what produced a decision -- the decision
+ * Every renderer here is pure, and one function is not. No clock, no env, no
+ * process anywhere in this file; the CLI decides whether the terminal wants
+ * ANSI and passes `color`; tests assert exact plain strings. The exception is
+ * named rather than absorbed: `checkSessionChainLink` records each entry's
+ * `hash` into the `SessionChainState` its caller owns, because a chain check
+ * is a fold over a stream and has to remember what it last saw. It is a
+ * separate function from `renderSessionChainRow` because rendering must stay
+ * pure while the check itself cannot -- see its own doc comment for why.
+ *
+ * Nothing here knows what produced a decision -- the decision
  * badge reads ACS's own `decision`, `reason_codes`, and `policy_references`
  * fields and nothing else. The posture badge and the audit-entry line read
  * only the fields the audit log's AuditEntry declares.
@@ -25,6 +32,7 @@
  */
 import type { AuditEntry } from "./tail-audit-log.ts";
 import type { EnvelopeLogEntry } from "./tail-envelope-log.ts";
+import type { SessionContextLogEntry } from "./tail-session-context.ts";
 
 export type RenderOptions = { color?: boolean; indent?: number };
 
@@ -289,13 +297,21 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
 }
 
 /**
- * One audit-log line as a header plus the failure that produced it. Every
- * AuditEntry carries an `outcome`, and the two are rendered distinctly
+ * One audit-log line as a header plus the reason it was written. Every
+ * AuditEntry carries an `outcome`, and the three are rendered distinctly
  * (`PROCEEDED` in the same warning colour as the posture badge's non-zero
- * count, `BLOCKED` in the deny colour) for the same reason
- * renderDecisionBadge refuses to render a fired policy identically to a
- * clean allow: the outcome that bypassed a decision is the one line here
- * that must not read like an ordinary one.
+ * count, `BLOCKED` in the deny colour, `UNGOVERNED` in the warning colour
+ * too) for the same reason renderDecisionBadge refuses to render a fired
+ * policy identically to a clean allow: the outcome that bypassed a decision
+ * is the one line here that must not read like an ordinary one.
+ *
+ * `UNGOVERNED` shares `PROCEEDED`'s colour rather than getting a fourth,
+ * and that is the honest pairing: both are steps that ran with no decision.
+ * They are separate WORDS because how they got there differs entirely --
+ * one bypassed a decision the deployment wanted made, the other was never
+ * asked for because the deployment's own hookmap scoped the tool out -- and
+ * an incident review acts on that difference. It is not `BLOCKED`'s colour
+ * because nothing was blocked.
  *
  * The audit log records the host's own raw session identifier, not the
  * UUID derived from it that the envelope log's envelopes carry (see
@@ -306,8 +322,8 @@ export function renderPostureBadge(state: PostureBadgeState, options: RenderOpti
  */
 export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {}): string {
   const color = options.color ?? false;
-  const outcomeLabel = entry.outcome === "proceeded" ? "PROCEEDED" : "BLOCKED";
-  const outcomeColor = entry.outcome === "proceeded" ? YELLOW : RED;
+  const outcomeLabel = entry.outcome === "blocked" ? "BLOCKED" : entry.outcome === "proceeded" ? "PROCEEDED" : "UNGOVERNED";
+  const outcomeColor = entry.outcome === "blocked" ? RED : YELLOW;
   const id = entry.rpc_id === null ? "(unpaired)" : `id=${entry.rpc_id}`;
   // Same fallback renderEnvelopeLogEntry uses for a log line with no method,
   // and for the same reason: an entry written before any request could be built
@@ -315,12 +331,29 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
   // on.
   const method = entry.method ?? "(no method)";
 
+  // No `posture=` on an ungoverned line, because no posture was consulted --
+  // printing this session's declared one there would read as "the deployment
+  // chose to proceed", which is not what happened. The writer does not carry
+  // the field on that arm at all, so this is the type being honest rather
+  // than this renderer choosing to omit something it was given.
+  const postureField = entry.outcome === "ungoverned" ? "" : `posture=${entry.posture}/${entry.posture_source}  `;
   const header = paint(
     `── #${entry.seq}  ${clockOf(entry.recorded_at)}  ${outcomeLabel}  ${method}  ${id}  ` +
-      `posture=${entry.posture}/${entry.posture_source}  audit_session=${entry.session_id}`,
+      `${postureField}audit_session=${entry.session_id}`,
     outcomeColor,
     color,
   );
+
+  // The tool and the list that declined it, together: the drift this line
+  // exists to make visible is a `tools` list that stopped matching the names
+  // the host sends, and neither half shows it alone.
+  if (entry.outcome === "ungoverned") {
+    const declared = entry.ungoverned.tools.length === 0 ? "(none)" : entry.ungoverned.tools.join(", ");
+    return [header, paint(`ungoverned=${entry.ungoverned.tool}: not in this gate's tools [${declared}]`, DIM, color)].join(
+      "\n",
+    );
+  }
+
   const failureLine = paint(`failure=${entry.failure.kind}: ${entry.failure.message}`, DIM, color);
   // A second, separately labelled line rather than a merged one: the session's
   // configuration failing and this step's decision failing are different
@@ -332,4 +365,130 @@ export function renderAuditEntry(entry: AuditEntry, options: RenderOptions = {})
       : [paint(`session_failure=${entry.session_failure.kind}: ${entry.session_failure.message}`, DIM, color)];
 
   return [header, failureLine, ...sessionLine].join("\n");
+}
+
+/** How many leading characters of a `SessionContextLogEntry` hash
+ * `renderSessionChain` prints on a row -- an abbreviation for a human's eye,
+ * not the value a chain check compares. The check below always compares the
+ * two full 64-character hex digests; only the printed text is shortened. */
+const SHORT_HASH_LENGTH = 12;
+
+/**
+ * The per-session state a chain-break check needs: the `hash` of the last
+ * entry seen so far for each `session_id`. `renderSessionChain` builds one
+ * of these itself and throws it away when the whole array has been walked;
+ * a caller that renders one entry at a time as they arrive -- the
+ * Inspector's own live view in packages/inspector/src/main.ts -- keeps one
+ * of these across calls instead, so the check does not have to be re-run
+ * over the whole history on every new entry.
+ */
+export type SessionChainState = { lastHashSeenBySession: Map<string, string> };
+
+/** A fresh, empty `SessionChainState` -- no session has a last-seen hash yet. */
+export function createSessionChainState(): SessionChainState {
+  return { lastHashSeenBySession: new Map() };
+}
+
+/** What the check decided about one entry's link to its predecessor. */
+export type SessionChainLink = { broken: boolean };
+
+/**
+ * The chain check: the only place that decides whether a link is broken, and
+ * the only function in this module that writes anything. `renderSessionChain`
+ * calls it once per entry, in array order, against state it owns for the
+ * duration of that one call; `main.ts`'s live view calls it once per entry as
+ * it is tailed, against state it keeps for the life of the process -- so the
+ * two never compute whether a link is broken two different ways.
+ *
+ * It is kept separate from the renderer because it records as well as
+ * answers: it writes this entry's `hash` into `state` as the one the next
+ * entry for this session must link to. If that recording were folded into
+ * `renderSessionChainRow`, rendering would become a mutation, and rendering
+ * the same entry twice would report a chain break on the second call, because
+ * by then `state` would hold that entry's own `hash` and its `prev_hash`
+ * would no longer match.
+ *
+ * A link is broken when the entry's `prev_hash` does not match the `hash` of
+ * the entry seen immediately before it for the same `session_id` -- read out
+ * of `state`, not out of whatever entry came immediately before this one in
+ * some caller's array, because that entry can belong to a different session
+ * entirely (see tail-session-context.ts's module doc on one log holding many
+ * sessions). An entry that is the first one this `state` has seen for its
+ * session is never broken: there is nothing recorded yet to compare its
+ * `prev_hash` against.
+ *
+ * The whole reason this view exists is that the chain is checkable, not
+ * merely printable -- a row that read as unbroken regardless of whether it
+ * actually linked to its predecessor would be evidence that looks like
+ * evidence and is not.
+ *
+ * What this check is not, stated here because a reader is entitled to know
+ * its edge. It compares links -- this entry's `prev_hash` against the last
+ * `hash` seen for the session -- and never recomputes `hashEntry` over the
+ * entry in front of it, so an entry's contents are never checked against its
+ * own digest. Three edits therefore read as unbroken, each one measured
+ * against this function: a self-consistent rewrite (change a step field and
+ * leave `hash`/`prev_hash` alone -- the stored digest stops matching the
+ * entry, and nothing recomputes it), a trailing truncation (every surviving
+ * link still matches), and a deleted first entry (the next entry becomes the
+ * first this `state` has seen, and a first entry is never marked, because
+ * nothing here requires it to carry `GENESIS_HASH` or `seq` 1 -- the gap is
+ * visible in the printed `seq` but is not flagged). What is caught is a link
+ * that stopped matching: a clobbered `prev_hash`, or a dropped middle entry,
+ * both measured. So this detects corruption and edits that do not bother to
+ * re-link; it does not detect an adversary with write access to the log.
+ */
+export function checkSessionChainLink(
+  entry: SessionContextLogEntry,
+  state: SessionChainState,
+): SessionChainLink {
+  const priorHash = state.lastHashSeenBySession.get(entry.session_id);
+  const broken = priorHash !== undefined && priorHash !== entry.prev_hash;
+  state.lastHashSeenBySession.set(entry.session_id, entry.hash);
+  return { broken };
+}
+
+/**
+ * The Inspector's row: a pure rendering of an already-decided link. Call it
+ * twice with the same arguments and it returns the same string twice, which
+ * is what lets a caller re-render without re-checking.
+ *
+ * `session_id=` names the field it prints, deliberately not the bare
+ * `session=`. The audit log's `audit_session=` a few functions up is
+ * qualified because that value is the host's own raw session identifier and
+ * is not comparable to anything on the ACS wire; this one is
+ * `metadata.session_id`, the envelope's own. Two differently-scoped session
+ * identifiers stream past the same eye when `main.ts` tails both logs at once,
+ * and one of them printed as plain `session` would read as the canonical one.
+ */
+export function renderSessionChainRow(
+  entry: SessionContextLogEntry,
+  link: SessionChainLink,
+  options: RenderOptions = {},
+): string {
+  const color = options.color ?? false;
+  const row =
+    `#${entry.seq}  ${entry.tool_name}  hash=${entry.hash.slice(0, SHORT_HASH_LENGTH)}  ` +
+    `session_id=${entry.session_id}`;
+  return link.broken ? paint(`✖ CHAIN BREAK  ${row}`, RED, color) : row;
+}
+
+/**
+ * The Inspector's session-context view. One row per chain entry, in the
+ * order given -- the same order `tailSessionContextLog` yields them in,
+ * which is file order rather than any global ordering by `seq` (see that
+ * module's doc: one log interleaves every session the Guardian has seen).
+ * Each entry is checked by `checkSessionChainLink` against one
+ * `SessionChainState` shared across the whole walk and then rendered, so a
+ * chain break is decided the same way here as it is by a caller handling one
+ * entry at a time.
+ */
+export function renderSessionChain(entries: SessionContextLogEntry[], options: RenderOptions = {}): string {
+  if (entries.length === 0) {
+    return "(no session chain entries)";
+  }
+  const state = createSessionChainState();
+  return entries
+    .map((entry) => renderSessionChainRow(entry, checkSessionChainLink(entry, state), options))
+    .join("\n");
 }

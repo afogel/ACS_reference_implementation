@@ -58,9 +58,8 @@
  */
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 
-/** One line of the audit log, as written by the audit sink on the
- * posture-negotiating side of the wire. */
-export type AuditEntry = {
+/** What every audit line carries, whichever kind it is. */
+type AuditEntryIdentity = {
   seq: number;
   recorded_at: string;
   /** The writer's own session identifier -- a different value from the
@@ -71,6 +70,11 @@ export type AuditEntry = {
    * host's own event name: this reader knows ACS and nothing else. */
   method: string | null;
   rpc_id: string | number | null;
+};
+
+/** A step the writer's negotiated posture answered, because no decision
+ * arrived -- §6.4's own case. */
+type PostureResolvedAuditEntry = AuditEntryIdentity & {
   posture: "proceed" | "deny";
   posture_source: "negotiated" | "default";
   outcome: "proceeded" | "blocked";
@@ -80,6 +84,20 @@ export type AuditEntry = {
    * entry is filed against. */
   session_failure?: { kind: string; message: string };
 };
+
+/** A step no gate asked about: the writer's own hookmap scoped it out. No
+ * posture and no failure, because neither was ever reached -- see the
+ * writer's own `UngovernedAuditEntry` for why those are absent rather than
+ * defaulted. */
+type UngovernedAuditEntry = AuditEntryIdentity & {
+  outcome: "ungoverned";
+  ungoverned: { tool: string; tools: string[] };
+};
+
+/** One line of the audit log, as written by the audit sink on the
+ * posture-negotiating side of the wire. A union, because the two kinds of
+ * line share nothing but their identity fields; narrow on `outcome`. */
+export type AuditEntry = PostureResolvedAuditEntry | UngovernedAuditEntry;
 
 export type TailAuditLogOptions = {
   path: string;
@@ -112,12 +130,26 @@ function isAuditEntryShape(value: unknown): value is AuditEntry {
     return false;
   }
   const candidate = value as Record<string, unknown>;
+  if (
+    !(
+      typeof candidate.seq === "number" &&
+      typeof candidate.recorded_at === "string" &&
+      typeof candidate.session_id === "string" &&
+      (typeof candidate.method === "string" || candidate.method === null) &&
+      (typeof candidate.rpc_id === "string" || typeof candidate.rpc_id === "number" || candidate.rpc_id === null)
+    )
+  ) {
+    return false;
+  }
+  // Branched on the discriminant rather than checked as one flat conjunction
+  // of optionals: the two kinds of line have disjoint field sets, so a flat
+  // check that made every arm-specific field optional would accept a line
+  // carrying an `ungoverned` block beside a `posture` -- a shape no writer
+  // produces and this renderer has no line for.
+  if (candidate.outcome === "ungoverned") {
+    return isUngovernedShape(candidate.ungoverned);
+  }
   return (
-    typeof candidate.seq === "number" &&
-    typeof candidate.recorded_at === "string" &&
-    typeof candidate.session_id === "string" &&
-    (typeof candidate.method === "string" || candidate.method === null) &&
-    (typeof candidate.rpc_id === "string" || typeof candidate.rpc_id === "number" || candidate.rpc_id === null) &&
     (candidate.posture === "proceed" || candidate.posture === "deny") &&
     (candidate.posture_source === "negotiated" || candidate.posture_source === "default") &&
     (candidate.outcome === "proceeded" || candidate.outcome === "blocked") &&
@@ -125,6 +157,21 @@ function isAuditEntryShape(value: unknown): value is AuditEntry {
     // Optional, so absent is valid -- but a present one is checked as
     // strictly as the required one, because the renderer prints it.
     (candidate.session_failure === undefined || isFailureShape(candidate.session_failure))
+  );
+}
+
+/** The `tools` list is checked element by element: the renderer joins it, and
+ * a line whose list held a number would print `[object Object]`-grade noise
+ * in the one log an incident review reads. */
+function isUngovernedShape(value: unknown): value is { tool: string; tools: string[] } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.tool === "string" &&
+    Array.isArray(candidate.tools) &&
+    candidate.tools.every((tool) => typeof tool === "string")
   );
 }
 

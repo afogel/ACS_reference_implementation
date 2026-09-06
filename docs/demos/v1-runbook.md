@@ -42,14 +42,22 @@ Leave this running for the rest of the demo. `hosts/claude-code/acs-hook.ts` def
 
 ## Step 2 — wire the hook into Claude Code
 
-`hosts/claude-code/settings.json` registers the shim against `PreToolUse` for the `Bash` tool only (matching `policy/manifest.yaml`'s registered tools — this is the "one hook" of V1's name, not a general-purpose interception of every tool call). Install it as this repo's project-level Claude Code settings:
+`hosts/claude-code/settings.json` registers the shim for the `Bash` tool only (a tool `policy/manifest.yaml` registers — not a general-purpose interception of every tool call).
+
+**Both matchers are anchored — `^Bash$`, not `Bash` — and that is load-bearing rather than tidy.** `matcher` is a regular expression: Claude Code's own hook documentation writes alternations like `"Write|Edit"`, which is only meaningful as one. So *whether* a bare `Bash` would **also** select `BashOutput` and `KillShell`, the two background-shell tools, depends on matching semantics this project has not measured — the same hedge [`README.md`](../../README.md)'s own note on the anchor carries, and for the same reason. If it did select them, the exposure would sit at the result gate: neither answers with the `tool_response.stdout` that `claude-code.hookmap.yaml`'s `outputs.from` names, so no ACS request could be built for them, and the deployment's negotiated `on_decision_failure` would answer instead — an audited proceed under `proceed`, a block under `deny`. Every clause of that is conditional on the unmeasured behaviour, and the anchor is what keeps it conditional. An earlier version of this paragraph stated the `deny` half in the indicative — "a blocking stop on every background-shell call" — which is an operational consequence re-derived from host behaviour nobody has measured, and is the same over-claim `README.md` was corrected for once already. Anchoring removes the question rather than answering it: whatever Claude Code's matching semantics turn out to be, `^Bash$` selects exactly one tool, `Bash` — the only one of `policy/manifest.yaml`'s **three** registered tools that Claude Code ever names (`run_shell` is AGT's stock example name kept for the bridge and Guardian fixtures; `bash`, lowercase, is OpenCode's own real tool name, registered additively by V5 for the second host — see [`docs/demos/v5-runbook.md`](v5-runbook.md)). The `PreToolUse` entry is anchored for the same reason — it always had the same exposure, and V1 simply never fired a hook for a tool it could not build a request for.
+
+**When V1 shipped it registered `PreToolUse` alone**, which is the "one hook" of V1's name, and that is the half this runbook exercises. V4 added a `PostToolUse` entry beside it, against the same tool and the same command, so the result gate fires for a live agent too.
+
+Nothing in this runbook *exercises* that gate — the demo's deny is a `PreToolUse` decision, the command never runs, and a result gate has nothing to see. But one thing here does change because of it, and an earlier version of this paragraph wrongly said nothing did: **every allowed `Bash` call in a live session now asks the Guardian a second time**, with a `steps/toolCallResult` envelope carrying what the command produced. So Step 5's harmless `ls -la` is two exchanges rather than one, and an operator watching the Envelope Inspector alongside this demo sees four envelopes for it where V1 showed two. That is the second gate working; see Step 5.
+
+Install it as this repo's project-level Claude Code settings:
 
 ```bash
 mkdir -p .claude
 cp hosts/claude-code/settings.json .claude/settings.json
 ```
 
-(If you already have a `.claude/settings.json` here, merge the `hooks.PreToolUse` block in rather than overwriting.)
+(If you already have a `.claude/settings.json` here, merge the `hooks` blocks in rather than overwriting.)
 
 The registered command is:
 
@@ -84,6 +92,8 @@ This is `data.json`'s `destructive_shell_command_blocked` pattern rule, evaluate
 ## Step 5 — contrast with an allowed command
 
 Ask Claude Code to run something harmless with the Bash tool, e.g. `ls -la`. It runs normally with no interruption — the hook fired, the Guardian returned `allow`, and `renderDecision` rendered a plain allow with no reason attached (there is nothing to show, by design — an allow is not a warning).
+
+**What V4 added to this step, since the settings file now registers both gates:** the command runs, and then the `PostToolUse` hook fires and asks the Guardian a second question — `steps/toolCallResult`, carrying the command's own output. A clean `ls -la` comes back `allow` and the output is delivered exactly as the tool produced it, so the transcript looks identical to V1's; the difference is visible in the Envelope Inspector, where the one exchange is now two (four envelopes: a request and a decision before the command, a request and a decision after it). Redacting that output is V4's own demo, not this one.
 
 ## Verifying the pieces independently
 

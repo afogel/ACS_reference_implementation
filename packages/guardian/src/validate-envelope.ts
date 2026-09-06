@@ -2,15 +2,16 @@
  * validateEnvelope checks an incoming ACS request envelope against the
  * v0.1.0 JSON Schemas pinned in the spec/acs submodule
  * (spec/acs/specification/v0.1.0/request-envelope.json), and -- for
- * `steps/toolCallRequest` -- additionally against the hook-specific
- * payload schema (hooks/tool-call-request.json).
+ * `steps/toolCallRequest` and `steps/toolCallResult` -- additionally against
+ * that method's own hook payload schema (hooks/tool-call-request.json,
+ * hooks/tool-call-result.json).
  *
  * It returns an `AcsRequestEnvelope`: a request of ANY method, named the
  * same thing the host's own builder names it
- * (packages/host-adapter/src/build-envelope.ts). Narrowing to the tool-call
- * view is a separate, explicit step (`isToolCallRequest`), so a method this
- * module validated only generically can never be read as one whose
- * hook-specific payload was checked.
+ * (packages/host-adapter/src/build-envelope.ts). Narrowing to a hook-specific
+ * view is a separate, explicit step (`isToolCallRequest`,
+ * `isToolCallResult`), so a method this module validated only generically can
+ * never be read as one whose hook-specific payload was checked.
  *
  * Failure is a thrown, typed EnvelopeValidationError -- never a returned
  * decision. The Guardian server is the caller, and it is responsible for
@@ -25,6 +26,16 @@ import type { ErrorObject, ValidateFunction } from "ajv";
 
 /** An ACS argument wrapper: `{value, provenance?}`. */
 export type AcsArgument = { value: unknown; provenance?: unknown };
+
+/**
+ * An ACS output wrapper: `{value, provenance?}` too, per
+ * hooks/tool-call-result.json's `outputs` items. Structurally identical to
+ * `AcsArgument` and deliberately a separate name, the same choice the host's
+ * builder makes (packages/host-adapter/src/build-envelope.ts): what a step was
+ * asked to do and what it produced are different things, and one alias for
+ * both would read as if the request and result payloads shared a member.
+ */
+export type AcsOutput = { value: unknown; provenance?: unknown };
 
 /** request-envelope.json's Metadata $def -- method-independent. */
 export type AcsRequestMetadata = {
@@ -112,6 +123,41 @@ export type ToolCallRequestEnvelope = Omit<AcsRequestEnvelope, "method" | "param
 };
 
 /**
+ * hooks/tool-call-result.json's payload shape -- the result gate's own ACS
+ * method. That schema requires exactly `tool`, `exit_status` and `outputs`: a
+ * different member set from the request payload, not the request payload
+ * plus extras. There is no `arguments` here and none is invented -- the wire
+ * cannot supply them at this step, and correlation back to the originating
+ * request runs through the optional `request_id_ref`, not through carrying
+ * state forward.
+ */
+export type ToolCallResultPayload = {
+  tool: { name: string; version?: string; provider?: string };
+  operation?: string;
+  request_id_ref?: string;
+  exit_status: "success" | "failure" | "timeout" | "blocked";
+  outputs: AcsOutput[];
+  duration_ms?: number;
+};
+
+/**
+ * The result-gate view of an `AcsRequestEnvelope`, and the sibling of
+ * `ToolCallRequestEnvelope` above rather than a widening of it: same envelope,
+ * with `method` pinned to the one method whose payload has actually been
+ * validated against hooks/tool-call-result.json, and `payload` narrowed to
+ * that schema's shape.
+ *
+ * Reachable only through `isToolCallResult`, for the same reason its twin is
+ * reachable only through `isToolCallRequest`, and spelled with the same `Omit`
+ * rather than an intersection so `params.payload` is exactly
+ * `ToolCallResultPayload` and a typo is an error rather than `unknown`.
+ */
+export type ToolCallResultEnvelope = Omit<AcsRequestEnvelope, "method" | "params"> & {
+  method: typeof TOOL_CALL_RESULT_METHOD;
+  params: Omit<AcsRequestParams, "payload"> & { payload: ToolCallResultPayload };
+};
+
+/**
  * Thrown when an envelope fails schema validation. `pointer` is the JSON
  * pointer, relative to the envelope root, of the first failing location, so
  * that a human -- or the server's JSON-RPC error mapping -- can find the
@@ -137,6 +183,8 @@ const SCHEMA_ROOT = fileURLToPath(new URL("../../../spec/acs/specification/v0.1.
 const REQUEST_ENVELOPE_SCHEMA_ID = "https://acs.org/schema/v0.1.0/request-envelope.json";
 const TOOL_CALL_REQUEST_SCHEMA_ID = "https://acs.org/schema/v0.1.0/hooks/tool-call-request.json";
 const TOOL_CALL_REQUEST_METHOD = "steps/toolCallRequest";
+const TOOL_CALL_RESULT_SCHEMA_ID = "https://acs.org/schema/v0.1.0/hooks/tool-call-result.json";
+const TOOL_CALL_RESULT_METHOD = "steps/toolCallResult";
 
 function listSchemaFiles(dir: string): string[] {
   const out: string[] = [];
@@ -167,7 +215,7 @@ function listSchemaFiles(dir: string): string[] {
  * mode would otherwise reject them as unknown. Nothing else needed disabling.
  */
 function buildAjv() {
-  const ajv = new Ajv2020({ strict: true, allErrors: true });
+  const ajv = new Ajv2020({ strict: true, allErrors: true, strictRequired: false, allowUnionTypes: true });
   addFormats(ajv);
   for (const file of listSchemaFiles(SCHEMA_ROOT)) {
     const schema = JSON.parse(readFileSync(file, "utf8")) as { $id?: string };
@@ -180,7 +228,17 @@ function buildAjv() {
 
 let ajv: ReturnType<typeof buildAjv> | undefined;
 
-function getValidator(schemaId: string): ValidateFunction {
+/**
+ * Exported so validate-response.ts, this module's outbound twin, can look up
+ * response-envelope.json's validator through the same lazily-built Ajv
+ * instance this module builds for the inbound side, rather than
+ * constructing a second registry that loads the same 43 schema files from
+ * the same SCHEMA_ROOT a second time. Sharing the instance, not just the
+ * construction code, is what makes "the two validators cannot come to
+ * disagree about which spec they check against" true by construction
+ * instead of by two call sites happening to stay in sync.
+ */
+export function getValidator(schemaId: string): ValidateFunction {
   if (!ajv) {
     ajv = buildAjv();
   }
@@ -208,12 +266,28 @@ function toValidationError(errors: ErrorObject[] | null | undefined, prefix: str
   return new EnvelopeValidationError(`${prefix}${firstPointer}`, list);
 }
 
+/** Validates `params.payload` against one hook payload schema, reporting a
+ * failure against the payload's own JSON pointer. One helper, so the two
+ * methods below cannot come to check their payloads differently. */
+function checkHookPayload(envelope: AcsRequestEnvelope, schemaId: string): void {
+  const validatePayload = getValidator(schemaId);
+  if (!validatePayload(envelope.params.payload)) {
+    throw toValidationError(validatePayload.errors, "/params/payload");
+  }
+}
+
 /**
- * Validates an incoming envelope against request-envelope.json, and --
- * only when `method` is `steps/toolCallRequest` -- additionally validates
- * `params.payload` against hooks/tool-call-request.json. Returns the
- * envelope, typed, on success. Throws EnvelopeValidationError on any
- * failure; never returns a decision.
+ * Validates an incoming envelope against request-envelope.json, and -- only
+ * when `method` is `steps/toolCallRequest` or `steps/toolCallResult` --
+ * additionally validates `params.payload` against that method's own hook
+ * schema. Returns the envelope, typed, on success. Throws
+ * EnvelopeValidationError on any failure; never returns a decision.
+ *
+ * Two explicit method checks rather than one table lookup, and each paired
+ * with the predicate below that stands for it: what makes the narrow types
+ * trustworthy is that the condition under which a payload gets checked and the
+ * condition under which it may be read are the same condition, written once
+ * per method, in this file.
  */
 export function validateEnvelope(input: unknown): AcsRequestEnvelope {
   const validateTopLevel = getValidator(REQUEST_ENVELOPE_SCHEMA_ID);
@@ -224,10 +298,9 @@ export function validateEnvelope(input: unknown): AcsRequestEnvelope {
   const envelope = input as AcsRequestEnvelope;
 
   if (envelope.method === TOOL_CALL_REQUEST_METHOD) {
-    const validatePayload = getValidator(TOOL_CALL_REQUEST_SCHEMA_ID);
-    if (!validatePayload(envelope.params.payload)) {
-      throw toValidationError(validatePayload.errors, "/params/payload");
-    }
+    checkHookPayload(envelope, TOOL_CALL_REQUEST_SCHEMA_ID);
+  } else if (envelope.method === TOOL_CALL_RESULT_METHOD) {
+    checkHookPayload(envelope, TOOL_CALL_RESULT_SCHEMA_ID);
   }
 
   return envelope;
@@ -248,4 +321,20 @@ export function validateEnvelope(input: unknown): AcsRequestEnvelope {
  */
 export function isToolCallRequest(envelope: AcsRequestEnvelope): envelope is ToolCallRequestEnvelope {
   return envelope.method === TOOL_CALL_REQUEST_METHOD;
+}
+
+/**
+ * The second ACS method's own predicate, and the sibling of
+ * `isToolCallRequest` above: same shape, its own method, its own narrow type.
+ *
+ * One predicate per hook payload, never one predicate answering for two
+ * methods. Each of these two stands for a different payload schema and admits
+ * a different narrow type, and the caller that dispatches on them
+ * (packages/guardian/src/server.ts) turns each answer into a different
+ * assembler. A single predicate covering both would make the wrong assembler
+ * reachable for a payload whose members it does not have -- read as a
+ * governance failure at the far end rather than as the merge it was.
+ */
+export function isToolCallResult(envelope: AcsRequestEnvelope): envelope is ToolCallResultEnvelope {
+  return envelope.method === TOOL_CALL_RESULT_METHOD;
 }

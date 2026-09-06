@@ -4,9 +4,19 @@
  * project's own choice -- so dispatch inside the handler is by the JSON-RPC
  * `method` field, never by URL path.
  *
- * The sequence for `steps/toolCallRequest` is: validateEnvelope ->
- * assemblePreToolCallSnapshot -> bridge.evaluate at the intervention point
- * resolveInterventionPoint picked -> mapVerdict -> response envelope.
+ * Composes the full pipeline, in order, for each ACS method it assembles a
+ * snapshot for -- `steps/toolCallRequest` and `steps/toolCallResult`:
+ *   validateEnvelope -> resolveInterventionPoint(method, mapping) ->
+ *   resolvePolicyTargetArgument(mapping, point, tool.name) ->
+ *   assemblePreToolCallSnapshot / assemblePostToolCallSnapshot ->
+ *   bridge.evaluate(point, snapshot) ->
+ *   mapVerdict(verdict, mapping, point, policyTargetArgument) -> response envelope.
+ * The resolved point reaches mapVerdict because the ACS modification an AGT
+ * transform becomes differs per gate: a tool argument override at the
+ * request gate, a redaction on the result payload at the result gate. The
+ * resolved argument reaches both the assembler and mapVerdict for the same
+ * reason: it is the argument a policy target is read FROM and the argument an
+ * override is written TO, and asking twice would let the two answers differ.
  *
  * Every throw on this path is caught, in two places, because nothing may
  * escape the fetch handler. Bun.serve would answer an unhandled rejection with
@@ -18,24 +28,25 @@
  * a fail-open in a governance tool.
  *
  * The two catches are:
- *   - Inside `dispatch`, around assemblePreToolCallSnapshot, bridge.evaluate
- *     and mapVerdict: the evaluation itself.
- *   - Around the whole `dispatch` call in `handleAcsRequest`, as the outer
+ *   - Inside `evaluateStep` (reached from `dispatch`, once per assembling
+ *     gate), around the assembler / bridge.evaluate / mapVerdict -- the
+ *     evaluation itself.
+ *   - Around the whole `dispatch` call in `handleAcsRequest` -- the outer
  *     net. `dispatch` rethrows anything that is not an
  *     EnvelopeValidationError, and that rethrow is live: validateEnvelope
  *     builds its Ajv registry lazily, on the first request rather than at
  *     boot, so a tree cloned without `--recurse-submodules` starts cleanly
- *     and then turns every request into an HTML 500. The outer net also
- *     writes the failure response through the same envelope-log call as any
- *     other response.
+ *     and then turns every request into an HTML 500. The outer net puts that
+ *     failure response back on the recorded path too, so the envelope log
+ *     holds a line for it like any other response.
  *
- * Two DIFFERENT catches inside `dispatch` -- the evaluation catch above and
- * dispatch's own EnvelopeValidationError catch, around `validateEnvelope` --
- * turn a steps/* failure into an honoured ACS `deny` decision via
+ * Two distinct catches on the dispatch path -- the evaluation catch above
+ * and dispatch's own EnvelopeValidationError catch, around `validateEnvelope`
+ * -- turn a steps/* failure into an honoured ACS `deny` decision via
  * denyOnInvalidEnvelope: see the module comment on `dispatch` below. The
  * outer net here is deliberately left untouched: it exists for a `dispatch`
- * rethrow -- a bug in the Guardian itself (e.g. a missing schema directory),
- * not an invalid envelope -- so it stays a bare JSON-RPC error.
+ * rethrow -- a bug in the Guardian itself, such as a missing schema
+ * directory, not an invalid envelope -- so it stays a bare JSON-RPC error.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -52,24 +63,47 @@
  * -- a Guardian in its own container, say -- opts in explicitly through the
  * `hostname` option (main.ts reads ACS_GUARDIAN_HOST for it).
  */
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createBridge, type Annotator, type PolicyBridge } from "agt-bridge";
-import { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
+import type { Annotator, PolicyBridge } from "agt-bridge";
+import { createDeploymentBridge } from "./deployment-bridge.ts";
+import {
+  assemblePostToolCallSnapshot,
+  assemblePreToolCallSnapshot,
+  type AgtPostToolCallSnapshot,
+  type AgtPreToolCallSnapshot,
+} from "./assemble-snapshot.ts";
 import { finalResult, type AcsFinalResult } from "./acs-result.ts";
 import { denyOnInvalidEnvelope, type DenyOnInvalidEnvelopeResult } from "./deny-on-invalid-envelope.ts";
-import { loadMapping, mapVerdict, resolveInterventionPoint, type Mapping } from "./map-verdict.ts";
+import {
+  loadMapping,
+  mapVerdict,
+  resolveInterventionPoint,
+  resolvePolicyTargetArgument,
+  type Mapping,
+} from "./map-verdict.ts";
 import {
   EnvelopeValidationError,
   isToolCallRequest,
+  isToolCallResult,
   validateEnvelope,
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
+import { checkResponse } from "./check-response.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
 import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
+import {
+  appendContextEntry,
+  createMemorySessionContextStore,
+  type IfcLabels,
+  type SessionContextStore,
+} from "./session-context-store.ts";
+import { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";
 
 /**
- * Every snapshot message this Guardian can send an intervention point. One
- * member today; each gate this Guardian learns to assemble adds its own
+ * Every snapshot message this Guardian can send an intervention point -- one
+ * per gate. Each gate this Guardian assembles a snapshot for adds its own
  * point-specific type here.
  *
  * Declared so the bridge seam carries the message rather than erasing it.
@@ -77,7 +111,7 @@ import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } f
  * is what this holder sends, so the `bridge.evaluate` calls below are checked
  * against the assemblers' own output types instead of against any object at all.
  */
-type GuardianSnapshot = AgtPreToolCallSnapshot;
+export type GuardianSnapshot = AgtPreToolCallSnapshot | AgtPostToolCallSnapshot;
 
 const MAPPING_PATH = fileURLToPath(new URL("../../../mapping.yaml", import.meta.url));
 
@@ -170,7 +204,13 @@ export function toRepoRelativeMessage(error: unknown): string {
  * -32000..-32099.
  */
 const ENVELOPE_INVALID_CODE = -32010;
-const METHOD_NOT_DISPATCHED_CODE = -32011;
+/**
+ * Exported, unlike its two neighbours, because the conformance harness posts
+ * a dispatch probe and has to recognise this Guardian's own answer to it. A
+ * copy of the literal over there would be measuring the Guardian against a
+ * number the Guardian could also be wrong about.
+ */
+export const METHOD_NOT_DISPATCHED_CODE = -32011;
 /** Any throw the Guardian did not turn into a response itself: mapVerdict's
  * own require_policy_references check, an AGT runtime error, or -- through
  * handleAcsRequest's outer net -- a failure to even build the schema registry.
@@ -239,15 +279,111 @@ export type StartGuardianOptions = {
    * argument and reads the actual environment, exactly as
    * `packages/guardian/src/main.ts` needs it to. */
   onDecisionFailure?: "proceed" | "deny";
-  /** A host-supplied annotator, threaded straight to `createBridge` (which
-   * wraps it before handing it to AGT). Optional and off by default: the
-   * main manifest (`policy/manifest.yaml`) declares no annotator, so a
-   * Guardian that omits this option behaves exactly as it did before this
-   * option existed -- see `policy/manifest.drift.yaml` and its own header
-   * for the one manifest that does declare one. */
+  /** Overrides the annotator this Guardian dispatches, replacing the built-in
+   * one entirely.
+   *
+   * Omitting this no longer means "no annotator" -- it means the built-in
+   * `dispatchGuardianAnnotator` (`./deployment-bridge.ts`).
+   * `policy/manifest.yaml` declares an `egress` annotator, and a declared
+   * annotator the bridge dispatches nothing for denies EVERY call with
+   * runtime_error:annotation_failed, measured, benign calls included. So the
+   * dispatcher is never absent, and this option chooses which one rather than
+   * whether.
+   *
+   * The caller that supplies its own is the drift demo: it runs against
+   * `policy/manifest.drift.yaml`, whose declared annotator is `drift_score`
+   * rather than `egress`, and stands a fixed-score stub in for the
+   * behaviour-drift detector AGT's design puts outside the policy engine. Its
+   * code block lives in `docs/demos/v3-runbook.md` rather than in this tree --
+   * a JS callback cannot cross an environment variable, so the `bun run
+   * guardian` CLI cannot take one. `packages/guardian/test/server.test.ts`
+   * exercises that manifest through this option. */
   annotator?: Annotator;
+  /** Overrides the bridge this Guardian evaluates snapshots against,
+   * bypassing `createBridge(manifestPath, ...)` entirely -- and, with it,
+   * `manifestPath` and `annotator`: both are silently unused whenever
+   * `bridge` is supplied, since `createBridge` is never called. Exists so a
+   * test can see exactly which snapshot reached evaluation and choose the
+   * `result_labels` that come back. The real bridge supplies neither. It does
+   * produce `result_labels` -- `policy/lib/data.json` sets
+   * `config.ifc.sink_clearance`, and test/redaction.test.ts measures a real
+   * bridge answering `{decision: "allow", result_labels: ["public"]}` -- but
+   * AGT propagates the labels it is handed and originates none, so a test
+   * driving it could only ever show `public -> public`, and it hands back a
+   * verdict rather than the snapshot it was given. Not meant for production
+   * use. */
+  bridge?: PolicyBridge<GuardianSnapshot>;
+  /**
+   * Where the session-context chain is appended for the Inspector's
+   * session-context view to tail. Defaults to no file: the store is
+   * authoritative, and the JSONL is a projection for the Inspector, the same
+   * relationship envelopeLogPath has to the envelopes it records. Ignored
+   * when `sessionContextStore` is also supplied -- the override store owns
+   * its own persistence, and this Guardian does not retrofit a projection
+   * onto a store it did not construct; see that option's own doc comment.
+   */
+  sessionContextLog?: string;
+  /**
+   * The store itself, for tests and for a deployment that wants to own it.
+   * Omitted means a fresh in-memory one per Guardian. Takes precedence over
+   * `sessionContextLog` when both are supplied.
+   */
+  sessionContextStore?: SessionContextStore;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
+
+/**
+ * A total-by-construction `appendLine` for the session-context chain's
+ * optional JSONL projection -- shaped like `createEnvelopeLogSink`'s own
+ * write path (envelope-log-sink.ts: mkdirSync guarded once at construction,
+ * every write wrapped, disabled and reported once rather than thrown after
+ * the first failure), but not a call into that function.
+ * `EnvelopeLogSink.write(direction, envelope, method)` builds its own
+ * `EnvelopeLogEntry` (seq, recorded_at, direction, method, rpc_id, envelope)
+ * around whatever it is handed; `SessionContextStore`'s `appendLine`
+ * contract is one already-serialized JSON line with no wrapping object at
+ * all (`session-context-store.ts`: "Called once per appended entry with its
+ * JSON line, no trailing newline"). Routing the chain's lines through
+ * `createEnvelopeLogSink` would nest every session-context entry inside an
+ * unrelated `EnvelopeLogEntry` -- `direction: "request"` on a chain entry is
+ * meaningless, and the JSONL shape `test/session-context-roundtrip.test.ts`
+ * pins (`{session_id, seq, request_id, ...}` at the line's own top level)
+ * would break. The failure behaviour is duplicated because the invariant it
+ * upholds is the same one envelope-log-sink.ts states for the envelope log:
+ * a projection write must never be able to turn a governed tool call into a
+ * denied one.
+ */
+function createSessionContextLogAppender(path: string): (line: string) => void {
+  let disabled = false;
+
+  const fail = (error: unknown): void => {
+    disabled = true;
+    try {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`session context log disabled after failure (${path}): ${message}`);
+    } catch {
+      // Silently swallow any error from console.error, matching
+      // envelope-log-sink.ts's own guard -- total means total.
+    }
+  };
+
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+  } catch (error) {
+    fail(error);
+  }
+
+  return (line: string): void => {
+    if (disabled) {
+      return;
+    }
+    try {
+      appendFileSync(path, `${line}\n`);
+    } catch (error) {
+      fail(error);
+    }
+  };
+}
 
 export async function startGuardian({
   port,
@@ -257,11 +393,31 @@ export async function startGuardian({
   envelopeLogPath,
   onDecisionFailure,
   annotator,
+  bridge: bridgeOverride,
+  sessionContextLog,
+  sessionContextStore: sessionContextStoreOverride,
 }: StartGuardianOptions): Promise<StartedGuardian> {
-  // Construct the bridge once at boot, not per request.
-  const bridge = createBridge(manifestPath, annotator ? { annotator } : undefined);
+  // Construct the bridge once at boot, not per request -- and through the
+  // shared recipe rather than assembling one here, so this Guardian and every
+  // other caller that evaluates this deployment's manifest get the identical
+  // bridge. `createDeploymentBridge` is where "the annotator is never absent"
+  // actually lives; see its own module.
+  const bridge = bridgeOverride ?? createDeploymentBridge(manifestPath, annotator);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
   const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
+  // The session-context store is always the in-memory one, or the caller's
+  // own override -- sessionContextLog never becomes an alternative backing
+  // store, only a JSONL projection of whichever store is in use, the same
+  // relationship envelopeLogPath has to the envelope log. The `??` below
+  // means the projection is wired up (and its directory created) only in
+  // the branch that actually constructs the default store -- an override in
+  // sessionContextStore short-circuits past both, per that option's own doc
+  // comment.
+  const sessionContextStore =
+    sessionContextStoreOverride ??
+    createMemorySessionContextStore(
+      sessionContextLog ? { appendLine: createSessionContextLogAppender(sessionContextLog) } : {},
+    );
 
   const server = Bun.serve({
     hostname: hostname ?? LOOPBACK_ONLY,
@@ -271,7 +427,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog, onDecisionFailure, sessionContextStore);
       return Response.json(response);
     },
   });
@@ -286,13 +442,16 @@ export async function startGuardian({
 
 /**
  * Four phases, in order: read the body under a cap, parse, record the
- * request, dispatch, record the response. The envelope-log writes live here
- * and only here -- `dispatch` below leaves by eight routes (seven `return`s
- * and one rethrow), since each of dispatch's two catches (its
- * EnvelopeValidationError catch and its evaluation catch) can produce either
- * a deny-decision response or a bare-error response. Writing to the envelope
- * log inside `dispatch` would make totality something a future change has to
- * remember rather than something the structure guarantees.
+ * request, dispatch, record the response. The cap refuses ahead of the parse,
+ * so an oversize body is a refusal the host fails closed on rather than a
+ * parse failure it would read as a delivery accident. The envelope-log writes
+ * live here and only here. `dispatch` below leaves by seven routes: six
+ * `return`s and one rethrow. Two of those returns hand off to `evaluateStep`,
+ * which itself leaves by three routes (a decision, an honoured deny, or a
+ * bare error). Writing to the envelope log inside `dispatch` or
+ * `evaluateStep` would make covering every route something a future change
+ * has to remember, rather than something this
+ * structure guarantees.
  *
  * That guarantee only holds if every route out of `dispatch` is covered,
  * including the one that throws: the try/catch below ensures every route
@@ -318,7 +477,8 @@ async function handleAcsRequest(
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
   envelopeLog: EnvelopeLogSink,
-  onDecisionFailure?: "proceed" | "deny",
+  onDecisionFailure: "proceed" | "deny" | undefined,
+  sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const body = await readCappedBody(req);
   if (body.withinLimit === false) {
@@ -359,7 +519,7 @@ async function handleAcsRequest(
 
   let response: JsonRpcSuccess | JsonRpcFailure;
   try {
-    response = await dispatch(raw, bridge, mapping, onDecisionFailure);
+    response = await dispatch(raw, bridge, mapping, onDecisionFailure, sessionContextStore);
   } catch (error) {
     // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`:
     // this route is `dispatch` rethrowing entirely past denyOnInvalidEnvelope
@@ -371,6 +531,40 @@ async function handleAcsRequest(
     const message = toRepoRelativeMessage(error);
     response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
   }
+
+  const responseCheck = checkResponse(response);
+  try {
+    // Reported, not thrown, and the response is sent unchanged either way:
+    // see check-response.ts. This is the outbound counterpart to
+    // validateEnvelope's inbound checking, and it must not be able to turn a
+    // governed step into an ungoverned one.
+    //
+    // One line per status, because they are different findings. Reporting
+    // "unchecked" as a schema failure -- which is what the old boolean did --
+    // sent an operator hunting a violation that was never observed, when the
+    // real fault is a deployment whose schema registry will not build.
+    if (responseCheck.status === "checked_invalid") {
+      console.error(
+        `guardian sent a response that fails response-envelope.json at ${responseCheck.pointer}: ${responseCheck.message}`,
+      );
+    } else if (responseCheck.status === "unchecked") {
+      console.error(
+        `guardian sent a response for method ${method} without checking it against response-envelope.json: ${responseCheck.reason}`,
+      );
+    } else if (responseCheck.status === "unexpressible") {
+      // Recorded, not silently dropped -- v0.1.0 has no schema this method's
+      // response could satisfy (see check-response.ts), which is not the
+      // same fact as either line above and gets its own.
+      console.error(`guardian sent a response for method ${method} that v0.1.0 cannot express: ${responseCheck.reason}`);
+    }
+  } catch {
+    // A reporting failure (an EPIPE on stderr, say) must not be able to
+    // throw out of handleAcsRequest with nothing above it to catch it --
+    // matching envelope-log-sink.ts / createSessionContextLogAppender's own
+    // guard: total means total, including the reporter that exists only to
+    // report a different total component's own finding.
+  }
+
   envelopeLog.write("response", response, method);
   return response;
 }
@@ -469,9 +663,10 @@ async function readCappedBody(req: Request): Promise<CappedBody> {
 
 async function dispatch(
   raw: unknown,
-  bridge: ReturnType<typeof createBridge>,
+  bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
-  onDecisionFailure?: "proceed" | "deny",
+  onDecisionFailure: "proceed" | "deny" | undefined,
+  sessionContextStore: SessionContextStore,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
@@ -506,41 +701,33 @@ async function dispatch(
     return successResponse(envelope.id, buildServerHello(env));
   }
 
-  // `isToolCallRequest`, not a method comparison spelled out again here: the
-  // predicate lives beside the payload check it stands for
-  // (validate-envelope.ts), so this branch cannot come to disagree with the
-  // module that decided whether `params.payload` was validated as a tool
-  // call. It also narrows the envelope, which is what lets assemblePreToolCallSnapshot
-  // take the tool-call view rather than any request at all.
+  // Two gated branches, one per ACS method this Guardian assembles a snapshot
+  // for -- and gated by a PREDICATE each, never by `envelope.method` spelled
+  // out again here and never by the resolved intervention point. Both halves of
+  // that matter:
+  //
+  //   - Each predicate lives beside the payload check it stands for
+  //     (validate-envelope.ts), so a branch cannot come to disagree with the
+  //     module that decided whether `params.payload` was validated against that
+  //     method's hook schema. Each also narrows the envelope, which is what
+  //     lets its assembler take one method's view rather than any request at
+  //     all: the two snapshots share no member but `envelope.budgets`, so
+  //     there is no one assembler for both and no union type to hand around.
+  //
+  //   - A branch keyed on the resolved point instead would be a fail-open:
+  //     mapping.yaml declares six methods with points and this Guardian
+  //     assembles two, so a `steps/sessionStart` envelope would reach whichever
+  //     assembler came first and come back as a verdict that looks perfectly
+  //     well-formed while having evaluated the wrong policy against the wrong
+  //     shape. Anything neither predicate answers falls past both, to
+  //     METHOD_NOT_DISPATCHED_CODE below.
   if (isToolCallRequest(envelope)) {
-    try {
-      const snapshot = assemblePreToolCallSnapshot(envelope);
-      // The intervention point comes from mapping.yaml's own
-      // `intervention_points` table rather than from a literal here, so the
-      // table cannot drift away from what the runtime actually does.
-      // An unresolvable method throws into the catch below rather than
-      // defaulting to a point -- evaluating the wrong policy and calling the
-      // result a decision is the one outcome worse than a reported failure.
-      const point = resolveInterventionPoint(envelope.method, mapping);
-      const verdict = await bridge.evaluate(point, snapshot);
-      const decision = mapVerdict(verdict, mapping);
+    return await evaluateStep(raw, envelope, assemblePreToolCallSnapshot, bridge, mapping, sessionContextStore);
+  }
 
-      return successResponse(envelope.id, finalResult(envelope.params, decision));
-    } catch (error) {
-      // This catch (see the module-level comment above) keeps an evaluation
-      // failure a parseable JSON-RPC error rather than an HTML 500.
-      // denyOnInvalidEnvelope goes one step further: AGT's evaluation layer
-      // fails CLOSED, and this catch is where that failure surfaces, so it
-      // is delivered as an honoured `deny` decision rather than a bare
-      // error, keeping it in §6.4's honoured path.
-      const message = toRepoRelativeMessage(error);
-      const denial = denyOnInvalidEnvelope(raw, { reasonCode: "evaluation_failed", message });
-      const decisionResponse = asDecisionResponse(rpcId, denial);
-      if (decisionResponse) {
-        return decisionResponse;
-      }
-      return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
-    }
+  // The result gate, beside the request gate rather than merged into it.
+  if (isToolCallResult(envelope)) {
+    return await evaluateStep(raw, envelope, assemblePostToolCallSnapshot, bridge, mapping, sessionContextStore);
   }
 
   // A well-formed envelope (it passed validateEnvelope: the method matched
@@ -550,6 +737,129 @@ async function dispatch(
   return errorResponse(rpcId, METHOD_NOT_DISPATCHED_CODE, `method not dispatched by this Guardian: ${envelope.method}`, {
     method: envelope.method,
   });
+}
+
+/**
+ * evaluateStep's own bound: `AcsRequestEnvelope` narrowed just enough to read
+ * the one payload member `ToolCallRequestPayload` and `ToolCallResultPayload`
+ * both carry, `payload.tool.name` -- so `appendContextEntry`'s chain entry
+ * (below) can be built generically over whichever gate called this function,
+ * without widening back to a union of the two payload shapes.
+ * `ToolCallRequestEnvelope` and `ToolCallResultEnvelope` are each narrower
+ * than this and satisfy it, so inference at each call site still lands on
+ * the specific envelope type, not on this bound itself.
+ */
+type SteppedEnvelope = AcsRequestEnvelope & { params: { payload: { tool: { name: string } } } };
+
+/**
+ * The half of an assembling branch that is the same whichever gate reached it:
+ * assemble, resolve the point, evaluate, map the verdict, answer. One copy,
+ * shared by both gates -- not because it is shorter, but because the failure
+ * handling below is a project invariant (§6.4) rather than a detail of the
+ * request gate, and a second copy of it is a second thing to keep true.
+ *
+ * Generic in the envelope, and the assembler is a function OF that envelope --
+ * `E` and `(envelope: E, sourceLabels: IfcLabels, policyTargetArgument: string
+ * | undefined) => GuardianSnapshot` rather than an `AcsRequestEnvelope` and an
+ * independent thunk. `E` infers from the narrowed variable each gate passes,
+ * both assemblers are assignable as they stand (`assemblePostToolCallSnapshot`
+ * takes two parameters and a two-parameter function is assignable to a
+ * three-parameter function type), and the one miswiring this function could
+ * otherwise permit becomes unrepresentable: `evaluateStep(raw, envelopeA, (_e, s, p) => assemblePreToolCallSnapshot(envelopeB, s, p), ...)`
+ * would have resolved the point from A's method and echoed A's ids while
+ * evaluating B's snapshot -- the wrong policy against the wrong shape, which
+ * this file's own comments call worse than a reported failure. In the inline
+ * form that gap did not exist, because the narrowed variable was structurally
+ * the one variable; the tie has to be re-stated in the signature once the tail
+ * is shared, not left to the call sites to get right.
+ *
+ * The generic keeps each assembler's parameter type narrow while this function
+ * stays method-agnostic about the SNAPSHOT: nothing here reads a snapshot
+ * member, so nothing here needs to know which shape it got, and no union of
+ * the two snapshot types is needed to say so -- `GuardianSnapshot` is the
+ * union of the two messages this Guardian can send, and this function reads
+ * no member of either. It does read envelope members now, for the chain
+ * entry: `params.metadata.session_id` and `params.request_id`, both already
+ * generic over plain `AcsRequestEnvelope` (method-independent, so no
+ * narrower bound was needed for them), and one PAYLOAD member,
+ * `payload.tool.name` -- the one member `SteppedEnvelope` above exists for,
+ * since `payload` is generically `Record<string, unknown>` otherwise. All
+ * three reads are shared identically by both payload shapes, so none
+ * carries the wrong-shape risk the paragraph above is about. The assembler
+ * is called INSIDE the try, so a throw from it -- or from appending to the
+ * chain, or from persisting labels -- lands in the same catch as a throw
+ * from AGT.
+ *
+ * The intervention point comes from mapping.yaml's own `intervention_points`
+ * table, not from a literal here: that table is what the conformance
+ * package's mapping table publishes -- never its coverage matrix, which
+ * measures rather than declares -- and a declaration the runtime does not
+ * consult is a claim nobody checks. An unresolvable method throws into the
+ * catch below rather than defaulting to a point -- evaluating the wrong policy
+ * and calling the result a decision is the one outcome worse than a reported
+ * failure.
+ */
+async function evaluateStep<E extends SteppedEnvelope>(
+  raw: unknown,
+  envelope: E,
+  assemble: (envelope: E, sourceLabels: IfcLabels, policyTargetArgument: string | undefined) => GuardianSnapshot,
+  bridge: PolicyBridge<GuardianSnapshot>,
+  mapping: Mapping,
+  sessionContextStore: SessionContextStore,
+): Promise<JsonRpcSuccess | JsonRpcFailure> {
+  try {
+    // The chain entry is appended on arrival, before any verdict exists: a
+    // step that is later denied is still a step this session took, and a
+    // chain that recorded only permitted steps would be a chain an incident
+    // review cannot use.
+    appendContextEntry(sessionContextStore, envelope.params.metadata.session_id, {
+      method: envelope.method,
+      request_id: envelope.params.request_id,
+      tool_name: envelope.params.payload.tool.name,
+    });
+
+    // Resolved BEFORE the snapshot is assembled, where it used to be resolved
+    // after: the assembler needs to know which of this tool's arguments the
+    // policy target is read from, and mapVerdict needs the same answer to key
+    // any override it has to write back. One resolution, two readers -- asking
+    // twice would let them differ.
+    const point = resolveInterventionPoint(envelope.method, mapping);
+    const policyTargetArgument = resolvePolicyTargetArgument(mapping, point, envelope.params.payload.tool.name);
+
+    const snapshot = assemble(
+      envelope,
+      supplySourceLabels(sessionContextStore, envelope.params.metadata.session_id),
+      policyTargetArgument,
+    );
+    const verdict = await bridge.evaluate(point, snapshot);
+    const decision = mapVerdict(verdict, mapping, point, policyTargetArgument);
+
+    // `verdict.result_labels` is `undefined` when the IFC gate did not run
+    // at all and `[]` when it ran and propagated nothing; `persistIfcLabels`
+    // keeps those apart deliberately -- see its own doc comment.
+    persistIfcLabels(sessionContextStore, envelope.params.metadata.session_id, verdict.result_labels);
+
+    return successResponse(envelope.id, finalResult(envelope.params, decision));
+  } catch (error) {
+    // This produces a parseable JSON-RPC error rather than an HTML 500.
+    // denyOnInvalidEnvelope goes one step further: AGT's evaluation layer
+    // fails closed, and this catch is where that failure surfaces, so it is
+    // delivered as an honoured `deny` decision rather than a bare error,
+    // keeping it inside §6.4's honoured path. An AGT evaluation failure is a
+    // deny; a delivery failure is the host's negotiated posture, decided
+    // elsewhere and never merged with this.
+    const message = toRepoRelativeMessage(error);
+    // The same best-effort id `dispatch` reads for its own failure paths, off
+    // the same raw body: a response the client cannot correlate is not a
+    // decision it can honour (see asDecisionResponse).
+    const rpcId = extractId(raw);
+    const denial = denyOnInvalidEnvelope(raw, { reasonCode: "evaluation_failed", message });
+    const decisionResponse = asDecisionResponse(rpcId, denial);
+    if (decisionResponse) {
+      return decisionResponse;
+    }
+    return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
+  }
 }
 
 function successResponse(id: string | number, result: AcsFinalResult | ServerHello): JsonRpcSuccess {

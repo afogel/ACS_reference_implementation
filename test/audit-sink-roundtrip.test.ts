@@ -121,6 +121,14 @@ afterEach(() => {
  * cannot see either. Assignability is still asserted in the direction that must
  * hold at runtime: everything the adapter writes must be readable as what the
  * Inspector expects.
+ *
+ * ARM BY ARM, because `AuditEntry` is a union and `keyof` over a union is the
+ * INTERSECTION of its arms' keys: comparing the unions whole would have
+ * silently stopped checking every field either arm owns alone -- `failure`,
+ * `posture`, `ungoverned`, all of them -- while still compiling and still
+ * reading like a check. The arms are selected by their own discriminant
+ * rather than by exported names, so neither side has to widen its export
+ * surface to be checked here.
  */
 type SameKeys<Adapter, Inspector> = [keyof Adapter] extends [keyof Inspector]
   ? [keyof Inspector] extends [keyof Adapter]
@@ -128,19 +136,32 @@ type SameKeys<Adapter, Inspector> = [keyof Adapter] extends [keyof Inspector]
     : { adapterIsMissing: Exclude<keyof Inspector, keyof Adapter> }
   : { inspectorIsMissing: Exclude<keyof Adapter, keyof Inspector> };
 
-const _entryFieldsMatch: SameKeys<Required<AdapterAuditEntry>, Required<InspectorAuditEntry>> = true;
-const _failureFieldsMatch: SameKeys<
-  Required<AdapterAuditEntry>["failure"],
-  Required<InspectorAuditEntry>["failure"]
+type PostureArm<Entry> = Extract<Entry, { outcome: "proceeded" | "blocked" }>;
+type UngovernedArm<Entry> = Extract<Entry, { outcome: "ungoverned" }>;
+
+type AdapterPostureArm = Required<PostureArm<AdapterAuditEntry>>;
+type InspectorPostureArm = Required<PostureArm<InspectorAuditEntry>>;
+
+const _postureArmFieldsMatch: SameKeys<AdapterPostureArm, InspectorPostureArm> = true;
+const _ungovernedArmFieldsMatch: SameKeys<
+  Required<UngovernedArm<AdapterAuditEntry>>,
+  Required<UngovernedArm<InspectorAuditEntry>>
 > = true;
+const _failureFieldsMatch: SameKeys<AdapterPostureArm["failure"], InspectorPostureArm["failure"]> = true;
 const _sessionFailureFieldsMatch: SameKeys<
-  Required<AdapterAuditEntry>["session_failure"],
-  Required<InspectorAuditEntry>["session_failure"]
+  AdapterPostureArm["session_failure"],
+  InspectorPostureArm["session_failure"]
+> = true;
+const _ungovernedFieldsMatch: SameKeys<
+  Required<UngovernedArm<AdapterAuditEntry>>["ungoverned"],
+  Required<UngovernedArm<InspectorAuditEntry>>["ungoverned"]
 > = true;
 const _inspectorAcceptsWhatTheAdapterWrites: Required<InspectorAuditEntry> = {} as Required<AdapterAuditEntry>;
-void _entryFieldsMatch;
+void _postureArmFieldsMatch;
+void _ungovernedArmFieldsMatch;
 void _failureFieldsMatch;
 void _sessionFailureFieldsMatch;
+void _ungovernedFieldsMatch;
 void _inspectorAcceptsWhatTheAdapterWrites;
 
 describe("the audit log write and the Inspector's read agree on every field", () => {
@@ -217,5 +238,32 @@ describe("the audit log write and the Inspector's read agree on every field", ()
       failure: { kind: "transport", message: "gone" },
     });
     expect((await firstEntry(path)).rpc_id).toBeNull();
+  });
+
+  // The other arm, round-tripped whole. The reader's shape guard branches on
+  // `outcome`, so this is also what proves the guard admits this kind of line
+  // at all: a tailer that still required `posture` and `failure` would route
+  // every skip to `onMalformedLine` and drop it, which is the reader's own
+  // version of the silence the entry exists to end.
+  it("round-trips an ungoverned entry, with no posture and no failure on it", async () => {
+    const path = join(scratch(), "audit.jsonl");
+    createAuditSink({ path, now: () => new Date("2026-08-10T12:00:00.000Z") }).write({
+      session_id: "sess-1",
+      method: "steps/toolCallResult",
+      rpc_id: null,
+      outcome: "ungoverned",
+      ungoverned: { tool: "read", tools: ["bash"] },
+    });
+
+    expect(await firstEntry(path)).toEqual({
+      seq: 1,
+      recorded_at: "2026-08-10T12:00:00.000Z",
+      session_id: "sess-1",
+      method: "steps/toolCallResult",
+      rpc_id: null,
+      outcome: "ungoverned",
+      ungoverned: { tool: "read", tools: ["bash"] },
+    });
+    expect(rejected).toEqual([]);
   });
 });

@@ -26,14 +26,51 @@
  * that boundary, and `test/envelope-log-sink-roundtrip.test.ts` keeps the
  * two declarations honest with each other.
  */
-export { startGuardian, type StartGuardianOptions, type StartedGuardian } from "./server.ts";
+export {
+  startGuardian,
+  METHOD_NOT_DISPATCHED_CODE,
+  type StartGuardianOptions,
+  type StartedGuardian,
+  type GuardianSnapshot,
+} from "./server.ts";
 export { buildServerHello, type ServerHello } from "./handshake.ts";
 export {
   validateEnvelope,
   isToolCallRequest,
+  isToolCallResult,
   EnvelopeValidationError,
   type AcsRequestEnvelope,
   type ToolCallRequestEnvelope,
+  type ToolCallResultEnvelope,
 } from "./validate-envelope.ts";
-export { assemblePreToolCallSnapshot, type AgtPreToolCallSnapshot } from "./assemble-snapshot.ts";
-export { loadMapping, mapVerdict, type Mapping, type AcsDecision } from "./map-verdict.ts";
+export { checkResponse, type ResponseCheck } from "./check-response.ts";
+export {
+  assemblePreToolCallSnapshot,
+  assemblePostToolCallSnapshot,
+  POLICY_TARGET_LEAF,
+  type AgtPreToolCallSnapshot,
+  type AgtPostToolCallSnapshot,
+} from "./assemble-snapshot.ts";
+export {
+  loadMapping,
+  mapVerdict,
+  resolveInterventionPoint,
+  resolvePolicyTargetArgument,
+  type Mapping,
+  type AcsDecision,
+} from "./map-verdict.ts";
+export {
+  loadSessionContext,
+  appendContextEntry,
+  createMemorySessionContextStore,
+  GENESIS_HASH,
+  type SessionContext,
+  type SessionContextEntry,
+  type SessionContextStore,
+  type SessionIntentStore,
+  type SessionProvenanceReader,
+  type IfcLabels,
+  type Intent,
+  type SessionProvenance,
+} from "./session-context-store.ts";
+export { persistIfcLabels, supplySourceLabels } from "./ifc-labels.ts";

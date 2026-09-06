@@ -51,6 +51,7 @@
 import type { AcsDecision, ValidatedAcsDecision } from "./decision-message.ts";
 import { resolveAsk, resolveDefer } from "./decision-expiry.ts";
 import { resolveModify } from "./decision-modify.ts";
+import type { HostOutputLocation } from "./result-output.ts";
 
 export type { ValidatedAcsDecision };
 
@@ -62,9 +63,31 @@ export type ValidateDecisionContext = {
    * fields use different units, and getting that conversion wrong would make
    * an expiry test pass for the wrong reason. */
   elapsedMs: number;
-  /** The tool-call arguments a `modify` decision's `modifications` apply
-   * against. Unused by every other decision. */
-  originalArguments: Record<string, unknown>;
+  /**
+   * The ACS-side document a `modify` decision's `modifications` pointers
+   * address, and are applied to. Unused by every other decision.
+   *
+   * Named for the gate that decides whether a step RUNS, where the document IS
+   * the tool-call arguments that went out on the wire -- `buildEnvelope`'s
+   * `modificationDocumentOf` answers with exactly those there. At a gate that sees
+   * what a step PRODUCED the pointers address the result payload instead
+   * (`/outputs/0/value` names nothing in an arguments bag; there isn't one at
+   * that step), so that is the document, and `outputLocation` below is what
+   * carries the applied result the rest of the way.
+   */
+  modificationDocument: Record<string, unknown>;
+  /**
+   * Present only at a gate whose ACS payload is a PROJECTION of an output object
+   * the host already holds -- i.e. a result gate. It says where to project the
+   * applied document back to, and its presence is what makes the applied rewrite
+   * land in `applied_output` rather than `applied_input`.
+   *
+   * Two fields rather than one because the two gates rewrite different things,
+   * and one gate's applied result is not usable at the other: an arguments bag
+   * is a tool input, a projected output object is a tool result. See
+   * `ValidatedAcsDecision`.
+   */
+  outputLocation?: HostOutputLocation;
 };
 
 /**
@@ -76,11 +99,11 @@ export type ValidateDecisionContext = {
  * the pass-through branch untouched.
  */
 export function validateDecision(decision: AcsDecision, context: ValidateDecisionContext): ValidatedAcsDecision {
-  const { elapsedMs, originalArguments } = context;
+  const { elapsedMs, modificationDocument, outputLocation } = context;
 
   switch (decision.decision) {
     case "modify":
-      return resolveModify(decision, originalArguments);
+      return resolveModify(decision, modificationDocument, outputLocation);
 
     case "ask":
       return resolveAsk(decision, elapsedMs);

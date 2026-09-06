@@ -16,8 +16,14 @@ import { tailAuditLog, type AuditEntry } from "../src/tail-audit-log.ts";
 
 const POLL_MS = 10;
 
-function entryLine(seq: number, overrides: Partial<AuditEntry> = {}): string {
-  const entry: AuditEntry = {
+/** The posture arm, which is what every line below is: this suite is about
+ * the tailer's file handling -- offsets, truncation, a log that vanishes --
+ * and not about which kind of entry a line holds. The `ungoverned` arm has
+ * its own shape test at the bottom of this file. */
+type PostureAuditEntry = Extract<AuditEntry, { outcome: "proceeded" | "blocked" }>;
+
+function entryLine(seq: number, overrides: Partial<PostureAuditEntry> = {}): string {
+  const entry: PostureAuditEntry = {
     seq,
     recorded_at: "2026-08-10T12:00:00.000Z",
     session_id: "sess-1",
@@ -417,6 +423,73 @@ describe("tailAuditLog", () => {
       expect(entries).toHaveLength(1);
       expect(entries[0]?.session_id).toBe(note);
       expect(entries[0]).toEqual(entry);
+    });
+  });
+
+  // The `ungoverned` arm, which the shape guard reaches by branching on
+  // `outcome` rather than by making every posture field optional. Both
+  // directions matter: the arm has to be admitted (a guard that still
+  // required `posture` would route every skip to onMalformedLine and drop
+  // it -- the reader's own version of the silence the entry exists to end),
+  // and a line claiming the arm without carrying its payload has to be
+  // rejected, because the renderer prints that payload unconditionally.
+  it("delivers an ungoverned line, which carries no posture and no failure", async () => {
+    await withTempDir(async (_dir, path) => {
+      const entry: AuditEntry = {
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: "steps/toolCallResult",
+        rpc_id: null,
+        outcome: "ungoverned",
+        ungoverned: { tool: "read", tools: ["bash"] },
+      };
+      writeFileSync(path, `${JSON.stringify(entry)}\n`);
+      const controller = new AbortController();
+      const malformed: string[] = [];
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (line) => malformed.push(line),
+      });
+
+      expect(await collect(tail, 1, controller)).toEqual([entry]);
+      expect(malformed).toEqual([]);
+    });
+  });
+
+  it.each([
+    ["no ungoverned block at all", { outcome: "ungoverned" }],
+    ["a tools list holding a non-string", { outcome: "ungoverned", ungoverned: { tool: "read", tools: [7] } }],
+    ["no tool name", { outcome: "ungoverned", ungoverned: { tools: ["bash"] } }],
+  ])("rejects an ungoverned line with %s", async (_label, tail_fields) => {
+    await withTempDir(async (_dir, path) => {
+      const line = `${JSON.stringify({
+        seq: 1,
+        recorded_at: "2026-08-10T12:00:00.000Z",
+        session_id: "sess-1",
+        method: null,
+        rpc_id: null,
+        ...tail_fields,
+      })}\n`;
+      // A well-formed line after the bad one, so this asserts the bad line
+      // was skipped rather than that the tailer merely produced nothing yet.
+      writeFileSync(path, line + entryLine(2));
+      const controller = new AbortController();
+      const malformed: string[] = [];
+      const tail = tailAuditLog({
+        path,
+        fromStart: true,
+        pollMs: POLL_MS,
+        signal: controller.signal,
+        onMalformedLine: (bad) => malformed.push(bad),
+      });
+
+      const entries = await collect(tail, 1, controller);
+      expect(entries.map((e) => e.seq)).toEqual([2]);
+      expect(malformed).toHaveLength(1);
     });
   });
 });

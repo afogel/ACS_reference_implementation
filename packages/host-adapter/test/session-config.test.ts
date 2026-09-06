@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   createFileSessionConfigStore,
-  createSessionConfigStore,
+  createMemorySessionConfigStore,
   InvalidSessionIdError,
   sessionConfigPath,
   type SessionConfig,
@@ -101,7 +101,7 @@ describe("createFileSessionConfigStore — the session config store across proce
     expect(createFileSessionConfigStore({ dir, sessionId: "sess-1" }).get()).toEqual(extended);
   });
 
-  // `set()` is the one method here that is NOT total, and deliberately so:
+  // `set()` is the one method here that is not total, and deliberately so:
   // `get()` swallows everything because a throw there would kill the hook
   // process and take the decision with it, while a write that fails is a real
   // deployment fault whose caller has to hear about it -- it is what makes
@@ -110,7 +110,7 @@ describe("createFileSessionConfigStore — the session config store across proce
   // test; only its consequences did.
   it("throws rather than swallowing when the config cannot be written", () => {
     const base = scratch();
-    // A regular file standing where a PARENT directory should be, so
+    // A regular file standing where a parent directory should be, so
     // `mkdirSync(dir, {recursive: true})` throws ENOTDIR -- reliably and
     // cross-platform, with no permission games and no root-dependent
     // behaviour. (Pointing `dir` straight at the file instead throws too,
@@ -169,9 +169,9 @@ describe("createFileSessionConfigStore — session_id is untrusted input", () =>
   });
 });
 
-describe("createSessionConfigStore — the in-memory store", () => {
+describe("createMemorySessionConfigStore — the in-memory store", () => {
   it("still satisfies the same interface", () => {
-    const store = createSessionConfigStore();
+    const store = createMemorySessionConfigStore();
     expect(store.get()).toBeUndefined();
     store.set(HELLO);
     expect(store.get()).toEqual(HELLO);

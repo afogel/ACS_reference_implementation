@@ -1,0 +1,120 @@
+name: checks
+
+# Until this file existed, nothing mechanical had ever verified a commit in
+# this repository. `bun test`, `bun run typecheck`, `bun run verify:pin`,
+# `bun run verify:zero-diff` and `bun run conformance` were all human-typed
+# only, and the single workflow in .github ran none of them -- it watched
+# upstream AGT for drift and nothing else.
+#
+# `push` is narrowed to the trunk on purpose: every branch in this stack has
+# an open pull request, so an unfiltered `push` would run every job twice for
+# the same commit -- once for the branch and once for its PR -- and pay for it
+# both times.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Both jobs read the tree and report through their own exit status. Neither
+# comments on a pull request, writes a check annotation, or publishes an
+# artifact, so `contents: read` is the entire requirement. Stated here rather
+# than inherited, because the repository default for GITHUB_TOKEN is a
+# setting in another place entirely and can be read-and-write -- a gate should
+# not acquire write access because someone changed a checkbox.
+permissions:
+  contents: read
+
+jobs:
+  # The hermetic half: everything that runs off the checkout alone. Kept in
+  # its own job so its answer is never mixed with, or delayed by, the network
+  # gates below.
+  suite:
+    name: test and typecheck
+    runs-on: ubuntu-latest
+    # The suite runs in about eleven seconds locally. This is generous enough
+    # to absorb a slow install and still bound a hang, which is the point --
+    # with no key at all a wedged process runs for the 360-minute default.
+    timeout-minutes: 15
+    steps:
+      # Both actions pinned to the commit their moving major tag resolved to,
+      # tag kept as a comment so the next reader can re-resolve it. `@v4` is
+      # a tag someone else can move; a SHA is not.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # spec/acs is where the ACS JSON Schemas resolve from.
+          # packages/guardian/src/validate-envelope.ts builds its Ajv
+          # registry from a path relative to import.meta.url into that
+          # submodule, so an absent submodule is a hard ENOENT at request
+          # time -- not a self-skip. Without this the Guardian's own tests
+          # fail for a reason that has nothing to do with the commit.
+          submodules: recursive
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Install trash
+        # `bun test` genuinely needs this: five test files under
+        # packages/conformance/test clean their fixture directories with
+        # `Bun.$`trash ...`` because this repo does not permit `rm -rf`, and
+        # Bun's shell throws on a command it cannot find -- so every one of
+        # those files fails in its afterEach hook on a runner without
+        # `trash`. Ubuntu's trash-cli package provides /usr/bin/trash. The
+        # version apt resolves is whatever the archive holds; unpinned, and
+        # the same unpinned install the watch workflow already carries.
+        run: sudo apt-get update && sudo apt-get install -y trash-cli
+      - name: Install dependencies
+        # Frozen: CI resolves exactly what bun.lock records, or fails. A CI
+        # run that silently resolved a different tree from the one a human
+        # tested is not a verification of that commit.
+        run: bun install --frozen-lockfile
+      # Typecheck first because a type error is usually the cheaper and more
+      # specific answer, and it costs seconds.
+      - run: bun run typecheck
+      - name: Run the test suite
+        # Runs even when typecheck failed, so one push yields both answers
+        # instead of one and a re-run. `!cancelled()` rather than `always()`:
+        # a cancelled job should stop, not finish its remaining steps.
+        if: ${{ !cancelled() }}
+        run: bun test
+
+  # The network half, deliberately separate. Both of these shallow-clone AGT
+  # at agt.lock's PINNED ref -- an immutable commit, so neither can be broken
+  # by upstream moving -- but both still need the network to reach it, and
+  # both hard-exit when jq or trash is missing. Isolating them means a
+  # GitHub-side outage reddens this job and leaves the hermetic answer above
+  # standing on its own, rather than burying it.
+  #
+  # They are included rather than omitted because their failure direction is
+  # the safe one: they go red when they could not verify, never green. That
+  # is the same rule the upstream watch now follows.
+  #
+  # verify:zero-diff is deliberately NOT here. Its default base is
+  # `slice/v4`, and it is a claim about slice v4's own diff -- that adding the
+  # second host cost zero changed lines in the Guardian -- not an invariant of
+  # every later commit. Run on this branch today it reports fourteen changed
+  # frozen paths and exits 1, correctly: those lines were changed by the
+  # slices after v4. Wired to `push` it would redden every job in the stack
+  # for a reason that is not a defect, and the base branch it resolves against
+  # is one this stack is designed to delete.
+  pinned-gates:
+    name: pin and conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # `bun run conformance` starts a live Guardian and drives a real
+          # request through it, so this job needs the schemas in spec/acs for
+          # the same reason the suite above does.
+          submodules: recursive
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Install trash
+        # Both scripts refuse to start without it, by design -- see their own
+        # headers on why cleanup is `trash` and not `rm -rf`.
+        run: sudo apt-get update && sudo apt-get install -y trash-cli
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify the vendored bundle is byte-identical to the pinned ref
+        run: bun run verify:pin
+      - name: Publish the conformance matrix
+        # Runs even when verify:pin failed, for the same reason the suite
+        # runs after a failed typecheck: two answers from one push.
+        if: ${{ !cancelled() }}
+        run: bun run conformance

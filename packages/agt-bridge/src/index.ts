@@ -21,6 +21,30 @@ export type AgtVerdict = {
 export type InterventionSnapshot = Record<string, unknown>;
 
 /**
+ * What AGT reports about its own evaluation, as distinct from what it decided.
+ * A verdict is an answer about this step; these are facts about how the answer
+ * was reached.
+ *
+ * `policyInput` is `unknown` on purpose. It is AGT's five-member policy input
+ * document, and this package will not name a shape it does not own -- the
+ * conformance harness validates it against AGT's own schema at the pinned ref,
+ * which is a stronger check than a hand-written mirror of it here and cannot
+ * drift from upstream without the check saying so.
+ *
+ * `transformedPolicyTarget` is deliberately absent even though the SDK returns
+ * it. The one caller recomputes the enforced identity from `policyInput` and
+ * `verdict.transform.value`; handing it AGT's own already-transformed target
+ * would give the check a way to agree with AGT without recomputing anything,
+ * which is the one thing a recomputation check must not have.
+ */
+export type AgtEvidence = {
+  verdict: AgtVerdict;
+  policyInput: unknown;
+  inputIdentity: string;
+  enforcedIdentity: string;
+};
+
+/**
  * The role the Guardian depends on: something you can tell to evaluate a
  * snapshot at an intervention point, which answers with a verdict.
  *
@@ -34,12 +58,33 @@ export type InterventionSnapshot = Record<string, unknown>;
  * describe its own evaluation rather than this step's outcome, and are
  * confirmed against the SDK in this package's own test.
  *
+ * `evaluateWithEvidence` is deliberately NOT here. Production's `evaluateStep`
+ * tells `evaluate` and nothing else, so a role carrying both would make every
+ * Guardian stand-in -- `StartGuardianOptions.bridge` is typed against this --
+ * answer a measurement question production never asks. That is `EvidenceBridge`
+ * below, which the conformance harness depends on and the Guardian does not.
+ *
  * The snapshot type parameter lets a holder declare which messages it sends
  * (`PolicyBridge<AgtPreToolCallSnapshot>`) and be checked against that shape.
- * `createBridge` answers with the general form, since it can evaluate any point.
+ * `createBridge` answers with both roles, since it can do both jobs.
  */
 export type PolicyBridge<S extends InterventionSnapshot = InterventionSnapshot> = {
   evaluate(point: string, snapshot: S): Promise<AgtVerdict>;
+};
+
+/**
+ * The role the conformance harness depends on: the same evaluation, answered
+ * wide enough to measure rather than to decide by.
+ *
+ * Separate from `PolicyBridge` rather than an extension of it, because the two
+ * have disjoint callers -- nothing in the Guardian asks for evidence, and the
+ * harness's identity check has no use for a bare verdict. `createBridge`
+ * implements both and derives `evaluate` from this one, so there is exactly
+ * one path into the SDK and the narrow answer is provably a projection of the
+ * wide one.
+ */
+export type EvidenceBridge<S extends InterventionSnapshot = InterventionSnapshot> = {
+  evaluateWithEvidence(point: string, snapshot: S): Promise<AgtEvidence>;
 };
 
 /**
@@ -63,8 +108,12 @@ export type CreateBridgeOptions = {
 /**
  * Construct once at boot, then call `evaluate` once per decision. Stateless:
  * nothing is retained between `evaluate()` calls.
+ *
+ * Answers with both roles. A caller takes the one it needs -- the Guardian a
+ * `PolicyBridge`, the conformance harness an `EvidenceBridge` -- and neither
+ * has to implement the other's message to stand in for it.
  */
-export function createBridge(manifestPath: string, options?: CreateBridgeOptions): PolicyBridge {
+export function createBridge(manifestPath: string, options?: CreateBridgeOptions): PolicyBridge & EvidenceBridge {
   if (manifestPath.includes("/./")) {
     throw new Error(
       `manifest path contains "/./": ${manifestPath}. AGT joins this verbatim and OPA ` +
@@ -99,9 +148,23 @@ export function createBridge(manifestPath: string, options?: CreateBridgeOptions
   const control = AgentControl.fromPath(manifestPath, annotatorDispatcher);
 
   return {
-    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {
+    async evaluateWithEvidence(point: string, snapshot: InterventionSnapshot): Promise<AgtEvidence> {
       const result = await control.evaluateInterventionPoint(point as never, snapshot as never);
-      return result.verdict as AgtVerdict;
+      return {
+        verdict: result.verdict as AgtVerdict,
+        policyInput: result.policyInput,
+        // Non-null asserted rather than defaulted: the SDK declares both
+        // optional, and a default would let a binding that stopped
+        // reporting them read as a successful measurement of an empty
+        // string. AGT's Node binding sets both on every result, and this
+        // package's own test pins that, so their absence would be a change
+        // upstream rather than a case to paper over here.
+        inputIdentity: result.inputIdentity!,
+        enforcedIdentity: result.enforcedIdentity!,
+      };
+    },
+    async evaluate(point: string, snapshot: InterventionSnapshot): Promise<AgtVerdict> {
+      return (await this.evaluateWithEvidence(point, snapshot)).verdict;
     },
   };
 }

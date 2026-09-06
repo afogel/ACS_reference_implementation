@@ -2,14 +2,15 @@
  * renderDecision turns an ACS decision into the output its host expects --
  * without naming one field of that output anywhere in this module.
  *
- * The hookmap declares the whole shape. Each `decisions.<decision>` entry
- * carries an `output` block whose keys are dotted paths into the object the
- * host reads, and whose values say where each field's content comes from: a
- * literal (`value:`) or a field of the arriving ACS decision (`from:`, with an
- * optional `type:` the arriving value must have). This module walks that block
- * and assembles the object. It knows ACS decisions, dotted paths, and nothing
- * else; the field names, their nesting, and which of them a given decision
- * even has are all data.
+ * The hookmap declares the whole shape. Each hook's own
+ * `decisions.<decision>` entry carries an `output` block whose keys are dotted
+ * paths into the object the host reads, and whose values say where each field's
+ * content comes from: a literal (`value:`) or a field of the arriving ACS
+ * decision (`from:`, with an optional `type:` the arriving value must have).
+ * This module walks that block and assembles the object. It knows ACS
+ * decisions, dotted paths, and nothing else; the field names, their nesting,
+ * which hook they belong to, and which of them a given decision even has are
+ * all data.
  *
  * That is what lets one adapter serve many hosts rather than one adapter per
  * host: a second host gets this module unchanged, plus a shim and a hookmap.
@@ -50,6 +51,7 @@
  */
 import type { Hookmap } from "./build-envelope.ts";
 import type { AcsDecision } from "./decision-message.ts";
+import { isReservedSegment } from "./reserved-segments.ts";
 
 /**
  * A rendered host output: an ordinary JSON object whose keys this module never
@@ -81,15 +83,6 @@ type HostOutputField = {
 /** One decision's hookmap-declared rendering rule (its `decisions.<decision>` entry). */
 type DecisionRenderRule = { output: Record<string, HostOutputField> };
 
-/**
- * Path segments no output field may name. `__proto__` is the one that matters
- * -- assigning to it through a plain object mutates the prototype instead of
- * adding a key, so a hookmap naming it would produce an output missing the
- * field it declared while changing something else entirely. The other two are
- * rejected beside it rather than reasoned about individually.
- */
-const RESERVED_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -103,11 +96,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * another, describes an output nobody can render as written -- and a renderer
  * that silently picked one of the two would hand the host something that
  * merely looks like a decision.
+ *
+ * `isReservedSegment` (imported, `reserved-segments.ts`) is the one shared
+ * predicate over the three names below -- `__proto__` is the one that
+ * matters (assigning to it through a plain object mutates the prototype
+ * instead of adding a key, so a hookmap naming it would produce an output
+ * missing the field it declared while changing something else entirely);
+ * the other two are rejected beside it rather than reasoned about
+ * individually. The check itself stays local to this module rather than
+ * moving into a shared resolver: this is a writer walking a dotted output
+ * path and creating levels as it goes, the same job `hookmap-path.ts`'s
+ * reader does for the hookmap's own notation, and folding the two together
+ * would merge two different path languages rather than de-duplicate one.
  */
 function place(output: HostOutput, path: string, value: unknown): void {
   const segments = path.split(".");
   for (const segment of segments) {
-    if (segment.length === 0 || RESERVED_SEGMENTS.has(segment)) {
+    if (segment.length === 0 || isReservedSegment(segment)) {
       throw new Error(`renderDecision: output path "${path}" names the segment ${JSON.stringify(segment)}, which addresses no field`);
     }
   }
@@ -132,22 +137,36 @@ function place(output: HostOutput, path: string, value: unknown): void {
 }
 
 /**
- * Renders `decision` per `hookmap.decisions[decision.decision]`, returning the
- * host output that entry declares.
+ * Renders `decision` per `hookmap.hooks[hookEventName].decisions[decision.decision]`,
+ * returning the host output that entry declares.
  *
- * Throws if the hookmap has no `decisions` block, has no entry for this
- * decision, or has an entry this module cannot render -- there is no default
- * rendering and no partial output. A caller that cannot render a decision
- * still has a decision it must answer; answering it with half an output is the
- * one thing this function will not do.
+ * `hookEventName` is the name of the hook that asked -- the same string
+ * `buildEnvelope` was given -- and it selects the rule, because the shape a
+ * host reads back is a property of the gate, not of the host. One host can
+ * expose a gate that decides whether a step runs and a gate that sees what it
+ * produced; the first answers with a permission-style field and the second by
+ * replacing the output, and neither field exists on the other. A lookup that
+ * knew only the host would have to answer both gates from one rule, which means
+ * rendering one gate's field at the other, where the host does not read it --
+ * i.e. an output the host reads as no decision at all.
+ *
+ * Throws if the hookmap does not map this hook, if the hook has no `decisions`
+ * block, if that block has no entry for this decision, or if the entry is one
+ * this module cannot render -- there is no default rendering, no fallback to
+ * another hook's block, and no partial output. A caller that cannot render a
+ * decision still has a decision it must answer; answering it with half an
+ * output is the one thing this function will not do.
  */
-export function renderDecision(decision: AcsDecision, hookmap: Hookmap): HostOutput {
-  const decisions = hookmap.decisions;
+export function renderDecision(hookEventName: string, decision: AcsDecision, hookmap: Hookmap): HostOutput {
+  const hook = hookmap.hooks?.[hookEventName];
+  const decisions = hook?.decisions;
   if (!isPlainObject(decisions)) {
-    throw new Error("renderDecision: hookmap has no decisions block");
+    throw new Error(`renderDecision: hookmap's hook "${hookEventName}" has no decisions block`);
   }
   if (!Object.prototype.hasOwnProperty.call(decisions, decision.decision)) {
-    throw new Error(`renderDecision: hookmap has no decisions entry for ACS decision "${decision.decision}"`);
+    throw new Error(
+      `renderDecision: hookmap's hook "${hookEventName}" has no decisions entry for ACS decision "${decision.decision}"`,
+    );
   }
 
   const rule = decisions[decision.decision];

