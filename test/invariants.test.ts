@@ -22,11 +22,34 @@ function stripComments(src: string): string {
   return noBlockComments.replace(/(?<!:)\/\/.*$/gm, "");
 }
 
-/** Every non-test `.ts` file under `dir`, with comments stripped. */
+/**
+ * True when `relativePath` has a `test` path segment anywhere, including at
+ * the very start. `Glob.scanSync` returns paths relative to the scanned
+ * root, with no leading slash, so a `test/` directory sitting directly under
+ * that root (e.g. scanning `packages/foo/src` with a `packages/foo/src/test/`
+ * subdirectory) produces a path like `test/bar.ts` -- no `/test/` substring
+ * for a plain `.includes("/test/")` check to find. Anchoring on `(^|/)`
+ * catches that case as well as the nested one, without false-positiving on a
+ * segment that merely starts with "test" (`testing/`, `latest/`).
+ */
+function isUnderTestDir(relativePath: string): boolean {
+  return /(^|\/)test\//.test(relativePath);
+}
+
+/**
+ * Every non-test `.ts` file under `dir`, with comments stripped.
+ *
+ * The emptiness check is what stops all four gates below from passing
+ * vacuously (whole-branch review, finding 7). A *renamed* directory already
+ * failed loudly -- `Glob.scanSync` throws ENOENT -- but a directory that
+ * still exists with no non-test `.ts` under it would sail through with zero
+ * assertions, and a gate that cannot fail is worse than no gate: it reads as
+ * enforcement in the README while enforcing nothing.
+ */
 function readSourceFiles(dir: string): { file: string; code: string }[] {
-  return [...new Glob("**/*.ts").scanSync(dir)]
-    .filter((f) => !f.includes("/test/"))
-    .map((f) => ({ file: f, code: stripComments(readFileSync(`${dir}/${f}`, "utf8")) }));
+  const files = [...new Glob("**/*.ts").scanSync(dir)].filter((f) => !isUnderTestDir(f));
+  expect({ dir, sourceFiles: files.length > 0 }).toEqual({ dir, sourceFiles: true });
+  return files.map((f) => ({ file: f, code: stripComments(readFileSync(`${dir}/${f}`, "utf8")) }));
 }
 
 /**
@@ -117,5 +140,143 @@ describe("architectural invariants", () => {
       "permissionDecision",
       "stdin",
     ]);
+  });
+
+  /**
+   * An ACS-first reader must be able to trace one action end to end without
+   * reading AGT source. The Inspector is that reader's tool, so the claim
+   * is only real if the tool itself knows nothing about AGT and nothing
+   * about any particular host: it renders ACS envelopes as data. Both term
+   * lists from the two gates above apply to it at once.
+   */
+  it("the Envelope Inspector's source contains zero AGT vocabulary and zero host vocabulary", () => {
+    assertNoVocabulary("packages/inspector/src", [
+      "agt",
+      "AgentControl",
+      "rego",
+      "opa",
+      "intervention_point",
+      "verdict",
+      // The three AGT verdict names. Listing the word "verdict" without the
+      // verdicts themselves is not enough: it let a badge reading
+      // `ALLOW (policy fired -- ACS "warn")` pass with a green suite. ACS has
+      // no `warn` disposition, so that string taught a reader AGT's
+      // vocabulary from an ACS-first tool -- exactly the leak this gate
+      // exists to prevent.
+      //
+      // `allow`/`deny`/`ask`/`modify`/`defer` are deliberately NOT here --
+      // they are ACS's own dispositions and the Inspector must name them.
+      // These three are AGT's alone.
+      "warn",
+      "escalate",
+      "transform",
+      "claude",
+      "opencode",
+      "hookSpecificOutput",
+      "permissionDecision",
+      "stdin",
+    ]);
+  });
+
+  /**
+   * Envelopes are inspectable *on the wire*. If the Inspector imported the
+   * Guardian's types, "inspectable" would be a claim about our own type graph
+   * instead: any third-party reader of the log has only the file, and so does
+   * this one.
+   */
+  it("the Envelope Inspector imports nothing from the Guardian or the AGT bridge", () => {
+    for (const { file, code } of readSourceFiles("packages/inspector/src")) {
+      for (const spec of ["guardian", "agt-bridge"]) {
+        const found = importsSpecifier(code, spec);
+        expect({ file, spec, found }).toEqual({ file, spec, found: false });
+      }
+    }
+  });
+});
+
+/**
+ * True when `code` names a module specifier containing `spec` in any position
+ * that actually creates a dependency on it.
+ *
+ * The original gate matched `from "…"` alone (whole-branch review, finding
+ * 6), which is the one form nobody reaching for a forbidden import by
+ * accident would use. Each alternative below is a real hole it left:
+ *
+ *   from "guardian"              the static named/default import
+ *   import "guardian"            the bare side-effect import, no `from`
+ *   import("guardian")           dynamic, and `await import("guardian")`
+ *   import("guardian").EnvelopeLogEntry
+ *                                type position -- erased at build, still a
+ *                                compile-time dependency on the Guardian's
+ *                                type graph, which is exactly what the gate
+ *                                above forbids
+ *   require("guardian")          CJS interop
+ *
+ * `\(?` covers the parenthesised and unparenthesised forms in one pass, and
+ * the `i` flag closes the last hole: module resolution is case-insensitive on
+ * macOS, so `from "Guardian"` resolves here and the case-sensitive gate said
+ * nothing about it.
+ */
+function importsSpecifier(code: string, spec: string): boolean {
+  return new RegExp(`(?:from|import|require)\\s*\\(?\\s*["'][^"']*${spec}[^"']*["']`, "i").test(code);
+}
+
+describe("the import gate itself", () => {
+  /**
+   * A gate is only worth having if it bites. These are the exact forms the
+   * finding listed as blind spots, asserted directly against the matcher so
+   * a future simplification of the regex cannot quietly reopen one of them.
+   */
+  it("catches every import form, in any case", () => {
+    const caught = [
+      'import { EnvelopeLogEntry } from "guardian";',
+      'import "guardian";',
+      'const g = await import("guardian");',
+      'type E = import("guardian").EnvelopeLogEntry;',
+      'const g = require("guardian");',
+      'import { EnvelopeLogEntry } from "Guardian";',
+      'export { x } from "../../guardian/src/index.ts";',
+    ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
+
+    expect(caught).toEqual(caught.map(({ line }) => ({ line, found: true })));
+  });
+
+  it("stays quiet on code that merely mentions the word", () => {
+    const ignored = [
+      'const label = "guardian";',
+      "const guardian = startGuardian();",
+      'import { renderEnvelopeLogEntry } from "./render.ts";',
+    ].map((line) => ({ line, found: importsSpecifier(line, "guardian") }));
+
+    expect(ignored).toEqual(ignored.map(({ line }) => ({ line, found: false })));
+  });
+});
+
+describe("the source-file filter itself", () => {
+  /**
+   * `Glob.scanSync`'s relative paths never carry a leading slash, so a
+   * `test/` directory sitting directly under the scanned root -- rather than
+   * nested deeper -- produces a path with no `/test/` substring at all. No
+   * scanned package has such a directory today (each puts `test/` as a
+   * sibling of `src/`, never inside it), so this was stricter-than-intended
+   * rather than a real hole, but it is still the exact case a bare
+   * `.includes("/test/")` misses.
+   */
+  it("excludes a test/ segment at the start of the path, not only when nested", () => {
+    const paths = ["test/invariants.test.ts", "src/test/helper.ts", "packages/foo/test/bar.ts"].map((path) => ({
+      path,
+      excluded: isUnderTestDir(path),
+    }));
+
+    expect(paths).toEqual(paths.map(({ path }) => ({ path, excluded: true })));
+  });
+
+  it("does not exclude a segment that merely starts with the letters 'test'", () => {
+    const paths = ["latest/foo.ts", "testing/bar.ts", "src/index.ts"].map((path) => ({
+      path,
+      excluded: isUnderTestDir(path),
+    }));
+
+    expect(paths).toEqual(paths.map(({ path }) => ({ path, excluded: false })));
   });
 });

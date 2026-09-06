@@ -1,14 +1,17 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { startGuardian } from "../src/index.ts";
+import { toRepoRelativeMessage } from "../src/server.ts";
 
 const HANDSHAKE_SCHEMA_PATH = "spec/acs/specification/v0.1.0/handshake.json";
 
 /** Compiles the ServerHello $def straight out of the pinned handshake.json --
  * not a hand-copied shape -- so this test fails the moment our ServerHello
- * drifts from the schema, per the task's "read the schema yourself" note. */
+ * drifts from the schema. */
 function validateServerHello(candidate: unknown): void {
   const handshakeSchema = JSON.parse(readFileSync(HANDSHAKE_SCHEMA_PATH, "utf8")) as {
     $defs: { ServerHello: Record<string, unknown> };
@@ -144,18 +147,17 @@ describe("startGuardian POST /acs", () => {
   });
 });
 
-// Fix wave finding 1 -- a real fail-open bug: an unhandled throw from
-// assemblePreToolCallSnapshot/bridge.evaluate/mapVerdict inside handleAcsRequest used
-// to escape uncaught, and Bun.serve's default error page for a rejected
-// fetch() is `text/html`, not JSON. guardianClient.post's `res.json()` would
-// then throw a SyntaxError instead of surfacing a JSON-RPC error, and
-// acs-hook.ts's catch-all exits 1 with nothing on stdout -- Claude Code
-// treats that as "the hook never fired" and the tool call proceeds
-// ungoverned. This guards the fix, against a real (not mocked) AGT
-// evaluation -- only mapping.yaml is swapped for a fixture that marks
-// `allow` require_policy_references, so a genuine AGT "allow" verdict for a
-// benign command (which carries no reason/message) makes mapVerdict throw
-// inside handleAcsRequest for real.
+// An unhandled throw from assemblePreToolCallSnapshot, bridge.evaluate, or
+// mapVerdict inside handleAcsRequest must never escape uncaught: Bun.serve's
+// default error page for a rejected fetch() is `text/html`, not JSON, so
+// guardianClient.post's `res.json()` would throw a SyntaxError instead of
+// surfacing a JSON-RPC error, acs-hook.ts's catch-all would exit 1 with
+// nothing on stdout, and Claude Code would read that as "the hook never
+// fired" and let the tool call proceed ungoverned. This test exercises that
+// guard against a real (not mocked) AGT evaluation: only mapping.yaml is
+// swapped for a fixture that marks `allow` require_policy_references, so a
+// genuine AGT "allow" verdict for a benign command (which carries no
+// reason/message) makes mapVerdict throw inside handleAcsRequest for real.
 describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest", () => {
   it("a real mapVerdict throw (require_policy_references unmet) still returns a parseable JSON-RPC error in -32000..-32099, not an HTML 500", async () => {
     const guardian = await startGuardian({
@@ -184,10 +186,519 @@ describe("startGuardian POST /acs -- evaluation failure inside handleAcsRequest"
   });
 });
 
-// PR #10 review, Critical: mapping.yaml's intervention_points table is what
-// V7's conformance matrix publishes, and the runtime used to hardcode
-// "pre_tool_call" instead of consulting it, so the two could disagree without
-// anything failing.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const GUARDIAN_PKG = join(REPO_ROOT, "packages", "guardian");
+
+/**
+ * A stable, predictable name rather than an `mkdtempSync` random one. This
+ * tree has to live *inside* `packages/guardian/` -- not under a repo-wide
+ * temp directory -- because it is a relative-path trick:
+ * `validate-envelope.ts` resolves its schema root three directories
+ * up from its own `import.meta.url`, so the copy has to sit at the same
+ * depth under `packages/guardian/` for that resolution to land one level
+ * short, on purpose (see the doc comment below). Bun's workspace module
+ * resolution for the copy's own `import`s (`agt-bridge`, etc.) also
+ * resolves relative to where the copy physically sits, which only works
+ * predictably inside the real package tree.
+ *
+ * A fixed name means a killed run's leftover copy is not a fresh, unignored
+ * directory tsc has never heard of: it is *this* directory, already covered
+ * by `.gitignore` and by `tsconfig.json`'s `exclude`, so it cannot make
+ * `bun run typecheck` see a stray duplicate of the Guardian's own source. A
+ * run that starts while a previous killed run's copy is still here fails
+ * loudly (`mkdirSync` on an existing directory throws) rather than quietly
+ * reusing stale files -- the cure for that is deleting the leftover
+ * directory by hand, not adding recovery logic that would have to guess
+ * whether stale contents are safe to remove.
+ */
+const SCHEMALESS_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-schemaless-scratch");
+
+/**
+ * Runs `body` against a Guardian whose `validate-envelope.ts` cannot find the
+ * ACS schemas -- the tree-cloned-without-`--recurse-submodules` case, which
+ * is exactly the scenario handleAcsRequest's outer net exists to catch.
+ *
+ * It is reproduced by *relocation*, not by mocking and not by touching
+ * `spec/`. `validate-envelope.ts` derives SCHEMA_ROOT from its own
+ * `import.meta.url` as `../../../spec/acs/specification/...`, so an identical
+ * copy of `packages/guardian/src` placed one directory deeper resolves that
+ * path to `packages/spec/acs/...`, which does not exist. Every line of
+ * Guardian code that then runs is the real, current source -- the files are
+ * copied at test time, so they cannot drift from `src/` -- and the failure it
+ * produces is a real ENOENT out of `readdirSync`, thrown at request time
+ * because `buildAjv()` is lazy. The first call to this function gets its own
+ * module instance, so it cannot poison the Ajv registry the rest of this
+ * suite shares. A later call importing the same fixed
+ * `SCHEMALESS_SCRATCH_DIR` path a second time does not get a second fresh
+ * instance -- Bun's module cache keys by resolved path, so it gets back the
+ * *first* call's already-loaded module, and the freshly copied files on
+ * disk for that later call go unread. Benign here (every call copies
+ * byte-identical source, and this suite's own Ajv registry is never shared
+ * with the copy either way), but worth being precise about now that the
+ * directory name is fixed rather than fresh per call.
+ *
+ * Deletions here are explicit per file (repo constraint: nothing recursive).
+ */
+async function withSchemalessGuardian(
+  body: (guardian: { url: string; logPath: string }) => Promise<void>,
+): Promise<void> {
+  const root = SCHEMALESS_SCRATCH_DIR;
+  const srcDir = join(root, "src");
+  const logPath = join(root, "envelopes.jsonl");
+  const copied = readdirSync(join(GUARDIAN_PKG, "src")).filter((f) => f.endsWith(".ts"));
+  let guardian: { close(): Promise<void> } | undefined;
+
+  // Everything after this mkdirSync is inside the try: a failure while
+  // copying, importing, or booting would otherwise leave a directory of
+  // stray .ts files sitting inside packages/guardian.
+  mkdirSync(root);
+  try {
+    mkdirSync(srcDir);
+    for (const file of copied) {
+      copyFileSync(join(GUARDIAN_PKG, "src", file), join(srcDir, file));
+    }
+
+    const relocated = (await import(join(srcDir, "index.ts"))) as typeof import("../src/index.ts");
+    const started = await relocated.startGuardian({
+      port: 0,
+      manifestPath: join(REPO_ROOT, "policy", "manifest.yaml"),
+      mappingPath: join(REPO_ROOT, "mapping.yaml"),
+      envelopeLogPath: logPath,
+    });
+    guardian = started;
+
+    await body({ url: started.url, logPath });
+  } finally {
+    await guardian?.close();
+    for (const path of [logPath, ...copied.map((file) => join(srcDir, file))]) {
+      try {
+        unlinkSync(path);
+      } catch {
+        // a run that failed early never created every one of these
+      }
+    }
+    for (const dir of [srcDir, root]) {
+      try {
+        rmdirSync(dir);
+      } catch {
+        // same
+      }
+    }
+  }
+}
+
+/**
+ * One scratch directory *per distinct fake source*, not shared the way
+ * `SCHEMALESS_SCRATCH_DIR` is shared across `withSchemalessGuardian`'s four
+ * tests. Those four all copy the *same* real files every time, so whichever
+ * call's module instance Bun's cache happens to answer with behaves
+ * identically. These two fake sources differ from each other, and Bun's
+ * module cache keys by resolved path: reusing one directory for both would
+ * make the second call's `import()` return the *first* call's
+ * already-loaded module, silently exercising the wrong test double. Two
+ * names, so each call gets a path Bun has never loaded before.
+ */
+const UNDEFINED_MESSAGE_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-undefined-message-scratch");
+const THROWING_MESSAGE_ACCESSOR_SCRATCH_DIR = join(GUARDIAN_PKG, "tmp-throwing-message-accessor-scratch");
+
+/**
+ * A test double, not the real `validate-envelope.ts`. It exists to force a
+ * real `Error` whose `.message` has been overwritten to `undefined` through
+ * `dispatch`'s one rethrow route -- the same route `withSchemalessGuardian`
+ * above uses for a real ENOENT, but that route cannot also produce a
+ * non-string `.message`: nothing in the real schema-validation path does
+ * that to an error it throws. `EnvelopeValidationError` is redeclared here,
+ * distinct from the real one, so `dispatch`'s
+ * `error instanceof EnvelopeValidationError` check -- reading *this* file's
+ * class, inside the relocated copy -- correctly comes back `false` and
+ * rethrows, the same way it would for any error the real module didn't
+ * throw as an `EnvelopeValidationError`.
+ */
+const UNDEFINED_MESSAGE_VALIDATE_ENVELOPE_SOURCE = `
+export class EnvelopeValidationError extends Error {}
+
+export function validateEnvelope(_input) {
+  const error = new Error("this message is about to be erased");
+  error.message = undefined;
+  throw error;
+}
+
+// Must track validate-envelope.ts's real export surface, not just the two
+// symbols this double overrides: server.ts imports isToolCallRequest from the
+// same module, so a double that omits it fails to import rather than
+// exercising the pathological throw these tests exist for. Mirrors the real
+// narrowing exactly -- it is unreachable here (validateEnvelope always
+// throws) but a double that lies about behaviour is worse than one that
+// does not compile.
+export function isToolCallRequest(envelope) {
+  return envelope.method === "steps/toolCallRequest";
+}
+`;
+
+/**
+ * A second test double, covering the case where `toRepoRelativeMessage`'s
+ * own `error instanceof Error ? error.message : error` line can itself
+ * throw: `.message` as an accessor that throws on get -- which the plain
+ * `undefined`-message double above does not exercise, since overwriting
+ * `.message` with a value never triggers a getter. `EnvelopeValidationError`
+ * is redeclared here for the same reason as the double above.
+ *
+ * Deliberately *not* a getPrototypeOf-trapping Proxy. That shape is real and
+ * is covered directly, at the unit level,
+ * below -- but it cannot reach `toRepoRelativeMessage` unmutated through
+ * this route: `dispatch`'s own `error instanceof EnvelopeValidationError`
+ * check runs first, and `instanceof` needs exactly the trapped
+ * `[[GetPrototypeOf]]` internal method to walk the prototype chain, so the
+ * *trap's own thrown Error* replaces the Proxy at that point -- a normal,
+ * well-behaved Error reaches the outer catch instead, and the interesting
+ * case never arrives. A throwing `.message` accessor has no such problem:
+ * `instanceof` never touches `.message`, so a real `Error` carrying one
+ * passes through dispatch's check untouched and reaches
+ * `toRepoRelativeMessage` exactly as thrown.
+ */
+const THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE = `
+export class EnvelopeValidationError extends Error {}
+
+export function validateEnvelope(_input) {
+  const error = new Error("real message, about to be hidden behind a throwing getter");
+  Object.defineProperty(error, "message", {
+    get() {
+      throw new Error("message getter blew up");
+    },
+  });
+  throw error;
+}
+
+// Must track validate-envelope.ts's real export surface, not just the two
+// symbols this double overrides: server.ts imports isToolCallRequest from the
+// same module, so a double that omits it fails to import rather than
+// exercising the pathological throw these tests exist for. Mirrors the real
+// narrowing exactly -- it is unreachable here (validateEnvelope always
+// throws) but a double that lies about behaviour is worse than one that
+// does not compile.
+export function isToolCallRequest(envelope) {
+  return envelope.method === "steps/toolCallRequest";
+}
+`;
+
+/**
+ * Runs \`body\` against a Guardian whose \`validate-envelope.ts\` has been
+ * replaced by \`fakeSource\` -- reproducing, through \`dispatch\`'s one
+ * rethrow route, a pathological value that a real \`validateEnvelope\`
+ * would never throw. Structurally identical to \`withSchemalessGuardian\`: a
+ * real, unmodified copy of every other file in \`packages/guardian/src\`,
+ * dynamically imported from its own scratch directory so it is a distinct
+ * module instance, with only \`validate-envelope.ts\` swapped for the
+ * double. No \`envelopeLogPath\` -- these tests need no envelope log, and
+ * \`NULL_ENVELOPE_LOG_SINK\`'s totality is already covered elsewhere.
+ *
+ * \`root\` is the caller's -- one of the two scratch-dir constants above,
+ * never shared between two different \`fakeSource\`s (see their doc comment
+ * for why that matters here specifically).
+ */
+async function withFakeValidateEnvelopeGuardian(
+  root: string,
+  fakeSource: string,
+  body: (guardian: { url: string }) => Promise<void>,
+): Promise<void> {
+  const srcDir = join(root, "src");
+  const copied = readdirSync(join(GUARDIAN_PKG, "src")).filter((f) => f.endsWith(".ts") && f !== "validate-envelope.ts");
+  let guardian: { close(): Promise<void> } | undefined;
+
+  mkdirSync(root);
+  try {
+    mkdirSync(srcDir);
+    for (const file of copied) {
+      copyFileSync(join(GUARDIAN_PKG, "src", file), join(srcDir, file));
+    }
+    writeFileSync(join(srcDir, "validate-envelope.ts"), fakeSource);
+
+    const relocated = (await import(join(srcDir, "index.ts"))) as typeof import("../src/index.ts");
+    const started = await relocated.startGuardian({
+      port: 0,
+      manifestPath: join(REPO_ROOT, "policy", "manifest.yaml"),
+      mappingPath: join(REPO_ROOT, "mapping.yaml"),
+    });
+    guardian = started;
+
+    await body({ url: started.url });
+  } finally {
+    await guardian?.close();
+    for (const path of [join(srcDir, "validate-envelope.ts"), ...copied.map((file) => join(srcDir, file))]) {
+      try {
+        unlinkSync(path);
+      } catch {
+        // a run that failed early never created every one of these
+      }
+    }
+    for (const dir of [srcDir, root]) {
+      try {
+        rmdirSync(dir);
+      } catch {
+        // same
+      }
+    }
+  }
+}
+
+// `dispatch` rethrows any non-EnvelopeValidationError, and the outer net in
+// handleAcsRequest is what catches it: an uncaught rethrow would leave
+// Bun.serve answering with its default `text/html` 500, guardian-client's
+// unconditional `res.json()` would throw `JSON Parse error: Unrecognized
+// token '<'`, acs-hook.ts's catch-all would exit 1 with empty stdout, and
+// Claude Code would read that as "the hook didn't fire" and let the tool
+// call proceed ungoverned. Without this net, the envelope log would also
+// record only the request, leaving the Inspector unable to show that a
+// response was ever sent.
+describe("startGuardian POST /acs -- the outer net around dispatch", () => {
+  it("answers a throw from validateEnvelope itself with parseable JSON-RPC in -32000..-32099, never an HTML 500", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(toolCallEnvelope("ls -la", { id: 5 })),
+      });
+
+      // Read as text first and parse by hand, so a regression reports the
+      // HTML body it actually got instead of an opaque SyntaxError from
+      // res.json() -- which is precisely what guardian-client would throw.
+      const text = await res.text();
+      expect(text.slice(0, 1)).toBe("{");
+      const response = JSON.parse(text) as JsonRpcResponse;
+
+      expect(response.jsonrpc).toBe("2.0");
+      expect(response.id).toBe(5);
+      expect(response.error).toBeDefined();
+      expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+      expect(response.error?.code).toBeLessThanOrEqual(-32000);
+    });
+  });
+
+  // The real ENOENT `withSchemalessGuardian` provokes names this machine's
+  // absolute path in full (`readdirSync` on a schema directory that does
+  // not exist at the relocated copy's resolved path). toRepoRelativeMessage
+  // strips only the repo-root prefix from it, so the diagnostic remainder
+  // (the ENOENT text and the repo-relative path) is still there for a real
+  // reader to use, without disclosing where this tree sits on disk.
+  it("strips this repo's absolute root out of a real error message before it reaches the client", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const response = await postAcs(url, toolCallEnvelope("ls -la"));
+
+      expect(response.error).toBeDefined();
+      const message = response.error?.message ?? "";
+      expect(message).not.toContain(REPO_ROOT);
+      expect(message).toContain("ENOENT");
+      // The diagnostic remainder: which schema directory was missing,
+      // relative rather than absolute. (Relative to the *relocated* copy's
+      // own root, one level shallower than this file's REPO_ROOT above --
+      // see withSchemalessGuardian's doc comment -- so no "packages/"
+      // prefix here; that is this test harness's relocation depth, not a
+      // second absolute-path leak.)
+      expect(message).toContain("spec/acs/specification/v0.1.0");
+    });
+  });
+
+  it("carries no decision -- a Guardian-side failure is an error here, not a synthesized deny", async () => {
+    await withSchemalessGuardian(async ({ url }) => {
+      const response = await postAcs(url, toolCallEnvelope("rm -rf /"));
+
+      expect(response.result).toBeUndefined();
+      expect((response as Record<string, unknown>).decision).toBeUndefined();
+      expect(JSON.stringify(response)).not.toContain("deny");
+    });
+  });
+
+  it("records both the request and the response, so the envelope log has no unrecorded exit", async () => {
+    await withSchemalessGuardian(async ({ url, logPath }) => {
+      await postAcs(url, toolCallEnvelope("ls -la", { id: 11 }));
+
+      const lines = readFileSync(logPath, "utf8").trim().split("\n");
+      const entries = lines.map((line) => JSON.parse(line) as { direction: string; rpc_id: unknown });
+      expect(entries.map((e) => e.direction)).toEqual(["request", "response"]);
+      // Paired by JSON-RPC id, which is what lets the Inspector show the
+      // failure beside the request that caused it.
+      expect(entries.map((e) => e.rpc_id)).toEqual([11, 11]);
+    });
+  });
+
+  // `instanceof Error` does not guarantee `.message` is a string -- true of
+  // the real ENOENT the test above forces, but not something
+  // toRepoRelativeMessage can assume in general. An Error whose `.message`
+  // has been overwritten to `undefined` would throw `TypeError: undefined
+  // is not an object (evaluating 'message.replace')` out of the helper
+  // itself if it made that assumption -- and unlike the inner catch's own
+  // throw (contained by this outer catch), a throw *from* the outer catch
+  // has nothing above `handleAcsRequest` to catch it: Bun.serve's fetch
+  // handler has no try, so it would answer with the unrecorded HTML 500 the
+  // module header exists to prevent.
+  it("does not let a real Error with a non-string .message escape the outer catch as an HTML 500", async () => {
+    await withFakeValidateEnvelopeGuardian(UNDEFINED_MESSAGE_SCRATCH_DIR, UNDEFINED_MESSAGE_VALIDATE_ENVELOPE_SOURCE, async ({ url }) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(toolCallEnvelope("ls -la", { id: 9 })),
+      });
+
+      const text = await res.text();
+      expect(text.slice(0, 1)).toBe("{");
+      const response = JSON.parse(text) as JsonRpcResponse;
+
+      expect(response.jsonrpc).toBe("2.0");
+      expect(response.id).toBe(9);
+      expect(response.error).toBeDefined();
+      expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+      expect(response.error?.code).toBeLessThanOrEqual(-32000);
+      // Total, coerced to text, rather than thrown.
+      expect(response.error?.message).toContain("undefined");
+    });
+  });
+
+  // An Error whose `.message` is an accessor that throws on get defeats
+  // `error instanceof Error ? error.message : error` inside
+  // toRepoRelativeMessage itself. Unreachable from any real throw site in
+  // this repo today -- belt and braces, not a reaction to a live bug (see
+  // toRepoRelativeMessage's doc comment) -- but the unit assertions in the
+  // describe block below only prove the helper itself is total; this
+  // proves the outer net around it still holds when the value it's handed
+  // is this pathological. (A getPrototypeOf-trapping Proxy is covered at
+  // the unit level only, not here -- see
+  // THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE's doc comment for
+  // why that one specifically cannot reach toRepoRelativeMessage unmutated
+  // through dispatch's rethrow route.)
+  it("does not let an Error with a throwing .message accessor escape the outer catch as an HTML 500 either", async () => {
+    await withFakeValidateEnvelopeGuardian(
+      THROWING_MESSAGE_ACCESSOR_SCRATCH_DIR,
+      THROWING_MESSAGE_ACCESSOR_VALIDATE_ENVELOPE_SOURCE,
+      async ({ url }) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(toolCallEnvelope("ls -la", { id: 10 })),
+        });
+
+        const text = await res.text();
+        expect(text.slice(0, 1)).toBe("{");
+        const response = JSON.parse(text) as JsonRpcResponse;
+
+        expect(response.jsonrpc).toBe("2.0");
+        expect(response.id).toBe(10);
+        expect(response.error).toBeDefined();
+        expect(response.error?.code).toBeGreaterThanOrEqual(-32099);
+        expect(response.error?.code).toBeLessThanOrEqual(-32000);
+        expect(response.error?.message).toContain("<unprintable error>");
+      },
+    );
+  });
+});
+
+describe("toRepoRelativeMessage", () => {
+  // `instanceof Error` says nothing about what `.message` was reassigned to
+  // after construction, so this function must not assume it is a string.
+  // Exercised directly (rather than only through
+  // withFakeValidateEnvelopeGuardian's HTTP round trip) so every shape of
+  // `unknown` a catch clause can hand it is covered without standing up a
+  // Guardian for each one.
+  it("never throws, for an Error whose .message is not a string", () => {
+    const undefinedMessage = new Error("erased below");
+    (undefinedMessage as { message: unknown }).message = undefined;
+    const numberMessage = new Error("erased below");
+    (numberMessage as { message: unknown }).message = 42;
+    const objectMessage = new Error("erased below");
+    (objectMessage as { message: unknown }).message = { nested: true };
+
+    expect(toRepoRelativeMessage(undefinedMessage)).toBe("undefined");
+    expect(toRepoRelativeMessage(numberMessage)).toBe("42");
+    expect(toRepoRelativeMessage(objectMessage)).toBe("[object Object]");
+  });
+
+  it("is total for non-Error unknown values too, matching what a catch clause can hand it", () => {
+    expect(toRepoRelativeMessage("a plain string")).toBe("a plain string");
+    expect(toRepoRelativeMessage(42)).toBe("42");
+    expect(toRepoRelativeMessage(null)).toBe("null");
+    expect(toRepoRelativeMessage(undefined)).toBe("undefined");
+    expect(toRepoRelativeMessage({ some: "object" })).toBe("[object Object]");
+  });
+
+  // The contract this function exists to uphold is that nothing escapes the
+  // outer net, and "unreachable today" should not be load-bearing for that
+  // (see this function's doc comment). Four shapes, each defeating a
+  // different step of `String(error instanceof Error ? error.message :
+  // error)`:
+  //   - an Error whose `.message` is a throwing accessor
+  //   - a value whose `toString`/`valueOf` both throw, so `String()` itself
+  //     throws on the non-Error branch
+  //   - a Proxy that throws on `get` (String() needs to read
+  //     Symbol.toPrimitive/toString/valueOf off it)
+  //   - a Proxy that throws on `getPrototypeOf`, defeating `instanceof
+  //     Error` before `String()` is ever reached at all
+  it("never throws, even for values that defeat message access, stringification, or property/prototype traps", () => {
+    const throwingAccessor = new Error("real message, about to be hidden behind a throwing getter");
+    Object.defineProperty(throwingAccessor, "message", {
+      get() {
+        throw new Error("message getter blew up");
+      },
+    });
+
+    const throwingToString = {
+      toString() {
+        throw new Error("toString blew up");
+      },
+      valueOf() {
+        throw new Error("valueOf blew up");
+      },
+    };
+
+    const throwingGetProxy = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("get trap blew up");
+        },
+      },
+    );
+
+    const throwingGetPrototypeOfProxy = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("getPrototypeOf trap blew up");
+        },
+      },
+    );
+
+    expect(toRepoRelativeMessage(throwingAccessor)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingToString)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingGetProxy)).toBe("<unprintable error>");
+    expect(toRepoRelativeMessage(throwingGetPrototypeOfProxy)).toBe("<unprintable error>");
+  });
+
+  // This file's own REPO_ROOT keeps the trailing slash `fileURLToPath`
+  // gives a directory URL -- fine for join()ing against, but these two
+  // tests need the bare root, with nothing after it, to build "root +
+  // separator + subpath" and "root + suffix" strings without accidentally
+  // doubling or misplacing a slash.
+  const REPO_ROOT_BARE = REPO_ROOT.replace(/[/\\]+$/, "");
+
+  it("strips this repo's root, with or without a trailing separator", () => {
+    expect(toRepoRelativeMessage(new Error(`${REPO_ROOT_BARE}/packages/spec/acs`))).toBe("packages/spec/acs");
+    expect(toRepoRelativeMessage(new Error(REPO_ROOT_BARE))).toBe("");
+  });
+
+  // An un-anchored match on REPO_ROOT as a bare prefix would also strip a
+  // *sibling* directory whose name merely extends the root (a `_old` backup
+  // clone, say) -- not a disclosure of this tree's own location, since it
+  // names a different directory entirely, but a misleading diagnostic that
+  // would then read as if it were a path under this repo.
+  it("leaves a sibling directory whose name extends the repo root untouched", () => {
+    const siblingPath = `${REPO_ROOT_BARE}_old/packages/spec`;
+
+    expect(toRepoRelativeMessage(new Error(siblingPath))).toBe(siblingPath);
+  });
+});
+
+// The intervention point comes from mapping.yaml's own `intervention_points`
+// table rather than from a hardcoded "pre_tool_call", so the table cannot
+// drift away from what the runtime actually does without a test catching it.
 describe("startGuardian POST /acs -- the intervention point comes from mapping.yaml", () => {
   it("evaluates the point the table names, not pre_tool_call: a moved row changes the decision", async () => {
     // The fixture answers steps/toolCallRequest with `output`, which

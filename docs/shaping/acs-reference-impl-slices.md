@@ -20,7 +20,7 @@ Every slice ends in something demo-able.
 | V4 | Output redaction on Claude Code | C3 | "AGT's own package documents that Claude Code cannot redact tool output. Here it is, redacted, by AGT's stock `redact` policy." |
 | V5 | Second host, zero AGT changes | C3 | "Same Guardian, same manifest, same bundle. OpenCode is now governed. `git diff` shows zero lines changed in the Guardian, the bridge, or AGT." |
 | V6 | Session state and provenance carriage | C4 | "The SessionContext chain grows per step. AGT emits `result_labels` at one step and gets them back as `input.ifc.source_labels` at the next, carried by ACS provenance." |
-| V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case." |
+| V7 | Conformance matrix | C1, C2, C5 | "Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim." |
 | V8 | Upstream drift watch | C6 | "Point the harness at AGT `main`. A changed enum turns a cell red and names the field." |
 
 **Order rationale.** V1–V4 establish credibility on the host AGT already supports best, so the second-host claim in V5 lands against a working baseline rather than a promise. V7 is the deliverable Microsoft reads, but it can only be green once V1–V6 exist to be measured. V8 is what keeps V7 true after upstream moves.
@@ -57,7 +57,7 @@ Every slice ends in something demo-able.
 | S10 | shared | store | `mapping.yaml` | — | — | → N23, N24 |
 | S11 | shared | store | `agt.lock` | — | — | → N31 |
 
-**Scope note.** Only `pre_tool_call` is wired. No session state, no tap, no second host. `N23` assembles the snapshot from the envelope alone; it starts reading S3/S4/S5 in V6.
+**Scope note.** Only `pre_tool_call` is wired. No session state, no envelope log, no second host. `N23` assembles the snapshot from the envelope alone; it starts reading S3/S4/S5 in V6.
 
 **Setup cost this slice absorbs:** ⚠️ *amended* — the `opa` CLI is **no longer a setup cost*. The npm package pulls `agent-control-specification-opa-darwin-arm64`, which ships OPA 0.70.0, overridable via `ACS_OPA_PATH` / `ACS_OPA_NO_BUNDLE`. The stock bundle passes 105/105 under both it and system OPA 1.18.2. What remains: the pinned AGT checkout and the first cut of `mapping.yaml`. **This closes D7 as Rego** — Cedar's only advantage was removing an external binary, and there is no external binary.
 
@@ -79,11 +79,33 @@ Every slice ends in something demo-able.
 |---|-------|-----------|------------|---------|-----------|------------|
 | U20 | P4 | inspector | envelope stream, request/response JSON pairs | render | — | — |
 | U21 | P4 | inspector | decision badge: decision + `policy_references` + `reason_codes` | render | — | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
+| N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — **total**: never throws, never alters a decision | call | → S6 | — |
 | N50 | P4 | inspector | `tailEnvelopeLog()` | observe | → U20, → U21 | — |
-| S6 | P3 | store | `envelope log`, JSONL | — | — | → N50 |
+| S6 | P3 | store | `envelope log`, JSONL at `.acs/envelopes.jsonl` (gitignored), one entry per direction | — | — | → N50 |
 
-**Why this early.** R5.1 and R5.2 are must-haves, and an ACS-first reader needs to see envelopes before anything more elaborate is worth showing. U21 is also how `warn` becomes visible: a `warn` arrives as `allow` with a non-empty `policy_references`, and the badge is what makes that legible rather than buried.
+**Why this early.** R5.1 and R5.2 are must-haves, and an ACS-first reader needs to see envelopes before anything more elaborate is worth showing. U21 is also what makes an observe-only outcome legible rather than buried: ACS carries it as `allow` with a non-empty `policy_references` — a policy fired and the action still proceeded — and the badge is what keeps that from rendering identically to a clean allow. The upstream disposition that maps to it is deliberately not named here: ACS has no such decision, and R5.2 exists so this package carries no policy-runtime vocabulary at all — in prose as much as in identifiers, since a word in a doc teaches it as effectively as a symbol does.
+
+**Decisions taken at planning.** §V2 left the Inspector's form open; these close it, and are recorded here rather than only in the plan.
+
+| # | Decision | Rationale |
+|---|---|---|
+| P1 | The Inspector is a **terminal process** — `bun run inspector`, a third terminal beside `bun run guardian` and `claude`. | Zero new dependencies, works over SSH, matches the repo's one-process-per-command shape. R7.1/R7.2 ask for a laptop and no paid dependency; a browser UI would add a server, a bundler and an asset pipeline without proving anything further about the wire. A browser view later reads the same S6 file. |
+| P2 | S6 is a **file** — `.acs/envelopes.jsonl`, overridable with `ACS_ENVELOPE_LOG`. | The file is the seam that lets the Inspector import nothing from the Guardian. `jq` works on it unchanged. An in-process bus or a socket would couple P4 to P3. |
+| P3 | The sink is **opt-in at the library level, on by default in the CLI**: `startGuardian` records only when `envelopeLogPath` is passed; `packages/guardian/src/main.ts` passes it. | V1's tests construct Guardians constantly; a default-on sink would scatter files through the working tree. The demo path still gets the log with nobody opting in. |
+| P4 | Request/response pairing is by **JSON-RPC `id`**, carried as `rpc_id` on every entry. | The only identifier present in both directions. `params.request_id` exists on requests only. Pairing by arrival order breaks the moment two hooks are in flight. |
+| P5 | The request is recorded **before validation**. | An envelope that fails the schema is the most useful thing an ACS-first reader can see, and it is exactly what disappears if the sink sits behind the validator. R5.1 says *every* hook firing. |
+
+**⚠️ Watch-for — the envelope log sink must be total.** `sink.write()` sits on the decision path. V1 shipped three separate fail-opens before they were caught (the `./` bundle landmine, `tool_unknown` failing closed, and an unhandled Guardian throw reaching the shim as an empty stdout); an observability feature that can turn a governed tool call into an ungoverned one would be the fourth. Every write is wrapped: a failure disables the sink for the process lifetime, reports once, and never propagates. V2 asserts this end to end — `rm -rf /` is still denied when every sink write fails.
+
+**⚠️ Watch-for — S6 records the parsed envelope, unmodified.** No field stripping, no redaction, no reordering of anything we control; pretty-printing happens at render time only. An inspector that shows something other than what was sent is worse than none. The consequence is that S6 carries raw tool arguments, which is why `.acs/` is gitignored and why the runbook says so out loud. **Corrected by V2's whole-branch review:** this watch-for originally said "records the wire verbatim", and so did the plan's global constraint 11, the slice README, the runbook, and the Inspector's own renderer comment. The sink is handed `await req.json()`, so it stores a JSON *value*, not bytes — the parse collapses duplicate keys, canonicalises number literals, and hoists integer-like object keys, and `arguments` keys are host-controlled. Storing bytes instead would make `envelope` a string rather than JSON, costing the Inspector its pretty-printing and the round-trip contract test its subject. The wording was corrected everywhere rather than the code.
+
+**⚠️ Watch-for — a schema failure appears as an error, not a decision.** In V2 an invalid envelope is recorded (P5) and then answered with a JSON-RPC error, so the Inspector renders `✖ ERROR -32010`, not a badge. `N27 denyOnInvalidEnvelope()` — the affordance that turns Guardian-side failures into honoured ACS `deny` **decisions** — is V3. The Inspector is where that change will become visible.
+
+**Unpaired responses are real.** A body that will not parse as JSON produces a response with no preceding request and `rpc_id: null`. The Inspector renders it as `(no method) (unpaired)` rather than hiding it.
+
+**Scope added at planning** (both amend this slice, both land in V2's PR):
+- An **invariant gate** on `packages/inspector/src`: zero AGT vocabulary, zero host vocabulary, and no import of `guardian` or `agt-bridge`. R5.2 is why this slice is early, and V1 established that this project turns architectural claims into grep gates rather than prose. Joins the R3.2/R3.3 gates in `test/invariants.test.ts`.
+- A **write↔tail contract test** (`test/envelope-log-sink-roundtrip.test.ts`). The Inspector declares its own `EnvelopeLogEntry` instead of importing the Guardian's — that is what makes the gate above meaningful — and the duplication is only safe while something fails when the two drift.
 
 ---
 
@@ -173,25 +195,43 @@ Wire N21 → N22 → N23 in place of V1's direct N21 → N23.
 
 ## V7: Conformance matrix
 
-**Demo:** Eight intervention points by five verdicts, all green. AGT completely expressed in ACS, case by case.
+**Demo:** Eight intervention points by five verdicts, every cell resolved — green where ACS v0.1.0 expresses AGT, red with a named reason where it cannot. Plus the Trace pillar, measured as an explicit non-claim.
+
+**⚠️ Demo corrected (was "all green").** The original sentence was already contradicted by this slice's own body, which has expected two honestly-red model-call cells since shaping; D10 adds two more. A matrix that must be all green to count is a matrix under pressure to redefine the claim, which is the opposite of what C2 is for. The demo now asks for every cell *resolved*, which is achievable and is the stronger deliverable.
 
 | # | Place | Component | Affordance | Control | Wires Out | Returns To |
 |---|-------|-----------|------------|---------|-----------|------------|
 | U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 verdicts | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
+| U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
 | N40 | P5 | conformance | `acs-agt-conformance` runner | call | → N41, → N42, → N43, → N44 | — |
 | N41 | P5 | conformance | intervention-point round trip, validated against `policy-input.schema.json` | call | — | → N47 |
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
-| N47 | P5 | conformance | `renderMatrix()` | call | → U30 | — |
+| N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas | call | — | → N47 |
+| N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U33 | — |
 | N48 | P5 | conformance | `renderMappingTable()` | call | → U32 | — |
 
 **⚠️ Gap discovered in V1 — the Guardian's outbound envelopes are validated by nothing.** Inbound requests get Ajv against all 43 v0.1.0 schemas (N21), but responses are hand-built objects checked by no schema. The conformance harness would therefore measure a wire format that was never itself contract-checked — which quietly weakens exactly the claim C2 exists to prove. Add response validation before the matrix is published. Related: V1 found that `response-envelope.json`'s `result` unconditionally `$ref`s `AcsResult`, which requires `decision` — a ServerHello has no such field, so a handshake response cannot satisfy it. That looks like a genuine v0.1.0 spec gap (no discriminated union for non-decision methods) and is worth an upstream ACS issue, not just a red cell.
 
-**Expect two cells to be honestly red.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target — see D4. Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` in v0.2.
+**⚠️ The Trace pillar lands here too (D10), and two of its cells are already known red.** `trace/otel-mapping.json` is normative — a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim. Measured against the pinned schemas after V2 shipped:
 
-R5.3 lands here: the matrix *is* the profile declaration.
+| Required by the mapping | Source in v0.1.0 | Cell |
+|---|---|---|
+| `gen_ai.tool.name` on `gen_ai.tool.call` | `payload.tool.name`, `required` | 🟢 |
+| `acs.capability` on `gen_ai.tool.call` | `payload.capability`, **optional** — `hooks/tool-call-request.json` requires only `tool` and `arguments` | 🔴 a conformant envelope may omit it |
+| `acs.decision` on the `acs.decision` span event | `AcsResult.decision`, `required` | 🟢 |
+| `acs.evaluator` on the `acs.decision` span event | **none** — `AcsResult` has no such field | 🔴 no wire source |
+| `acs.confidence`, `acs.evaluator_version`, `acs.model_id` (required "when present in the decision envelope") | **none** — no such fields in `AcsResult` | 🔴 can never be present |
+
+`N49` is what turns that table into measured cells rather than this prose, and `U33` renders it. The finding worth publishing is not the missing fields but their consequence: **a downstream consumer of the ACS wire cannot emit a conformant trace** — only the Guardian can, from process-local knowledge the contract does not carry. That cuts directly against R5.1/R5.2 and against V2's design, where S6 is readable by anything and the Inspector proves it by importing nothing. An OTel exporter reading S6 hits the same wall.
+
+**Scope boundary:** V7 *measures* the Trace pillar. It does not build an exporter. If an exporter is ever wanted it has to live in the Guardian for the reason above, and that is a slice of its own, not V7 scope.
+
+**Expect two cells to be honestly red — now four.** `pre_model_call` and `post_model_call` have no ACS v0.1.0 target (D4), and the two Trace attributes above have no wire source (D10). Red cells with a stated reason are worth more than a green matrix that quietly redefines the claim, and they are the forcing function for `steps/modelCall` and for an `evaluator` field on `AcsResult` in v0.2.
+
+R5.3 lands here: the matrix *is* the profile declaration — including the Trace pillar, which this implementation declares it does **not** claim, with the measured reason attached.
 
 ---
 
@@ -224,6 +264,8 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | 6 | ⚠️ A `./`-prefixed `bundle:` path silently disables policy — every decision becomes `allow`, with no error | V1 | `createBridge` throws on `/./`; V1's deny test is the backstop. Worth reporting upstream: a fail-open in a governance tool |
 | 7 | ⚠️ `enforced_identity` bisection is unavailable over AGT's Python binding | V7 | Resolved by embedding the **Node** SDK, which serializes `input_identity` and `enforced_identity` distinctly. Had we stayed on Python, R1.4 would be unverifiable and N43 impossible |
 | 8 | ⚠️ AGT's verdict carries no `rule_id` / `reason_codes` / `reasoning` | V1, V7 | `mapVerdict` synthesizes them from `reason` / `message`, and `mapping.yaml` is where that synthesis is declared — so V7 measures it rather than assuming it |
+| 9 | ⚠️ S6 grows unbounded — no rotation and no size cap | V2 | Accepted. It is a gitignored local demo artifact; `: > .acs/envelopes.jsonl` truncates it safely mid-run because `tailEnvelopeLog` resets on truncation. Rotation is not built, and the runbook says so |
+| 10 | ⚠️ The sink's two synchronous `appendFileSync` calls per request sit **on the decision path**, and `Bun.serve` is single-threaded | V2 | Accepted, and correct for demo scale. Surfaced by V2's whole-branch review as the neighbour of row 9: a slow filesystem (a stalled network mount, a full disk) blocks *every* in-flight request, not only the one being recorded, because there is no second thread to run them on. No correctness risk — the sink is total, so a write that fails degrades observability and never a decision (constraint 8) — and no latency budget is claimed for it. Recorded rather than fixed; an async or queued sink is the change if a deployment ever needs one |
 
 ## Open decisions carried from shaping
 
@@ -235,5 +277,10 @@ Runs on a schedule in CI. MS-ACS is `0.3.1-beta` and warns of breaking changes b
 | D5 | Determinism of the demo | V1 onward |
 | ~~D7~~ | ✅ **Closed: Rego.** Cedar's sole advantage was avoiding an external binary; the SDK bundles OPA, so that advantage does not exist. Stock bundle verified 105/105 under the bundled OPA | ~~V1~~ |
 | D8 | 🟡 Which `on_decision_failure` ships as default — V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6). Leaning to the spec default `proceed`, paired with U23's audit count | V3 |
+| ~~D10~~ | ✅ **Closed: V7 owns it, as a measured non-claim.** The ACS Trace pillar (`trace/otel-mapping.json`, `trace/ocsf-mapping.json`) is normative and was unclaimed by any slice. It now lands in V7 as `N49`/`U33` — V7 *measures* the pillar rather than emitting it, and the matrix declares it as a pillar this implementation does not claim, with the reason attached. Two required attributes already measure red: `acs.evaluator` has no field in `AcsResult` at all, and `acs.capability` maps to an optional payload field. The consequence is the publishable part — **a downstream consumer of the ACS wire cannot emit a conformant trace**, only the Guardian can, from knowledge the contract does not carry. Building an exporter would be a slice of its own, not V7 scope. Evidence tables in §V7 and in the shaping doc under D10 | `specification/v0.1.0/trace/otel-mapping.json` and `trace/ocsf-mapping.json` are *normative* — the OTel mapping states that a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it names `steps/toolCallRequest` → `gen_ai.tool.call` explicitly. V2's S6 is deliberately a raw envelope log, **not** an OTel or OCSF export, so this implementation currently claims neither. R5.3 says we declare what we claim and what we do not. Surfaced during V2 planning, measured after V2 shipped, and settled into V7 | V7 (N49, U33) |
 
 **Correction log.** V1 planning verified the AGT surface by running it rather than reading it, and produced ten corrections — the SDK choice, the `./` landmine, config-inside-the-bundle, the absent stock shell patterns, the leaf `policy_target`, AGT's missing `rule_id`/`reason_codes`/`reasoning`, lowercase wire decisions, `steps/toolCallRequest` and the 19-hook count, the retired `opa` setup cost, and the Python identity collapse. Each is recorded above at the row it governs, with its evidence, in `docs/superpowers/plans/2026-08-09-v1-one-host-one-hook.md`.
+
+V2 planning produced no corrections — §V2 had nothing wrong in it — but it did close five open choices (P1–P5, recorded under §V2), add three watch-fors, add risk row 9, and surface D10. Its plan is `docs/superpowers/plans/2026-08-09-v2-envelope-inspector.md`.
+
+**V2's whole-branch review produced one correction of its own**, recorded at the watch-for it governs: "S6 records the wire verbatim" over-claimed byte identity that the implementation never had, and the over-claim had propagated verbatim from the plan's global constraint 11 into the slice README, the runbook, the shaping doc's S6 row, and the Inspector's renderer. Corrected in wording, not in code — see the watch-for above for why storing raw bytes would be the worse trade. The same review added risk row 10.

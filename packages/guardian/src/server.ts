@@ -8,18 +8,29 @@
  * assemblePreToolCallSnapshot -> bridge.evaluate at the intervention point
  * resolveInterventionPoint picked -> mapVerdict -> response envelope.
  *
- * The middle three run inside a try/catch, and that catch is load-bearing.
- * Were a throw to escape this handler, Bun.serve would answer with its default
- * error page, which is HTML rather than JSON-RPC. The host's client calls
- * res.json() unconditionally, so an HTML body raises a SyntaxError there
- * instead of surfacing a JSON-RPC error; the hook's catch-all then exits 1
- * with nothing on stdout, which Claude Code reads as "the hook never fired"
- * and allows the tool call through ungoverned. That is a fail-open in a
- * governance tool, so the catch must stay.
+ * Every throw on this path is caught, in two places, because nothing may
+ * escape the fetch handler. Bun.serve would answer an unhandled rejection with
+ * its default error page, which is HTML rather than JSON-RPC. The host's
+ * client calls res.json() unconditionally, so an HTML body raises a
+ * SyntaxError there instead of surfacing a JSON-RPC error; the hook's
+ * catch-all then exits 1 with nothing on stdout, which Claude Code reads as
+ * "the hook never fired" and allows the tool call through ungoverned. That is
+ * a fail-open in a governance tool.
  *
- * What the catch guarantees is only that a well-formed JSON-RPC error reaches
- * the client. It deliberately does not turn the failure into an ACS `deny`:
- * which disposition an evaluation failure should carry is a separate question.
+ * The two catches are:
+ *   - Inside `dispatch`, around assemblePreToolCallSnapshot, bridge.evaluate
+ *     and mapVerdict: the evaluation itself.
+ *   - Around the whole `dispatch` call in `handleAcsRequest`, as the outer
+ *     net. `dispatch` rethrows anything that is not an
+ *     EnvelopeValidationError, and that rethrow is live: validateEnvelope
+ *     builds its Ajv registry lazily, on the first request rather than at
+ *     boot, so a tree cloned without `--recurse-submodules` starts cleanly
+ *     and then turns every request into an HTML 500. The outer net also
+ *     writes the failure response through the same envelope-log call as any
+ *     other response.
+ *
+ * Neither catch turns the failure into an ACS `deny` decision: which
+ * disposition a Guardian-side failure should carry is a separate question.
  *
  * The bridge and the mapping table are both built once, when startGuardian is
  * called, rather than per request -- AGT is meant to be constructed at boot
@@ -48,6 +59,7 @@ import {
   type AcsRequestEnvelope,
 } from "./validate-envelope.ts";
 import { buildServerHello, type ServerHello } from "./handshake.ts";
+import { createEnvelopeLogSink, NULL_ENVELOPE_LOG_SINK, type EnvelopeLogSink } from "./envelope-log-sink.ts";
 
 /**
  * Every snapshot message this Guardian can send an intervention point. One
@@ -72,6 +84,73 @@ const ACS_PATH = "/acs";
  * so the name would make which interfaces are listening a property of the
  * machine's resolver rather than of this line. */
 const LOOPBACK_ONLY = "127.0.0.1";
+// This tree's own absolute root -- `packages/guardian/src` is always three
+// directories under it, the same relationship MAPPING_PATH above relies on.
+// Used only to redact it out of error text before that text leaves the
+// Guardian; see toRepoRelativeMessage below.
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url)).replace(/[/\\]+$/, "");
+// The lookahead requires the root to be followed by a path separator or the
+// end of the string, before the optional `[/\\]?` consumes one such
+// separator. Without it, a *sibling* directory whose name merely extends
+// the root (`ACS_reference_implementation_old`) matched too: the literal
+// text of REPO_ROOT is a prefix of that name, so it stripped, leaving a
+// misleading `_old/packages/spec` behind -- not a disclosure of this tree's
+// own location, since it's a different directory entirely, but a
+// diagnostic that then reads as if it were one. The lookahead makes that
+// prefix match fail outright, so a message naming the sibling is left
+// alone, in full.
+const REPO_ROOT_PATTERN = new RegExp(`${REPO_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[/\\\\]|$)[/\\\\]?`, "g");
+
+/**
+ * Both catches in this module -- the outer net in handleAcsRequest and the
+ * evaluation-failure catch in dispatch -- surface a real error to the ACS
+ * client and, through the envelope log, onto disk. A real error's message
+ * (an ENOENT out of a missing schema directory, say) carries this machine's
+ * absolute filesystem path, e.g.
+ * `/Users/you/.../ACS_reference_implementation/packages/spec/acs/...`.
+ * That is diagnostic in a way this demo's value depends on, so rather than
+ * replace it with something generic, this function removes only the part
+ * that discloses where this tree sits on disk, leaving the repo-relative
+ * remainder (`packages/spec/acs/...`) intact.
+ *
+ * Takes the caught value itself, as `unknown`, rather than a pre-extracted
+ * string, and calls `String()` on the whole thing. `instanceof Error` does
+ * not guarantee `.message` is a string -- nothing stops it from being
+ * reassigned to `undefined`, a number, or anything else after construction
+ * -- and a throw from this function on the outer-net path has nothing above
+ * `handleAcsRequest` to catch it. Staying total for any `unknown`, exactly
+ * what a catch clause can hand it, is what keeps that path from becoming an
+ * unrecorded HTML 500.
+ *
+ * Exported -- unlike this module's other internals (`dispatch`, `extractId`,
+ * `extractMethod`, `errorResponse`) -- so the redaction above and this
+ * function's totality for non-`Error`, non-string-message, and
+ * otherwise-shaped `unknown` values can be asserted directly, rather than
+ * only through a real Guardian and an HTTP round trip. The same behaviour is
+ * also covered end to end, separately -- see server.test.ts's
+ * `withFakeValidateEnvelopeGuardian` tests.
+ *
+ * The whole body is wrapped in its own try/catch, including the
+ * `instanceof` check -- belt-and-braces, not a reaction to a live bug.
+ * Nothing in this tree currently throws an `Error` whose `.message` is a
+ * throwing accessor, a value whose `toString`/`valueOf` throws, or a
+ * `Proxy` that throws on `get` or on `getPrototypeOf` (which would defeat
+ * `instanceof Error` itself, since it walks the prototype chain through
+ * `[[GetPrototypeOf]]`, before `String()` below ever runs). They are guarded
+ * anyway because "unreachable today" should not be load-bearing for the one
+ * function whose entire job is upholding this module's contract that
+ * nothing escapes the outer net. The fallback string names the failure mode
+ * rather than guessing at a partial message, since the point is that
+ * nothing about the original error could be read at all.
+ */
+export function toRepoRelativeMessage(error: unknown): string {
+  try {
+    const message = String(error instanceof Error ? error.message : error);
+    return message.replace(REPO_ROOT_PATTERN, "");
+  } catch {
+    return "<unprintable error>";
+  }
+}
 
 /**
  * ACS reserves -32000..-32099 for application errors (Specification §17),
@@ -86,9 +165,10 @@ const LOOPBACK_ONLY = "127.0.0.1";
  */
 const ENVELOPE_INVALID_CODE = -32010;
 const METHOD_NOT_DISPATCHED_CODE = -32011;
-/** A throw from assemblePreToolCallSnapshot, bridge.evaluate, or mapVerdict --
- * mapVerdict's own require_policy_references check, say, or any AGT runtime
- * error. The module header explains why this must never become dead code. */
+/** Any throw the Guardian did not turn into a response itself: mapVerdict's
+ * own require_policy_references check, an AGT runtime error, or -- through
+ * handleAcsRequest's outer net -- a failure to even build the schema registry.
+ * The module header explains why none of this may become dead code. */
 const EVALUATION_FAILED_CODE = -32020;
 
 type JsonRpcSuccess = { jsonrpc: "2.0"; id: string | number; result: AcsFinalResult | ServerHello };
@@ -113,6 +193,11 @@ export type StartGuardianOptions = {
    * handleAcsRequest against a real bridge, without touching the mapping
    * every other consumer reads. Not meant for production use. */
   mappingPath?: string;
+  /** Path to the JSONL envelope log. Omitted means no sink: tests construct
+   * Guardians freely, and a default-on sink would scatter files through the
+   * working tree. `packages/guardian/src/main.ts` -- the demo path --
+   * passes it. */
+  envelopeLogPath?: string;
 };
 export type StartedGuardian = { url: string; close(): Promise<void> };
 
@@ -121,10 +206,12 @@ export async function startGuardian({
   hostname,
   manifestPath,
   mappingPath,
+  envelopeLogPath,
 }: StartGuardianOptions): Promise<StartedGuardian> {
   // Construct the bridge once at boot, not per request.
   const bridge = createBridge(manifestPath);
   const mapping = loadMapping(mappingPath ?? MAPPING_PATH);
+  const envelopeLog = envelopeLogPath ? createEnvelopeLogSink({ path: envelopeLogPath }) : NULL_ENVELOPE_LOG_SINK;
 
   const server = Bun.serve({
     hostname: hostname ?? LOOPBACK_ONLY,
@@ -134,7 +221,7 @@ export async function startGuardian({
       if (req.method !== "POST" || pathname !== ACS_PATH) {
         return new Response("Not Found", { status: 404 });
       }
-      const response = await handleAcsRequest(req, bridge, mapping);
+      const response = await handleAcsRequest(req, bridge, mapping, envelopeLog);
       return Response.json(response);
     },
   });
@@ -147,6 +234,22 @@ export async function startGuardian({
   };
 }
 
+/**
+ * Three phases, in order: parse, record the request, dispatch, record the
+ * response. The envelope-log writes live here and only here: `dispatch`
+ * below leaves by six routes (five `return`s and one rethrow), and future
+ * dispatch outcomes will add more, so writing to the envelope log inside it
+ * would make totality something a future change has to remember rather than
+ * something the structure guarantees.
+ *
+ * That guarantee only holds if every route out of `dispatch` is covered,
+ * including the one that throws: the try/catch below ensures every route
+ * out of `dispatch` produces a response object, and every response object
+ * reaches the envelope log.
+ *
+ * The sink itself is total (see envelope-log-sink.ts): these two calls cannot
+ * throw, so they cannot turn a governed tool call into an ungoverned one.
+ */
 async function handleAcsRequest(
   req: Request,
   // The role, not `ReturnType<typeof createBridge>`: this handler depends on
@@ -154,14 +257,46 @@ async function handleAcsRequest(
   // factory happens to return.
   bridge: PolicyBridge<GuardianSnapshot>,
   mapping: Mapping,
+  envelopeLog: EnvelopeLogSink,
 ): Promise<JsonRpcSuccess | JsonRpcFailure> {
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
-    return errorResponse(null, -32700, "Parse error");
+    // Nothing parseable arrived, so there is no request envelope to record
+    // -- the response is deliberately recorded unpaired, which is what the
+    // Inspector renders when a host sends a malformed body.
+    const parseError = errorResponse(null, -32700, "Parse error");
+    envelopeLog.write("response", parseError, null);
+    return parseError;
   }
 
+  // Recorded before validation, so an envelope that fails the schema is
+  // visible to the Inspector rather than invisible.
+  const method = extractMethod(raw);
+  envelopeLog.write("request", raw, method);
+
+  let response: JsonRpcSuccess | JsonRpcFailure;
+  try {
+    response = await dispatch(raw, bridge, mapping);
+  } catch (error) {
+    // The outer net. Deliberately a bare JSON-RPC error, not an ACS `deny`
+    // decision -- turning a validation failure into an explicit deny is a
+    // separate concern. What this buys is that the client can parse the
+    // answer at all, and that the envelope log holds a response line paired
+    // with the request line above it.
+    const message = toRepoRelativeMessage(error);
+    response = errorResponse(extractId(raw), EVALUATION_FAILED_CODE, `guardian failed to handle the request: ${message}`);
+  }
+  envelopeLog.write("response", response, method);
+  return response;
+}
+
+async function dispatch(
+  raw: unknown,
+  bridge: ReturnType<typeof createBridge>,
+  mapping: Mapping,
+): Promise<JsonRpcSuccess | JsonRpcFailure> {
   const rpcId = extractId(raw);
 
   let envelope: AcsRequestEnvelope;
@@ -207,7 +342,7 @@ async function handleAcsRequest(
       // See the module header. Deliberately a bare JSON-RPC error rather than
       // an ACS `deny` decision -- all this guarantees is that the client gets
       // a parseable envelope back instead of an HTML 500.
-      const message = error instanceof Error ? error.message : String(error);
+      const message = toRepoRelativeMessage(error);
       return errorResponse(rpcId, EVALUATION_FAILED_CODE, `evaluation failed: ${message}`);
     }
   }
@@ -240,9 +375,21 @@ function errorResponse(
  * successful response always uses the schema-validated envelope's id. */
 function extractId(raw: unknown): string | number | null {
   if (typeof raw === "object" && raw !== null && "id" in raw) {
-    const id = (raw as { id: unknown }).id;
+    const id = raw.id;
     if (typeof id === "string" || typeof id === "number") {
       return id;
+    }
+  }
+  return null;
+}
+
+/** Best-effort method name for envelope-log labelling only. Never used to
+ * dispatch -- `dispatch` reads the schema-validated envelope's own `method`. */
+function extractMethod(raw: unknown): string | null {
+  if (typeof raw === "object" && raw !== null && "method" in raw) {
+    const method = raw.method;
+    if (typeof method === "string") {
+      return method;
     }
   }
   return null;

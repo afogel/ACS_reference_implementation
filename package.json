@@ -7,7 +7,8 @@
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:pin": "bash scripts/verify-pin.sh",
-    "guardian": "bun run packages/guardian/src/main.ts"
+    "guardian": "bun run packages/guardian/src/main.ts",
+    "inspector": "bun run packages/inspector/src/main.ts"
   },
   "dependencies": {
     "agent-control-specification": "0.3.1-beta.0"

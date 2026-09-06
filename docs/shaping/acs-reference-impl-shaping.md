@@ -234,6 +234,7 @@ All resolved — see `spike-agt-integration.md`.
 | U22 | P4 | inspector | session chain view: SessionContext entries and lineage | render | — | — |
 | U23 | P4 | inspector | posture badge: negotiated `on_decision_failure`, plus a running count of audited fail-open proceeds | render | — | — |
 | U30 | P5 | conformance | coverage matrix, 8 intervention points × 5 verdicts | render | — | — |
+| U33 | P5 | conformance | trace-pillar row: each required OTel attribute, its v0.1.0 wire source, and whether a wire consumer can emit it | render | — | — |
 | U31 | P5 | conformance | drift detail: changed point, verdict, or schema field | render | — | — |
 | U32 | P5 | conformance | rendered ACS ↔ MS-ACS mapping table | render | — | — |
 
@@ -261,7 +262,7 @@ All resolved — see `spike-agt-integration.md`.
 | N23 | P3 | guardian | `assembleSnapshot()` — envelope + session state → AGT snapshot | call | → N30 | — |
 | N24 | P3 | guardian | `mapVerdict()` — AGT verdict → ACS decision; `warn` → `allow` + `policy_references` | call | → N25, → N26 | → N4, → N13 |
 | N25 | P3 | guardian | `persistResultLabels()` — AGT `result_labels` into ACS lineage | call | → S5 | — |
-| N26 | P3 | guardian | `writeEnvelopeTap()` | call | → S6 | — |
+| N26 | P3 | guardian | `createEnvelopeLogSink()` → `sink.write()` — ⚠️ **total**: never throws, never alters a decision. Records the request *before* validation | call | → S6 | — |
 | N27 | P3 | guardian | `denyOnInvalidEnvelope()` — schema or bridge failure returns an explicit ACS `deny` **decision**, not a bare error, so the host honors it instead of falling back to posture | call | → N26 | → N4, → N13 |
 | N28 | P3 | guardian | `buildServerHello()` — ServerHello: `timeout_config`, `on_decision_failure`, `profiles_accepted` | call | → N26 | → N5, → N14 |
 | N30 | P3.1 | agt-bridge | `evaluateInterventionPoint(point, snapshot)` — Node SDK | call | — | → N24 |
@@ -271,6 +272,7 @@ All resolved — see `spike-agt-integration.md`.
 | N42 | P5 | conformance | verdict round trip: AGT verdict → ACS decision → AGT verdict, assert identity | call | — | → N47 |
 | N43 | P5 | conformance | `enforced_identity` recomputation check | call | — | → N47 |
 | N44 | P5 | conformance | failure-domain check: an AGT evaluation error arrives as an honored `deny`; a delivery failure applies the negotiated posture and writes an audit event | call | — | → N47 |
+| N49 | P5 | conformance | trace-pillar check: every attribute `trace/otel-mapping.json` marks required, resolved against the v0.1.0 wire schemas — a cell is green only when a *wire consumer* could emit it | call | — | → N47 |
 | N45 | P5 | conformance | `fetchUpstreamSurfaces()` — AGT wire schemas and enums at `main` | call | → S12 | — |
 | N46 | P5 | conformance | `diffSurfaces()` — pinned versus upstream | call | — | → N47 |
 | N47 | P5 | conformance | `renderMatrix()` | call | → U30, → U31 | — |
@@ -291,7 +293,7 @@ All resolved — see `spike-agt-integration.md`.
 | S3 | P3 | `sessionContext` | Hash-chained entries per `session_id` |
 | S4 | P3 | `intent` | Immutable Intent baseline per session |
 | S5 | P3 | `provenance` | `origin` / `derived_from` lineage, carrying AGT `result_labels` between steps |
-| S6 | P3 | `envelope log` | JSONL of every request and response |
+| S6 | P3 | `envelope log` | JSONL of every request and response as parsed, unmodified, at `.acs/envelopes.jsonl` (gitignored — carries raw tool arguments). Paired by JSON-RPC `id` |
 | S7 | P3.1 | `manifest.yaml` | Binds the `rego` policy to `data.agt.defaults.verdict`; declares intervention points, tools, approval |
 | S8 | P3.1 | `data.agt.defaults.config` | Thresholds, allowlists, pattern lists — the only place policy behaviour is authored |
 | S9 | P3.1 | AGT stock bundle | `policy/lib/*.rego` at the pinned ref. Requires the `opa` CLI on PATH |
@@ -349,7 +351,7 @@ flowchart TB
         N23["N23: assembleSnapshot()"]
         N24["N24: mapVerdict()"]
         N25["N25: persistResultLabels()"]
-        N26["N26: writeEnvelopeTap()"]
+        N26["N26: createEnvelopeLogSink()"]
         N27["N27: denyOnInvalidEnvelope()"]
         N28["N28: buildServerHello()"]
         S3["S3: sessionContext chain"]
@@ -379,11 +381,13 @@ flowchart TB
         U30["U30: 8x5 coverage matrix"]
         U31["U31: drift detail"]
         U32["U32: mapping table"]
+        U33["U33: trace-pillar row"]
         N40["N40: conformance runner"]
         N41["N41: point round trip"]
         N42["N42: verdict round trip"]
         N43["N43: enforced_identity check"]
         N44["N44: fail-closed check"]
+        N49["N49: trace-pillar check"]
         N45["N45: fetchUpstreamSurfaces()"]
         N46["N46: diffSurfaces()"]
         N47["N47: renderMatrix()"]
@@ -480,12 +484,15 @@ flowchart TB
     N42 -.-> N47
     N43 -.-> N47
     N44 -.-> N47
+    N40 --> N49
+    N49 -.-> N47
     N45 --> S12
     S11 -.-> N46
     S12 -.-> N46
     N46 -.-> N47
     N47 --> U30
     N47 --> U31
+    N47 --> U33
     S10 -.-> N48
     N48 --> U32
 
@@ -493,8 +500,8 @@ flowchart TB
     classDef nonui fill:#d3d3d3,stroke:#808080,color:#000
     classDef store fill:#e6e6fa,stroke:#9370db,color:#000
 
-    class U1,U2,U3,U10,U11,U12,U20,U21,U22,U23,U30,U31,U32 ui
-    class N1,N2,N3,N4,N5,N6,N7,N10,N11,N12,N13,N14,N15,N16,N20,N21,N22,N23,N24,N25,N26,N27,N28,N30,N31,N40,N41,N42,N43,N44,N45,N46,N47,N48,N50,N51 nonui
+    class U1,U2,U3,U10,U11,U12,U20,U21,U22,U23,U30,U31,U32,U33 ui
+    class N1,N2,N3,N4,N5,N6,N7,N10,N11,N12,N13,N14,N15,N16,N20,N21,N22,N23,N24,N25,N26,N27,N28,N30,N31,N40,N41,N42,N43,N44,N45,N46,N47,N48,N49,N50,N51 nonui
     class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16 store
 ```
 
@@ -527,3 +534,16 @@ flowchart TB
 | ~~D7~~ | F3 — Rego or Cedar for the demo bundle | ✅ **Decided: Rego** | The deciding factor was wrong. Cedar's advantage was removing an external binary, but the SDK ships OPA 0.70.0 as a platform package — so Rego, the canonical binding, costs nothing extra. Verified: stock bundle 105/105 under the bundled OPA |
 | D8 | 🟡 Which `on_decision_failure` the reference ships as its default | Open, leaning `proceed` | The spec default is `proceed` (fail-open). Shipping the spec default is the honest choice, but a security-facing demo that fails open needs the audit trail on screen (U23) to read correctly. V1 negotiates and stores it (N5/N28/S13); V3 applies it (N6), so the decision is only needed by V3 |
 | D9 | ⚠️ **New.** Report the `./` bundle-path fail-open upstream to AGT? | Open | A `./`-prefixed `bundle:` silently voids all policy and returns `allow` with no error. It is a fail-open in a governance tool and affects any AGT host, not just us. Reporting is the good-citizen move and consistent with R4.3's non-adversarial framing; it is also unattributed outbound traffic, so it needs an explicit decision before anything is sent |
+| ~~D10~~ | R5.3 — does this implementation claim the ACS **Trace** pillar? | ✅ **Decided: no, and V7 measures the non-claim** (N49 → U33). V7 does not build an exporter; per the evidence note below it could only live in the Guardian, which would be a slice of its own | `specification/v0.1.0/trace/otel-mapping.json` is normative: a deployment emitting OTel for the Trace pillar MUST use its span names and required attributes verbatim, and it maps `steps/toolCallRequest` → `gen_ai.tool.call` by name. `trace/ocsf-mapping.json` is its sibling. V2's envelope log (S6) is a raw JSONL log, deliberately not an OTel or OCSF export, so today we claim neither pillar. R5.3 requires declaring that either way. Settled: the matrix records Trace as an explicit non-claim, and **two of its required span attributes have no wire source at all — evidence note directly below** |
+
+**⚠️ D10 evidence — the Trace pillar is not emittable from the v0.1.0 wire alone.** Read after V2 shipped, against the pinned schemas:
+
+| Required by `trace/otel-mapping.json` | Source in v0.1.0 | Status |
+|---|---|---|
+| `gen_ai.tool.name` (on `gen_ai.tool.call`) | `payload.tool.name` — `required` | ✅ |
+| `acs.capability` (on `gen_ai.tool.call`) | `payload.capability` — **optional**; `hooks/tool-call-request.json` requires only `tool` and `arguments` | ⚠️ A fully conformant envelope may omit it, so a fully conformant span cannot always be built |
+| `acs.decision` (on the `acs.decision` span event) | `AcsResult.decision` — `required` | ✅ |
+| `acs.evaluator` (on the `acs.decision` span event) | **none** — `AcsResult` has no `evaluator` field | ❌ No wire source at all |
+| `acs.confidence`, `acs.evaluator_version`, `acs.model_id` (conditional, "required when present in the decision envelope") | **none** — no such fields in `AcsResult` | ❌ Can never be "present in the decision envelope" |
+
+The consequence is sharper than a missing field: a **downstream consumer of the ACS wire cannot emit a conformant trace**. Only the Guardian can, from process-local knowledge the contract does not carry. That cuts against R5.1/R5.2 — V2's whole design is that S6 is readable by anything, and the Inspector proves it by importing nothing. An OTel exporter reading S6 would hit the same wall. Either v0.2 adds `evaluator` (and friends) to `AcsResult` and promotes `capability` to required for this hook, or the Trace pillar is explicitly a Guardian-side emission, not a wire-derived one, and should say so. This is the second place this project has become a forcing function for v0.2 rather than a consumer of v0.1.0 — see the `steps/modelCall` tension under D4.
