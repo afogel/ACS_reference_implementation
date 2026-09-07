@@ -1,4 +1,5 @@
 import { AgentControl, type JsonValue } from "agent-control-specification";
+import { publishOpaPath } from "./opa-path.ts";
 
 export type AgtVerdict = {
   decision: "allow" | "deny" | "warn" | "escalate" | "transform";
@@ -144,6 +145,14 @@ export function createBridge(manifestPath: string, options?: CreateBridgeOptions
         },
       }
     : undefined;
+
+  // Before the runtime exists, not after: the SDK resolves its bundled opa
+  // when the runtime is constructed, but under Bun that resolution never
+  // reaches the native core that spawns it, and every evaluation would deny
+  // on runtime_error:policy_invocation_failed -- see opa-path.ts's header.
+  // Throws when no opa can be reached at all, so a process that cannot
+  // evaluate policy gets no bridge rather than one that denies everything.
+  publishOpaPath();
 
   const control = AgentControl.fromPath(manifestPath, annotatorDispatcher);
 
