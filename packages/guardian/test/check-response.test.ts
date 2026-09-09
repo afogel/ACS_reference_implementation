@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { checkResponse } from "../src/check-response.ts";
+import { buildServerHello } from "../src/handshake.ts";
 
 // A real UUID, not a readable placeholder: response-envelope.json's
 // AcsResult.request_id is `format: "uuid"`, and this field is what the
@@ -46,14 +47,11 @@ describe("checkResponse -- validateEnvelope's outbound counterpart", () => {
     });
   });
 
-  it("reports a decision response that merely lost its decision as invalid, not unexpressible", () => {
-    // The fixture isServerHelloResponse's rationale names: no `decision`,
-    // same as a ServerHello, but also no `methods_evaluated` -- a malformed
-    // AcsResult, not a handshake response. Weakening the AND in
-    // isServerHelloResponse to `!("decision" in result)` alone would excuse
-    // this as unexpressible instead of reporting it invalid; every other
-    // fixture in this file passes identically under that weakening, so this
-    // one exists to catch it.
+  it("reports a decision response that merely lost its decision as invalid, not as a ServerHello", () => {
+    // No `decision`, same as a ServerHello, but none of the ServerHello's
+    // required fields either -- a malformed AcsResult. It matches neither
+    // branch of the envelope's `oneOf`, so it must be reported invalid, not
+    // excused as the other shape.
     const outcome = checkResponse({
       jsonrpc: "2.0",
       id: "rpc-1",
@@ -67,19 +65,21 @@ describe("checkResponse -- validateEnvelope's outbound counterpart", () => {
     });
   });
 
-  it("reports a handshake response as unexpressible rather than invalid, because the schema cannot state it", () => {
+  it("accepts the Guardian's own ServerHello, which the envelope has expressed since spec v0.1.2", () => {
     const outcome = checkResponse({
       jsonrpc: "2.0",
       id: "rpc-1",
-      result: { acs_version: "0.1.0", methods_evaluated: [], on_decision_failure: "proceed" },
+      result: buildServerHello({ ACS_ON_DECISION_FAILURE: "proceed" }),
     });
 
-    expect(outcome).toEqual({
-      status: "unexpressible",
-      reason:
-        "response-envelope.json's `result` unconditionally $refs AcsResult, which requires `decision`; " +
-        "a ServerHello has no such field, so v0.1.0 has no discriminated union for non-decision methods",
-    });
+    expect(outcome).toEqual({ status: "checked_valid" });
+  });
+
+  it("reports a ServerHello missing one of its own required fields as invalid, not excused", () => {
+    const { timeout_config: _dropped, ...partial } = buildServerHello({ ACS_ON_DECISION_FAILURE: "proceed" });
+    const outcome = checkResponse({ jsonrpc: "2.0", id: "rpc-1", result: partial });
+
+    expect(outcome.status).toBe("checked_invalid");
   });
 
   it("accepts a JSON-RPC error response, which the envelope schema does express", () => {

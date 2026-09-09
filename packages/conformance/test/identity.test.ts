@@ -197,7 +197,7 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
     const [cell] = coverageCellsFromIdentity(finding);
     expect(cell!.status).toBe("guardian_only");
     expect(cell!.reason).toBe(
-      "ACS v0.1.0 carries no action-identity field on any of its 43 schemas, so a wire consumer cannot bind an " +
+      "ACS v0.1.0 carries no action-identity field on any of its 44 schemas, so a wire consumer cannot bind an " +
         "approval to the action that executed; AGT's enforced identity binds to the policy target it rewrote, not " +
         "to the document the host applies modifications to",
     );
@@ -221,7 +221,7 @@ describe("boundTo's four outcomes, each measured with synthetic evidence and ass
     expect(cell!.reason).toBe(
       "AGT's enforced identity in this run binds to the snapshot leaf policy_target.path addresses -- the document " +
         "the host will actually execute after the rewrite -- rather than to policy_target.value alone; ACS v0.1.0 " +
-        "still carries no action-identity field on any of its 43 schemas for a wire consumer to check it against",
+        "still carries no action-identity field on any of its 44 schemas for a wire consumer to check it against",
     );
   });
 
