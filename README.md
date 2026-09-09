@@ -1,6 +1,6 @@
 # ACS Reference Implementation
 
-This repository shows what Microsoft's [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) (AGT) looks like when it talks to agent clients over the [Agent Control Specification](https://github.com/Agent-Control-Standard/ACS) (ACS) wire contract.
+This repository shows what Microsoft's [Agent Governance Toolkit](https://github.com/microsoft/agent-governance-toolkit) (AGT) looks like when it talks to agent clients over the [Agent Control Specification](https://github.com/GenAI-Security-Project/agent-control-standard) (ACS) wire contract.
 
 AGT's policy engine runs unchanged. Two different agent clients send it ACS envelopes. One Guardian process answers both. No client has AGT code in it, and AGT has no client code in it.
 

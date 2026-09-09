@@ -180,10 +180,13 @@ export class EnvelopeValidationError extends Error {
 }
 
 const SCHEMA_ROOT = fileURLToPath(new URL("../../../spec/acs/specification/v0.1.0/", import.meta.url));
-const REQUEST_ENVELOPE_SCHEMA_ID = "https://acs.org/schema/v0.1.0/request-envelope.json";
-const TOOL_CALL_REQUEST_SCHEMA_ID = "https://acs.org/schema/v0.1.0/hooks/tool-call-request.json";
+/** The `$id` base every v0.1.0 schema declares. Exported so check-response.ts
+ * derives its id from the same string, and a namespace move is one edit. */
+export const SCHEMA_BASE = "https://genai-security-project.github.io/agent-control-standard/schema/v0.1.0/";
+const REQUEST_ENVELOPE_SCHEMA_ID = `${SCHEMA_BASE}request-envelope.json`;
+const TOOL_CALL_REQUEST_SCHEMA_ID = `${SCHEMA_BASE}hooks/tool-call-request.json`;
 const TOOL_CALL_REQUEST_METHOD = "steps/toolCallRequest";
-const TOOL_CALL_RESULT_SCHEMA_ID = "https://acs.org/schema/v0.1.0/hooks/tool-call-result.json";
+const TOOL_CALL_RESULT_SCHEMA_ID = `${SCHEMA_BASE}hooks/tool-call-result.json`;
 const TOOL_CALL_RESULT_METHOD = "steps/toolCallResult";
 
 function listSchemaFiles(dir: string): string[] {
@@ -232,7 +235,7 @@ let ajv: ReturnType<typeof buildAjv> | undefined;
  * Exported so validate-response.ts, this module's outbound twin, can look up
  * response-envelope.json's validator through the same lazily-built Ajv
  * instance this module builds for the inbound side, rather than
- * constructing a second registry that loads the same 43 schema files from
+ * constructing a second registry that loads the same 44 schema files from
  * the same SCHEMA_ROOT a second time. Sharing the instance, not just the
  * construction code, is what makes "the two validators cannot come to
  * disagree about which spec they check against" true by construction

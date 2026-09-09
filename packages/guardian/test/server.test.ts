@@ -655,6 +655,11 @@ export function getValidator(_schemaId) {
   return validate;
 }
 
+// SCHEMA_BASE joined the export surface when check-response.ts began deriving
+// its schema id from it. The value is irrelevant here: getValidator above
+// ignores its argument.
+export const SCHEMA_BASE = "";
+
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";
 }
@@ -718,6 +723,11 @@ export function getValidator(_schemaId) {
   validate.errors = null;
   return validate;
 }
+
+// SCHEMA_BASE joined the export surface when check-response.ts began deriving
+// its schema id from it. The value is irrelevant here: getValidator above
+// ignores its argument.
+export const SCHEMA_BASE = "";
 
 export function isToolCallRequest(envelope) {
   return envelope.method === "steps/toolCallRequest";

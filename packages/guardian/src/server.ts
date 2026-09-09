@@ -551,11 +551,6 @@ async function handleAcsRequest(
       console.error(
         `guardian sent a response for method ${method} without checking it against response-envelope.json: ${responseCheck.reason}`,
       );
-    } else if (responseCheck.status === "unexpressible") {
-      // Recorded, not silently dropped -- v0.1.0 has no schema this method's
-      // response could satisfy (see check-response.ts), which is not the
-      // same fact as either line above and gets its own.
-      console.error(`guardian sent a response for method ${method} that v0.1.0 cannot express: ${responseCheck.reason}`);
     }
   } catch {
     // A reporting failure (an EPIPE on stderr, say) must not be able to

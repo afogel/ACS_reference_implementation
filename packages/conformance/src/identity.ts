@@ -47,7 +47,7 @@ import { AGT_POINTS, type CellStatus, type CoverageCell } from "./cells.ts";
 /** `boundTo === "policy_target"`: the measured, real behaviour against the
  * pinned SDK at both transform-capable points (see the file comment). */
 const BOUND_TO_POLICY_TARGET =
-  "ACS v0.1.0 carries no action-identity field on any of its 43 schemas, so a wire consumer cannot bind an " +
+  "ACS v0.1.0 carries no action-identity field on any of its 44 schemas, so a wire consumer cannot bind an " +
   "approval to the action that executed; AGT's enforced identity binds to the policy target it rewrote, not " +
   "to the document the host applies modifications to";
 
@@ -58,7 +58,7 @@ const BOUND_TO_POLICY_TARGET =
 const BOUND_TO_SNAPSHOT =
   "AGT's enforced identity in this run binds to the snapshot leaf policy_target.path addresses -- the document " +
   "the host will actually execute after the rewrite -- rather than to policy_target.value alone; ACS v0.1.0 " +
-  "still carries no action-identity field on any of its 43 schemas for a wire consumer to check it against";
+  "still carries no action-identity field on any of its 44 schemas for a wire consumer to check it against";
 
 /** `boundTo === "unattributable"`: a transform WAS reported, both candidates
  * were constructed and hashed, and neither matched -- a comparison that ran
