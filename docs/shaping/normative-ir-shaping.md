@@ -117,7 +117,7 @@ Sibling to [`acs-reference-impl-shaping.md`](./acs-reference-impl-shaping.md). S
 
 ## Verified ground
 
-Surveyed at ACS `c259f57` (v0.1.0, `version.txt` = `0.1.0`) — the pinned `spec/acs` submodule, tracking `Agent-Control-Standard/ACS`, mirrored at the user's fork `afogel/ACS_official`.
+Surveyed at ACS `c259f57` (v0.1.0, `version.txt` = `0.1.0`) — the pinned `spec/acs` submodule, tracking `GenAI-Security-Project/agent-control-standard`, mirrored at the user's fork `afogel/ACS_official`.
 
 ### Normative corpus and its density
 
