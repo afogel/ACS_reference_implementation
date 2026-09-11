@@ -39,7 +39,7 @@ jobs:
       # Both actions pinned to the commit their moving major tag resolved to,
       # tag kept as a comment so the next reader can re-resolve it. `@v4` is
       # a tag someone else can move; a SHA is not.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # spec/acs is where the ACS JSON Schemas resolve from.
           # packages/guardian/src/validate-envelope.ts builds its Ajv
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # `bun run conformance` starts a live Guardian and drives a real
           # request through it, so this job needs the schemas in spec/acs for

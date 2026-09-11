@@ -28,7 +28,7 @@ jobs:
       # Both actions pinned to the commit their moving major tag resolved to,
       # with that tag kept as a comment so the next reader can re-resolve it.
       # `@v4` is a tag someone else can move; a SHA is not.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Install trash
         # scripts/run-upstream-watch.sh hard-requires `trash`: this repo does
