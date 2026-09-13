@@ -2,7 +2,7 @@
   "name": "acs-reference-implementation",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "hosts/*"],
+  "workspaces": ["packages/*", "hosts/*", "ir"],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -11,7 +11,8 @@
     "conformance": "bash scripts/run-conformance.sh",
     "watch:upstream": "bash scripts/run-upstream-watch.sh",
     "guardian": "bun run packages/guardian/src/main.ts",
-    "inspector": "bun run packages/inspector/src/main.ts"
+    "inspector": "bun run packages/inspector/src/main.ts",
+    "ir": "bun run ir/src/main.ts"
   },
   "dependencies": {
     "agent-control-specification": "0.3.1-beta.0"

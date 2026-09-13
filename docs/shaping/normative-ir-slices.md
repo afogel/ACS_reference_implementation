@@ -64,13 +64,15 @@ So V1 is the wide census (Phase 0), V2–V6 are the deep vertical on ~20 semanti
 
 **Reference numbers to reproduce** (measured in X3, at `c259f57`): paragraph 145, list item 33, table cell 17, blockquote 8, total 203; zero in headings, code fences, or inline code spans. If V1's scan disagrees with those, V1's scan is wrong.
 
+🟡 **Shipped** ([`ir/slices/v1/`](../../ir/slices/v1/README.md)). The scan reproduces X3 exactly at `c259f57` (203 in 132 blocks, 145 / 33 / 17 / 8). Against the current pin, `6fce2a0` (v0.1.2), it reports **208 in 134 blocks**, 145 / 33 / **22** / 8: the five additions are table cells in the two new `identity/` pages, which the source census declares informative because they say of themselves that they propose no normative requirements yet. So the burn-down V2 starts from is **197 unbound**, with 11 excluded by source status. The corpus is 38 documents: 19 normative, 18 informative, 1 editorial (`concepts/README.md`). All eight footers parsed, 22 pillar entries, none dangling.
+
 **Wires to future slices:** `N52` also feeds `U32` (V3) and `U34` (V6); those columns render empty until then.
 
 ---
 
 ## V2: Twenty provisions, marked and indexed
 
-**Demo:** `acs-ir markers apply && acs-ir extract && acs-ir render` produces a provision index of twenty provisions. Each carries its opaque ID, node type, level, bound actor, activating profile, evidence class, and verbatim text. Re-running `acs-ir census` shows the unbound count fall from 203 to 183.
+**Demo:** `acs-ir markers apply && acs-ir extract && acs-ir render` produces a provision index of twenty provisions. Each carries its opaque ID, node type, level, bound actor, activating profile, evidence class, and verbatim text. Re-running `acs-ir census` shows the unbound count fall from 203 to 183 (🟡 from 197 to 177 at the v0.1.2 pin, see V1).
 
 **Specimen selection is the substance of this slice.** Twenty provisions chosen for **semantic diversity, not document order**, per the source's insistence. The kinds, mapped to concrete provisions (from the shaping doc's specimen table):
 
@@ -576,6 +578,6 @@ Not slice work, but discovered by it and worth reporting to the ACS maintainers 
 
 | # | Finding | Source |
 |---|---|---|
-| 1 | `specification.md` has **no `## 9.` heading**. §9.1 and §9.2 exist and are linked from §6 and §8.4, but §9's preamble — approver authentication, Guardian identity verification, *"Approvers MUST NOT return ASK"* — is stranded under §8.6 *Chain head publication* | Shaping survey |
+| 1 | ~~`specification.md` has **no `## 9.` heading**. §9.1 and §9.2 exist and are linked from §6 and §8.4, but §9's preamble — approver authentication, Guardian identity verification, *"Approvers MUST NOT return ASK"* — is stranded under §8.6 *Chain head publication*~~ 🟡 **Fixed upstream in v0.1.2** (`daf81ac`, *Give the approver model its own section heading*). Nothing to report | Shaping survey |
 | 2 | Three `concepts/` `(normative)` callouts are obligations on the Guardian, which `concepts/README.md:14`'s altitude rule places in the pillars | [X5](./spike-provision-taxonomy.md) |
 | 3 | `conformance.md` and `specification.md` §7 state the ACS-Provenance all-or-nothing rule in near-identical prose — a restatement pair the `README.md:33` migration would resolve | X3, X5 |

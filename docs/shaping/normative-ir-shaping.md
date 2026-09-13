@@ -119,35 +119,47 @@ Sibling to [`acs-reference-impl-shaping.md`](./acs-reference-impl-shaping.md). S
 
 Surveyed at ACS `c259f57` (v0.1.0, `version.txt` = `0.1.0`) — the pinned `spec/acs` submodule, tracking `GenAI-Security-Project/agent-control-standard`, mirrored at the user's fork `afogel/ACS_official`.
 
+🟡 **Re-surveyed at ACS `6fce2a0` (v0.1.2), the submodule's current pin, by V1's census** (`bun run ir census`; [`ir/slices/v1/`](../../ir/slices/v1/README.md)). Everything below still describes `c259f57` unless marked. What moved between the two commits, for the corpus this document reasons about:
+
+| Change at v0.1.2 | Effect on this document |
+|---|---|
+| `## 9. Approver Model` heading added (`daf81ac`) | **Fact 1's defect is fixed upstream** and upstream Finding 1 in the slices doc is closed. Its consequence stands and is now demonstrated: the three §9 provisions' section anchors changed, which is exactly the drift a section-number key would suffer. The lines cited below as `specification.md:257`/`:259` are now `:262`/`:264`; `:241` is now `:244` |
+| Two new pages, `docs/identity/overview.md` and `docs/identity/standards.md`, carrying 5 keyword occurrences in table cells | Corpus total is **208**, not 203. Both pages say of themselves *"It does not propose a wire format or normative requirements yet"*; their MUSTs restate §6.4 and their RECOMMENDED / REQUIRED quote RFC 6749. The source census declares them informative, so the unbound count that V2 burns down from is **197** |
+| §5's hook table gained `skillRegister`, `skillLoad`, `skillUnload` rows; `conformance.md` gained a paragraph stating that nobody verifies a conformance claim in v0.1.0 | No keyword delta. The conformance paragraph is a candidate Exclusion and independent support for R0's motivation |
+| `response-envelope.json` now makes `result` a `oneOf` over `AcsResult` and `handshake.json#/$defs/ServerHello`; every schema `$id` moved to the `genai-security-project.github.io` base; `acs_schema.json` moved into `v0.1.0/` | The *structural* specimen in the V2 table now has a schema constraint to cite by JSON Pointer (R5.2) rather than a prose sentence. Pinned subschema hashes (R2.8) must be taken at `6fce2a0`, not `c259f57` |
+| Schema count | The "48 JSON Schema files" claim below was a miscount at either commit. There are **44** under `specification/v0.1.0/` at v0.1.2: 29 under `hooks/` (23 base plus 6 strict `*.acs-provenance.json`), 10 top-level, 2 `agbom/`, 1 `inspect/`, 2 `trace/` |
+
 ### Normative corpus and its density
 
-| File | RFC 2119 keyword occurrences |
-|---|---|
-| `docs/spec/instrument/specification.md` | 111 |
-| `docs/spec/instrument/hooks.md` | 27 |
-| `docs/spec/conformance.md` | 22 |
-| `docs/spec/trace/extend_opentelemetry.md` | 8 |
-| `docs/spec/trace/events.md` | 7 |
-| `docs/spec/inspect/README.md` | 7 |
-| `docs/concepts/agents.md` | 6 |
-| `docs/concepts/README.md` | 3 |
-| `docs/topics/ACS_in_action_example.md` | 2 |
-| `docs/spec/instrument/extend_mcp.md` | 2 |
-| `docs/concepts/session-lifecycle.md` | 2 |
-| `docs/concepts/intent.md` | 2 |
-| `docs/spec/inspect/extend_cyclonedx.md` | 1 |
-| `docs/concepts/trust.md` | 1 |
-| `docs/concepts/identity.md` | 1 |
-| `docs/acs.md` | 1 |
-| **Total** | **203** |
+| File | `c259f57` (v0.1.0) | 🟡 `6fce2a0` (v0.1.2) |
+|---|---|---|
+| `docs/spec/instrument/specification.md` | 111 | 111 |
+| `docs/spec/instrument/hooks.md` | 27 | 27 |
+| `docs/spec/conformance.md` | 22 | 22 |
+| `docs/spec/trace/extend_opentelemetry.md` | 8 | 8 |
+| `docs/spec/trace/events.md` | 7 | 7 |
+| `docs/spec/inspect/README.md` | 7 | 7 |
+| `docs/concepts/agents.md` | 6 | 6 |
+| `docs/concepts/README.md` | 3 | 3 |
+| 🟡 `docs/identity/overview.md` | — | 3 (informative) |
+| `docs/topics/ACS_in_action_example.md` | 2 | 2 |
+| `docs/spec/instrument/extend_mcp.md` | 2 | 2 |
+| `docs/concepts/session-lifecycle.md` | 2 | 2 |
+| `docs/concepts/intent.md` | 2 | 2 |
+| 🟡 `docs/identity/standards.md` | — | 2 (informative) |
+| `docs/spec/inspect/extend_cyclonedx.md` | 1 | 1 |
+| `docs/concepts/trust.md` | 1 | 1 |
+| `docs/concepts/identity.md` | 1 | 1 |
+| `docs/acs.md` | 1 | 1 |
+| **Total** | **203** | **208** |
 
-By keyword: `MUST` 70, `MAY` 44, `SHOULD` 34, `MUST NOT` 23, `OPTIONAL` 21, `RECOMMENDED` 7, `REQUIRED` 4. No `SHALL` / `SHALL NOT` / `SHOULD NOT` anywhere.
+By keyword at `c259f57`: `MUST` 70, `MAY` 44, `SHOULD` 34, `MUST NOT` 23, `OPTIONAL` 21, `RECOMMENDED` 7, `REQUIRED` 4. No `SHALL` / `SHALL NOT` / `SHOULD NOT` anywhere. 🟡 At `6fce2a0` the five additions are `MUST` +3, `RECOMMENDED` +1, `REQUIRED` +1, all in the two informative identity pages.
 
 `concepts/provenance.md` and `concepts/intent.md` are cited as *"(normative)"* from `specification.md` §7 and §8.4 while carrying 2 and 1 keyword occurrences. **Keyword count is not a proxy for normative weight**, which is why R1.1 makes corpus membership a declaration and provision discovery a separate operation.
 
 ### What already exists, and must not be duplicated
 
-`specification/v0.1.0/` ships **48 JSON Schema files**: `request-envelope.json`, `response-envelope.json`, `handshake.json`, `provenance.json`, `provenance-summary.json`, `context-entry.json`, `ask-details.json`, `defer-details.json`, `modifications.json`, 26 under `hooks/` (including 6 strict `*.acs-provenance.json` variants), 2 under `agbom/`, `inspect/format-mapping.json`, and `trace/{otel,ocsf}-mapping.json`.
+`specification/v0.1.0/` ships **48 JSON Schema files** (🟡 corrected to **44** in the re-survey above; the breakdown here was miscounted): `request-envelope.json`, `response-envelope.json`, `handshake.json`, `provenance.json`, `provenance-summary.json`, `context-entry.json`, `ask-details.json`, `defer-details.json`, `modifications.json`, 26 under `hooks/` (including 6 strict `*.acs-provenance.json` variants), 2 under `agbom/`, `inspect/format-mapping.json`, and `trace/{otel,ocsf}-mapping.json`.
 
 The JSON-Schema layer of the four-layer architecture is **already built and shipped**. The IR cites it (R5), never restates it.
 
@@ -159,7 +171,7 @@ The JSON-Schema layer of the four-layer architecture is **already built and ship
 
 | # | Fact | Consequence |
 |---|---|---|
-| 1 | `specification.md` has **no `## 9.` heading**; §9.1 and §9.2 exist and are hyperlinked from §6 and §8.4, but §9's preamble sits under §8.6 | Section anchors are **not** a reliable key. A binding keyed on `#8…` would mis-attribute three provisions, one of which (`Approvers MUST NOT return ASK`) is a named security invariant. Confirms R2.1's "never a section number" |
+| 1 | `specification.md` has **no `## 9.` heading**; §9.1 and §9.2 exist and are hyperlinked from §6 and §8.4, but §9's preamble sits under §8.6. 🟡 **Fixed upstream at v0.1.2** (`daf81ac` adds `## 9. Approver Model`) | Section anchors are **not** a reliable key. A binding keyed on `#8…` would mis-attribute three provisions, one of which (`Approvers MUST NOT return ASK`) is a named security invariant. Confirms R2.1's "never a section number". 🟡 The upstream fix is the demonstration: those three provisions' section anchors changed between the two pins while their text did not |
 | 2 | 🟡 **`attr_list` is enabled but disqualified** — measured in [X3](./spike-marker-span.md). Of its four paragraph forms, three render the braces as **visible page text**; only an own-line `{: #id }` creates an anchor, and it attaches to the whole block (`<p id>` / `<td id>`) | Two independent disqualifications: block granularity cannot address §6.1's three-provision cell or §10.3's four-provision sentence, and a misplaced attribute list publishes `{ #acs-req-017 }` on the live site. Raw `<a id>` survived all 8 tested positions with no such failure mode. **This corrects the first pass, which claimed attr_list markers render as anchors** |
 | 3 | Normative content lives in **tables and registries with no RFC 2119 keyword**: §6's *Required fields* column, §6.1's *Required* column, §7's *Required* column, §10.1's algorithm-registry status column, §17/§17.1's error-code registry, §7.2's channel-to-trust mapping, the `DEFER` reason enum, `timeout_decision` default `deny`, `skew_window_ms` RECOMMENDED default `300000` | A keyword-anchored census is **necessary but not sufficient**. Also: markers must work inside table cells (E2.3) |
 | 4 | Conformance is **tiered** across 7 profiles, declared per-session in the handshake | A verdict without profile scope is meaningless. Profile is a first-class field |

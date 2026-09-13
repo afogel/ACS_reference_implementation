@@ -1,0 +1,16 @@
+sources:
+  - path: notes.md
+    status: informative
+  - path: concepts/README.md
+    status: editorial
+    pillar: concepts
+  - path: concepts/thing.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - spec/rules.md#11-failure-normative
+  - path: spec/rules.md
+    status: normative
+    normative_by: self
+    pillar: instrument

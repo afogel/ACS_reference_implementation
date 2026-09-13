@@ -44,6 +44,7 @@ This is a demonstration and a measurement, not a product. The section [What this
 | Policy | `policy/lib/`, `policy/manifest.yaml`, `agt.lock` | AGT's stock policy bundle, byte-identical to the pinned upstream commit, plus one configuration file. |
 | Translation table | `mapping.yaml` | AGT intervention points to ACS methods. AGT verdicts to ACS decisions. How each ACS field is derived. |
 | Specification | `spec/acs/` | The ACS specification, pinned as a git submodule. |
+| Normative IR | `ir/` | The spec's requirement catalog and censuses. Reads `spec/acs` and nothing else here; shares no code with the parts above. |
 
 ## What this project is, and is not
 
@@ -439,6 +440,9 @@ Everything above runs with no configuration. These are the variables each proces
 | [`docs/shaping/acs-reference-impl-slices.md`](docs/shaping/acs-reference-impl-slices.md) | The ten slices, the risk table, and what each slice measured. Authoritative for slice scope |
 | `slices/v1/` to `slices/v10/` | One README per slice: what it delivered, what it did not, and the names it froze |
 | `docs/demos/v1-runbook.md` to `v9-runbook.md` | Real captured output for each slice's demo |
+| [`docs/shaping/normative-ir-shaping.md`](docs/shaping/normative-ir-shaping.md) | The Normative IR work stream: requirements, shape E, affordances. Authoritative for the IR's requirements |
+| [`docs/shaping/normative-ir-slices.md`](docs/shaping/normative-ir-slices.md) | The IR's eight slices. Authoritative for IR slice scope |
+| `ir/slices/v1/` | One README per shipped IR slice |
 | [`spec/acs/docs/spec/conformance.md`](spec/acs/docs/spec/conformance.md) | The ACS profiles and the ACS-Core baseline this tree is measured against |
 | [`SECURITY.md`](SECURITY.md) | How to report a security issue |
 
