@@ -73,6 +73,13 @@ jobs:
         # a cancelled job should stop, not finish its remaining steps.
         if: ${{ !cancelled() }}
         run: bun test
+      - name: Verify the provision census matches the pinned corpus
+        # ir/census/provisions.yaml is generated from spec/acs and committed
+        # so its diff is reviewable. A submodule bump or a sources.yaml edit
+        # that nobody regenerated it for is a stale count, and a stale
+        # count is exactly what the census exists to make impossible.
+        if: ${{ !cancelled() }}
+        run: bun run ir census --check --quiet
 
   # The network half, deliberately separate. Both of these shallow-clone AGT
   # at agt.lock's PINNED ref -- an immutable commit, so neither can be broken

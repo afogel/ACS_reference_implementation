@@ -1,0 +1,19 @@
+{
+  "name": "acs-ir",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "ACS Normative IR: the requirement catalog, censuses, and verifier tooling for the pinned ACS spec. Depends on spec/acs and on nothing else in this repository.",
+  "bin": {
+    "acs-ir": "src/main.ts"
+  },
+  "scripts": {
+    "census": "bun run src/main.ts census",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14",
+    "typescript": "^7.0.2"
+  }
+}

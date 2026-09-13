@@ -1,0 +1,217 @@
+# The normative source census (S11, authored). R1.1: corpus membership is
+# declared here, never inferred from an RFC 2119 grep. Every Markdown file
+# under spec/acs/docs/ appears exactly once; `acs-ir census` fails when the
+# tree and this list disagree in either direction.
+#
+# status:
+#   normative    -- participates in conformance. Says what makes it so:
+#                   normative_by: self       a pillar specification or a document conformance.md binds
+#                   normative_by: reference  force delegated by a citation, listed in referenced_by
+#   informative  -- read by people, ignored by conformance. Keyword occurrences
+#                   here are excluded with reason informative_source.
+#   editorial    -- the spec's policy about its own structure. Not a provision
+#                   source; its keyword occurrences are examples quoted from
+#                   elsewhere and are excluded with reason editorial_source.
+#
+# Surveyed at ACS v0.1.2 (6fce2a0). Decisions carried from the shaping doc and
+# spike X5 (docs/shaping/spike-provision-taxonomy.md): all eight concept pages
+# are in; concepts/README.md is the taxonomy's source, not a provision source.
+
+sources:
+  # --- landing and topics: read by people, cited by nothing normative ---
+  - path: README.md
+    status: informative
+    note: Site landing page.
+  - path: about.md
+    status: informative
+    note: Project description and contact routes.
+  - path: acs.md
+    status: informative
+    note: One-page overview. Its single OPTIONAL restates conformance.md's trust-enum statement.
+  - path: topics/core_concepts.md
+    status: informative
+    note: Orientation for new readers; every statement here is restated normatively in concepts/ or a pillar.
+  - path: topics/ACS_in_action_example.md
+    status: informative
+    note: Worked example. Its OPTIONAL and MAY describe the example deployment's choices, not obligations.
+
+  # --- concepts: canonical definitions and cross-cutting invariants (X5, D-g) ---
+  - path: concepts/README.md
+    status: editorial
+    pillar: concepts
+    note: The altitude rule and the migration note. Source of the taxonomy; its three keyword occurrences are quoted examples.
+  - path: concepts/agents.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: Two (normative) callouts, both Guardian obligations (X5 flags the altitude); restates §9 approver rules (R2.9 pair).
+  - path: concepts/capability.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: No callouts; carries the canonical definition and a Referenced-by footer.
+  - path: concepts/identity.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: One (normative) callout that asserts ACS mandates nothing, the type case for the Exclusion node type.
+  - path: concepts/intent.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - spec/instrument/specification.md#84-intent-and-scope-mode
+      - concepts/README.md#convention
+    note: Cited "(normative)" from §8.4; two Invariant callouts.
+  - path: concepts/provenance.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - spec/instrument/specification.md#7-provenance
+      - concepts/README.md#convention
+    note: Cited "(normative)" from §7; two Invariant callouts and zero RFC 2119 keywords, the reason R1.1 exists.
+  - path: concepts/session-lifecycle.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: One (normative) callout on subagent intent derivation.
+  - path: concepts/skill.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: No callouts; canonical definition of a skill as a trust boundary, plus footer.
+  - path: concepts/trust.md
+    status: normative
+    normative_by: reference
+    pillar: concepts
+    referenced_by:
+      - concepts/README.md#convention
+    note: Two Invariant callouts; "asserted is not attested" is force §7.1 does not restate.
+
+  # --- identity workstream: self-declared non-normative ---
+  - path: identity/overview.md
+    status: informative
+    pillar: concepts
+    note: '"It does not propose a wire format or normative requirements yet." Its three MUSTs restate §6.4 (new at v0.1.2).'
+  - path: identity/standards.md
+    status: informative
+    pillar: concepts
+    note: Standards survey. Its RECOMMENDED / REQUIRED quote RFC 6749, not ACS (new at v0.1.2).
+
+  # --- conformance: binds the profiles ---
+  - path: spec/conformance.md
+    status: normative
+    normative_by: self
+    pillar: conformance
+    note: Seven profiles and what each obliges. The profile field on every provision (R4.3) resolves here.
+
+  # --- instrument pillar ---
+  - path: spec/instrument/README.md
+    status: informative
+    pillar: instrument
+    note: Pillar overview and marketing prose; no requirements of its own.
+  - path: spec/instrument/specification.md
+    status: normative
+    normative_by: self
+    pillar: instrument
+    note: The core wire specification. 111 of the corpus's keyword occurrences.
+  - path: spec/instrument/hooks.md
+    status: normative
+    normative_by: self
+    pillar: instrument
+    note: Hook catalogue with per-hook obligations and the preCompact laundering guard.
+  - path: spec/instrument/extend_mcp.md
+    status: normative
+    normative_by: self
+    pillar: instrument
+    note: Wrapped MCP is in ACS-Core (conformance.md) and this page specifies it.
+  - path: spec/instrument/a2a/extend_a2a.md
+    status: informative
+    pillar: instrument
+    note: hooks.md:35 reserves protocols/A2A/* for v0.2 and defines no normative wrapping semantics in v0.1.
+  - path: spec/instrument/a2a/hooks/cancel_task_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/get_task_push_notification_config_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/get_task_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/resubscribe_to_task_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/send_message_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/set_task_push_notification_config_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+  - path: spec/instrument/a2a/hooks/stream_message_request.md
+    status: informative
+    pillar: instrument
+    note: A2A wrapping, deferred to v0.2 (hooks.md:35).
+
+  # --- trace pillar ---
+  - path: spec/trace/README.md
+    status: informative
+    pillar: trace
+    note: Pillar overview; the obligations live in events.md and the two extension pages.
+  - path: spec/trace/events.md
+    status: normative
+    normative_by: self
+    pillar: trace
+    note: The ACS-Trace vocabulary conformance.md binds a deployment to.
+  - path: spec/trace/extend_opentelemetry.md
+    status: normative
+    normative_by: self
+    pillar: trace
+    note: Required attributes for OTel emission.
+  - path: spec/trace/extend_ocsf.md
+    status: normative
+    normative_by: self
+    pillar: trace
+    note: OCSF mapping; zero RFC 2119 keywords, its obligations are table-borne (R1.7).
+  - path: spec/trace/OCSF/implementation_examples.md
+    status: informative
+    pillar: trace
+    note: Implementation examples.
+
+  # --- inspect pillar ---
+  - path: spec/inspect/README.md
+    status: normative
+    normative_by: self
+    pillar: inspect
+    note: AgBOM shape and the snapshot/changed hooks conformance.md binds under ACS-Inspect.
+  - path: spec/inspect/extend_cyclonedx.md
+    status: normative
+    normative_by: self
+    pillar: inspect
+    note: One of the three normative AgBOM serializations.
+  - path: spec/inspect/extend_spdx.md
+    status: normative
+    normative_by: self
+    pillar: inspect
+    note: One of the three normative AgBOM serializations; zero keywords, mapping tables only.
+  - path: spec/inspect/extend_swid.md
+    status: normative
+    normative_by: self
+    pillar: inspect
+    note: One of the three normative AgBOM serializations; zero keywords, mapping tables only.

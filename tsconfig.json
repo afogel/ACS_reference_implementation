@@ -4,7 +4,7 @@
   "compilerOptions": {
     "rootDir": "."
   },
-  "include": ["packages/**/*.ts", "hosts/**/*.ts", "test/**/*.ts"],
+  "include": ["packages/**/*.ts", "hosts/**/*.ts", "test/**/*.ts", "ir/**/*.ts"],
   "exclude": [
     "**/node_modules",
     // server.test.ts's outer-net test copies packages/guardian/src here at
