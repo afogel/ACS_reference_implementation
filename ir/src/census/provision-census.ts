@@ -9,7 +9,8 @@
  * a normative source is `unbound`, and one in a source the census declares
  * informative or editorial is `excluded` with that source status as the
  * reason. Later slices add the finer exclusions X3 found necessary
- * (`restatement_of`) and the bindings the overlay creates.
+ * (`restatement_of`). An occurrence inside a resolved marker span is bound
+ * to that provision, which is how the unbound count burns down.
  *
  * `by_node_type` is carried per source from V1 so the shape of the report
  * does not change when V2 starts filling it.
@@ -20,6 +21,7 @@ import { calloutScan, type NormativeTag } from "./callout-scan.ts";
 import { keywordScan, RFC2119_KEYWORDS, type Keyword, type Occurrence } from "./keyword-scan.ts";
 import { seedDependsOn, type FooterEdge } from "./seed-depends-on.ts";
 import type { SourceDeclaration, SourceStatus } from "./source-census.ts";
+import type { ResolvedSpan } from "../markers/overlay.ts";
 
 export type ExclusionReason = "informative_source" | "editorial_source";
 
@@ -86,8 +88,11 @@ export function provisionCensus(
   corpus: Corpus,
   declared: SourceDeclaration[],
   read: (file: string) => string,
+  spans: ResolvedSpan[] = [],
 ): ProvisionCensus {
   const byPath = new Map(declared.map((d) => [d.path, d]));
+  const spansBySource = new Map<string, ResolvedSpan[]>();
+  for (const span of spans) spansBySource.set(span.source, [...(spansBySource.get(span.source) ?? []), span]);
   const exists = (doc: string): boolean => corpus.files.includes(doc);
 
   const sources: PerSourceCensus[] = [];
@@ -127,7 +132,7 @@ export function provisionCensus(
       footer_entries: footer.edges.length,
     };
     for (const occurrence of scan.occurrences) {
-      const binding = bindingFor(declaration);
+      const binding = bindingFor(declaration, occurrence.offset, spansBySource.get(file) ?? []);
       perSource.by_block_type[occurrence.block_type]++;
       if (binding.kind === "excluded") perSource.excluded++;
       else if (binding.kind === "bound") perSource.bound++;
@@ -175,7 +180,9 @@ export function provisionCensus(
   };
 }
 
-function bindingFor(declaration: SourceDeclaration): Binding {
+function bindingFor(declaration: SourceDeclaration, offset: number, spans: ResolvedSpan[]): Binding {
+  const span = spans.find((s) => s.start <= offset && offset < s.end);
+  if (span) return { kind: "bound", provision_id: span.id };
   if (declaration.status === "informative") return { kind: "excluded", reason: "informative_source" };
   if (declaration.status === "editorial") return { kind: "excluded", reason: "editorial_source" };
   return { kind: "unbound" };

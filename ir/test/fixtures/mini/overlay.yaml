@@ -1,0 +1,17 @@
+markers:
+  - id: ACS-REQ-0001
+    source: spec/rules.md
+    quote: "A client MUST send a handshake first, and it\nMUST NOT send hooks before that."
+  - id: ACS-REQ-0002
+    source: spec/rules.md
+    start: "Item one SHOULD be short."
+    end: "It MAY continue lazily."
+  - id: ACS-REQ-0003
+    source: spec/rules.md
+    quote: "OPTIONAL, MAY be empty"
+  - id: ACS-INV-0001
+    source: concepts/thing.md
+    quote: "**Things are immutable (normative).** A thing MUST NOT change."
+  - id: ACS-DEF-0001
+    source: concepts/thing.md
+    quote: "A thing is defined here."

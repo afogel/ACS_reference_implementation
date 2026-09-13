@@ -34,3 +34,7 @@ packages/guardian/tmp-schemaless-scratch/
 # test the first's already-loaded module.
 packages/guardian/tmp-undefined-message-scratch/
 packages/guardian/tmp-throwing-message-accessor-scratch/
+
+# S3, the marked copy of the pinned corpus that `acs-ir markers apply` writes
+# for the extractor to read. Regenerated from spec/acs plus ir/markers/overlay.yaml.
+ir/.build/

@@ -1,0 +1,16 @@
+id: ACS-INV-0001
+title: Intent immutability
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: invariant
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d13d31e336aa8a7401273ed6819dfff59e909b7313119268c702c9698f0c0d12
+note: "The cross-cutting invariant ACS-REQ-0011 enforces. Text differs from the pillar's enforcement sentence on purpose: this constrains the data, \u00a78.4 obliges the framework."

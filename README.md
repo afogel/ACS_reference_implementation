@@ -442,7 +442,7 @@ Everything above runs with no configuration. These are the variables each proces
 | `docs/demos/v1-runbook.md` to `v9-runbook.md` | Real captured output for each slice's demo |
 | [`docs/shaping/normative-ir-shaping.md`](docs/shaping/normative-ir-shaping.md) | The Normative IR work stream: requirements, shape E, affordances. Authoritative for the IR's requirements |
 | [`docs/shaping/normative-ir-slices.md`](docs/shaping/normative-ir-slices.md) | The IR's eight slices. Authoritative for IR slice scope |
-| `ir/slices/v1/` | One README per shipped IR slice |
+| `ir/slices/` | One README per shipped IR slice |
 | [`spec/acs/docs/spec/conformance.md`](spec/acs/docs/spec/conformance.md) | The ACS profiles and the ACS-Core baseline this tree is measured against |
 | [`SECURITY.md`](SECURITY.md) | How to report a security issue |
 

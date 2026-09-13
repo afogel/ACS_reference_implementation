@@ -1,0 +1,18 @@
+id: ACS-REQ-0009
+title: derived_from is in-session lineage
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: "provenance_producer: deterministic"
+modality_kind: obligation
+evidence_class: wire
+schema_refs:
+  - file: provenance.json
+    pointer: /properties/derived_from
+depends_on: [ACS-DEF-0002]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: edaa44057b7f76cfa51a1b9d49a1771b4cd58c7e3e48563d945a67c9790665a0
+note: "Keyword-free table cell. Every id in derived_from must name a provenance object seen earlier in the same session."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0018
+title: Verifier recomputes the canonical signed input
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: [ACS-DEF-0001]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 1f18a43a936e2276a6c4464abf3618f6018b1ee59ef19fc020746bcc31e30cce
+note: "Vocabulary gap found in V2: the spec's 'verifier' is whichever party checks a signature, so this binds the Observed Agent equally. The actor field holds one value; recorded as guardian with this note until the field can say 'either party'."

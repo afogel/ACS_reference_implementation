@@ -10,7 +10,7 @@
  * The alternation lists two-word forms before their one-word prefixes so
  * `MUST NOT` is never counted as `MUST`.
  */
-import { classifyBlocks, type Block, type BlockType } from "../markdown-blocks.ts";
+import { classifyBlocks, lineStarts, locateOffset, type Block, type BlockType } from "../markdown-blocks.ts";
 
 export const RFC2119_KEYWORDS = [
   "MUST NOT",
@@ -33,6 +33,8 @@ export interface Occurrence {
   line: number;
   /** 1-based character offset within the line. */
   column: number;
+  /** 0-based character offset in the file, the key a marker span binds on. */
+  offset: number;
   keyword: Keyword;
   block_type: BlockType;
   /** 1-based ordinal of the block within the file, so two occurrences in one block are visibly one block. */
@@ -55,6 +57,7 @@ const CONTEXT_RADIUS = 72;
 export function keywordScan(source: string, text: string, blocks: Block[] = classifyBlocks(text)): KeywordScan {
   const occurrences: Occurrence[] = [];
   const masked: Occurrence[] = [];
+  const starts = lineStarts(text);
   let blocksWithKeywords = 0;
 
   blocks.forEach((block, index) => {
@@ -64,7 +67,7 @@ export function keywordScan(source: string, text: string, blocks: Block[] = clas
     for (const match of block.text.matchAll(KEYWORD)) {
       const at = match.index ?? 0;
       const keyword = match[1] as Keyword;
-      const occurrence = locate(source, block, index + 1, keyword, at);
+      const occurrence = locate(source, block, index + 1, keyword, at, starts);
       (visible.slice(at, at + keyword.length) === keyword ? occurrences : masked).push(occurrence);
     }
     if (occurrences.length > before) blocksWithKeywords++;
@@ -73,12 +76,10 @@ export function keywordScan(source: string, text: string, blocks: Block[] = clas
   return { source, occurrences, masked, blocks_with_keywords: blocksWithKeywords };
 }
 
-function locate(source: string, block: Block, ordinal: number, keyword: Keyword, at: number): Occurrence {
-  const head = block.text.slice(0, at);
-  const newlines = head.split("\n").length - 1;
-  const line = block.line + newlines;
-  const column = at - (newlines === 0 ? -1 : head.lastIndexOf("\n")) + (block.offset ?? 0);
-  return { source, line, column, keyword, block_type: block.type, block: ordinal, context: context(block.text, at, keyword) };
+function locate(source: string, block: Block, ordinal: number, keyword: Keyword, at: number, starts: number[]): Occurrence {
+  const offset = block.start + at;
+  const { line, column } = locateOffset(starts, offset);
+  return { source, line, column, offset, keyword, block_type: block.type, block: ordinal, context: context(block.text, at, keyword) };
 }
 
 function context(text: string, at: number, keyword: Keyword): string {

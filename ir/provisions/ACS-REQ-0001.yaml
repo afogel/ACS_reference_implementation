@@ -1,0 +1,20 @@
+id: ACS-REQ-0001
+title: Response shape is a discriminated union
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: schema
+schema_refs:
+  - file: response-envelope.json
+    pointer: /properties/result/oneOf
+  - file: response-envelope.json
+    pointer: /oneOf
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 42b94860cc352392488abe0953a4f83ad78f40dc48ae8392c5ff34e5ed479017
+note: "The prose names the shape; v0.1.2's schema states the constraint a verifier checks: `result` is exactly one of AcsResult or ServerHello, and a response carries `result` or `error`, never both (R5.2)."

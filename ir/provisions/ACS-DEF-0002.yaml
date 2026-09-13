@@ -1,0 +1,16 @@
+id: ACS-DEF-0002
+title: Lineage spans derivation
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: definition
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 15cbdddac43654331897751eba9fcdb69d95eceb0f57329c43e68cc8fa7e33c3
+note: "X5 read this callout as an Invariant; the slices doc's specimen table types it a Definition, because it defines what lineage means rather than constraining an actor. Editorial call per E1.4, made here and recorded. ACS-REQ-0009 and ACS-REQ-0010 depend on it."

@@ -1,0 +1,18 @@
+id: ACS-REQ-0014
+title: provenance_id is unique within a session
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: "provenance_producer: deterministic"
+modality_kind: obligation
+evidence_class: wire
+schema_refs:
+  - file: provenance.json
+    pointer: /properties/provenance_id
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d87eacdf2d22460b784c3487a80e88a482ddb316ce6c9284f640ff97500d7956
+note: "Keyword-free table cell."

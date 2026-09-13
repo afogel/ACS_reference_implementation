@@ -1,0 +1,16 @@
+id: ACS-DEF-0001
+title: Signed input
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: definition
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 4839737cfa8a45cd05abe6ef52f1238932d3564b20a7cb3252d74bc2282166b5
+note: "A definition living in a pillar rather than a concept page: the term \u00a710, \u00a710.2 and \u00a78.6 all rely on."

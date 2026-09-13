@@ -1,0 +1,16 @@
+id: ACS-REQ-0016
+title: Chain head is published on every content-bearing response
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 5eb6235b1a3054f75e630f691641c23f40c0897d979c8399c832e1b5c4ea8c62
+note: "First half of one \u00a78.6 sentence; the second half is ACS-REQ-0017."

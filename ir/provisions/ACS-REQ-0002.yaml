@@ -1,0 +1,16 @@
+id: ACS-REQ-0002
+title: Non-batching Guardian rejects array input with -32600
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the Guardian does not support JSON-RPC batching"
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: f49085a4e1aff3d628031ca16b22015f3e708c70de23ac11ab7243176d927135
+note: "The other half of \u00a73's batching sentence (Guardians SHOULD accept arrays) is a separate, unmarked SHOULD."

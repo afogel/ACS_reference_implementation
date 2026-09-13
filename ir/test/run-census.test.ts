@@ -8,10 +8,12 @@ import { renderCensus } from "../src/render/census.ts";
 
 const mini = join(import.meta.dir, "fixtures", "mini");
 const sourcesFile = join(mini, "sources.yaml");
+const overlayFile = join(mini, "overlay.yaml");
 
 describe("runCensus -- the fixture corpus end to end", () => {
-  const run = runCensus({ corpusRoot: mini, sourcesFile });
+  const run = runCensus({ corpusRoot: mini, sourcesFile, overlayFile });
   const census = run.provisions;
+  const rows = census?.occurrences ?? [];
 
   it("declares the corpus cleanly and reads its version", () => {
     expect(run.sources.problems).toEqual([]);
@@ -21,8 +23,17 @@ describe("runCensus -- the fixture corpus end to end", () => {
   });
 
   it("puts every occurrence in exactly one of bound, excluded, unbound", () => {
-    expect(census?.totals).toMatchObject({ occurrences: 16, bound: 0, excluded: 2, unbound: 14, masked: 2 });
-    const rows = census?.occurrences ?? [];
+    expect(census?.totals).toMatchObject({ occurrences: 16, bound: 7, excluded: 2, unbound: 7, masked: 2 });
+    const bound = rows.filter((r) => r.binding.kind === "bound").map((r) => `${r.line}:${r.keyword}=${(r.binding as { provision_id: string }).provision_id}`);
+    expect(bound).toEqual([
+      "5:MUST NOT=ACS-INV-0001",
+      "3:MUST=ACS-REQ-0001",
+      "4:MUST NOT=ACS-REQ-0001",
+      "6:SHOULD=ACS-REQ-0002",
+      "7:MAY=ACS-REQ-0002",
+      "15:OPTIONAL=ACS-REQ-0003",
+      "15:MAY=ACS-REQ-0003",
+    ]);
     expect(rows.filter((r) => r.binding.kind === "excluded").map((r) => [r.source, (r.binding as { reason: string }).reason])).toEqual([
       ["concepts/README.md", "editorial_source"],
       ["notes.md", "informative_source"],
@@ -33,7 +44,8 @@ describe("runCensus -- the fixture corpus end to end", () => {
     const rules = census?.sources.find((s) => s.path === "spec/rules.md");
     expect(rules).toMatchObject({
       occurrences: 13,
-      unbound: 13,
+      bound: 6,
+      unbound: 7,
       by_block_type: { heading: 1, paragraph: 5, list_item: 3, table_cell: 3, blockquote: 1 },
       by_node_type: { requirement: 0, definition: 0, invariant: 0, exclusion: 0 },
       normative_tags: 4,
@@ -58,7 +70,7 @@ describe("runCensus -- the fixture corpus end to end", () => {
       "  - path: concepts/README.md\n    status: normative\n    normative_by: self\n",
     );
     writeFileSync(join(dir, "sources.yaml"), sources);
-    const audit = runCensus({ corpusRoot: mini, sourcesFile: join(dir, "sources.yaml") }).provisions?.dependency_audit;
+    const audit = runCensus({ corpusRoot: mini, sourcesFile: join(dir, "sources.yaml"), overlayFile }).provisions?.dependency_audit;
     expect(audit?.pages_without_footer).toEqual(["concepts/README.md"]);
   });
 
@@ -67,13 +79,25 @@ describe("runCensus -- the fixture corpus end to end", () => {
     const parsed = Bun.YAML.parse(run.yaml ?? "") as { totals: { occurrences: number }; occurrences: unknown[] };
     expect(parsed.totals.occurrences).toBe(16);
     expect(parsed.occurrences).toHaveLength(16);
-    expect(runCensus({ corpusRoot: mini, sourcesFile }).yaml).toBe(run.yaml);
+    expect(runCensus({ corpusRoot: mini, sourcesFile, overlayFile }).yaml).toBe(run.yaml);
+  });
+
+  it("withholds the provision census when the overlay does not resolve", () => {
+    const dir = mkdtempSync(join(tmpdir(), "acs-ir-"));
+    writeFileSync(join(dir, "overlay.yaml"), "markers:\n  - id: ACS-REQ-0009\n    source: notes.md\n    quote: nowhere\n");
+    const broken = runCensus({ corpusRoot: mini, sourcesFile, overlayFile: join(dir, "overlay.yaml") });
+    expect(broken.provisions).toBeNull();
+    expect(broken.sources.problems).toEqual(["overlay: ACS-REQ-0009: start quote not found in notes.md: \"nowhere\""]);
+  });
+
+  it("binds nothing when no overlay is given", () => {
+    expect(runCensus({ corpusRoot: mini, sourcesFile, overlayFile: null }).provisions?.totals.bound).toBe(0);
   });
 
   it("withholds the provision census when the source census has problems", () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-ir-"));
     writeFileSync(join(dir, "sources.yaml"), "sources:\n  - path: notes.md\n    status: informative\n");
-    const partial = runCensus({ corpusRoot: mini, sourcesFile: join(dir, "sources.yaml") });
+    const partial = runCensus({ corpusRoot: mini, sourcesFile: join(dir, "sources.yaml"), overlayFile });
     expect(partial.provisions).toBeNull();
     expect(partial.sources.problems).toContain("spec/rules.md: in the corpus but not declared in sources.yaml");
     expect(renderCensus(partial.sources, null)).toContain("Fix `ir/census/sources.yaml`");
@@ -81,14 +105,15 @@ describe("runCensus -- the fixture corpus end to end", () => {
 });
 
 describe("renderCensus -- the four V1 panels", () => {
-  const run = runCensus({ corpusRoot: mini, sourcesFile });
+  const run = runCensus({ corpusRoot: mini, sourcesFile, overlayFile });
   const report = renderCensus(run.sources, run.provisions);
 
   it("renders the source census, provision census, unbound table and edge audit", () => {
     for (const heading of ["## Source census (U19)", "## Provision census (U20)", "## Unbound and excluded occurrences (U21)", "## Dependency-edge audit (U33)"]) {
       expect(report).toContain(heading);
     }
-    expect(report).toContain("| spec/rules.md:3:27 | MUST | paragraph | unbound |");
+    expect(report).toContain("| spec/rules.md:1:14 | MUST | heading | unbound |");
+    expect(report).not.toContain("| spec/rules.md:3:27 |");
     expect(report).toContain("| notes.md:3:9 | MAY | paragraph | excluded: informative_source |");
     expect(report).toContain("2 pillar entries in Referenced-by footers; 2 with no provision depending back");
     expect(report).toContain("- concepts/thing.md:11 -> spec/hooks.md");
@@ -108,7 +133,7 @@ describe("acs-ir census -- exit codes", () => {
   it("with --check reports a missing or stale file as 1 and a current file as 0", () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-ir-"));
     const out = join(dir, "provisions.yaml");
-    const args = ["census", "--corpus", mini, "--sources", sourcesFile, "--out", out, "--quiet"];
+    const args = ["census", "--corpus", mini, "--sources", sourcesFile, "--overlay", overlayFile, "--out", out, "--quiet"];
     expect(main([...args, "--check"])).toBe(1);
     expect(main(args)).toBe(0);
     expect(existsSync(out)).toBe(true);

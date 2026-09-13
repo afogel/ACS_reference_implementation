@@ -1,0 +1,16 @@
+id: ACS-REQ-0007
+title: Handshake precedes any hook traffic
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 2ad1827a2b1a11303f67079117c9b130c3da38706d6a3cca9a9e44da1ea72e4b
+note: "Keyword-free (the capital R in Required is prose, not RFC 2119). The V8 demo sentence."

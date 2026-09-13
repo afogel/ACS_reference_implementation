@@ -1,0 +1,16 @@
+id: ACS-REQ-0012
+title: Rejected Intent modification is recorded as an audit event
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: "the session established an Intent, and a modification attempt was rejected"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: [ACS-REQ-0011]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 0e766c4dd46cf80e4ed5551937e1730baa79937e5ff9fe416c0de5da0fddd513
+note: "The SHOULD half of \u00a78.4's enforcement sentence, addressed separately from the MUST (R1.8)."
