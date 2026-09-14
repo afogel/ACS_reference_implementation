@@ -49,11 +49,13 @@ describe("differentialCheck -- the evaluator against the fixtures' expectations"
 });
 
 describe("differentialCheck -- Soufflé as the oracle (R3.8, X4)", () => {
-  it("has a Soufflé binary to run (CI installs 2.5; locally set SOUFFLE=/path/to/souffle)", () => {
+  it("has a Soufflé binary to run where one is required (the differential job sets ACS_IR_REQUIRE_SOUFFLE; locally set SOUFFLE=/path/to/souffle)", () => {
     if (!souffle) {
       console.warn("differential: no souffle binary; the oracle half of R3.8 is not exercised in this run");
     }
-    expect(process.env.CI ? souffle !== null : true).toBe(true);
+    // GitHub sets CI=true in every job, including the one without Soufflé, so
+    // the requirement is opt-in: only the job that installed the binary asserts it.
+    expect(process.env.ACS_IR_REQUIRE_SOUFFLE ? souffle !== null : true).toBe(true);
   });
 
   it("derives identical violation sets on both fixtures", () => {
