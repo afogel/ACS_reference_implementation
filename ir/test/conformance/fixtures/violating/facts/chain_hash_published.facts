@@ -1,3 +1,5 @@
-20	h20
-40	h40
-50	h50
+# chain_hash_published(seq, hash)  source: wire
+# A response carrying `chain_hash`.
+20	head-20
+40	head-40
+50	head-50

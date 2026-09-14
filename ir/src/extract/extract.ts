@@ -7,7 +7,7 @@
  * `source_file`, `line`, `block_type`, `section_slug`, `level`, `text`,
  * `text_hash`. Written to `ir/manifest/provisions.json` and never
  * hand-edited (E4.2); the authored half lives in `ir/provisions/` and the
- * two meet only in the catalog join (N15).
+ * two are joined only in the catalog (N15).
  *
  * `section_slug` is informational and regenerated, never a key (Fact 1:
  * section numbers move). It follows Python-Markdown's slugify so it equals

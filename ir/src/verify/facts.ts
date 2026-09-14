@@ -1,7 +1,13 @@
 /**
  * S9: relation facts on disk, one tab-separated `<relation>.facts` per
  * relation, the format Soufflé reads. The evaluator reads the same files,
- * so both engines see byte-identical input (R3.8).
+ * so both engines see the same tuples (R3.8).
+ *
+ * A line starting with `#` is a comment. Soufflé itself does not accept
+ * comments, so `writeFacts()` never writes them: Soufflé is always run on
+ * a copy written by this module. The authored fixtures use the first
+ * lines of each file to name the relation's columns, so a reader does
+ * not need the vocabulary open to read `context_entry.facts`.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +33,7 @@ export function readFacts(dir: string, relations: Relation[]): FactSet {
     }
     const tuples: Tuple[] = [];
     for (const line of readFileSync(path, "utf8").split("\n")) {
-      if (line.trim() === "") continue;
+      if (line.trim() === "" || line.startsWith("#")) continue;
       const cells = line.split("\t");
       if (cells.length !== rel.columns.length) throw new Error(`${path}: expected ${rel.columns.length} columns, got ${cells.length}: ${line}`);
       tuples.push(cells.map((cell, i) => (rel.columns[i]?.type === "number" ? parseNumber(cell, path) : cell)));

@@ -5,14 +5,14 @@
  * provision's anchor and terminator go, by verbatim quote against the
  * pinned corpus. Quote matching is unsound as a steady state (it cannot
  * tell a reword from a semantic change) and sound here, because a pinned
- * corpus has zero drift (shaping doc, Fact 10). The day the bulk marker PR
+ * corpus has zero drift (shaping doc, Fact 10). When the bulk marker PR
  * merges, this file is deleted and the extractor reads the submodule
  * directly (E3.3); until then it is also the exact payload of that PR.
  *
  * An entry is `{id, source, quote}` for a provision that is one run of
  * text, or `{id, source, start, end}` for one that spans blocks (a stem
  * paragraph and its list, §8.2 and §9.2). `start` must occur exactly once
- * in the file, so a quote can never silently bind the wrong sentence; `end`
+ * in the file, so a quote can never bind the wrong sentence; `end`
  * is the first occurrence at or after `start`. The anchor goes immediately
  * before `start` and the terminator immediately after `end`.
  */
@@ -128,7 +128,7 @@ const BLOCK_MARKER = /^(?:[-*+] |\d+[.)] |\| |> |#{1,6} )/;
 /**
  * An anchor is inline HTML. Inserted where only whitespace precedes it on
  * the line, it would push a list, quote, table or heading marker off the
- * line start and the renderer would lose the block. Such a quote must start
+ * line start and the renderer would not recognise the block. Such a quote must start
  * after the marker (V8 found one: §8.1's `- **SHOULD:**` item).
  */
 export function blockSyntaxProblem(span: ResolvedSpan, text: string): string | null {

@@ -1,2 +1,4 @@
-e1	hX
-e2	hZ
+# entry_hash_recomputed(entry_id, hash)  source: external
+# SHA-256 over JCS per §8.2, recomputed from the entry's fields by the verifier.
+entry-1	hash-entry-1
+entry-2	hash-entry-2

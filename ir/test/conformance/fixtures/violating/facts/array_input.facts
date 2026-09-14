@@ -1,1 +1,3 @@
+# array_input(seq)  source: wire
+# The request line was a JSON array (a batch).
 4

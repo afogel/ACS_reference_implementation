@@ -49,7 +49,7 @@ describe("materializeMarkerPatch -- the overlay against the pinned spec", () => 
   const read = (file: string): string => readSource(corpus, file);
   const bulk = materializeMarkerPatch(corpus, resolution.spans, read);
 
-  it("covers every marked provision, names the corpus it was cut against, and touches only files with markers", () => {
+  it("covers every marked provision, names the corpus it was generated against, and touches only files with markers", () => {
     expect(resolution.problems).toEqual([]);
     expect(bulk.provisions).toHaveLength(155);
     expect(bulk.patch.startsWith(`# Provision markers for ACS ${corpus.version} at ${corpus.commit}.`)).toBe(true);
@@ -81,7 +81,7 @@ describe("materializeMarkerPatch -- the overlay against the pinned spec", () => 
     expect(hashes(extraction.manifest)).toEqual(hashes(committed));
   });
 
-  it("cuts the proof-of-concept subset from the same overlay and refuses an ID it does not hold", () => {
+  it("builds the proof-of-concept subset from the same overlay and refuses an ID it does not hold", () => {
     const ids = new Set(["ACS-REQ-0007", "ACS-REQ-0010", "ACS-REQ-0013", "ACS-INV-0001", "ACS-EXC-0001"]);
     const poc = materializeMarkerPatch(corpus, resolution.spans, read, ids);
     expect(poc.provisions).toEqual([...ids].sort());

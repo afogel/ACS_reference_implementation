@@ -1,6 +1,6 @@
 # Bulk marker PR draft (E11.3, U30)
 
-Open after the proof-of-concept PR has merged. If `main` has moved past `6fce2a0`, first bump the `spec/acs` submodule, re-resolve the overlay (`bun run ir markers apply` names any quote that no longer resolves), and regenerate the patch with `bun run ir markers patch`; the patch is only ever cut against the pinned text. Sign the commit (`git commit -s`). No tool attribution anywhere (D-f).
+Open after the proof-of-concept PR has merged. If `main` has moved past `6fce2a0`, first bump the `spec/acs` submodule, re-resolve the overlay (`bun run ir markers apply` reports any quote that no longer resolves), and regenerate the patch with `bun run ir markers patch`. The patch is only ever cut against the pinned text. Sign the commit (`git commit -s`). No tool attribution anywhere (D-f).
 
 ```
 cd <spec checkout>

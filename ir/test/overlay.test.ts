@@ -72,7 +72,7 @@ describe("resolveOverlay -- the whole overlay against the corpus", () => {
   });
 });
 
-describe("markText -- anchors and terminators land exactly around the span", () => {
+describe("markText -- anchors and terminators are inserted exactly around the span", () => {
   it("wraps each span and leaves everything else byte-identical", () => {
     const span = resolveQuote(entry("ACS-REQ-0001", "delta MAY epsilon"), text);
     const marked = markText(text, [span]);
@@ -81,7 +81,7 @@ describe("markText -- anchors and terminators land exactly around the span", () 
     expect(terminatorFor("ACS-REQ-0001")).toBe("<!--/acs-req-0001-->");
   });
 
-  it("handles adjacent spans without letting one's terminator swallow the other's anchor", () => {
+  it("handles adjacent spans without one's terminator displacing the other's anchor", () => {
     const a = resolveQuote(entry("ACS-REQ-0001", "Alpha MUST beta."), text);
     const b = resolveQuote(entry("ACS-REQ-0002", "- gamma"), text);
     const marked = markText(text, [b, a]);

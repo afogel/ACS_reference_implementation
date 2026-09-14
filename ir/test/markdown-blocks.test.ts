@@ -82,7 +82,7 @@ describe("classifyBlocks -- the block types X3 counted, at the lines they occupy
     }
   });
 
-  it("swallows a fence whole, including a line that looks like a heading", () => {
+  it("reads a fence as one block, including a line that looks like a heading", () => {
     const fence = blocks.find((b) => b.type === "code_fence");
     expect(fence).toMatchObject({ line: 18, endLine: 20 });
     expect(blocks.some((b) => b.type === "heading" && b.text.includes("fenced"))).toBe(false);

@@ -8,11 +8,11 @@
  * the lowercase form, `acs-req-0001`, so the HTML `id` namespace is 1:1
  * with provisions (E2.4).
  *
- * Numbers are allocated once from `ir/ids/counter.yaml` and never rewind;
+ * Numbers are allocated once from `ir/ids/counter.yaml` and the counter never decreases;
  * a withdrawn provision keeps its number in `ir/ids/tombstones.yaml`
  * (R2.2). Four digits rather than the shaping doc's three, because the
  * slices doc already writes `acs-req-0037` and 203 provisions at v0.1 leave
- * three digits no headroom for v0.2.
+ * no room in three digits for v0.2.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -96,7 +96,7 @@ export function readTombstones(dir: string = defaultIdsDir()): Tombstone[] {
   });
 }
 
-/** N3: hand out the next number of a type and persist the counter, so no two provisions can ever share one. */
+/** N3: allocate the next number of a type and persist the counter, so no two provisions can ever share one. */
 export function allocateId(type: ProvisionType, dir: string = defaultIdsDir()): string {
   const counter = readCounter(dir);
   counter[type] += 1;

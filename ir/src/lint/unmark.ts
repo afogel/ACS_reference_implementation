@@ -6,7 +6,7 @@
  * comment the scanner masks) and no lines, but they do occupy characters,
  * so a context window taken from marked text would differ from one taken
  * from the same prose unmarked, and the lint's "is this occurrence new?"
- * comparison against the committed census would misfire. `unmark()` strips
+ * comparison against the committed census would give wrong answers. `unmark()` strips
  * the markers and re-bases each span's offsets onto the stripped text, so
  * the census sees exactly what an editor wrote.
  */

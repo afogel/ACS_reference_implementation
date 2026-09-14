@@ -5,7 +5,7 @@
  * c259f57 (v0.1.0); the submodule now pins v0.1.2, which added two
  * identity pages carrying five occurrences in table cells and left every
  * other count unchanged. Both sets are recorded so a future submodule bump
- * that moves a number moves it here, on purpose.
+ * that changes a number must also change it here.
  */
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";

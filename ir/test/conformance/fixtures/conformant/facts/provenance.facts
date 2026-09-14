@@ -1,2 +1,4 @@
-3	s2	p1	user_input
-4	s2	p2	agent_generated
+# provenance(seq, session, pid, origin)  source: wire
+# A Provenance object carried by a hook payload.
+3	session-clean	prov-user-input	user_input
+4	session-clean	prov-agent	agent_generated

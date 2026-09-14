@@ -1,3 +1,6 @@
+# decision_log_field(seq, field)  source: guardian-state
+# A field the Guardian's decision log recorded for the decision at seq: reasoning,
+# model_identifier, confidence.
 20	reasoning
 20	model_identifier
 40	reasoning

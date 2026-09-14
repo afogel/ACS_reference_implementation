@@ -1,10 +1,10 @@
 /**
  * A small, deterministic YAML emitter for the generated census files.
  *
- * `Bun.YAML.stringify` exists and is used nowhere here on purpose: its
+ * `Bun.YAML.stringify` exists and is not used here: its
  * output quotes and spaces keys in ways that make a regenerated file diff
  * noisily against the committed one, and the generated census is a
- * reviewable artifact whose whole value is a stable diff (R1.9, R7.2).
+ * reviewable artifact whose value is a stable diff (R1.9, R7.2).
  * This emitter writes block style only -- maps in insertion order, lists
  * as `- ` items, scalars quoted only when YAML would otherwise misread
  * them -- and `Bun.YAML.parse` reads it back. The authored files are

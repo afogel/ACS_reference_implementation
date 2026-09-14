@@ -3,7 +3,7 @@
  *
  * X3 made the terminator mandatory. That rule is only safe to rely on if
  * an anchor without a terminator, a terminator without an anchor, a
- * mismatched pair, or a nested span cannot ship silently, so this lint
+ * mismatched pair, or a nested span cannot pass unreported, so this lint
  * runs on the marked corpus before anything is extracted from it. It is
  * also the reader the extractor uses: a well-formed file yields one span
  * per pair, with the text boundaries the markers state (E2.2).

@@ -1,7 +1,9 @@
-s2	e1	request_hash
-s2	e1	timestamp
-s2	e1	provenance_summary
-s2	e2	request_hash
-s2	e2	timestamp
-s2	e2	provenance_summary
-s2	e2	previous_hash
+# context_entry_field(session, entry_id, field)  source: guardian-state
+# A field present and non-null on an exported ContextEntry.
+session-clean	entry-1	request_hash
+session-clean	entry-1	timestamp
+session-clean	entry-1	provenance_summary
+session-clean	entry-2	request_hash
+session-clean	entry-2	timestamp
+session-clean	entry-2	provenance_summary
+session-clean	entry-2	previous_hash

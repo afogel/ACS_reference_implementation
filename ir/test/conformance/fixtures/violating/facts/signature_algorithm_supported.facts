@@ -1,2 +1,4 @@
-s1	HMAC-SHA256
-s1	ML-DSA-65
+# signature_algorithm_supported(session, algorithm)  source: wire
+# An entry of ServerHello's `signature_algorithms_supported`.
+session-violating	HMAC-SHA256
+session-violating	ML-DSA-65

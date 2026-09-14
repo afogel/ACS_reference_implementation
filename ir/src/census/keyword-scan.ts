@@ -1,5 +1,5 @@
 /**
- * N13: `keywordScan()` -- the RFC 2119 sweep, block-type aware.
+ * N13: `keywordScan()` -- the RFC 2119 keyword scan, block-type aware.
  *
  * Reports every keyword occurrence with its file, line, column, block type
  * and a one-line context window. Keywords inside inline code spans and

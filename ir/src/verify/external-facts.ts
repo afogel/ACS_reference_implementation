@@ -14,7 +14,7 @@
  *
  * What was not supplied is reported as unavailable, and every provision
  * whose predicate needs an unavailable relation gets the verdict
- * `unevaluated` rather than a pass it did not earn.
+ * `unevaluated` rather than a pass that was never checked.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

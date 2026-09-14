@@ -1,1 +1,3 @@
-s1	0.9.0
+# client_version(session, version)  source: wire
+# An entry of ClientHello's `acs_versions_supported`.
+session-violating	0.9.0

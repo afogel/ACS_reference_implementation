@@ -1,3 +1,5 @@
-s2	HMAC-SHA256
-s2	ML-DSA-65
-s2	SLH-DSA-128s
+# signature_algorithm_supported(session, algorithm)  source: wire
+# An entry of ServerHello's `signature_algorithms_supported`.
+session-clean	HMAC-SHA256
+session-clean	ML-DSA-65
+session-clean	SLH-DSA-128s

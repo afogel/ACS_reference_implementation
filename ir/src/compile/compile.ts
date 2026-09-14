@@ -16,9 +16,9 @@
  *    through helpers, so both engines compute the same fixpoint
  *  - N36: the `violation` head's arguments are exactly the declared
  *    `subject` then `witness` variables, both non-empty, all bound. A rule
- *    that derives a violation without saying who and why does not compile
+ *    that derives a violation without naming its subject and witness does not compile
  *  - R3.6: a Requirement with neither a predicate nor a declared
- *    `inexpressible` reason is a compile failure, never a silent skip
+ *    `inexpressible` reason is a compile failure, never an unreported skip
  *
  * The external-fact boundary (E7.1) is derived, not authored: the relations
  * a predicate touches whose source is not the wire are listed per provision.

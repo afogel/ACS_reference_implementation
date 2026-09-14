@@ -8,7 +8,7 @@
  * differential oracle (N63); a construct only one engine had would be a
  * construct nobody had checked.
  *
- * The laptop path is `bun install` and this file (R3.9).
+ * Running on a laptop needs only `bun install` and this file (R3.9).
  */
 import type { CompiledProvision, RuleProgram } from "../compile/compile.ts";
 import type { Atom, Literal, Rule, Term } from "../compile/predicate.ts";

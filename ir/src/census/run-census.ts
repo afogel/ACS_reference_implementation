@@ -19,7 +19,7 @@ import { parseSourceDeclarations, sourceCensus, type SourceCensus } from "./sour
 export interface CensusRun {
   corpus: Corpus;
   sources: SourceCensus;
-  /** Absent when the source census has problems: a provision census over an undeclared corpus would be a count nobody vouched for. */
+  /** Absent when the source census has problems: a provision census over an undeclared corpus would be a count with no declared basis. */
   provisions: ProvisionCensus | null;
   /** The generated file's content, as it would be written. */
   yaml: string | null;
@@ -37,7 +37,7 @@ export function runCensus(options: { corpusRoot?: string; sourcesFile?: string; 
 
   // The overlay is optional input: absent, nothing is bound. Present and
   // unresolvable, the census fails alongside the source census rather than
-  // reporting a burn-down it cannot vouch for.
+  // reporting bound and unbound counts based on an unresolved overlay.
   const overlayFile = options.overlayFile === undefined ? join(defaultMarkersDir(), "overlay.yaml") : options.overlayFile;
   let spans: ReturnType<typeof resolveOverlay>["spans"] = [];
   if (overlayFile !== null && existsSync(overlayFile)) {

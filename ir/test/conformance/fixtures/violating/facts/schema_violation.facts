@@ -1,1 +1,3 @@
+# schema_violation(seq, schema, path)  source: external
+# An envelope that failed validation against a pinned schema, with the JSON path of the failure.
 20	response-envelope.json	/result/reasoning

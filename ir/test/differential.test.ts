@@ -40,14 +40,14 @@ describe("differentialCheck -- the evaluator against the fixtures' expectations"
     expect([...provisions].sort()).toEqual([...v5, ...v7]);
   });
 
-  it("names a wrong expectation as divergence rather than trusting the engines", () => {
+  it("reports a mismatch between the evaluator and expected.tsv as divergence", () => {
     const tampered: RuleProgram = JSON.parse(JSON.stringify(program));
     const p = tampered.provisions.find((x) => x.id === "ACS-REQ-0007");
     if (!p) throw new Error("missing");
     p.rules = p.rules.filter((r) => r.head.relation !== "acs_req_0007__violation");
     const r = differentialCheck(tampered, dl, fixtures, null).fixtures.find((f) => f.fixture === "violating");
     expect(r?.ok).toBe(false);
-    expect(r?.evaluator_vs_expected.only_expected).toEqual(["ACS-REQ-0007\t2\ts1|steps/toolCallRequest"]);
+    expect(r?.evaluator_vs_expected.only_expected).toEqual(["ACS-REQ-0007\t2\tsession-violating|steps/toolCallRequest"]);
   });
 });
 
@@ -71,7 +71,7 @@ describe("differentialCheck -- Soufflé as the oracle (R3.8, X4)", () => {
     expect(report.ok).toBe(true);
   });
 
-  it("turns red on a deliberate divergence and prints the tuples only one engine derived (U31)", () => {
+  it("fails on a deliberate divergence and prints the tuples only one engine derived (U31)", () => {
     if (!souffle) return;
     // Weaken the evaluator's copy of one rule; the published .dl keeps the real one.
     const tampered: RuleProgram = JSON.parse(JSON.stringify(program));

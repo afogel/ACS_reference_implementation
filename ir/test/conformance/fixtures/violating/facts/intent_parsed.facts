@@ -1,3 +1,5 @@
-s1	2	read
-s1	4	read
-s1	4	send
+# intent_parsed(session, seq, capability)  source: guardian-state
+# A snapshot of `Intent.parsed` as of a step.
+session-violating	2	read
+session-violating	4	read
+session-violating	4	send

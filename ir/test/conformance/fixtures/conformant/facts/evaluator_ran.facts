@@ -1,2 +1,4 @@
+# evaluator_ran(seq, layer, order)  source: guardian-state
+# Which evaluation layer ran for a decision and in what order (agents.md decision logging).
 20	deterministic	1
 20	agent	2

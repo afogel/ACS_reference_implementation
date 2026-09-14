@@ -48,7 +48,7 @@ export function findSouffle(): string | null {
 export function listFixtures(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((n) => statSync(join(dir, n)).isDirectory())
+    .filter((n) => !n.startsWith(".") && statSync(join(dir, n)).isDirectory())
     .sort();
 }
 

@@ -12,7 +12,7 @@
  * A citation from an informative page confers nothing. This module never infers a status; it only checks that the
  * declaration and the tree agree, and every disagreement is a problem
  * that fails the census, because a document nobody classified is exactly
- * the silent omission R1.6 forbids.
+ * the unrecorded omission R1.6 forbids.
  */
 
 export type SourceStatus = "normative" | "informative" | "editorial";

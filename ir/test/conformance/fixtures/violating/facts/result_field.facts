@@ -1,3 +1,5 @@
+# result_field(seq, field)  source: wire
+# A top-level field present in a response's result.
 20	decision
 40	decision
 40	reasoning

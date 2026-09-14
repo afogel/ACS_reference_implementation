@@ -1,2 +1,4 @@
-3	p1	trusted
-4	p2	untrusted
+# trust(seq, pid, level)  source: wire
+# The OPTIONAL `trust` label, when a deployment populates it.
+3	prov-user-input	trusted
+4	prov-agent	untrusted

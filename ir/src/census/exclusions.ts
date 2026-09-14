@@ -2,19 +2,19 @@
  * E8.2: authored census exclusions.
  *
  * X3 found that an occurrence count is an upper bound on provisions, not a
- * count: the spec restates rules inside their own parentheticals, talks
- * about keywords ("promote PQC to RECOMMENDED"), and describes roadmap
+ * count: the spec restates rules inside their own parentheticals, mentions
+ * keywords ("promote PQC to RECOMMENDED"), and describes roadmap
  * intent in normative sources. `ir/census/exclusions.yaml` names each such
  * occurrence by a verbatim quote that contains exactly one keyword
  * occurrence, with a machine-readable reason, so R1.6 holds: every
- * occurrence is bound, excluded with a reason, or unbound, and nothing is
- * silently dropped. A quote that no longer resolves, or that spans more
+ * occurrence is bound, excluded with a reason, or unbound, and no
+ * occurrence is dropped. A quote that no longer resolves, or that spans more
  * than one occurrence, fails the census.
  *
  * Reasons:
  *   restatement_of   the same obligation, restated in a parenthetical or a
  *                    summary; `of` names the provision that carries it
- *   mention          the keyword is talked about, not used ("expected to
+ *   mention          the keyword is mentioned, not used ("expected to
  *                    promote X to RECOMMENDED")
  *   roadmap          intent for a future version, in a normative source
  *   rationale        explanatory prose about why a rule exists, in which

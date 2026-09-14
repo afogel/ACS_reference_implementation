@@ -1,5 +1,6 @@
-2	s1	steps/toolCallRequest	r2	2026-01-01T00:00:02Z
-3	s1	handshake/hello	r3	2026-01-01T00:00:03Z
-4	s1	steps/toolCallRequest	r4	2026-01-01T00:00:04Z
-5	s1	steps/toolCallResult	r5	2026-01-01T00:00:05Z
-6	s1	steps/agentResponse	r6	2026-01-01T00:00:06Z
+# request(seq, session, method, request_id, timestamp)  source: wire
+2	session-violating	steps/toolCallRequest	req-2	2026-01-01T00:00:02Z
+3	session-violating	handshake/hello	req-3	2026-01-01T00:00:03Z
+4	session-violating	steps/toolCallRequest	req-4	2026-01-01T00:00:04Z
+5	session-violating	steps/toolCallResult	req-5	2026-01-01T00:00:05Z
+6	session-violating	steps/agentResponse	req-6	2026-01-01T00:00:06Z

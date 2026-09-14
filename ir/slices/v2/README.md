@@ -10,7 +10,7 @@
 
 ## What this slice delivers
 
-The generated/authored seam, established and never crossed again. `ir/manifest/provisions.json` (S4) is written only by `acs-ir extract`; `ir/provisions/<ID>.yaml` (S5) is written only by a person; `loadCatalog()` (N15) is the one place they meet, joined on ID. CI regenerates the manifest and the index from the pinned corpus and refuses a stale committed copy.
+The generated/authored seam, established here and not crossed by any later slice. `ir/manifest/provisions.json` (S4) is written only by `acs-ir extract`; `ir/provisions/<ID>.yaml` (S5) is written only by a person; `loadCatalog()` (N15) is the one place they are joined, on ID. CI regenerates the manifest and the index from the pinned corpus and refuses a stale committed copy.
 
 | Measurement | Value |
 |---|---|

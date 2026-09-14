@@ -1,5 +1,5 @@
 /**
- * E9 and N20: `specLint()` -- the spec PR polices itself.
+ * E9 and N20: `specLint()` -- the checks run on a spec PR.
  *
  * One pass over the marked corpus, the records, the allocation files, the
  * conformance tests and the pinned schemas, against a baseline: the
