@@ -67,17 +67,24 @@ describe("specLint -- the tree as committed", () => {
     expect(report.added_without_test).toEqual([]);
     expect(report.changed).toEqual([]);
     expect(report.ok).toBe(true);
+    expect(renderImpactComment(report)).toBe("<!-- acs-ir-impact -->\n## Normative impact (ACS 0.1.2 at `6fce2a0`)\n\n**Nothing added, changed, removed, or unmarked.**\n");
   });
 
   it("with an empty baseline reports every testable provision as added without a test, the rest by reason, and no removal", () => {
     const report = specLint(inputs(freshMarked(), { baseline: { manifest: { generated_by: "t", corpus: { version: null, commit: null }, provisions: [] }, census: null } }));
     // 69 Requirements carry a predicate of their own, and these inputs collect no test citations.
     expect(report.added_without_test).toHaveLength(69);
-    expect(report.added_without_test).toContain("ACS-REQ-0028");
+    expect(report.added_without_test.find((a) => a.id === "ACS-REQ-0007")).toEqual({ id: "ACS-REQ-0007", title: "Handshake precedes any hook traffic", actor: "observed-agent", source_file: "spec/instrument/specification.md", line: expect.any(Number) });
     const byStatus: Record<string, number> = {};
     for (const a of report.added_untestable) byStatus[a.status] = (byStatus[a.status] ?? 0) + 1;
     expect(byStatus).toEqual({ permission: 39, "non-testable": 25, inexpressible: 12, alias: 3, definition: 2, invariant: 4, exclusion: 1 });
-    expect(renderImpactComment(report)).toContain("- permission (39): ACS-REQ-0021, ");
+    const comment = renderImpactComment(report);
+    expect(comment).toContain("\n**69 rules added without a conformance test.**\n");
+    expect(comment).toContain("<details><summary>Added without a conformance test (69)</summary>\n\n| provision | title | actor | where |");
+    expect(comment).toContain("| ACS-REQ-0007 | Handshake precedes any hook traffic | observed-agent | [specification.md:");
+    expect(comment).toContain("<details><summary>Added, no test possible (86: 39 permissions, 25 non-testable, 12 inexpressible, 3 aliases, 2 definitions, 4 invariants, 1 exclusion)</summary>");
+    expect(comment).toContain("| ACS-REQ-0021 | ");
+    expect(comment).not.toContain("Changed provisions");
     expect(report.removed_without_tombstone).toEqual([]);
     // With no baseline census every unbound occurrence would be new; since V7 there are none.
     expect(report.unmarked).toHaveLength(0);
@@ -119,9 +126,10 @@ describe("specLint -- the V4 demo: an unmarked MUST added, a marked provision de
 
   it("renders the comment with both, and the terminal report by rule", () => {
     const comment = renderImpactComment(report);
-    expect(comment).toStartWith("<!-- acs-ir-impact -->\n## Normative impact (ACS 0.1.2 at `6fce2a0`)\n\n**3 failure(s), 0 provision(s) to review.**");
-    expect(comment).toContain("### Removed provisions missing a tombstone\n\n- ACS-EXC-0001: add an entry to `ir/ids/tombstones.yaml`");
-    expect(comment).toContain("| `spec/instrument/specification.md:380:47` | MUST |");
+    expect(comment).toStartWith("<!-- acs-ir-impact -->\n## Normative impact (ACS 0.1.2 at `6fce2a0`)\n\n**1 provision removed without a tombstone. 1 unmarked normative statement.** The lint fails with 3 findings.\n");
+    expect(comment).toContain("<details open><summary>Removed without a tombstone (1)</summary>\n\n- ACS-EXC-0001 Multi-tenant isolation is unspecified in v0.1: add an entry to `ir/ids/tombstones.yaml`");
+    expect(comment).toContain("specification.md:380");
+    expect(comment).toContain("| MUST | ");
     const terminal = renderLint(report);
     expect(terminal).toContain("### unmarked-keyword\n\n- `spec/instrument/specification.md:380`: MUST with no marker and no census exclusion:");
   });

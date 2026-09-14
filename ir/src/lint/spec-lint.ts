@@ -56,17 +56,30 @@ export interface UnmarkedOccurrence {
   context: string;
 }
 
+/** A provision new since the baseline, with what a reviewer needs to place it. */
+export interface AddedProvision {
+  id: string;
+  title: string;
+  actor: string;
+  source_file: string;
+  line: number;
+}
+
 export interface LintReport {
   corpus: { version: string | null; commit: string | null };
+  /** Base URL for a permalink to a source line at the pinned commit (`<remote>/blob/<commit>/docs`), when the corpus has a remote. */
+  spec_url: string | null;
+  /** Title per provision ID, for every provision the catalog joins. */
+  titles: Record<string, string>;
   findings: Finding[];
   /** U25: keyword occurrences new since the baseline and bound to nothing. */
   unmarked: UnmarkedOccurrence[];
   /** U24: IDs gone from the corpus with no tombstone. */
   removed_without_tombstone: string[];
-  /** U23: IDs new since the baseline that a fixture could cite (a Requirement with a predicate of its own) and none does. */
-  added_without_test: string[];
-  /** IDs new since the baseline that take no test by construction, with why: permission, non-testable, inexpressible, alias, or not an obligation. */
-  added_untestable: { id: string; status: string }[];
+  /** U23: provisions new since the baseline that a fixture could cite (a Requirement with a predicate of its own) and none does. */
+  added_without_test: AddedProvision[];
+  /** Provisions new since the baseline that take no test by construction, with why: permission, non-testable, inexpressible, alias, or not an obligation. */
+  added_untestable: { id: string; title: string; status: string }[];
   /** U22: needs-review, with what each invalidated and the tests citing it. */
   stale: StaleEntry[];
   worklist: StalenessReport["worklist"];
@@ -221,12 +234,22 @@ export function specLint(inputs: LintInputs): LintReport {
     .filter((p) => baselineHashes.has(p.id) && baselineHashes.get(p.id) !== p.text_hash)
     .map((p) => ({ id: p.id, source_file: p.source_file, line: p.line }));
   const added = inputs.baseline.manifest ? extraction.manifest.provisions.filter((p) => !baselineHashes.has(p.id)) : [];
-  const statusOf = new Map(catalog.entries.map((e) => [e.manifest.id, testStatus(e.manifest, e.record)]));
-  const addedWithoutTest = added.filter((p) => statusOf.get(p.id) === "testable" && !inputs.citations.get(p.id)?.length).map((p) => p.id);
-  const addedUntestable = added.filter((p) => statusOf.get(p.id) !== "testable").map((p) => ({ id: p.id, status: statusOf.get(p.id) ?? "unknown" }));
+  const entryOf = new Map(catalog.entries.map((e) => [e.manifest.id, e]));
+  const statusOf = (id: string): string => {
+    const e = entryOf.get(id);
+    return e ? testStatus(e.manifest, e.record) : "unknown";
+  };
+  const titles: Record<string, string> = {};
+  for (const r of records.records) titles[r.id] = r.title;
+  const addedWithoutTest: AddedProvision[] = added
+    .filter((p) => statusOf(p.id) === "testable" && !inputs.citations.get(p.id)?.length)
+    .map((p) => ({ id: p.id, title: titles[p.id] ?? "", actor: entryOf.get(p.id)?.record.actor ?? "", source_file: p.source_file, line: p.line }));
+  const addedUntestable = added.filter((p) => statusOf(p.id) !== "testable").map((p) => ({ id: p.id, title: titles[p.id] ?? "", status: statusOf(p.id) }));
 
   return {
     corpus: extraction.manifest.corpus,
+    spec_url: corpus.remote && corpus.commit ? `${corpus.remote}/blob/${corpus.commit}/docs` : null,
+    titles,
     findings,
     unmarked,
     removed_without_tombstone: removedWithoutTombstone,
