@@ -1,0 +1,16 @@
+id: ACS-REQ-0023
+title: Approver authentication and identity verification
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the session uses ASK (a non-empty approver_types_supported)"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: b2043534abf5230af51a28e8dd7c6526a46226b156e51ea07d19d32f3eadec3a
+note: "The canonical copy, on the concept page (concepts/README.md:33). ACS-REQ-0024 restates it inline in \u00a79. X5 notes the callout is a Guardian obligation at concepts altitude."

@@ -126,6 +126,8 @@ That is 22 rows covering 20-odd provisions — §8.5 alone supplies three kinds,
 | S5 | P1 | store | `ir/provisions/*.yaml` — **authored**, joined to S4 by ID | — | — | → N15 |
 | S6 | P1 | store | `ir/ids/{counter,tombstones}.yaml` | — | — | → N3 |
 
+🟡 **Shipped** ([`ir/slices/v2/`](../../ir/slices/v2/README.md)). Twenty-eight provisions, not twenty: 24 Requirements, 2 Definitions, 1 Invariant, 1 Exclusion, every row of the specimen table covered, with §6's disposition table and its DEFER sentence both marked and §8.6's sentence split into its two MUSTs. Unbound fell from 197 to 174 (23 occurrences bound). Three spans cross blocks, which is why the overlay grew a `start`/`end` form beside `quote`. Two spec/schema disagreements surfaced and are in the upstream findings table below; one vocabulary gap (`actor` cannot say "either party") is carried to V5.
+
 **N22 is pulled forward out of V4 deliberately.** X3 made the terminator mandatory. A slice that inserts markers without a pairing lint can silently ship an anchor whose span runs to the end of a block — the exact over-capture X3 measured at 35%. The lint is what makes the mandatory rule real, so it ships with the markers, not two slices later.
 
 **The generated/authored seam is established here and never crossed again.** S4 is written only by N4. S5 is written only by a human. N15 is the sole join. R2.5 and R7.1 both depend on that holding from V2 onward.
@@ -581,3 +583,5 @@ Not slice work, but discovered by it and worth reporting to the ACS maintainers 
 | 1 | ~~`specification.md` has **no `## 9.` heading**. §9.1 and §9.2 exist and are linked from §6 and §8.4, but §9's preamble — approver authentication, Guardian identity verification, *"Approvers MUST NOT return ASK"* — is stranded under §8.6 *Chain head publication*~~ 🟡 **Fixed upstream in v0.1.2** (`daf81ac`, *Give the approver model its own section heading*). Nothing to report | Shaping survey |
 | 2 | Three `concepts/` `(normative)` callouts are obligations on the Guardian, which `concepts/README.md:14`'s altitude rule places in the pillars | [X5](./spike-provision-taxonomy.md) |
 | 3 | `conformance.md` and `specification.md` §7 state the ACS-Provenance all-or-nothing rule in near-identical prose — a restatement pair the `README.md:33` migration would resolve | X3, X5 |
+| 4 | 🟡 `defer-details.json` requires `reason`, `resolution_method` and `resolution_timeout_ms` but not `timeout_decision`, which §6 says DEFER MUST include (default `deny`). Prose and schema disagree on a required field | V2, ACS-REQ-0004 |
+| 5 | 🟡 The OPTIONAL `trust` enum §7.1 reserves and constrains (monotonicity rule) is not a field of `provenance.json`; the schema says implementations that carry it extend the schema. A wire-visible obligation with no schema to cite | V2, ACS-REQ-0010 |

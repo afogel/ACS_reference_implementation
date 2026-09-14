@@ -1,0 +1,3 @@
+# Retired provision IDs (S6, R2.2). A withdrawn provision keeps its number here
+# forever: {id, withdrawn_in, reason, superseded_by?}. Nothing is withdrawn yet.
+tombstones: []

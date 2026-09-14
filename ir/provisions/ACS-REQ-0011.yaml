@@ -1,0 +1,16 @@
+id: ACS-REQ-0011
+title: Framework enforces Intent immutability
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: "the session established an Intent (Intent is OPTIONAL, \u00a78.4)"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: [ACS-INV-0001]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 8294e69b2c1a67ad2adc760c6d0c24200b3de81c6547743376f8a113bdcfcaa0
+note: "Two MUSTs, one obligation: enforce, by ignoring or rejecting. The SHOULD in the same sentence is ACS-REQ-0012."

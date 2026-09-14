@@ -1,0 +1,386 @@
+{
+  "generated_by": "acs-ir extract",
+  "corpus": {
+    "version": "0.1.2",
+    "commit": "6fce2a0a71ed6372ed575ce19934dd32220b38d9"
+  },
+  "provisions": [
+    {
+      "id": "ACS-DEF-0001",
+      "type": "Definition",
+      "source_file": "spec/instrument/specification.md",
+      "line": 295,
+      "block_type": "paragraph",
+      "section_slug": "10-cryptographic-signatures",
+      "level": null,
+      "keywords": [],
+      "text": "The signed input for every algorithm is the RFC 8785 (JCS) canonicalization of the request or response envelope with the `signature` field removed, encoded as UTF-8.",
+      "text_hash": "4839737cfa8a45cd05abe6ef52f1238932d3564b20a7cb3252d74bc2282166b5"
+    },
+    {
+      "id": "ACS-DEF-0002",
+      "type": "Definition",
+      "source_file": "concepts/provenance.md",
+      "line": 19,
+      "block_type": "blockquote",
+      "section_slug": "lineage-is-transitive",
+      "level": null,
+      "keywords": [],
+      "text": "**Lineage spans derivation (normative).** When data is derived from other data, its `derived_from` lineage is the union of the lineage of its inputs. Summarization and compaction are derivations: the summary that comes out carries the combined lineage of everything that went in.",
+      "text_hash": "15cbdddac43654331897751eba9fcdb69d95eceb0f57329c43e68cc8fa7e33c3"
+    },
+    {
+      "id": "ACS-EXC-0001",
+      "type": "Exclusion",
+      "source_file": "spec/instrument/specification.md",
+      "line": 380,
+      "block_type": "paragraph",
+      "section_slug": "14-multi-tenancy",
+      "level": null,
+      "keywords": [],
+      "text": "`tenant_id` reserved as an optional envelope field. No isolation rules in v0.1.",
+      "text_hash": "b196c01da9134aad6e808443805187922261ad334f5475736defa2ddf7a43534"
+    },
+    {
+      "id": "ACS-INV-0001",
+      "type": "Invariant",
+      "source_file": "concepts/intent.md",
+      "line": 13,
+      "block_type": "blockquote",
+      "section_slug": "immutability",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "**Intent immutability (normative).** Once an Intent is established, `Intent.parsed` MUST NOT be modified by the runtime LLM, by tool outputs, or by any data crossing an untrusted channel. It may grow only through approver action via the ASK flow.",
+      "text_hash": "d13d31e336aa8a7401273ed6819dfff59e909b7313119268c702c9698f0c0d12"
+    },
+    {
+      "id": "ACS-REQ-0001",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 56,
+      "block_type": "table_cell",
+      "section_slug": "3-wire-format",
+      "level": null,
+      "keywords": [],
+      "text": "Discriminated union: `{ \"type\": \"final\", ... }`",
+      "text_hash": "42b94860cc352392488abe0953a4f83ad78f40dc48ae8392c5ff34e5ed479017"
+    },
+    {
+      "id": "ACS-REQ-0002",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 59,
+      "block_type": "paragraph",
+      "section_slug": "3-wire-format",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A Guardian that does not support batching MUST return `-32600 Invalid Request` for array-shaped inputs so the Observed Agent can fall back to sequential requests.",
+      "text_hash": "f49085a4e1aff3d628031ca16b22015f3e708c70de23ac11ab7243176d927135"
+    },
+    {
+      "id": "ACS-REQ-0003",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 113,
+      "block_type": "table_cell",
+      "section_slug": "6-disposition-vocabulary",
+      "level": "RECOMMENDED",
+      "keywords": [
+        "RECOMMENDED"
+      ],
+      "text": "`ALLOW` | Proceed | none (`reasoning` RECOMMENDED when user-visible audit trails are expected) |\n| `DENY` | Block | `reasoning` |\n| `MODIFY` | Proceed with changes (covers redaction via `modifications.redactions`; composition rules in [§6.3](#63-modify-composition-normative)) | `reasoning`, `modifications` |\n| `ASK` | Pause and request approval (substituted with `DEFER` or `DENY` for approver-incapable clients; see [§9.2](#92-approver-incapable-clients-normative)) | `reasoning`, `ask_details` |\n| `DEFER` | Verdict not yet reachable | `reasoning`, `defer_details`",
+      "text_hash": "2eee6abd91028e73889060546347692d9e488d3649cb0d2256bf95ef480ffe95"
+    },
+    {
+      "id": "ACS-REQ-0004",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 119,
+      "block_type": "paragraph",
+      "section_slug": "6-disposition-vocabulary",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "DEFER MUST include `resolution_method`, `resolution_timeout_ms`, and `timeout_decision` (default `deny`).",
+      "text_hash": "1f8ef3c0ba2919aade2f74de6e6cbfe8ab767bf9e2c7594012b958ca679d38b4"
+    },
+    {
+      "id": "ACS-REQ-0005",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 119,
+      "block_type": "paragraph",
+      "section_slug": "6-disposition-vocabulary",
+      "level": null,
+      "keywords": [],
+      "text": "DEFER reasons: `insufficient_context`, `conflicting_policies`, `low_confidence`, `pending_dependency`.",
+      "text_hash": "874f308dd83cac64e3550f7bffbd8292459587a19fc812c42d503d738d823107"
+    },
+    {
+      "id": "ACS-REQ-0006",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 119,
+      "block_type": "paragraph",
+      "section_slug": "6-disposition-vocabulary",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Cascading deferrals MUST be bounded per session.",
+      "text_hash": "6e5372943ee9cc212d2352fc5cc56cf437ff22b928a0a3a732760466c9e050f8"
+    },
+    {
+      "id": "ACS-REQ-0007",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 65,
+      "block_type": "paragraph",
+      "section_slug": "4-capability-negotiation-handshake",
+      "level": null,
+      "keywords": [],
+      "text": "Required at session start, before any hook traffic.",
+      "text_hash": "2ad1827a2b1a11303f67079117c9b130c3da38706d6a3cca9a9e44da1ea72e4b"
+    },
+    {
+      "id": "ACS-REQ-0008",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 22,
+      "block_type": "list_item",
+      "section_slug": "2-architecture",
+      "level": null,
+      "keywords": [],
+      "text": "**Deterministic layer** (Cedar/Rego): always runs first.",
+      "text_hash": "c086c0aaa3a3880caaf86945bd188b30041048b16ddd0ce1d8f1b6dd58f3c759"
+    },
+    {
+      "id": "ACS-REQ-0009",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 179,
+      "block_type": "table_cell",
+      "section_slug": "7-provenance",
+      "level": null,
+      "keywords": [],
+      "text": "Lineage: array of `provenance_id`s",
+      "text_hash": "edaa44057b7f76cfa51a1b9d49a1771b4cd58c7e3e48563d945a67c9790665a0"
+    },
+    {
+      "id": "ACS-REQ-0010",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 188,
+      "block_type": "list_item",
+      "section_slug": "71-optional-trust-enum",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "For data with `origin: agent_generated`, the framework MUST compute `trust` as the minimum trust of the entries in `derived_from` (monotonicity rule).",
+      "text_hash": "41d62d77d341c84ec776db1a24fc03edd609bab00006721187f88696ac3ba455"
+    },
+    {
+      "id": "ACS-REQ-0011",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 244,
+      "block_type": "paragraph",
+      "section_slug": "84-intent",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "MUST"
+      ],
+      "text": "The framework MUST enforce it: any attempt to modify `Intent.parsed` by the runtime LLM, by tool outputs, or by data crossing an `untrusted` channel MUST be ignored or rejected",
+      "text_hash": "8294e69b2c1a67ad2adc760c6d0c24200b3de81c6547743376f8a113bdcfcaa0"
+    },
+    {
+      "id": "ACS-REQ-0012",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 244,
+      "block_type": "paragraph",
+      "section_slug": "84-intent",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD be recorded as an audit event.",
+      "text_hash": "0e766c4dd46cf80e4ed5551937e1730baa79937e5ff9fe416c0de5da0fddd513"
+    },
+    {
+      "id": "ACS-REQ-0013",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 228,
+      "block_type": "paragraph",
+      "section_slug": "82-chain-hashing-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "`entry_hash = lowercase-hex(SHA-256(content_bytes || prev_hash_bytes))` where:\n\n1. `content_bytes` is the UTF-8 encoding of the RFC 8785 (JCS) canonicalization of the ContextEntry object with `entry_hash` and `previous_hash` fields REMOVED;\n2. `prev_hash_bytes` is the raw 32-byte decoding of `previous_hash`, or the empty byte string if `previous_hash` is null/absent (first entry in the session);\n3. `||` denotes byte concatenation.\n\nConformant Guardians MUST compute `entry_hash` this way; otherwise chains computed by different implementations will not match and cross-Guardian audit comparison breaks. Alternative canonicalization schemes are not permitted in v0.1.",
+      "text_hash": "dba9c6d8335026d65a9d2aac708a67e560d6bde47cd6076193a001497b74049f"
+    },
+    {
+      "id": "ACS-REQ-0014",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 176,
+      "block_type": "table_cell",
+      "section_slug": "7-provenance",
+      "level": null,
+      "keywords": [],
+      "text": "Unique within session",
+      "text_hash": "d87eacdf2d22460b784c3487a80e88a482ddb316ce6c9284f640ff97500d7956"
+    },
+    {
+      "id": "ACS-REQ-0015",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 71,
+      "block_type": "paragraph",
+      "section_slug": "4-capability-negotiation-handshake",
+      "level": null,
+      "keywords": [],
+      "text": "Version mismatch terminates with `UNSUPPORTED_VERSION` (`-32001`, §17.1).",
+      "text_hash": "98e8b785e760e7d512198e02964d5de8050d3f6116211e9ceaab2f509f51013c"
+    },
+    {
+      "id": "ACS-REQ-0016",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 254,
+      "block_type": "paragraph",
+      "section_slug": "86-chain-head-publication-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "For every step where the Guardian writes a ContextEntry (the content-bearing steps), the Guardian MUST include the resulting `chain_hash` in its response",
+      "text_hash": "5eb6235b1a3054f75e630f691641c23f40c0897d979c8399c832e1b5c4ea8c62"
+    },
+    {
+      "id": "ACS-REQ-0017",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 254,
+      "block_type": "paragraph",
+      "section_slug": "86-chain-head-publication-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "that `chain_hash` MUST be covered by the response signature (§10).",
+      "text_hash": "e1a36f5dffdd6e1da8dc9cb9cdb302d2736f1e1df582fb8461d3dc66578e278d"
+    },
+    {
+      "id": "ACS-REQ-0018",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 295,
+      "block_type": "paragraph",
+      "section_slug": "10-cryptographic-signatures",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "MUST"
+      ],
+      "text": "A verifier MUST recompute this canonical form and MUST reject a signature that does not cover it (`SIGNATURE_INVALID`, §17.1).",
+      "text_hash": "1f18a43a936e2276a6c4464abf3618f6018b1ee59ef19fc020746bcc31e30cce"
+    },
+    {
+      "id": "ACS-REQ-0019",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 205,
+      "block_type": "paragraph",
+      "section_slug": "72-default-channel-to-trust-mapping",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "MUST NOT"
+      ],
+      "text": "Provenance MUST be populated by deterministic code outside the LLM's output path. Implementations MUST NOT instruct the LLM to produce it.",
+      "text_hash": "51168a2c9d2a6a8327862b086e4abd5f4502237639641e378cc367925b78c803"
+    },
+    {
+      "id": "ACS-REQ-0020",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 248,
+      "block_type": "paragraph",
+      "section_slug": "85-size-based-archival-optional",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "A mismatched `chain_hash` SHOULD trigger an audit event.",
+      "text_hash": "ab2d4412fd1c3055192367c756b5d1467b8656c49069c20379a7040343e36811"
+    },
+    {
+      "id": "ACS-REQ-0021",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 248,
+      "block_type": "paragraph",
+      "section_slug": "85-size-based-archival-optional",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardian Agents MAY archive entries when SessionContext exceeds a configurable byte threshold (suggested 64 KB).",
+      "text_hash": "a177e8226221e439b1e77a64fa86b07c0d54dab730eecd5d2c8004bfaad1aa63"
+    },
+    {
+      "id": "ACS-REQ-0022",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 248,
+      "block_type": "paragraph",
+      "section_slug": "85-size-based-archival-optional",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Archival MUST preserve `chain_hash`, `provenance_summary`, and `intent`.",
+      "text_hash": "d42401486d28dfe0e6df21c57a58432cdd589189363fa67992cb1de19da4ab50"
+    },
+    {
+      "id": "ACS-REQ-0023",
+      "type": "Requirement",
+      "source_file": "concepts/agents.md",
+      "line": 21,
+      "block_type": "blockquote",
+      "section_slug": "approver",
+      "level": "REQUIRED",
+      "keywords": [
+        "REQUIRED",
+        "MUST"
+      ],
+      "text": "**Approver authentication (normative).** Approver authentication is REQUIRED. The Guardian MUST verify the Approver's identity against policy before honoring the returned decision.",
+      "text_hash": "b2043534abf5230af51a28e8dd7c6526a46226b156e51ea07d19d32f3eadec3a"
+    },
+    {
+      "id": "ACS-REQ-0024",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 262,
+      "block_type": "paragraph",
+      "section_slug": "9-approver-model",
+      "level": "REQUIRED",
+      "keywords": [
+        "REQUIRED",
+        "MUST"
+      ],
+      "text": "Approver authentication is REQUIRED. Guardian MUST verify approver identity against policy.",
+      "text_hash": "2afe3fa652ea6bdd12008d2e6e67e7846ee730644c38f771baab9de0fc39b2b2"
+    }
+  ]
+}

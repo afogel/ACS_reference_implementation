@@ -1,0 +1,16 @@
+id: ACS-REQ-0017
+title: Published chain head is covered by the response signature
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: [ACS-DEF-0001, ACS-REQ-0016]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: e1a36f5dffdd6e1da8dc9cb9cdb302d2736f1e1df582fb8461d3dc66578e278d
+note: "Cross-message: the chain_hash the Guardian publishes must fall inside the signed input, which ACS-DEF-0001 fixes as the whole envelope minus signature."

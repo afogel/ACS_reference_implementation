@@ -34,10 +34,10 @@ export interface Block {
   endLine: number;
   /** Raw text of the block: the source lines joined by "\n", or the trimmed cell text for a table cell. */
   text: string;
+  /** 0-based character offset in the file where `text` begins, so a match inside `text` locates itself in the file. */
+  start: number;
   /** Table cells only: 0-based column index within the row. */
   column?: number;
-  /** Table cells only: 0-based character offset of the trimmed cell text within the source line. */
-  offset?: number;
 }
 
 const FENCE_OPEN = /^\s{0,3}(`{3,}|~{3,})/;
@@ -51,11 +51,13 @@ const SETEXT_UNDERLINE = /^\s{0,3}(=+|-+)\s*$/;
 
 export function classifyBlocks(text: string): Block[] {
   const lines = text.split(/\r?\n/);
+  const starts = lineStarts(text);
+  const at = (lineNo: number): number => starts[lineNo - 1] ?? text.length;
   const blocks: Block[] = [];
 
   let open: { type: "paragraph" | "list_item" | "blockquote"; line: number; lines: string[] } | null = null;
   const close = (endLine: number): void => {
-    if (open) blocks.push({ type: open.type, line: open.line, endLine, text: open.lines.join("\n") });
+    if (open) blocks.push({ type: open.type, line: open.line, endLine, text: open.lines.join("\n"), start: at(open.line) });
     open = null;
   };
 
@@ -85,7 +87,7 @@ export function classifyBlocks(text: string): Block[] {
         const closeRun = new RegExp(`^\\s{0,3}${char === "`" ? "`" : "~"}{${marker.length},}\\s*$`);
         if (closeRun.test(l)) break;
       }
-      blocks.push({ type: "code_fence", line: start, endLine: Math.min(j + 1, lines.length), text: body.join("\n") });
+      blocks.push({ type: "code_fence", line: start, endLine: Math.min(j + 1, lines.length), text: body.join("\n"), start: at(start) });
       i = j;
       continue;
     }
@@ -99,19 +101,19 @@ export function classifyBlocks(text: string): Block[] {
       // A paragraph followed by `===` or `---` is a setext heading, not a break.
       const heading = open;
       open = null;
-      blocks.push({ type: "heading", line: heading.line, endLine: lineNo, text: [...heading.lines, raw].join("\n") });
+      blocks.push({ type: "heading", line: heading.line, endLine: lineNo, text: [...heading.lines, raw].join("\n"), start: at(heading.line) });
       continue;
     }
 
     if (THEMATIC_BREAK.test(raw)) {
       close(lineNo - 1);
-      blocks.push({ type: "thematic_break", line: lineNo, endLine: lineNo, text: raw });
+      blocks.push({ type: "thematic_break", line: lineNo, endLine: lineNo, text: raw, start: at(lineNo) });
       continue;
     }
 
     if (HEADING.test(raw)) {
       close(lineNo - 1);
-      blocks.push({ type: "heading", line: lineNo, endLine: lineNo, text: raw });
+      blocks.push({ type: "heading", line: lineNo, endLine: lineNo, text: raw, start: at(lineNo) });
       continue;
     }
 
@@ -129,7 +131,7 @@ export function classifyBlocks(text: string): Block[] {
       close(lineNo - 1);
       if (TABLE_SEPARATOR.test(raw)) continue;
       splitCellsWithOffsets(raw).forEach(({ text: cell, offset }, column) => {
-        blocks.push({ type: "table_cell", line: lineNo, endLine: lineNo, text: cell, column, offset });
+        blocks.push({ type: "table_cell", line: lineNo, endLine: lineNo, text: cell, column, start: at(lineNo) + offset });
       });
       continue;
     }
@@ -149,6 +151,25 @@ export function classifyBlocks(text: string): Block[] {
   }
   close(lines.length);
   return blocks;
+}
+
+/** 0-based offset of each line's first character; index 0 is line 1. Handles LF and CRLF. */
+export function lineStarts(text: string): number[] {
+  const starts = [0];
+  for (const match of text.matchAll(/\r?\n/g)) starts.push((match.index ?? 0) + match[0].length);
+  return starts;
+}
+
+/** 1-based line and column of an absolute character offset. */
+export function locateOffset(starts: number[], offset: number): { line: number; column: number } {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((starts[mid] ?? 0) <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return { line: lo + 1, column: offset - (starts[lo] ?? 0) + 1 };
 }
 
 /** Split a pipe-table row into its cells, honouring `\|` escapes; the outer pipes are dropped. */

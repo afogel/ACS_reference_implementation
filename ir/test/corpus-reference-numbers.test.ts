@@ -10,8 +10,11 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadCatalog, loadRecords } from "../src/catalog/catalog.ts";
 import { defaultCensusDir, runCensus } from "../src/census/run-census.ts";
 import { defaultCorpusRoot } from "../src/corpus.ts";
+import { defaultManifestPath, type Manifest } from "../src/extract/extract.ts";
+import { checkAllocated, readCounter, readTombstones } from "../src/ids.ts";
 
 const pinned = defaultCorpusRoot();
 const present = existsSync(join(pinned, "docs"));
@@ -62,8 +65,10 @@ describe("the pinned corpus (spec/acs) -- reference numbers", () => {
     });
   });
 
-  it("leaves every occurrence in a normative source unbound, and excludes the eleven in informative or editorial sources", () => {
-    expect(census?.totals).toMatchObject({ bound: 0, excluded: 11, unbound: 197 });
+  it("binds the V2 specimens' 23 occurrences, excludes the eleven in informative or editorial sources, and leaves 174 unbound", () => {
+    expect(census?.totals).toMatchObject({ bound: 23, excluded: 11, unbound: 174 });
+    const bound = (census?.occurrences ?? []).filter((o) => o.binding.kind === "bound");
+    expect(new Set(bound.map((o) => (o.binding as { provision_id: string }).provision_id)).size).toBe(18);
     const excluded = (census?.occurrences ?? []).filter((o) => o.binding.kind === "excluded").map((o) => o.source);
     expect(new Set(excluded)).toEqual(
       new Set(["acs.md", "concepts/README.md", "identity/overview.md", "identity/standards.md", "topics/ACS_in_action_example.md"]),
@@ -99,5 +104,46 @@ describe("the pinned corpus (spec/acs) -- reference numbers", () => {
   it("matches the committed ir/census/provisions.yaml byte for byte", () => {
     const committed = readFileSync(join(defaultCensusDir(), "provisions.yaml"), "utf8");
     expect(run?.yaml).toBe(committed);
+  });
+});
+
+describe("the V2 catalog -- twenty-eight provisions, both halves present", () => {
+  const manifest = JSON.parse(readFileSync(defaultManifestPath(), "utf8")) as Manifest;
+  const records = loadRecords();
+  const catalog = loadCatalog(manifest, records.records);
+
+  it("is generated from the same corpus pin the census reports", () => {
+    expect(manifest.corpus).toEqual({ version: "0.1.2", commit: "6fce2a0a71ed6372ed575ce19934dd32220b38d9" });
+  });
+
+  it("joins every marked provision to an authored record, with no problems either way", () => {
+    expect(records.problems).toEqual([]);
+    expect(catalog.problems).toEqual([]);
+    expect(catalog.entries).toHaveLength(28);
+  });
+
+  it("spans all five node types and the four block types", () => {
+    const types = new Set(catalog.entries.map((e) => e.manifest.type));
+    expect(types).toEqual(new Set(["Requirement", "Definition", "Invariant", "Exclusion"]));
+    const blocks = new Set(catalog.entries.map((e) => e.manifest.block_type));
+    expect(blocks).toEqual(new Set(["paragraph", "list_item", "table_cell", "blockquote"]));
+  });
+
+  it("has every record reviewed against the text it currently carries", () => {
+    const stale = catalog.entries.filter((e) => e.record.reviewed_against !== e.manifest.text_hash).map((e) => e.manifest.id);
+    expect(stale).toEqual([]);
+  });
+
+  it("uses only allocated, live IDs", () => {
+    expect(checkAllocated(manifest.provisions.map((p) => p.id), readCounter(), readTombstones())).toEqual([]);
+  });
+
+  it("carries the modalities and the restatement pair the specimen table asked for", () => {
+    const byId = Object.fromEntries(catalog.entries.map((e) => [e.manifest.id, e.record]));
+    expect(byId["ACS-REQ-0021"]?.modality_kind).toBe("permission");
+    expect(byId["ACS-REQ-0022"]).toMatchObject({ modality_kind: "conditional-on-exercise", depends_on: ["ACS-REQ-0021"] });
+    expect(byId["ACS-REQ-0024"]?.restates).toBe("ACS-REQ-0023");
+    expect(byId["ACS-REQ-0019"]?.evidence_class).toBe("non-testable");
+    expect(byId["ACS-REQ-0010"]?.depends_on).toContain("ACS-DEF-0002");
   });
 });

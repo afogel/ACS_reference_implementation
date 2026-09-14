@@ -1,0 +1,16 @@
+id: ACS-REQ-0022
+title: Archival preserves chain_hash, provenance_summary and intent
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "archival (ACS-REQ-0021) occurred in the session"
+modality_kind: conditional-on-exercise
+evidence_class: guardian-state
+schema_refs: []
+depends_on: [ACS-REQ-0021]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d42401486d28dfe0e6df21c57a58432cdd589189363fa67992cb1de19da4ab50
+note: "The \u00a78.5 type case: an obligation conditional on an implementation choice."

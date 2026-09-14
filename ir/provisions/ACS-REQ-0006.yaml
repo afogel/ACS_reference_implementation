@@ -1,0 +1,16 @@
+id: ACS-REQ-0006
+title: Cascading deferrals are bounded per session
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 6e5372943ee9cc212d2352fc5cc56cf437ff22b928a0a3a732760466c9e050f8
+note: "The bound is deployment-defined, so the verifier needs it as an external fact (V5); what the wire shows is the DEFER count per session. \u00a79.2's substituted DEFERs count toward this bound."

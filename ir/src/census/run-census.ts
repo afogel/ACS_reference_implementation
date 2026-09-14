@@ -7,9 +7,10 @@
  * reason E4.2 gives for the manifest: the committed copy exists so a
  * reviewer can read the diff, and a stale copy is a diff nobody read.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadCorpus, readSource, type Corpus } from "../corpus.ts";
+import { defaultMarkersDir, parseOverlay, resolveOverlay } from "../markers/overlay.ts";
 import { toYaml, type YamlValue } from "../yaml.ts";
 import { provisionCensus, type ProvisionCensus } from "./provision-census.ts";
 import { parseSourceDeclarations, sourceCensus, type SourceCensus } from "./source-census.ts";
@@ -27,14 +28,27 @@ export function defaultCensusDir(): string {
   return resolve(import.meta.dir, "..", "..", "census");
 }
 
-export function runCensus(options: { corpusRoot?: string; sourcesFile?: string } = {}): CensusRun {
+export function runCensus(options: { corpusRoot?: string; sourcesFile?: string; overlayFile?: string | null } = {}): CensusRun {
   const corpus = loadCorpus(options.corpusRoot);
   const sourcesFile = options.sourcesFile ?? join(defaultCensusDir(), "sources.yaml");
   const declared = parseSourceDeclarations(readFileSync(sourcesFile, "utf8"));
   const sources = sourceCensus(declared, corpus.files);
+
+  // The overlay is optional input: absent, nothing is bound. Present and
+  // unresolvable, the census fails alongside the source census rather than
+  // reporting a burn-down it cannot vouch for.
+  const overlayFile = options.overlayFile === undefined ? join(defaultMarkersDir(), "overlay.yaml") : options.overlayFile;
+  let spans: ReturnType<typeof resolveOverlay>["spans"] = [];
+  if (overlayFile !== null && existsSync(overlayFile)) {
+    const resolution = resolveOverlay(parseOverlay(readFileSync(overlayFile, "utf8")), (file) =>
+      corpus.files.includes(file) ? readSource(corpus, file) : null,
+    );
+    sources.problems.push(...resolution.problems.map((p) => `overlay: ${p}`));
+    spans = resolution.spans;
+  }
   if (sources.problems.length > 0) return { corpus, sources, provisions: null, yaml: null };
 
-  const provisions = provisionCensus(corpus, declared, (file) => readSource(corpus, file));
+  const provisions = provisionCensus(corpus, declared, (file) => readSource(corpus, file), spans);
   return { corpus, sources, provisions, yaml: renderYaml(provisions) };
 }
 

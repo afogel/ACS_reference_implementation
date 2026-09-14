@@ -1,0 +1,125 @@
+# The staging overlay (S2, E3). Where each provision's anchor and terminator go,
+# by verbatim quote against the pinned corpus. `quote` marks one run of text;
+# `start` + `end` mark a span across blocks. `start` must be unique in the file.
+# Retires when the markers land upstream (E3.3); until then this file is the
+# payload of the bulk marker PR.
+#
+# V2 specimens: chosen for semantic diversity, not document order
+# (normative-ir-slices.md §V2). One row of that table per entry, named in `kind`.
+markers:
+  # structural -- the response shape, delegated to response-envelope.json's oneOf (§3 table)
+  - id: ACS-REQ-0001
+    source: spec/instrument/specification.md
+    quote: "Discriminated union: `{ \"type\": \"final\", ... }`"
+  # prohibition (§3)
+  - id: ACS-REQ-0002
+    source: spec/instrument/specification.md
+    quote: "A Guardian that does not support batching MUST return `-32600 Invalid Request` for array-shaped inputs so the Observed Agent can fall back to sequential requests."
+  # local predicate -- per-disposition required fields, one provision spanning the §6 table body
+  - id: ACS-REQ-0003
+    source: spec/instrument/specification.md
+    start: "`ALLOW` | Proceed | none (`reasoning` RECOMMENDED when user-visible audit trails are expected)"
+    end: "`DEFER` | Verdict not yet reachable | `reasoning`, `defer_details`"
+  # disposition well-formedness -- DEFER's own required fields (§6)
+  - id: ACS-REQ-0004
+    source: spec/instrument/specification.md
+    quote: "DEFER MUST include `resolution_method`, `resolution_timeout_ms`, and `timeout_decision` (default `deny`)."
+  # enum / value -- the four permitted DEFER reasons (§6), keyword-free
+  - id: ACS-REQ-0005
+    source: spec/instrument/specification.md
+    quote: "DEFER reasons: `insufficient_context`, `conflicting_policies`, `low_confidence`, `pending_dependency`."
+  # cardinality (§6)
+  - id: ACS-REQ-0006
+    source: spec/instrument/specification.md
+    quote: "Cascading deferrals MUST be bounded per session."
+  # temporal -- handshake before any hook traffic (§4), keyword-free
+  - id: ACS-REQ-0007
+    source: spec/instrument/specification.md
+    quote: "Required at session start, before any hook traffic."
+  # ordering -- deterministic layer before agent layer (§2), keyword-free nested list item
+  - id: ACS-REQ-0008
+    source: spec/instrument/specification.md
+    quote: "**Deterministic layer** (Cedar/Rego): always runs first."
+  # graph -- derived_from lineage over in-session provenance_ids (§7 table cell), keyword-free
+  - id: ACS-REQ-0009
+    source: spec/instrument/specification.md
+    quote: "Lineage: array of `provenance_id`s"
+  # recursive -- agent_generated trust is the minimum over derived_from (§7.1)
+  - id: ACS-REQ-0010
+    source: spec/instrument/specification.md
+    quote: "For data with `origin: agent_generated`, the framework MUST compute `trust` as the minimum trust of the entries in `derived_from` (monotonicity rule)."
+  # stateful -- the framework enforces Intent immutability (§8.4); two MUSTs, one obligation
+  - id: ACS-REQ-0011
+    source: spec/instrument/specification.md
+    start: "The framework MUST enforce it:"
+    end: "MUST be ignored or rejected"
+  # stateful, SHOULD -- the audit half of the same sentence, addressed separately (R1.8)
+  - id: ACS-REQ-0012
+    source: spec/instrument/specification.md
+    quote: "SHOULD be recorded as an audit event."
+  # integrity -- entry_hash chain computation (§8.2), a span across a paragraph, a list and a paragraph
+  - id: ACS-REQ-0013
+    source: spec/instrument/specification.md
+    start: "`entry_hash = lowercase-hex(SHA-256(content_bytes || prev_hash_bytes))` where:"
+    end: "Alternative canonicalization schemes are not permitted in v0.1."
+  # uniqueness -- provenance_id unique within session (§7 table cell), keyword-free
+  - id: ACS-REQ-0014
+    source: spec/instrument/specification.md
+    quote: "Unique within session"
+  # negotiation -- no common acs_version (§4), keyword-free
+  - id: ACS-REQ-0015
+    source: spec/instrument/specification.md
+    quote: "Version mismatch terminates with `UNSUPPORTED_VERSION` (`-32001`, §17.1)."
+  # chain head publication (§8.6), first half of one sentence
+  - id: ACS-REQ-0016
+    source: spec/instrument/specification.md
+    quote: "For every step where the Guardian writes a ContextEntry (the content-bearing steps), the Guardian MUST include the resulting `chain_hash` in its response"
+  # cross-message -- the published chain_hash is covered by the response signature (§8.6), second half of the same sentence
+  - id: ACS-REQ-0017
+    source: spec/instrument/specification.md
+    quote: "that `chain_hash` MUST be covered by the response signature (§10)."
+  # definition in a pillar -- the signed input (§10), keyword-free
+  - id: ACS-DEF-0001
+    source: spec/instrument/specification.md
+    quote: "The signed input for every algorithm is the RFC 8785 (JCS) canonicalization of the request or response envelope with the `signature` field removed, encoded as UTF-8."
+  # externally computed -- the verifier recomputes the canonical form (§10)
+  - id: ACS-REQ-0018
+    source: spec/instrument/specification.md
+    quote: "A verifier MUST recompute this canonical form and MUST reject a signature that does not cover it (`SIGNATURE_INVALID`, §17.1)."
+  # environmental, non-testable -- provenance populated outside the LLM's output path (§7.2); two sentences, one obligation
+  - id: ACS-REQ-0019
+    source: spec/instrument/specification.md
+    start: "Provenance MUST be populated by deterministic code outside the LLM's output path."
+    end: "Implementations MUST NOT instruct the LLM to produce it."
+  # SHOULD (§8.5)
+  - id: ACS-REQ-0020
+    source: spec/instrument/specification.md
+    quote: "A mismatched `chain_hash` SHOULD trigger an audit event."
+  # MAY / permission (§8.5)
+  - id: ACS-REQ-0021
+    source: spec/instrument/specification.md
+    quote: "Guardian Agents MAY archive entries when SessionContext exceeds a configurable byte threshold (suggested 64 KB)."
+  # conditional-on-exercise (§8.5)
+  - id: ACS-REQ-0022
+    source: spec/instrument/specification.md
+    quote: "Archival MUST preserve `chain_hash`, `provenance_summary`, and `intent`."
+  # definition-dependent -- the concept-page definition the recursive rule rests on (provenance.md)
+  - id: ACS-DEF-0002
+    source: concepts/provenance.md
+    quote: "**Lineage spans derivation (normative).** When data is derived from other data, its `derived_from` lineage is the union of the lineage of its inputs. Summarization and compaction are derivations: the summary that comes out carries the combined lineage of everything that went in."
+  # exclusion (§14)
+  - id: ACS-EXC-0001
+    source: spec/instrument/specification.md
+    quote: "`tenant_id` reserved as an optional envelope field. No isolation rules in v0.1."
+  # cross-document restatement -- the canonical copy on the concept page (agents.md)
+  - id: ACS-REQ-0023
+    source: concepts/agents.md
+    quote: "**Approver authentication (normative).** Approver authentication is REQUIRED. The Guardian MUST verify the Approver's identity against policy before honoring the returned decision."
+  # cross-document restatement -- the pillar's inline copy (§9), restates ACS-REQ-0023
+  - id: ACS-REQ-0024
+    source: spec/instrument/specification.md
+    quote: "Approver authentication is REQUIRED. Guardian MUST verify approver identity against policy."
+  # stateful invariant -- Intent immutability (intent.md), which ACS-REQ-0011 enforces
+  - id: ACS-INV-0001
+    source: concepts/intent.md
+    quote: "**Intent immutability (normative).** Once an Intent is established, `Intent.parsed` MUST NOT be modified by the runtime LLM, by tool outputs, or by any data crossing an untrusted channel. It may grow only through approver action via the ASK flow."

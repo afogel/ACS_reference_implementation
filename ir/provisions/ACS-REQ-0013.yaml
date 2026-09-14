@@ -1,0 +1,20 @@
+id: ACS-REQ-0013
+title: entry_hash chain computation
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs:
+  - file: context-entry.json
+    pointer: /properties/entry_hash
+  - file: context-entry.json
+    pointer: /properties/previous_hash
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: dba9c6d8335026d65a9d2aac708a67e560d6bde47cd6076193a001497b74049f
+note: "Spans a paragraph, a three-item list and a closing paragraph. SHA-256 and JCS enter as external facts (E7.1); the verifier recomputes from the Guardian's entries and compares with the published chain_hash (ACS-REQ-0016)."

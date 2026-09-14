@@ -1,0 +1,16 @@
+id: ACS-REQ-0021
+title: Guardian may archive above a byte threshold
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: a177e8226221e439b1e77a64fa86b07c0d54dab730eecd5d2c8004bfaad1aa63
+note: "A permission: not archiving is conformant and yields no verdict (R4.6). Exercising it activates ACS-REQ-0022."

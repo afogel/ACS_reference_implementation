@@ -1,0 +1,16 @@
+id: ACS-REQ-0008
+title: Deterministic layer evaluates before the agent layer
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: c086c0aaa3a3880caaf86945bd188b30041048b16ddd0ce1d8f1b6dd58f3c759
+note: "Keyword-free nested list item. Observable only from the Guardian's own decision log (agents.md decision logging) or from metadata.evaluator, never from the request wire."

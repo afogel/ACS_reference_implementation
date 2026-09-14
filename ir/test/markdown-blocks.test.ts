@@ -73,6 +73,13 @@ describe("classifyBlocks -- the block types X3 counted, at the lines they occupy
   it("joins consecutive quote lines into one blockquote block with the end line recorded", () => {
     const quote = blocks.find((b) => b.type === "blockquote");
     expect(quote).toMatchObject({ line: 15, endLine: 16, text: "> quote one\n> quote two" });
+    expect(sample.slice(quote?.start)).toStartWith("> quote one");
+  });
+
+  it("records where each block's text starts in the file, table cells included", () => {
+    for (const block of blocks) {
+      expect(sample.slice(block.start)).toStartWith(block.text.slice(0, 2));
+    }
   });
 
   it("swallows a fence whole, including a line that looks like a heading", () => {
@@ -91,7 +98,7 @@ describe("classifyBlocks -- the block types X3 counted, at the lines they occupy
 
   it("skips YAML front matter", () => {
     const withFrontMatter = ["---", "title: x", "---", "", "Body MUST count"].join("\n");
-    expect(classifyBlocks(withFrontMatter)).toEqual([{ type: "paragraph", line: 5, endLine: 5, text: "Body MUST count" }]);
+    expect(classifyBlocks(withFrontMatter)).toEqual([{ type: "paragraph", line: 5, endLine: 5, text: "Body MUST count", start: 18 }]);
   });
 
   it("closes an unterminated fence at end of file", () => {

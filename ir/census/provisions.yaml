@@ -30,9 +30,9 @@ totals:
     thematic_break: 0
   blocks_with_keywords: 134
   masked: 0
-  bound: 0
+  bound: 23
   excluded: 11
-  unbound: 197
+  unbound: 174
 sources:
   - path: README.md
     status: informative
@@ -134,9 +134,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 2
     excluded: 0
-    unbound: 6
+    unbound: 4
     normative_tags: 2
     footer_entries: 4
   - path: concepts/capability.md
@@ -197,9 +197,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 1
     excluded: 0
-    unbound: 2
+    unbound: 1
     normative_tags: 2
     footer_entries: 4
   - path: concepts/provenance.md
@@ -680,9 +680,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 20
     excluded: 0
-    unbound: 111
+    unbound: 91
     normative_tags: 10
     footer_entries: 0
   - path: spec/trace/OCSF/implementation_examples.md
@@ -1352,6 +1352,7 @@ occurrences:
   - source: acs.md
     line: 14
     column: 116
+    offset: 2170
     keyword: OPTIONAL
     block_type: list_item
     block: 9
@@ -1362,6 +1363,7 @@ occurrences:
   - source: concepts/README.md
     line: 11
     column: 189
+    offset: 896
     keyword: MUST NOT
     block_type: list_item
     block: 6
@@ -1372,6 +1374,7 @@ occurrences:
   - source: concepts/README.md
     line: 12
     column: 110
+    offset: 1081
     keyword: MUST
     block_type: list_item
     block: 7
@@ -1382,6 +1385,7 @@ occurrences:
   - source: concepts/README.md
     line: 12
     column: 190
+    offset: 1161
     keyword: MUST
     block_type: list_item
     block: 7
@@ -1392,6 +1396,7 @@ occurrences:
   - source: concepts/agents.md
     line: 15
     column: 48
+    offset: 856
     keyword: MUST
     block_type: blockquote
     block: 8
@@ -1401,6 +1406,7 @@ occurrences:
   - source: concepts/agents.md
     line: 19
     column: 124
+    offset: 1102
     keyword: MAY
     block_type: paragraph
     block: 10
@@ -1410,24 +1416,29 @@ occurrences:
   - source: concepts/agents.md
     line: 21
     column: 71
+    offset: 1276
     keyword: REQUIRED
     block_type: blockquote
     block: 11
     context: "> **Approver authentication (normative).** Approver authentication is REQUIRED. The Guardian MUST verify the Approver's identity against policy before…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0023
   - source: concepts/agents.md
     line: 21
     column: 94
+    offset: 1299
     keyword: MUST
     block_type: blockquote
     block: 11
     context: …cation (normative).** Approver authentication is REQUIRED. The Guardian MUST verify the Approver's identity against policy before honoring the retur…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0023
   - source: concepts/agents.md
     line: 23
     column: 22
+    offset: 1411
     keyword: MAY
     block_type: paragraph
     block: 12
@@ -1437,6 +1448,7 @@ occurrences:
   - source: concepts/agents.md
     line: 23
     column: 146
+    offset: 1535
     keyword: MUST NOT
     block_type: paragraph
     block: 12
@@ -1446,6 +1458,7 @@ occurrences:
   - source: concepts/identity.md
     line: 13
     column: 35
+    offset: 1132
     keyword: MUST NOT
     block_type: paragraph
     block: 7
@@ -1455,15 +1468,18 @@ occurrences:
   - source: concepts/intent.md
     line: 13
     column: 87
+    offset: 853
     keyword: MUST NOT
     block_type: blockquote
     block: 7
     context: …utability (normative).** Once an Intent is established, `Intent.parsed` MUST NOT be modified by the runtime LLM, by tool outputs, or by any data crossin…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-INV-0001
   - source: concepts/intent.md
     line: 21
     column: 282
+    offset: 1863
     keyword: MUST NOT
     block_type: blockquote
     block: 11
@@ -1473,6 +1489,7 @@ occurrences:
   - source: concepts/session-lifecycle.md
     line: 23
     column: 95
+    offset: 1537
     keyword: MUST
     block_type: blockquote
     block: 12
@@ -1482,6 +1499,7 @@ occurrences:
   - source: concepts/session-lifecycle.md
     line: 23
     column: 257
+    offset: 1699
     keyword: MAY
     block_type: blockquote
     block: 12
@@ -1491,6 +1509,7 @@ occurrences:
   - source: concepts/trust.md
     line: 25
     column: 57
+    offset: 1834
     keyword: MUST NOT
     block_type: blockquote
     block: 13
@@ -1500,6 +1519,7 @@ occurrences:
   - source: identity/overview.md
     line: 124
     column: 1672
+    offset: 13943
     keyword: MUST
     block_type: table_cell
     block: 70
@@ -1510,6 +1530,7 @@ occurrences:
   - source: identity/overview.md
     line: 124
     column: 1740
+    offset: 14011
     keyword: MUST
     block_type: table_cell
     block: 70
@@ -1520,6 +1541,7 @@ occurrences:
   - source: identity/overview.md
     line: 124
     column: 1759
+    offset: 14030
     keyword: MUST
     block_type: table_cell
     block: 70
@@ -1530,6 +1552,7 @@ occurrences:
   - source: identity/standards.md
     line: 155
     column: 135
+    offset: 10724
     keyword: RECOMMENDED
     block_type: table_cell
     block: 107
@@ -1540,6 +1563,7 @@ occurrences:
   - source: identity/standards.md
     line: 155
     column: 152
+    offset: 10741
     keyword: REQUIRED
     block_type: table_cell
     block: 107
@@ -1550,6 +1574,7 @@ occurrences:
   - source: spec/conformance.md
     line: 11
     column: 12
+    offset: 989
     keyword: MAY
     block_type: paragraph
     block: 6
@@ -1559,6 +1584,7 @@ occurrences:
   - source: spec/conformance.md
     line: 11
     column: 152
+    offset: 1129
     keyword: MAY
     block_type: paragraph
     block: 6
@@ -1568,6 +1594,7 @@ occurrences:
   - source: spec/conformance.md
     line: 15
     column: 32
+    offset: 1256
     keyword: MUST
     block_type: paragraph
     block: 8
@@ -1577,6 +1604,7 @@ occurrences:
   - source: spec/conformance.md
     line: 19
     column: 387
+    offset: 2041
     keyword: SHOULD
     block_type: list_item
     block: 11
@@ -1586,6 +1614,7 @@ occurrences:
   - source: spec/conformance.md
     line: 19
     column: 566
+    offset: 2220
     keyword: SHOULD
     block_type: list_item
     block: 11
@@ -1595,6 +1624,7 @@ occurrences:
   - source: spec/conformance.md
     line: 22
     column: 91
+    offset: 2931
     keyword: MUST
     block_type: list_item
     block: 14
@@ -1604,6 +1634,7 @@ occurrences:
   - source: spec/conformance.md
     line: 24
     column: 45
+    offset: 3403
     keyword: MUST
     block_type: list_item
     block: 16
@@ -1613,6 +1644,7 @@ occurrences:
   - source: spec/conformance.md
     line: 28
     column: 186
+    offset: 4270
     keyword: SHOULD
     block_type: paragraph
     block: 19
@@ -1622,6 +1654,7 @@ occurrences:
   - source: spec/conformance.md
     line: 28
     column: 362
+    offset: 4446
     keyword: OPTIONAL
     block_type: paragraph
     block: 19
@@ -1631,6 +1664,7 @@ occurrences:
   - source: spec/conformance.md
     line: 36
     column: 112
+    offset: 5809
     keyword: MUST
     block_type: paragraph
     block: 23
@@ -1640,6 +1674,7 @@ occurrences:
   - source: spec/conformance.md
     line: 42
     column: 97
+    offset: 6110
     keyword: MUST NOT
     block_type: paragraph
     block: 27
@@ -1649,6 +1684,7 @@ occurrences:
   - source: spec/conformance.md
     line: 46
     column: 100
+    offset: 6254
     keyword: MUST
     block_type: paragraph
     block: 29
@@ -1658,6 +1694,7 @@ occurrences:
   - source: spec/conformance.md
     line: 59
     column: 195
+    offset: 6958
     keyword: MUST
     block_type: paragraph
     block: 36
@@ -1667,6 +1704,7 @@ occurrences:
   - source: spec/conformance.md
     line: 61
     column: 33
+    offset: 7440
     keyword: OPTIONAL
     block_type: paragraph
     block: 37
@@ -1676,6 +1714,7 @@ occurrences:
   - source: spec/conformance.md
     line: 61
     column: 265
+    offset: 7672
     keyword: MUST
     block_type: paragraph
     block: 37
@@ -1685,6 +1724,7 @@ occurrences:
   - source: spec/conformance.md
     line: 61
     column: 331
+    offset: 7738
     keyword: SHOULD
     block_type: paragraph
     block: 37
@@ -1694,6 +1734,7 @@ occurrences:
   - source: spec/conformance.md
     line: 67
     column: 119
+    offset: 8228
     keyword: MUST
     block_type: paragraph
     block: 40
@@ -1703,6 +1744,7 @@ occurrences:
   - source: spec/conformance.md
     line: 67
     column: 154
+    offset: 8263
     keyword: RECOMMENDED
     block_type: paragraph
     block: 40
@@ -1712,6 +1754,7 @@ occurrences:
   - source: spec/conformance.md
     line: 67
     column: 179
+    offset: 8288
     keyword: SHOULD
     block_type: paragraph
     block: 40
@@ -1721,6 +1764,7 @@ occurrences:
   - source: spec/conformance.md
     line: 67
     column: 320
+    offset: 8429
     keyword: OPTIONAL
     block_type: paragraph
     block: 40
@@ -1730,6 +1774,7 @@ occurrences:
   - source: spec/conformance.md
     line: 75
     column: 89
+    offset: 9693
     keyword: MUST
     block_type: paragraph
     block: 44
@@ -1739,6 +1784,7 @@ occurrences:
   - source: spec/conformance.md
     line: 75
     column: 294
+    offset: 9898
     keyword: SHOULD
     block_type: paragraph
     block: 44
@@ -1748,6 +1794,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 10
     column: 223
+    offset: 988
     keyword: MUST
     block_type: paragraph
     block: 5
@@ -1757,6 +1804,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 21
     column: 223
+    offset: 1809
     keyword: MAY
     block_type: paragraph
     block: 17
@@ -1766,6 +1814,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 42
     column: 17
+    offset: 3594
     keyword: SHOULD
     block_type: paragraph
     block: 49
@@ -1775,6 +1824,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 42
     column: 236
+    offset: 3813
     keyword: MUST
     block_type: paragraph
     block: 49
@@ -1784,6 +1834,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 54
     column: 12
+    offset: 4538
     keyword: MAY
     block_type: paragraph
     block: 64
@@ -1793,6 +1844,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 58
     column: 39
+    offset: 4823
     keyword: MUST
     block_type: paragraph
     block: 66
@@ -1802,6 +1854,7 @@ occurrences:
   - source: spec/inspect/README.md
     line: 63
     column: 60
+    offset: 5159
     keyword: MUST
     block_type: paragraph
     block: 69
@@ -1811,6 +1864,7 @@ occurrences:
   - source: spec/inspect/extend_cyclonedx.md
     line: 74
     column: 36
+    offset: 3066
     keyword: MAY
     block_type: list_item
     block: 34
@@ -1820,6 +1874,7 @@ occurrences:
   - source: spec/instrument/extend_mcp.md
     line: 12
     column: 13
+    offset: 894
     keyword: MAY
     block_type: paragraph
     block: 7
@@ -1829,6 +1884,7 @@ occurrences:
   - source: spec/instrument/extend_mcp.md
     line: 12
     column: 173
+    offset: 1054
     keyword: SHOULD
     block_type: paragraph
     block: 7
@@ -1838,6 +1894,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 74
     column: 40
+    offset: 4425
     keyword: MAY
     block_type: paragraph
     block: 111
@@ -1847,6 +1904,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 76
     column: 48
+    offset: 4616
     keyword: MAY
     block_type: paragraph
     block: 112
@@ -1856,6 +1914,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 88
     column: 47
+    offset: 5650
     keyword: MAY
     block_type: paragraph
     block: 118
@@ -1865,6 +1924,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 102
     column: 46
+    offset: 6851
     keyword: MAY
     block_type: paragraph
     block: 125
@@ -1874,6 +1934,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 114
     column: 47
+    offset: 7387
     keyword: MAY
     block_type: paragraph
     block: 131
@@ -1883,6 +1944,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 138
     column: 47
+    offset: 8467
     keyword: MAY
     block_type: paragraph
     block: 143
@@ -1892,6 +1954,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 172
     column: 12
+    offset: 9941
     keyword: MUST
     block_type: paragraph
     block: 160
@@ -1901,6 +1964,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 200
     column: 43
+    offset: 12272
     keyword: MAY
     block_type: paragraph
     block: 174
@@ -1910,6 +1974,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 210
     column: 75
+    offset: 12720
     keyword: MUST
     block_type: paragraph
     block: 179
@@ -1919,6 +1984,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 210
     column: 126
+    offset: 12771
     keyword: MUST
     block_type: paragraph
     block: 179
@@ -1928,6 +1994,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 212
     column: 83
+    offset: 12990
     keyword: MAY
     block_type: paragraph
     block: 180
@@ -1937,6 +2004,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 212
     column: 178
+    offset: 13085
     keyword: MAY
     block_type: paragraph
     block: 180
@@ -1946,6 +2014,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 212
     column: 215
+    offset: 13122
     keyword: MUST
     block_type: paragraph
     block: 180
@@ -1955,6 +2024,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 226
     column: 43
+    offset: 14426
     keyword: MAY
     block_type: paragraph
     block: 187
@@ -1964,6 +2034,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 252
     column: 40
+    offset: 17267
     keyword: MAY
     block_type: paragraph
     block: 200
@@ -1973,6 +2044,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 252
     column: 78
+    offset: 17305
     keyword: MUST NOT
     block_type: paragraph
     block: 200
@@ -1982,6 +2054,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 252
     column: 123
+    offset: 17350
     keyword: SHOULD
     block_type: paragraph
     block: 200
@@ -1991,6 +2064,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 252
     column: 226
+    offset: 17453
     keyword: MAY
     block_type: paragraph
     block: 200
@@ -2000,6 +2074,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 262
     column: 136
+    offset: 18148
     keyword: MUST
     block_type: paragraph
     block: 205
@@ -2009,6 +2084,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 262
     column: 352
+    offset: 18364
     keyword: SHOULD
     block_type: paragraph
     block: 205
@@ -2018,6 +2094,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 262
     column: 541
+    offset: 18553
     keyword: MAY
     block_type: paragraph
     block: 205
@@ -2027,6 +2104,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 268
     column: 40
+    offset: 19262
     keyword: SHOULD
     block_type: paragraph
     block: 208
@@ -2036,6 +2114,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 268
     column: 145
+    offset: 19367
     keyword: SHOULD
     block_type: paragraph
     block: 208
@@ -2045,6 +2124,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 268
     column: 248
+    offset: 19470
     keyword: SHOULD
     block_type: paragraph
     block: 208
@@ -2054,6 +2134,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 312
     column: 40
+    offset: 21379
     keyword: MAY
     block_type: paragraph
     block: 230
@@ -2063,6 +2144,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 324
     column: 38
+    offset: 21948
     keyword: MAY
     block_type: paragraph
     block: 236
@@ -2072,6 +2154,7 @@ occurrences:
   - source: spec/instrument/hooks.md
     line: 342
     column: 423
+    offset: 23244
     keyword: MAY
     block_type: paragraph
     block: 245
@@ -2081,6 +2164,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 12
     column: 16
+    offset: 993
     keyword: MUST NOT
     block_type: list_item
     block: 7
@@ -2090,6 +2174,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 12
     column: 85
+    offset: 1062
     keyword: MUST
     block_type: list_item
     block: 7
@@ -2099,6 +2184,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 13
     column: 365
+    offset: 1475
     keyword: OPTIONAL
     block_type: list_item
     block: 8
@@ -2108,6 +2194,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 59
     column: 117
+    offset: 4487
     keyword: SHOULD
     block_type: paragraph
     block: 36
@@ -2117,15 +2204,18 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 59
     column: 475
+    offset: 4845
     keyword: MUST
     block_type: paragraph
     block: 36
     context: …if signed) its own signature. A Guardian that does not support batching MUST return `-32600 Invalid Request` for array-shaped inputs so the Observed…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0002
   - source: spec/instrument/specification.md
     line: 71
     column: 90
+    offset: 6545
     keyword: MUST
     block_type: paragraph
     block: 42
@@ -2135,6 +2225,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 71
     column: 230
+    offset: 6685
     keyword: MUST
     block_type: paragraph
     block: 42
@@ -2144,6 +2235,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 77
     column: 204
+    offset: 7573
     keyword: MUST
     block_type: paragraph
     block: 45
@@ -2153,6 +2245,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 77
     column: 305
+    offset: 7674
     keyword: SHOULD
     block_type: paragraph
     block: 45
@@ -2162,6 +2255,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 77
     column: 397
+    offset: 7766
     keyword: SHOULD
     block_type: paragraph
     block: 45
@@ -2171,33 +2265,40 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 113
     column: 41
+    offset: 10061
     keyword: RECOMMENDED
     block_type: table_cell
     block: 116
     context: none (`reasoning` RECOMMENDED when user-visible audit trails are expected)
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0003
   - source: spec/instrument/specification.md
     line: 119
     column: 110
+    offset: 10704
     keyword: MUST
     block_type: paragraph
     block: 129
     context: …, `conflicting_policies`, `low_confidence`, `pending_dependency`. DEFER MUST include `resolution_method`, `resolution_timeout_ms`, and `timeout_deci…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0004
   - source: spec/instrument/specification.md
     line: 119
     column: 230
+    offset: 10824
     keyword: MUST
     block_type: paragraph
     block: 129
     context: …meout_ms`, and `timeout_decision` (default `deny`). Cascading deferrals MUST be bounded per session.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0006
   - source: spec/instrument/specification.md
     line: 130
     column: 183
+    offset: 11764
     keyword: SHOULD
     block_type: table_cell
     block: 141
@@ -2207,6 +2308,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 131
     column: 134
+    offset: 11982
     keyword: OPTIONAL
     block_type: table_cell
     block: 144
@@ -2216,6 +2318,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 131
     column: 171
+    offset: 12019
     keyword: SHOULD
     block_type: table_cell
     block: 144
@@ -2225,6 +2328,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 131
     column: 260
+    offset: 12108
     keyword: MAY
     block_type: table_cell
     block: 144
@@ -2234,6 +2338,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 132
     column: 122
+    offset: 12362
     keyword: SHOULD
     block_type: table_cell
     block: 147
@@ -2243,6 +2348,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 140
     column: 689
+    offset: 13936
     keyword: MAY
     block_type: paragraph
     block: 161
@@ -2252,6 +2358,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 146
     column: 136
+    offset: 14331
     keyword: MUST NOT
     block_type: list_item
     block: 164
@@ -2261,6 +2368,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 147
     column: 64
+    offset: 14543
     keyword: MAY
     block_type: list_item
     block: 165
@@ -2270,6 +2378,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 147
     column: 103
+    offset: 14582
     keyword: MUST
     block_type: list_item
     block: 165
@@ -2279,6 +2388,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 149
     column: 12
+    offset: 14820
     keyword: MUST NOT
     block_type: paragraph
     block: 166
@@ -2288,6 +2398,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 149
     column: 157
+    offset: 14965
     keyword: MUST
     block_type: paragraph
     block: 166
@@ -2297,6 +2408,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 149
     column: 212
+    offset: 15020
     keyword: SHOULD
     block_type: paragraph
     block: 166
@@ -2306,6 +2418,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 157
     column: 138
+    offset: 15993
     keyword: MUST
     block_type: paragraph
     block: 170
@@ -2315,6 +2428,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 157
     column: 234
+    offset: 16089
     keyword: MUST
     block_type: paragraph
     block: 170
@@ -2324,6 +2438,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 159
     column: 538
+    offset: 16892
     keyword: MAY
     block_type: paragraph
     block: 171
@@ -2333,6 +2448,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 159
     column: 708
+    offset: 17062
     keyword: MAY
     block_type: paragraph
     block: 171
@@ -2342,6 +2458,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 159
     column: 799
+    offset: 17153
     keyword: MAY
     block_type: paragraph
     block: 171
@@ -2351,6 +2468,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 161
     column: 45
+    offset: 17257
     keyword: MUST
     block_type: paragraph
     block: 172
@@ -2360,6 +2478,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 161
     column: 184
+    offset: 17396
     keyword: MUST
     block_type: paragraph
     block: 172
@@ -2369,6 +2488,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 169
     column: 43
+    offset: 18205
     keyword: MUST
     block_type: list_item
     block: 176
@@ -2378,6 +2498,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 170
     column: 107
+    offset: 18578
     keyword: MUST
     block_type: list_item
     block: 177
@@ -2387,6 +2508,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 172
     column: 59
+    offset: 18732
     keyword: OPTIONAL
     block_type: paragraph
     block: 178
@@ -2396,6 +2518,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 172
     column: 416
+    offset: 19089
     keyword: MUST
     block_type: paragraph
     block: 178
@@ -2405,6 +2528,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 183
     column: 29
+    offset: 19651
     keyword: OPTIONAL
     block_type: paragraph
     block: 200
@@ -2414,6 +2538,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 187
     column: 31
+    offset: 20409
     keyword: MUST
     block_type: list_item
     block: 202
@@ -2423,15 +2548,18 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 188
     column: 58
+    offset: 20609
     keyword: MUST
     block_type: list_item
     block: 203
     context: "- For data with `origin: agent_generated`, the framework MUST compute `trust` as the minimum trust of the entries in `derived_from` (…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0010
   - source: spec/instrument/specification.md
     line: 189
     column: 66
+    offset: 20841
     keyword: MUST
     block_type: list_item
     block: 204
@@ -2441,6 +2569,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 193
     column: 129
+    offset: 21174
     keyword: MAY
     block_type: paragraph
     block: 206
@@ -2450,6 +2579,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 193
     column: 156
+    offset: 21201
     keyword: SHOULD
     block_type: paragraph
     block: 206
@@ -2459,24 +2589,29 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 205
     column: 12
+    offset: 21535
     keyword: MUST
     block_type: paragraph
     block: 223
     context: Provenance MUST be populated by deterministic code outside the LLM's output path. Imple…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0019
   - source: spec/instrument/specification.md
     line: 205
     column: 99
+    offset: 21622
     keyword: MUST NOT
     block_type: paragraph
     block: 223
     context: …ed by deterministic code outside the LLM's output path. Implementations MUST NOT instruct the LLM to produce it. The agent declares `provenance_producer…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0019
   - source: spec/instrument/specification.md
     line: 205
     column: 320
+    offset: 21843
     keyword: MUST
     block_type: paragraph
     block: 223
@@ -2486,6 +2621,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 209
     column: 282
+    offset: 22380
     keyword: MAY
     block_type: paragraph
     block: 225
@@ -2495,6 +2631,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 211
     column: 220
+    offset: 22666
     keyword: MAY
     block_type: paragraph
     block: 226
@@ -2504,6 +2641,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 222
     column: 5
+    offset: 23781
     keyword: SHOULD
     block_type: list_item
     block: 232
@@ -2513,6 +2651,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 222
     column: 231
+    offset: 24007
     keyword: MUST
     block_type: list_item
     block: 232
@@ -2522,15 +2661,18 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 234
     column: 22
+    offset: 24780
     keyword: MUST
     block_type: paragraph
     block: 239
     context: Conformant Guardians MUST compute `entry_hash` this way; otherwise chains computed by different i…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0013
   - source: spec/instrument/specification.md
     line: 238
     column: 297
+    offset: 25318
     keyword: OPTIONAL
     block_type: paragraph
     block: 241
@@ -2540,6 +2682,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 242
     column: 11
+    offset: 25774
     keyword: OPTIONAL
     block_type: paragraph
     block: 243
@@ -2549,6 +2692,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 242
     column: 166
+    offset: 25929
     keyword: REQUIRED
     block_type: paragraph
     block: 243
@@ -2558,6 +2702,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 242
     column: 205
+    offset: 25968
     keyword: MUST
     block_type: paragraph
     block: 243
@@ -2567,78 +2712,95 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 244
     column: 331
+    offset: 26336
     keyword: MUST
     block_type: paragraph
     block: 244
     context: "…an approver's `intent_extension` via the ASK flow (§9.1). The framework MUST enforce it: any attempt to modify `Intent.parsed` by the runtime LLM, b…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0011
   - source: spec/instrument/specification.md
     line: 244
     column: 466
+    offset: 26471
     keyword: MUST
     block_type: paragraph
     block: 244
     context: …untime LLM, by tool outputs, or by data crossing an `untrusted` channel MUST be ignored or rejected, and SHOULD be recorded as an audit event. This…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0011
   - source: spec/instrument/specification.md
     line: 244
     column: 499
+    offset: 26504
     keyword: SHOULD
     block_type: paragraph
     block: 244
     context: …y data crossing an `untrusted` channel MUST be ignored or rejected, and SHOULD be recorded as an audit event. This rule is load-bearing for IBAC's cen…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0012
   - source: spec/instrument/specification.md
     line: 248
     column: 17
+    offset: 26778
     keyword: MAY
     block_type: paragraph
     block: 246
     context: Guardian Agents MAY archive entries when SessionContext exceeds a configurable byte thresho…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0021
   - source: spec/instrument/specification.md
     line: 248
     column: 123
+    offset: 26884
     keyword: MUST
     block_type: paragraph
     block: 246
     context: …ntext exceeds a configurable byte threshold (suggested 64 KB). Archival MUST preserve `chain_hash`, `provenance_summary`, and `intent`. A mismatched…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0022
   - source: spec/instrument/specification.md
     line: 248
     column: 213
+    offset: 26974
     keyword: SHOULD
     block_type: paragraph
     block: 246
     context: …in_hash`, `provenance_summary`, and `intent`. A mismatched `chain_hash` SHOULD trigger an audit event.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0020
   - source: spec/instrument/specification.md
     line: 254
     column: 99
+    offset: 27448
     keyword: MUST
     block_type: paragraph
     block: 249
     context: …uardian writes a ContextEntry (the content-bearing steps), the Guardian MUST include the resulting `chain_hash` in its response, and that `chain_has…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0016
   - source: spec/instrument/specification.md
     line: 254
     column: 178
+    offset: 27527
     keyword: MUST
     block_type: paragraph
     block: 249
     context: …clude the resulting `chain_hash` in its response, and that `chain_hash` MUST be covered by the response signature (§10). Publishing the head as each…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0017
   - source: spec/instrument/specification.md
     line: 256
     column: 202
+    offset: 27936
     keyword: MAY
     block_type: paragraph
     block: 250
@@ -2648,6 +2810,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 256
     column: 451
+    offset: 28185
     keyword: SHOULD
     block_type: paragraph
     block: 250
@@ -2657,6 +2820,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 262
     column: 15
+    offset: 28891
     keyword: MAY
     block_type: paragraph
     block: 253
@@ -2666,24 +2830,29 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 262
     column: 204
+    offset: 29080
     keyword: REQUIRED
     block_type: paragraph
     block: 253
     context: …request and returns an ACS-shaped decision. Approver authentication is REQUIRED. Guardian MUST verify approver identity against policy.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0024
   - source: spec/instrument/specification.md
     line: 262
     column: 223
+    offset: 29099
     keyword: MUST
     block_type: paragraph
     block: 253
     context: …s an ACS-shaped decision. Approver authentication is REQUIRED. Guardian MUST verify approver identity against policy.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0024
   - source: spec/instrument/specification.md
     line: 264
     column: 36
+    offset: 29181
     keyword: MUST NOT
     block_type: paragraph
     block: 254
@@ -2693,6 +2862,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 268
     column: 95
+    offset: 29386
     keyword: MAY
     block_type: paragraph
     block: 256
@@ -2702,6 +2872,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 270
     column: 35
+    offset: 29827
     keyword: MUST
     block_type: paragraph
     block: 257
@@ -2711,6 +2882,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 276
     column: 110
+    offset: 30324
     keyword: MUST NOT
     block_type: paragraph
     block: 261
@@ -2720,6 +2892,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 282
     column: 81
+    offset: 31140
     keyword: MUST NOT
     block_type: paragraph
     block: 264
@@ -2729,6 +2902,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 282
     column: 117
+    offset: 31176
     keyword: MUST
     block_type: paragraph
     block: 264
@@ -2738,6 +2912,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 287
     column: 42
+    offset: 31612
     keyword: SHOULD
     block_type: paragraph
     block: 267
@@ -2747,6 +2922,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 293
     column: 45
+    offset: 32127
     keyword: REQUIRED
     block_type: paragraph
     block: 270
@@ -2756,24 +2932,29 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 295
     column: 470
+    offset: 33394
     keyword: MUST
     block_type: paragraph
     block: 271
     context: …g a signed `toolCallResult` under a different `session_id`). A verifier MUST recompute this canonical form and MUST reject a signature that does not…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0018
   - source: spec/instrument/specification.md
     line: 295
     column: 509
+    offset: 33433
     keyword: MUST
     block_type: paragraph
     block: 271
     context: …ferent `session_id`). A verifier MUST recompute this canonical form and MUST reject a signature that does not cover it (`SIGNATURE_INVALID`, §17.1).…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0018
   - source: spec/instrument/specification.md
     line: 299
     column: 517
+    offset: 34341
     keyword: RECOMMENDED
     block_type: paragraph
     block: 273
@@ -2783,6 +2964,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 303
     column: 35
+    offset: 34472
     keyword: RECOMMENDED
     block_type: table_cell
     block: 279
@@ -2792,6 +2974,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 304
     column: 41
+    offset: 34686
     keyword: OPTIONAL
     block_type: table_cell
     block: 282
@@ -2801,6 +2984,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 305
     column: 45
+    offset: 34840
     keyword: OPTIONAL
     block_type: table_cell
     block: 285
@@ -2810,6 +2994,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 306
     column: 43
+    offset: 34945
     keyword: OPTIONAL
     block_type: table_cell
     block: 288
@@ -2819,6 +3004,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 307
     column: 32
+    offset: 35098
     keyword: OPTIONAL
     block_type: table_cell
     block: 291
@@ -2828,6 +3014,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 308
     column: 32
+    offset: 35164
     keyword: OPTIONAL
     block_type: table_cell
     block: 294
@@ -2837,6 +3024,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 309
     column: 43
+    offset: 35241
     keyword: OPTIONAL
     block_type: table_cell
     block: 297
@@ -2846,6 +3034,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 310
     column: 32
+    offset: 35486
     keyword: OPTIONAL
     block_type: table_cell
     block: 300
@@ -2855,6 +3044,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 311
     column: 37
+    offset: 35569
     keyword: OPTIONAL
     block_type: table_cell
     block: 303
@@ -2864,6 +3054,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 312
     column: 41
+    offset: 35700
     keyword: OPTIONAL
     block_type: table_cell
     block: 306
@@ -2873,6 +3064,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 314
     column: 126
+    offset: 35862
     keyword: RECOMMENDED
     block_type: paragraph
     block: 307
@@ -2882,6 +3074,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 318
     column: 284
+    offset: 36537
     keyword: MUST
     block_type: paragraph
     block: 309
@@ -2891,6 +3084,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 322
     column: 92
+    offset: 36909
     keyword: MUST
     block_type: paragraph
     block: 311
@@ -2900,6 +3094,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 322
     column: 209
+    offset: 37026
     keyword: RECOMMENDED
     block_type: paragraph
     block: 311
@@ -2909,6 +3104,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 322
     column: 315
+    offset: 37132
     keyword: MUST
     block_type: paragraph
     block: 311
@@ -2918,6 +3114,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 322
     column: 422
+    offset: 37239
     keyword: SHOULD
     block_type: paragraph
     block: 311
@@ -2927,6 +3124,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 326
     column: 5
+    offset: 37464
     keyword: MUST
     block_type: paragraph
     block: 313
@@ -2936,6 +3134,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 328
     column: 24
+    offset: 37583
     keyword: MUST
     block_type: list_item
     block: 314
@@ -2945,6 +3144,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 352
     column: 10
+    offset: 38781
     keyword: MUST
     block_type: list_item
     block: 331
@@ -2954,6 +3154,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 352
     column: 80
+    offset: 38851
     keyword: MUST
     block_type: list_item
     block: 331
@@ -2963,6 +3164,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 353
     column: 3
+    offset: 38877
     keyword: MUST NOT
     block_type: list_item
     block: 332
@@ -2972,6 +3174,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 354
     column: 13
+    offset: 38946
     keyword: MUST
     block_type: list_item
     block: 333
@@ -2981,6 +3184,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 357
     column: 1
+    offset: 39077
     keyword: OPTIONAL
     block_type: paragraph
     block: 335
@@ -2990,6 +3194,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 371
     column: 13
+    offset: 39857
     keyword: MUST
     block_type: list_item
     block: 342
@@ -2999,6 +3204,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 372
     column: 17
+    offset: 40040
     keyword: MUST NOT
     block_type: list_item
     block: 343
@@ -3008,6 +3214,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 373
     column: 17
+    offset: 40158
     keyword: MUST NOT
     block_type: list_item
     block: 344
@@ -3017,6 +3224,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 374
     column: 247
+    offset: 40580
     keyword: SHOULD
     block_type: list_item
     block: 345
@@ -3026,6 +3234,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 375
     column: 112
+    offset: 40804
     keyword: MAY
     block_type: list_item
     block: 346
@@ -3035,6 +3244,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 375
     column: 177
+    offset: 40869
     keyword: MUST NOT
     block_type: list_item
     block: 346
@@ -3044,6 +3254,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 394
     column: 10
+    offset: 42423
     keyword: RECOMMENDED
     block_type: table_cell
     block: 378
@@ -3053,6 +3264,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 420
     column: 120
+    offset: 44196
     keyword: MAY
     block_type: paragraph
     block: 421
@@ -3062,6 +3274,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 420
     column: 163
+    offset: 44239
     keyword: SHOULD
     block_type: paragraph
     block: 421
@@ -3071,6 +3284,7 @@ occurrences:
   - source: spec/instrument/specification.md
     line: 433
     column: 15
+    offset: 46105
     keyword: MUST NOT
     block_type: paragraph
     block: 458
@@ -3080,6 +3294,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 33
     column: 67
+    offset: 3373
     keyword: MUST
     block_type: paragraph
     block: 61
@@ -3089,6 +3304,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 33
     column: 123
+    offset: 3429
     keyword: SHOULD
     block_type: paragraph
     block: 61
@@ -3098,6 +3314,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 33
     column: 455
+    offset: 3761
     keyword: MAY
     block_type: paragraph
     block: 61
@@ -3107,6 +3324,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 66
     column: 37
+    offset: 5378
     keyword: MUST
     block_type: paragraph
     block: 112
@@ -3116,6 +3334,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 72
     column: 14
+    offset: 5808
     keyword: MUST NOT
     block_type: paragraph
     block: 116
@@ -3125,6 +3344,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 72
     column: 69
+    offset: 5863
     keyword: MUST NOT
     block_type: paragraph
     block: 116
@@ -3134,6 +3354,7 @@ occurrences:
   - source: spec/trace/events.md
     line: 72
     column: 173
+    offset: 5967
     keyword: SHOULD
     block_type: paragraph
     block: 116
@@ -3143,6 +3364,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 60
+    offset: 1807
     keyword: MUST
     block_type: paragraph
     block: 12
@@ -3152,6 +3374,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 99
+    offset: 1846
     keyword: SHOULD
     block_type: paragraph
     block: 12
@@ -3161,6 +3384,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 279
+    offset: 2026
     keyword: MAY
     block_type: paragraph
     block: 12
@@ -3170,6 +3394,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 26
     column: 93
+    offset: 2444
     keyword: SHOULD
     block_type: paragraph
     block: 15
@@ -3179,6 +3404,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 30
     column: 156
+    offset: 2900
     keyword: MAY
     block_type: paragraph
     block: 17
@@ -3188,6 +3414,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 30
     column: 227
+    offset: 2971
     keyword: SHOULD
     block_type: paragraph
     block: 17
@@ -3197,6 +3424,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 34
     column: 14
+    offset: 3105
     keyword: MUST NOT
     block_type: paragraph
     block: 19
@@ -3206,6 +3434,7 @@ occurrences:
   - source: spec/trace/extend_opentelemetry.md
     line: 34
     column: 123
+    offset: 3214
     keyword: MUST
     block_type: paragraph
     block: 19
@@ -3215,6 +3444,7 @@ occurrences:
   - source: topics/ACS_in_action_example.md
     line: 46
     column: 61
+    offset: 2577
     keyword: OPTIONAL
     block_type: paragraph
     block: 7
@@ -3225,6 +3455,7 @@ occurrences:
   - source: topics/ACS_in_action_example.md
     line: 237
     column: 49
+    offset: 10827
     keyword: MAY
     block_type: paragraph
     block: 33

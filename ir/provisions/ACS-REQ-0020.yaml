@@ -1,0 +1,16 @@
+id: ACS-REQ-0020
+title: Chain hash mismatch triggers an audit event
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "an Observed Agent's cross-check chain_hash disagrees with the Guardian's computed head"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: ab2d4412fd1c3055192367c756b5d1467b8656c49069c20379a7040343e36811
+note: "SHOULD-level."
