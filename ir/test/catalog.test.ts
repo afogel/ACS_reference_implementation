@@ -31,6 +31,7 @@ const record = (id: string, extra: Partial<ProvisionRecord> = {}): ProvisionReco
   superseded_by: [],
   reviewed_against: "h",
   note: null,
+  predicate: null,
   ...extra,
 });
 const manifest = (...entries: ManifestEntry[]): Manifest => ({ generated_by: "test", corpus: { version: null, commit: null }, provisions: entries });

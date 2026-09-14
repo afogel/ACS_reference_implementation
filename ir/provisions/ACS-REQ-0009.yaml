@@ -17,3 +17,9 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: edaa44057b7f76cfa51a1b9d49a1771b4cd58c7e3e48563d945a67c9790665a0
 note: "Keyword-free table cell. Every id in derived_from must name a provenance object seen earlier in the same session."
+predicate:
+  subject: [Seq, Pid]
+  witness: [Parent]
+  rules:
+    - "violation(Seq, Pid, Parent) :- derived_from(Seq, Pid, Parent), provenance(Seq, Session, Pid, _), not seen_in_session(Session, Parent)."
+    - "seen_in_session(Session, Pid) :- provenance(_, Session, Pid, _)."

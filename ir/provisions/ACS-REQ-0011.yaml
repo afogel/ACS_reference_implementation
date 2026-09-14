@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 8294e69b2c1a67ad2adc760c6d0c24200b3de81c6547743376f8a113bdcfcaa0
 note: "Two MUSTs, one obligation: enforce, by ignoring or rejecting. The SHOULD in the same sentence is ACS-REQ-0012."
+predicate:
+  subject: [Session, Seq]
+  witness: [Capability]
+  rules:
+    - "violation(Session, Seq, Capability) :- intent_parsed(Session, Seq, Capability), intent_established(Session, Established), Seq > Established, not intent_parsed(Session, Established, Capability), not intent_extension(Session, _, Capability)."

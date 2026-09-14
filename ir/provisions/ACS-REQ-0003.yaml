@@ -17,3 +17,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 2eee6abd91028e73889060546347692d9e488d3649cb0d2256bf95ef480ffe95
 note: "One provision spanning the five body rows of the \u00a76 table. The span rule handles a table body: the anchor sits in the first cell, the terminator in the last, and `block_type` is the anchor's cell. The text carries the table's pipe syntax; a reviewer reads it as the table."
+predicate:
+  subject: [Seq]
+  witness: [Disposition, Field]
+  rules:
+    - "violation(Seq, Disposition, Field) :- decision(Seq, Disposition), required_field(Disposition, Field), not result_field(Seq, Field)."

@@ -1,0 +1,202 @@
+# The fact vocabulary (S7, E6): every relation a predicate may mention, with
+# its columns, their types, and where its tuples come from. Predicates are
+# written over these names and nothing else (R3.2); a predicate naming a
+# relation not declared here fails to compile.
+#
+# source:
+#   wire           derived from the envelope log by `acs-ir verify` (N41)
+#   external       computed by ordinary code, not Datalog: hashes, JCS,
+#                  signatures, schema validation (E7.1, N42/N43 in V6)
+#   guardian-state the Guardian's own records: its decision log, session
+#                  context, intent snapshots; supplied as facts by a Guardian
+#                  that opts in to being verified
+#   deployment     configuration the verifier is told, not shown
+#   static         fixed by the spec; the tuples are listed here and shipped
+#                  inside the compiled program
+#
+# Types are `symbol` (a string) and `number` (an integer), Soufflé's two
+# scalar kinds the evaluator also distinguishes.
+relations:
+  # --- the wire ---
+  - name: envelope
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: direction, type: symbol }, { name: method, type: symbol }, { name: rpc_id, type: symbol }]
+    doc: "One tuple per envelope-log line. `direction` is request or response; `method` is the ACS method the Guardian dispatched."
+  - name: request
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: method, type: symbol }, { name: request_id, type: symbol }, { name: timestamp, type: symbol }]
+  - name: response_to
+    source: wire
+    columns: [{ name: request_seq, type: number }, { name: response_seq, type: number }]
+    doc: "Pairs a response with its request by JSON-RPC id."
+  - name: decision
+    source: wire
+    columns: [{ name: seq, type: number }, { name: disposition, type: symbol }]
+    doc: "A response's `result.decision`, lowercase."
+  - name: result_field
+    source: wire
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+    doc: "A top-level field present in a response's result."
+  - name: error_code
+    source: wire
+    columns: [{ name: seq, type: number }, { name: code, type: number }]
+  - name: array_input
+    source: wire
+    columns: [{ name: seq, type: number }]
+    doc: "The request line was a JSON array (a batch)."
+  - name: handshake
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }]
+    doc: "A `handshake/hello` request."
+  - name: hook
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: method, type: symbol }]
+    doc: "A `steps/*` request."
+  - name: defer_field
+    source: wire
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+    doc: "A field present in a DEFER response's `defer_details`."
+  - name: defer_reason
+    source: wire
+    columns: [{ name: seq, type: number }, { name: reason, type: symbol }]
+  - name: provenance
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: pid, type: symbol }, { name: origin, type: symbol }]
+    doc: "A Provenance object carried by a hook payload."
+  - name: provenance_fingerprint
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: pid, type: symbol }, { name: fingerprint, type: symbol }]
+    doc: "Hash of a Provenance object's own fields, so two different objects sharing a `provenance_id` are visible."
+  - name: derived_from
+    source: wire
+    columns: [{ name: seq, type: number }, { name: pid, type: symbol }, { name: parent, type: symbol }]
+  - name: trust
+    source: wire
+    columns: [{ name: seq, type: number }, { name: pid, type: symbol }, { name: level, type: symbol }]
+    doc: "The OPTIONAL `trust` label, when a deployment populates it."
+  - name: chain_hash_published
+    source: wire
+    columns: [{ name: seq, type: number }, { name: hash, type: symbol }]
+    doc: "A response carrying `chain_hash`."
+  - name: client_version
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: version, type: symbol }]
+    doc: "An entry of ClientHello's `acs_versions_supported`."
+  - name: ask_resolved
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: approver, type: symbol }]
+    doc: "A decision returned by an Approver, identified by `ask_details.approver.id`."
+  - name: chain_mismatch_observed
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }]
+    doc: "The Observed Agent's cross-check `chain_hash` disagreed with the Guardian's published head."
+  # --- computed by ordinary code (E7.1) ---
+  - name: entry_hash_recomputed
+    source: external
+    columns: [{ name: entry_id, type: symbol }, { name: hash, type: symbol }]
+    doc: "SHA-256 over JCS per \u00a78.2, recomputed from the entry's fields by the verifier."
+  - name: signature_covers
+    source: external
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+    doc: "The envelope's signature verified over the \u00a710 canonical input, and that input contained `field`."
+  - name: signature_status
+    source: external
+    columns: [{ name: seq, type: number }, { name: status, type: symbol }]
+    doc: "valid, invalid, or absent, from recomputing the \u00a710 canonical form."
+  - name: schema_violation
+    source: external
+    columns: [{ name: seq, type: number }, { name: schema, type: symbol }, { name: path, type: symbol }]
+    doc: "An envelope that failed validation against a pinned schema, with the JSON path of the failure."
+  # --- the Guardian's own records ---
+  - name: evaluator_ran
+    source: guardian-state
+    columns: [{ name: seq, type: number }, { name: layer, type: symbol }, { name: order, type: number }]
+    doc: "Which evaluation layer ran for a decision and in what order (agents.md decision logging)."
+  - name: context_entry
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: entry_id, type: symbol }, { name: seq, type: number }, { name: entry_hash, type: symbol }]
+  - name: intent_parsed
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: capability, type: symbol }]
+    doc: "A snapshot of `Intent.parsed` as of a step."
+  - name: intent_established
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }]
+  - name: intent_extension
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: capability, type: symbol }]
+    doc: "A capability an Approver's `intent_extension` with `scope: session` appended."
+  - name: intent_modification_rejected
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }]
+  - name: audit_event
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: kind, type: symbol }]
+  - name: archived
+    source: guardian-state
+    columns: [{ name: session, type: symbol }]
+    doc: "The Guardian exercised \u00a78.5 archival in this session."
+  - name: archive_preserved
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: field, type: symbol }]
+  - name: approver_verified
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: approver, type: symbol }]
+  # --- told to the verifier ---
+  - name: session_batching
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: support, type: symbol }]
+    doc: "supported or unsupported; whether the Guardian accepts JSON-RPC batches."
+  - name: defer_bound
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: bound, type: number }]
+    doc: "The deployment's cascading-deferral limit (\u00a76)."
+  - name: guardian_version
+    source: deployment
+    columns: [{ name: version, type: symbol }]
+    doc: "An `acs_version` the Guardian supports."
+  # --- fixed by the spec ---
+  - name: required_field
+    source: static
+    columns: [{ name: disposition, type: symbol }, { name: field, type: symbol }]
+    doc: "The \u00a76 table's Required fields column (ACS-REQ-0003)."
+    facts:
+      - [deny, reasoning]
+      - [modify, reasoning]
+      - [modify, modifications]
+      - [ask, reasoning]
+      - [ask, ask_details]
+      - [defer, reasoning]
+      - [defer, defer_details]
+  - name: defer_required
+    source: static
+    columns: [{ name: field, type: symbol }]
+    doc: "The fields \u00a76 says DEFER MUST include (ACS-REQ-0004)."
+    facts: [[resolution_method], [resolution_timeout_ms], [timeout_decision]]
+  - name: defer_reason_allowed
+    source: static
+    columns: [{ name: reason, type: symbol }]
+    facts: [[insufficient_context], [conflicting_policies], [low_confidence], [pending_dependency]]
+  - name: trust_rank
+    source: static
+    columns: [{ name: level, type: symbol }, { name: rank, type: number }]
+    doc: "Ordering for the monotonicity rule (ACS-REQ-0010)."
+    facts: [[untrusted, 0], [unknown, 1], [trusted, 2]]
+  - name: content_bearing_method
+    source: static
+    columns: [{ name: method, type: symbol }]
+    doc: "The steps for which the Guardian writes a ContextEntry (\u00a78.6). Editorial reading; the spec names the set by description, not by list."
+    facts:
+      - [steps/agentTrigger]
+      - [steps/userMessage]
+      - [steps/toolCallRequest]
+      - [steps/toolCallResult]
+      - [steps/agentResponse]
+      - [steps/knowledgeRetrieval]
+      - [steps/memoryContextRetrieval]
+      - [steps/memoryStore]
+      - [steps/postCompact]
+  - name: archive_required_field
+    source: static
+    columns: [{ name: field, type: symbol }]
+    facts: [[chain_hash], [provenance_summary], [intent]]

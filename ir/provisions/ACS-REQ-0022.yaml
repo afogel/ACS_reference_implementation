@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: d42401486d28dfe0e6df21c57a58432cdd589189363fa67992cb1de19da4ab50
 note: "The \u00a78.5 type case: an obligation conditional on an implementation choice."
+predicate:
+  subject: [Session]
+  witness: [Field]
+  rules:
+    - "violation(Session, Field) :- archived(Session), archive_required_field(Field), not archive_preserved(Session, Field)."

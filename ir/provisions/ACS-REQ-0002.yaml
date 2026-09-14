@@ -14,3 +14,9 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: f49085a4e1aff3d628031ca16b22015f3e708c70de23ac11ab7243176d927135
 note: "The other half of \u00a73's batching sentence (Guardians SHOULD accept arrays) is a separate, unmarked SHOULD."
+predicate:
+  subject: [Seq]
+  witness: [Session]
+  rules:
+    - "violation(Seq, Session) :- request(Seq, Session, _, _, _), array_input(Seq), session_batching(Session, \"unsupported\"), not rejected(Seq)."
+    - "rejected(Seq) :- response_to(Seq, R), error_code(R, -32600)."

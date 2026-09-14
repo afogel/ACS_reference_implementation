@@ -1,0 +1,26 @@
+# Unified violations (provision, subject, witness) this fixture must produce, on both engines.
+# One deliberate breach per compiled provision; see README.md.
+ACS-REQ-0001	20	/result/reasoning
+ACS-REQ-0002	4	s1
+ACS-REQ-0003	20	deny|reasoning
+ACS-REQ-0004	40	resolution_timeout_ms
+ACS-REQ-0004	40	timeout_decision
+ACS-REQ-0005	40	vibes
+ACS-REQ-0006	s1	2|1
+ACS-REQ-0007	2	s1|steps/toolCallRequest
+ACS-REQ-0008	20	1|2
+ACS-REQ-0009	4|p2	p9
+ACS-REQ-0010	4|p2	p1|p2<-p1|trusted|untrusted
+ACS-REQ-0011	s1|4	send
+ACS-REQ-0012	s1	4
+ACS-REQ-0013	s1|e1	hX|hY
+ACS-REQ-0014	s1|p1	fA|fB
+ACS-REQ-0014	s1|p1	fB|fA
+ACS-REQ-0015	3	s1
+ACS-REQ-0016	6	steps/agentResponse|60
+ACS-REQ-0017	20	h20
+ACS-REQ-0018	4	40
+ACS-REQ-0020	s1	6
+ACS-REQ-0022	s1	intent
+ACS-REQ-0022	s1	provenance_summary
+ACS-REQ-0023	60	s1|approver-1

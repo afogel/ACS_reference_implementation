@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: e1a36f5dffdd6e1da8dc9cb9cdb302d2736f1e1df582fb8461d3dc66578e278d
 note: "Cross-message: the chain_hash the Guardian publishes must fall inside the signed input, which ACS-DEF-0001 fixes as the whole envelope minus signature."
+predicate:
+  subject: [Seq]
+  witness: [Hash]
+  rules:
+    - "violation(Seq, Hash) :- chain_hash_published(Seq, Hash), not signature_covers(Seq, \"chain_hash\")."

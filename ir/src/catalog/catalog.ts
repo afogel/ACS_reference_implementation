@@ -54,7 +54,14 @@ export interface ProvisionRecord {
   /** The `text_hash` this record was last reviewed against (E5.2). */
   reviewed_against: string;
   note: string | null;
+  predicate: PredicateSpec | null;
 }
+
+/** E5.1's `predicate`: rules over the vocabulary, an alias of the restated provision's, or a declared reason the vocabulary cannot express it (R3.6). */
+export type PredicateSpec =
+  | { kind: "rules"; subject: string[]; witness: string[]; rules: string[] }
+  | { kind: "alias"; alias_of: string }
+  | { kind: "inexpressible"; reason: string };
 
 export interface CatalogEntry {
   manifest: ManifestEntry;
@@ -96,6 +103,7 @@ export function parseProvisionRecord(yamlText: string, expectedId?: string): Pro
     superseded_by: list(r, "superseded_by"),
     reviewed_against: str(r, "reviewed_against"),
     note: optStr(r, "note"),
+    predicate: predicateSpec(r, id),
   };
   for (const ref of [...record.depends_on, ...record.superseded_by, ...(record.restates ? [record.restates] : [])]) {
     if (!ID_PATTERN.test(ref)) throw new Error(`${id}: ${ref} is not a provision ID`);
@@ -174,6 +182,25 @@ function oneOf<T extends string>(r: Record<string, unknown>, key: string, allowe
   const v = r[key];
   if (typeof v !== "string" || !allowed.includes(v as T)) throw new Error(`${id}: ${key} must be one of ${allowed.join(" | ")}`);
   return v as T;
+}
+
+function predicateSpec(r: Record<string, unknown>, id: string): PredicateSpec | null {
+  const v = r.predicate;
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) throw new Error(`${id}: predicate must be a map`);
+  const p = v as Record<string, unknown>;
+  if (typeof p.alias_of === "string") {
+    if (!ID_PATTERN.test(p.alias_of)) throw new Error(`${id}: predicate alias_of must be a provision ID`);
+    return { kind: "alias", alias_of: p.alias_of };
+  }
+  if (typeof p.inexpressible === "string") return { kind: "inexpressible", reason: p.inexpressible };
+  const names = (key: string): string[] => {
+    const l = p[key];
+    if (!Array.isArray(l) || !l.every((x) => typeof x === "string" && /^[A-Z][A-Za-z0-9_]*$/.test(x))) throw new Error(`${id}: predicate.${key} must be a list of variable names`);
+    return l as string[];
+  };
+  if (!Array.isArray(p.rules) || !p.rules.every((x) => typeof x === "string")) throw new Error(`${id}: predicate.rules must be a list of rule strings`);
+  return { kind: "rules", subject: names("subject"), witness: names("witness"), rules: p.rules as string[] };
 }
 
 function schemaRefs(r: Record<string, unknown>, id: string): SchemaRef[] {
