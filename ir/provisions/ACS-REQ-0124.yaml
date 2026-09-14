@@ -1,0 +1,16 @@
+id: ACS-REQ-0124
+title: "A Guardian may deny a session over its component graph"
+actor: guardian
+reported_against: guardian
+profile: [acs-inspect]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 24d227c8494db764af4293f934b349bae41f6a4571b978a6eb78247a8933282e
+note: null

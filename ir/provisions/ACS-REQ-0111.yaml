@@ -1,0 +1,22 @@
+id: ACS-REQ-0111
+title: "A compaction summary carries the union of its inputs' lineage"
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: [ACS-DEF-0002]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d79fbb903a7882d1a5d197e95c1cf0b33e72557e93cec937c7b21b73d0edd237
+note: "entries_compacted lists step_ids; the check treats each as the provenance_id the entry contributed, which is how the hook schema describes the union. Extra derived_from entries are not reported."
+predicate:
+  subject: [Seq]
+  witness: [Summary, Detail]
+  rules:
+    - "violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), provenance(Seq, _, Summary, Origin), Origin != \"agent_generated\", Detail = cat(\"origin=\", Origin)."
+    - "violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), compaction_entry(Seq, StepId), not derived_from(Seq, Summary, StepId), Detail = cat(\"missing=\", StepId)."

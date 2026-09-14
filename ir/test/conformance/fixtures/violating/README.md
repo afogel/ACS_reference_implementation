@@ -1,6 +1,6 @@
 # Fixture: violating
 
-One session, `s1`, arranged to breach every compiled provision exactly where `expected.tsv` says. Each line of that file cites the provision it exercises (R2.7), so the coverage table and the citation lint see these as the tests for ACS-REQ-0001 through ACS-REQ-0018, ACS-REQ-0020, ACS-REQ-0022 and ACS-REQ-0023.
+One session, `s1`, arranged to breach every compiled provision exactly where `expected.tsv` says. Each line of that file cites the provision it exercises (R2.7), so the coverage table and the citation lint see these as the tests for ACS-REQ-0001 through ACS-REQ-0018, ACS-REQ-0020, ACS-REQ-0022, ACS-REQ-0023, and the V7 provisions ACS-REQ-0027, ACS-REQ-0060, ACS-REQ-0062, ACS-REQ-0092, ACS-REQ-0134 and ACS-REQ-0138.
 
 The breaches, by provision:
 
@@ -25,3 +25,8 @@ The breaches, by provision:
 - ACS-REQ-0020: a chain mismatch observed at 6 with no audit event.
 - ACS-REQ-0022: archival preserved only `chain_hash`.
 - ACS-REQ-0023: the Approver `approver-1` resolved 60 without being verified.
+- ACS-REQ-0027: `p1` came in as `user_input` but was populated `untrusted`; §7.2's default for that channel is `trusted`.
+- ACS-REQ-0060 and ACS-REQ-0062: entry `e1` carries `timestamp` and `provenance_summary` but no `request_hash` (the §8.1 SHOULD, and the ACS-Audit MUST, fire on the same field).
+- ACS-REQ-0092: the DEFER at 40 was logged with `reasoning` but no `model_identifier`.
+- ACS-REQ-0134: the session never emitted `agbom/snapshot`, so every content-bearing hook (2, 4, 5, 6) fired without one; the differential does not scope by profile, so these tuples are raw and would be `not-activated` in a report unless the session negotiated ACS-Inspect.
+- ACS-REQ-0138: the Guardian advertises `ML-DSA-65` but not `SLH-DSA-128s`, which ACS-Crypto also requires.

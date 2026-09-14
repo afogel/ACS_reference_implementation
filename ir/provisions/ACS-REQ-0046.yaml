@@ -1,0 +1,21 @@
+id: ACS-REQ-0046
+title: "The Observed Agent applies the decision"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: ac3cdce41840ebe184a29c52118a73412ecb7a427464faf5a6df1e2055e18686
+note: "Observable half: a non-ALLOW decision the agent recorded as proceeded. Applying MODIFY correctly is not checked."
+predicate:
+  subject: [Seq]
+  witness: [Session, Disposition]
+  rules:
+    - "violation(Seq, Session, Disposition) :- response_to(Seq, R), decision(R, Disposition), Disposition != \"allow\", request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, \"proceeded\")."

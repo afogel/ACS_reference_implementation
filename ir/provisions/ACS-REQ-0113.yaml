@@ -1,0 +1,21 @@
+id: ACS-REQ-0113
+title: "A Guardian does not deny postCompact"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 415ba8b6ff4cd5707206d14137ebe793a760eeaec5c2bdfedd58a55030d43f37
+note: "Finding for upstream: MAY NOT is not an RFC 2119 term; read here as the prohibition the sentence means."
+predicate:
+  subject: [Seq]
+  witness: [Response]
+  rules:
+    - "violation(Seq, Response) :- request(Seq, _, \"steps/postCompact\", _, _), response_to(Seq, Response), decision(Response, \"deny\")."

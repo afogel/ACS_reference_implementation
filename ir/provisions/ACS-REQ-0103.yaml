@@ -1,0 +1,21 @@
+id: ACS-REQ-0103
+title: "system/ping never returns an ACS error"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 597265257e0d81c656e38adcc96dd7708321ccb9666b25fea0170d1ad5b99af2
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Code]
+  rules:
+    - "violation(Seq, Code) :- request(Seq, _, \"system/ping\", _, _), response_to(Seq, R), error_code(R, Code), Code <= -32000, Code >= -32099."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0149
+title: "trace_emission may advertise a collector endpoint"
+actor: guardian
+reported_against: guardian
+profile: [acs-trace]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 114502b26f93b73e9e214f537b326c3767e1a0545193991f55e204bb70c96bdf
+note: null

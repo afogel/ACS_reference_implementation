@@ -79,7 +79,7 @@ function renderUnbound(census: ProvisionCensus): string[] {
       `${o.source}:${o.line}:${o.column}`,
       o.keyword,
       o.block_type,
-      o.binding.kind === "excluded" ? `excluded: ${o.binding.reason}` : "unbound",
+      o.binding.kind === "excluded" ? `excluded: ${o.binding.reason}${o.binding.of ? ` ${o.binding.of}` : ""}` : "unbound",
       o.context,
     ]);
   lines.push(...table(["location", "keyword", "block", "binding", "context"], rows));

@@ -1,0 +1,16 @@
+id: ACS-REQ-0080
+title: "Substitution prefers DEFER when recoverable"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 0a70be5bf9c1810f81df61525ade522351a6f16467948128164ff66aeecb8821
+note: null

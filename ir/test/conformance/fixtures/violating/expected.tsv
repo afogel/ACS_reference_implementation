@@ -24,3 +24,12 @@ ACS-REQ-0020	s1	6
 ACS-REQ-0022	s1	intent
 ACS-REQ-0022	s1	provenance_summary
 ACS-REQ-0023	60	s1|approver-1
+ACS-REQ-0027	2|p1	user_input|untrusted
+ACS-REQ-0060	s1|e1	request_hash
+ACS-REQ-0062	s1|e1	request_hash
+ACS-REQ-0092	40	model_identifier
+ACS-REQ-0134	2	s1|steps/toolCallRequest
+ACS-REQ-0134	4	s1|steps/toolCallRequest
+ACS-REQ-0134	5	s1|steps/toolCallResult
+ACS-REQ-0134	6	s1|steps/agentResponse
+ACS-REQ-0138	s1	SLH-DSA-128s

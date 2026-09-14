@@ -1,0 +1,21 @@
+id: ACS-REQ-0087
+title: "Duplicate nonces are rejected within a window"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 7517d30bb810b2b48f83d6dc92a26678c60b5955ead880d23a8667669ef8b975
+note: "The sliding window is deployment-configured and not modelled; every repeat in the log is reported."
+predicate:
+  subject: [Seq]
+  witness: [Nonce]
+  rules:
+    - "violation(Seq, Nonce) :- request_nonce(Earlier, Nonce), request_nonce(Seq, Nonce), Earlier < Seq, response_to(Seq, R), not error_code(R, -32005)."

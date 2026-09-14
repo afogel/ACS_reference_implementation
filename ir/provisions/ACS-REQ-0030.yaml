@@ -1,0 +1,22 @@
+id: ACS-REQ-0030
+title: "A provenance-requiring Guardian refuses a none producer at handshake"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 1a1bb4354c71c1bbf6fdc784377ef2d54bf510a8e50b5af4827d3be9ecd78134
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Session]
+  rules:
+    - "violation(Seq, Session) :- handshake(Seq, Session), client_provenance_producer(Session, \"none\"), policy_requires_provenance(Session), not refused(Seq)."
+    - "refused(Seq) :- response_to(Seq, R), error_code(R, -32002)."

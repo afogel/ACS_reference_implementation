@@ -26,15 +26,18 @@ describe("differentialCheck -- the evaluator against the fixtures' expectations"
   it("agrees with expected.tsv on every fixture", () => {
     expect(report.fixtures.map((f) => [f.fixture, f.ok, f.evaluator.length])).toEqual([
       ["conformant", true, 0],
-      ["violating", true, 24],
+      ["violating", true, 33],
     ]);
   });
 
-  it("the violating fixture breaches every compiled provision", () => {
+  it("the violating fixture breaches every V5 compiled provision and the V7 ones its README names, and nothing that did not compile", () => {
     const violating = report.fixtures.find((f) => f.fixture === "violating");
-    const provisions = new Set(violating?.evaluator.map((v) => v.split("\t")[0]));
-    const compiled = program.provisions.filter((p) => p.status === "compiled").map((p) => p.id);
-    expect([...provisions].sort()).toEqual(compiled);
+    const provisions = new Set((violating?.evaluator ?? []).map((v) => v.split("\t")[0] ?? ""));
+    const compiled = new Set(program.provisions.filter((p) => p.status === "compiled").map((p) => p.id));
+    for (const id of provisions) expect(compiled.has(id)).toBe(true);
+    const v5 = ["ACS-REQ-0001", "ACS-REQ-0002", "ACS-REQ-0003", "ACS-REQ-0004", "ACS-REQ-0005", "ACS-REQ-0006", "ACS-REQ-0007", "ACS-REQ-0008", "ACS-REQ-0009", "ACS-REQ-0010", "ACS-REQ-0011", "ACS-REQ-0012", "ACS-REQ-0013", "ACS-REQ-0014", "ACS-REQ-0015", "ACS-REQ-0016", "ACS-REQ-0017", "ACS-REQ-0018", "ACS-REQ-0020", "ACS-REQ-0022", "ACS-REQ-0023"];
+    const v7 = ["ACS-REQ-0027", "ACS-REQ-0060", "ACS-REQ-0062", "ACS-REQ-0092", "ACS-REQ-0134", "ACS-REQ-0138"];
+    expect([...provisions].sort()).toEqual([...v5, ...v7]);
   });
 
   it("names a wrong expectation as divergence rather than trusting the engines", () => {

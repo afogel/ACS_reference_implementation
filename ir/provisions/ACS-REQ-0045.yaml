@@ -1,0 +1,18 @@
+id: ACS-REQ-0045
+title: "The Observed Agent waits for the decision"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d845664065decdde6ca30073625dac0dd96c01c7e7c964d679a7ec6cd13a5dff
+note: null
+predicate:
+  inexpressible: "whether the agent acted before the decision arrived needs timing from the agent side; agent_step_outcome carries the outcome, not when it happened"

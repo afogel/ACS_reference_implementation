@@ -1,0 +1,21 @@
+id: ACS-REQ-0063
+title: "ACS-Audit entries carry timestamp and provenance_summary"
+actor: guardian
+reported_against: guardian
+profile: [acs-audit]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: a07b3a3994a744fbae300ba2cb44d4ec3a2fe30d48197fd942938358121a79dd
+note: null
+predicate:
+  subject: [Session, EntryId]
+  witness: [Field]
+  rules:
+    - "violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), audit_entry_field(Field), not context_entry_field(Session, EntryId, Field)."

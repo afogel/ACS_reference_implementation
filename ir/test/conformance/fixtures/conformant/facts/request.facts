@@ -1,3 +1,4 @@
 1	s2	handshake/hello	r1	2026-01-01T00:00:01Z
-2	s2	steps/toolCallRequest	r2	2026-01-01T00:00:02Z
-3	s2	steps/agentResponse	r3	2026-01-01T00:00:03Z
+2	s2	agbom/snapshot	r2	2026-01-01T00:00:02Z
+3	s2	steps/toolCallRequest	r3	2026-01-01T00:00:03Z
+4	s2	steps/agentResponse	r4	2026-01-01T00:00:04Z

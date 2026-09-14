@@ -1,0 +1,16 @@
+id: ACS-REQ-0071
+title: "An Approver may be human, agent, or service (pillar copy)"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: ACS-REQ-0070
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: caaab40fca50efb8196df26bb684175af0aad817deced6227f1a5e261625165e
+note: null

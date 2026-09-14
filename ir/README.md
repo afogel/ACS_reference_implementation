@@ -26,7 +26,7 @@ bun run ir ids next REQ      # allocates the next ACS-REQ-NNNN and bumps the cou
 
 Every generated file takes `--check`, which exits 1 when the committed copy is stale. CI runs the census, markers, extract, render, lint and compile checks on every push, and a separate job installs Soufflé 2.5 and runs the differential; `spec-lint.yml` additionally lints each pull request against its base branch and posts the normative-impact comment.
 
-To add a provision: allocate an ID, add an overlay entry quoting the prose, run `markers apply` and `extract`, write `ir/provisions/<ID>.yaml` with `reviewed_against` set to the manifest's `text_hash`, run `render` and `census`, and commit all of it.
+To add a provision: allocate an ID, add an overlay entry quoting the prose, run `markers apply` and `extract`, write `ir/provisions/<ID>.yaml` with `reviewed_against` set to the manifest's `text_hash`, run `render` and `census`, and commit all of it. A keyword occurrence that restates a provision already carried gets an entry in `census/exclusions.yaml` instead of a record.
 
 When the spec changes under a provision, `lint` names it and everything downstream of it. Classify the change (editorial, semantic, or split), then update the record's `reviewed_against`, or allocate new IDs and tombstone the old one.
 
@@ -37,6 +37,7 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | Path | Owner | What it is |
 |---|---|---|
 | `census/sources.yaml` | authored | The source census (S11): every document under `spec/acs/docs/`, its normative status, and what makes it normative. The corpus is declared here, never inferred from a grep (R1.1). |
+| `census/exclusions.yaml` | authored | Census exclusions (E8.2): keyword occurrences that carry no provision of their own, each by verbatim quote with a reason (`restatement_of` a named provision, `mention`, `roadmap`, `rationale`). Read by the census and by spec-lint. |
 | `census/provisions.yaml` | generated | The provision census (S11): every RFC 2119 occurrence, its block type, and whether it is bound, excluded with a reason, or still unbound (R1.3, R1.6). Never hand-edited. |
 | `markers/overlay.yaml` | authored | The staging overlay (S2): where each provision's anchor and terminator go, by verbatim quote against the pinned corpus. Retires when markers land upstream. |
 | `ids/counter.yaml`, `ids/tombstones.yaml` | authored via `acs-ir ids next` | Monotonic ID allocation and retired IDs (S6). |
@@ -51,7 +52,7 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | `.build/stale.json`, `.build/lint.json`, `.build/impact.md` | generated, ignored | Provisions needing review and the worklist (S12), the full lint report, and the PR comment (N27), written by `acs-ir lint`. |
 | `src/corpus.ts` | code | Locates the submodule, lists `docs/**/*.md`, reads the commit and version. |
 | `src/markdown-blocks.ts` | code | Line-level block classifier: paragraph, list item, table cell, blockquote, heading, code fence. |
-| `src/census/` | code | N10 to N14 and N19: the census runner, the source census check, the keyword sweep, the callout scan, and the footer-seeded dependency edges. |
+| `src/census/` | code | N10 to N14 and N19: the census runner, the source census check, the keyword sweep, the callout scan, the footer-seeded dependency edges, and the authored exclusions (E8.2). |
 | `src/ids.ts` | code | N3: provision identity and allocation. |
 | `src/markers/overlay.ts` | code | N1, N2: overlay parsing, quote resolution, marker insertion. |
 | `src/lint/marker-pairing.ts` | code | N22: unpaired, mismatched, or nested markers fail before extraction. |
@@ -80,4 +81,5 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | V4 | shipped | The spec PR polices itself: spec-lint against a baseline, and the normative-impact comment. |
 | V5 | shipped | Twenty-one predicates compiled to Soufflé and to the in-process evaluator; both engines agree over shared fixtures. |
 | V6 | shipped | The conformance report over an envelope log: verdicts with evidence, scoped to negotiated profiles, rosters printed. |
-| V7, V8 | planned | The full conversion of all 197 unbound occurrences; upstreaming the markers. |
+| V7 | shipped | The full conversion: 155 provisions, 34 authored exclusions, zero unbound occurrences; the inexpressible set enumerated. |
+| V8 | planned | Upstreaming the markers. |

@@ -1,0 +1,21 @@
+id: ACS-REQ-0137
+title: "ACS-Crypto supports ML-DSA-65"
+actor: guardian
+reported_against: guardian
+profile: [acs-crypto]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: cc783b3ba6912db65310d7ccdf62363b19107fab80d6b25a4ce12fce3ae4d3e3
+note: "Binds the MUST and the parenthetical RECOMMENDED. Judged from ServerHello's signature_algorithms_supported; profile scoping activates it only for acs-crypto sessions."
+predicate:
+  subject: [Session]
+  witness: [Algorithm]
+  rules:
+    - "violation(Session, Algorithm) :- handshake(_, Session), Algorithm = \"ML-DSA-65\", not signature_algorithm_supported(Session, \"ML-DSA-65\")."

@@ -1,0 +1,21 @@
+id: ACS-REQ-0100
+title: "A ping failure is not an enforcement event"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: ec73112602cc90c47db8c28c46f433e66d95528ba7abc7855a43e2e0a21cbcb4
+note: "A ping that produced an enforcement audit event is the observable breach."
+predicate:
+  subject: [Session, Seq]
+  witness: [Kind]
+  rules:
+    - "violation(Session, Seq, Kind) :- request(Seq, Session, \"system/ping\", _, _), agent_audit_event(Session, Seq, Kind)."

@@ -1,0 +1,17 @@
+id: ACS-REQ-0150
+title: "Trace traffic routes to the advertised collector"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-trace]
+activation: "the ServerHello advertised a collector endpoint (ACS-REQ-0149)"
+modality_kind: conditional-on-exercise
+evidence_class: non-testable
+schema_refs: []
+depends_on: [ACS-REQ-0149]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 94c2e68548dc7fff3729a2028dd9df1bf1b616fd5237f2cfbe9327cc5f35525d
+predicate: null
+note: "Non-testable: trace routing is out of the envelope log."

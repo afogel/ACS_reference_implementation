@@ -43,12 +43,15 @@ describe("V3 demo -- a one-word edit to a concept page", () => {
     expect(after.problems).toEqual([]);
     const report = checkStaleness(loadCatalog(after.manifest, records), collectTestCitations());
     expect(report.stale.map((s) => [s.id, s.reasons.map((r) => r.kind), s.invalidates])).toEqual([
-      ["ACS-INV-0001", ["text_changed"], ["ACS-REQ-0011"]],
+      ["ACS-INV-0001", ["text_changed"], ["ACS-REQ-0011", "ACS-REQ-0065", "ACS-REQ-0074"]],
       ["ACS-REQ-0011", ["dependency_stale"], ["ACS-REQ-0012"]],
       ["ACS-REQ-0012", ["dependency_stale"], []],
+      ["ACS-REQ-0065", ["dependency_stale"], []],
+      ["ACS-REQ-0074", ["dependency_stale"], ["ACS-REQ-0075"]],
+      ["ACS-REQ-0075", ["restatement_diverged"], []],
     ]);
-    // The fixtures under ir/test/conformance/ cite the two Requirements, not the Invariant (V5).
-    expect(report.stale.map((s) => s.tests.length > 0)).toEqual([false, true, true]);
+    // The fixtures under ir/test/conformance/ cite the two V2 Requirements, not the Invariant (V5) and not the V7 dependents.
+    expect(report.stale.map((s) => s.tests.length > 0)).toEqual([false, true, true, false, false, false]);
     expect(report.stale[1]?.tests).toContain("fixtures/violating/expected.tsv");
     // No RFC 2119 keyword moved.
     expect(keywordScan("concepts/intent.md", edited).occurrences.length).toBe(keywordScan("concepts/intent.md", original).occurrences.length);

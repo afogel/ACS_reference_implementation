@@ -1,0 +1,23 @@
+id: ACS-REQ-0043
+title: "A malformed modifications object fails closed as DENY"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 646cf8618b1f60ee29abc401bce9f385615a50ea675d8139439ed99d1375bd71
+note: "applied means the agent proceeded with the MODIFY; blocked is the conformant outcome."
+predicate:
+  subject: [Seq]
+  witness: [Session]
+  rules:
+    - "violation(Seq, Session) :- malformed_modify(R), response_to(Seq, R), request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, \"applied\")."
+    - "malformed_modify(R) :- modification_targets_overlap(R, _, _)."
+    - "malformed_modify(R) :- decision(R, \"modify\"), modification_field(R, \"modified_content\"), modification_field(R, F), F != \"modified_content\"."

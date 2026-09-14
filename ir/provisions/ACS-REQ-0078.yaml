@@ -1,0 +1,21 @@
+id: ACS-REQ-0078
+title: "No ASK to an approver-incapable client"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the Guardian determined the client cannot resolve ASK"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 6e4db93c668f03a1ebcd1ddb1cc87e1e417f8f1dea88e74e729c1b7b36daae63
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Session]
+  rules:
+    - "violation(Seq, Session) :- request(Seq, Session, _, _, _), client_ask_capable(Session, \"no\"), response_to(Seq, R), decision(R, \"ask\")."

@@ -2,12 +2,12 @@
 /**
  * `acs-ir` -- the IR's command line (P1).
  *
- *   acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--out <file>] [--quiet]
+ *   acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--exclusions <file>] [--out <file>] [--quiet]
  *   acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]
  *   acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]
  *   acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]
  *   acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>]
- *                        [--schemas <dir>] [--conformance <dir>] [--sources <file>]
+ *                        [--schemas <dir>] [--conformance <dir>] [--sources <file>] [--exclusions <file>]
  *   acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]
  *   acs-ir verify        <trace.jsonl> [--guardian <dir>] [--deployment <dir>] [--hmac-key <hex|file>] [--out <file>] [--json <file>]
  *   acs-ir verify        --facts <dir> [--build <dir>]
@@ -74,11 +74,11 @@ import { judge } from "./verify/verdicts.ts";
 
 const USAGE = [
   "usage:",
-  "  acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--out <file>] [--quiet]",
+  "  acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--exclusions <file>] [--out <file>] [--quiet]",
   "  acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]",
   "  acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]",
   "  acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]",
-  "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>]",
+  "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>] [--exclusions <file>]",
   "  acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]",
   "  acs-ir verify        <trace.jsonl> [--guardian <dir>] [--deployment <dir>] [--hmac-key <hex|file>] [--out <file>] [--json <file>]",
   "  acs-ir verify        --facts <dir> [--build <dir>]",
@@ -127,6 +127,7 @@ function census(rest: string[]): number {
     corpusRoot: flagValue(rest, "--corpus"),
     sourcesFile: flagValue(rest, "--sources"),
     overlayFile: flagValue(rest, "--overlay"),
+    exclusionsFile: flagValue(rest, "--exclusions"),
   });
   if (!quiet || run.sources.problems.length > 0) process.stdout.write(renderCensus(run.sources, run.provisions));
   if (run.yaml === null) {
@@ -205,6 +206,7 @@ function lint(rest: string[]): number {
     corpus,
     markedDir,
     sourcesFile: flagValue(rest, "--sources") ?? join(defaultCensusDir(), "sources.yaml"),
+    exclusionsFile: flagValue(rest, "--exclusions") ?? join(defaultCensusDir(), "exclusions.yaml"),
     provisionsDir: flagValue(rest, "--provisions") ?? defaultProvisionsDir(),
     idsDir: flagValue(rest, "--ids") ?? defaultIdsDir(),
     schemaDir: flagValue(rest, "--schemas") ?? defaultSchemaDir(),
@@ -289,7 +291,7 @@ function verify(rest: string[]): number {
   const catalog = loadCatalog(manifest, records.records);
   const normalized = normalizeTrace(readTrace(trace));
   const schemas = loadSchemas(flagValue(rest, "--schemas") ?? defaultSchemaDir());
-  const external = computeExternalFacts(normalized.lines, program.relations, schemas, {
+  const external = computeExternalFacts(normalized, program.relations, schemas, {
     hmacKey: readKey(flagValue(rest, "--hmac-key")),
     guardianDir: flagValue(rest, "--guardian") ?? null,
     deploymentDir: flagValue(rest, "--deployment") ?? null,

@@ -1,0 +1,18 @@
+id: ACS-REQ-0033
+title: "The Observed Agent retries the handshake for later sessions"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 2cce955a42abd79f1e80311ec13fcbb6ce1c0a165cfb351fb6e783c75d5647d8
+note: null
+predicate:
+  inexpressible: "needs a view across sessions of one deployment; a single envelope log holds one session's attempts"

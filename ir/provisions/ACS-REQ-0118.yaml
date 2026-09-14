@@ -1,0 +1,16 @@
+id: ACS-REQ-0118
+title: "Declared capabilities are compared with composed tools"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 3bca90127d17079c4cb5450efd2bf2986f7371f17f08c9161cd8a1664e91eb6b
+note: null

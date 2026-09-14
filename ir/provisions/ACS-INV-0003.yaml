@@ -1,0 +1,16 @@
+id: ACS-INV-0003
+title: "Three identities are distinct"
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: invariant
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 6d14bc4d588b32f1bb388394fa5416157b781e63e9bc574215d3f504db6f2f34
+note: null

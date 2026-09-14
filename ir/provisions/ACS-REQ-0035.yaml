@@ -1,0 +1,16 @@
+id: ACS-REQ-0035
+title: "policy_version is optional"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 064bbfeb73fbe4ab3d7db5e8f7a8e9065423d5d9681527635392b130c91dcf72
+note: null

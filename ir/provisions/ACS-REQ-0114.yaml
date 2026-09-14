@@ -1,0 +1,21 @@
+id: ACS-REQ-0114
+title: "The audit chain records the post-compact state"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 38b5f512e0ddedf80793678151d585615432619f68cbbb9297ee6df3dfa8c383
+note: null
+predicate:
+  subject: [Session, Seq]
+  witness: [Method]
+  rules:
+    - "violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = \"steps/postCompact\", not context_entry(Session, _, Seq, _)."

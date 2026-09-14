@@ -1,0 +1,18 @@
+id: ACS-REQ-0044
+title: "A malformed modifications object is audited"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: "a malformed modifications object arrived"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: c08ff72f1d4b139baa313fad155156f953c59222a05055f9a82671e924524af0
+note: null
+predicate:
+  inexpressible: "the deployment's audit log has no kind for a malformed MODIFY; agent_audit_event kinds are deployment-defined"

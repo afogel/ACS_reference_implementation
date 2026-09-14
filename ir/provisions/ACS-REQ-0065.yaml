@@ -1,0 +1,16 @@
+id: ACS-REQ-0065
+title: "Intent is optional"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: [ACS-INV-0001]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: f33cafc1c510f9bc991a6bfd22ba498fc1cf16a596611007577fea0e24c8be45
+note: null

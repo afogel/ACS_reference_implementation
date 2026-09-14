@@ -1,0 +1,19 @@
+id: ACS-REQ-0070
+title: "An Approver may be human, agent, or service"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs:
+  - file: ask-details.json
+    pointer: /properties/approver/properties/type
+    pinned: f99f37f81fa8efdb10f3a86e2b50a420ceb658565a456d52c8bbce2a26138417
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: f330b880a32c08c59dfeea0bec767ef45959d58f4def9388a8cd26990b5612be
+note: null

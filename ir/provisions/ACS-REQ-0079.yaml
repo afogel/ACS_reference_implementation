@@ -1,0 +1,21 @@
+id: ACS-REQ-0079
+title: "ASK is substituted with a fail-closed DEFER or a DENY"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the Guardian determined the client cannot resolve ASK"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 4d14901e605c82f04ce1b67cf9693947b24f4ccf1c5ed9e16a5499f6690836a0
+note: "Observable half: a DEFER to an approver-incapable client whose timeout_decision is not deny. Which decisions would have been ASK is not observable."
+predicate:
+  subject: [Seq]
+  witness: [Session, TimeoutDecision]
+  rules:
+    - "violation(Seq, Session, TimeoutDecision) :- request(Seq, Session, _, _, _), client_ask_capable(Session, \"no\"), response_to(Seq, R), decision(R, \"defer\"), defer_timeout_decision(R, TimeoutDecision), TimeoutDecision != \"deny\"."

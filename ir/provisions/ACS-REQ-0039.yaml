@@ -1,0 +1,24 @@
+id: ACS-REQ-0039
+title: "modified_content excludes structured edits"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs:
+  - file: modifications.json
+    pointer: /properties/modified_content
+    pinned: 115fad805793ee5d0768d27eb03b1e5e99b2bc08b6f600bde01ef8a9e2e5b90f
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 30ebd035ffdfc5f87f1473f269374ed3a561593d706a5dda9147674da587cfb3
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Field]
+  rules:
+    - "violation(Seq, Field) :- decision(Seq, \"modify\"), modification_field(Seq, \"modified_content\"), modification_field(Seq, Field), Field != \"modified_content\"."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0025
+title: "The agent has no knowledge of hooks"
+actor: framework
+reported_against: framework
+profile: all
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 3957f333d277a12b6103e5834fd1f07c01110c6ff0e2e2bd3d1013b4588f5548
+note: "§1.2 design principle; environmental, listed on the non-testable roster."

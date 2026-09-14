@@ -1,0 +1,16 @@
+id: ACS-REQ-0119
+title: "A Guardian may deny over-broad declarations"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: bc27f422c346eda4b0b301b514e3aae4f57e177d5378203e66ece42efb4c15d4
+note: null

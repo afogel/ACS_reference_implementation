@@ -1,0 +1,21 @@
+id: ACS-REQ-0138
+title: "ACS-Crypto supports SLH-DSA-128s"
+actor: guardian
+reported_against: guardian
+profile: [acs-crypto]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 062726c535ed12b53b8b2d78e4479d2e13a2e7ada6be9941ef66bee778e39446
+note: null
+predicate:
+  subject: [Session]
+  witness: [Algorithm]
+  rules:
+    - "violation(Session, Algorithm) :- handshake(_, Session), Algorithm = \"SLH-DSA-128s\", not signature_algorithm_supported(Session, \"SLH-DSA-128s\")."

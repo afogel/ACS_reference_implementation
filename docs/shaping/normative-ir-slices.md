@@ -267,6 +267,8 @@ No new affordances. This is the editorial conversion the source described as *"d
 
 **Expect a non-empty flagged set.** A vocabulary derived from 20 specimens meeting 180 more will miss something. The deliverable is that the misses are enumerated, not that there are none.
 
+🟡 **Shipped** ([`ir/slices/v7/`](../../ir/slices/v7/README.md)). 208 occurrences: 163 bound to 155 provisions, 45 excluded, 0 unbound. The conversion needed one piece of mechanism the plan had not named: an authored exclusions file (E8.2), because the spec restates rules inside their own parentheticals and describes roadmap intent in normative sources, so an occurrence count is an upper bound on provisions rather than a count. 34 occurrences are excluded that way, each by verbatim quote with a reason from a closed set, and a quote that resolves badly or covers two occurrences fails the census. The vocabulary grew from 42 relations to 76. Of 155 provisions, 69 compiled, 39 are permissions, 25 non-testable, and 12 are flagged inexpressible with the missing relation named for each, which is the R3.6 outcome this slice was meant to test. The clean envelope log meets all 58 active acs-core obligations; the ACS-Audit, ACS-Inspect and ACS-Crypto provisions report not-activated for a session that did not negotiate them. Four allocated IDs (ACS-REQ-0042, 0049, 0085, 0115) are unused gaps: allocated for occurrences that turned out to be restatements.
+
 ---
 
 ## V8: Upstream
@@ -593,3 +595,5 @@ Not slice work, but discovered by it and worth reporting to the ACS maintainers 
 | 3 | `conformance.md` and `specification.md` §7 state the ACS-Provenance all-or-nothing rule in near-identical prose — a restatement pair the `README.md:33` migration would resolve | X3, X5 |
 | 4 | 🟡 `defer-details.json` requires `reason`, `resolution_method` and `resolution_timeout_ms` but not `timeout_decision`, which §6 says DEFER MUST include (default `deny`). Prose and schema disagree on a required field | V2, ACS-REQ-0004 |
 | 5 | 🟡 The OPTIONAL `trust` enum §7.1 reserves and constrains (monotonicity rule) is not a field of `provenance.json`; the schema says implementations that carry it extend the schema. A wire-visible obligation with no schema to cite | V2, ACS-REQ-0010 |
+| 6 | 🟡 `hooks.md` uses `MAY NOT`, which is not an RFC 2119 term (RFC 2119 defines MAY, and the prohibition is MUST NOT). Read as the prohibition the sentence means | V7, ACS-REQ-0113 |
+| 7 | 🟡 §10 does not say whether the handshake request is signed; the per-session key is derived from the `session_id` the handshake establishes, so signing it is circular unless a pre-session key exists. The catalog exempts it | V7, ACS-REQ-0081 |

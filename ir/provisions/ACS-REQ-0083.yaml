@@ -1,0 +1,18 @@
+id: ACS-REQ-0083
+title: "Hybrid signatures verify both components"
+actor: guardian
+reported_against: guardian
+profile: [acs-crypto]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 5108e7f73d496bc47f7e538ae01c471148ea2f55e2d73f0d1254db368878174c
+note: null
+predicate:
+  inexpressible: "the verifier implements HMAC-SHA256 only; a hybrid signature yields signature_status unverifiable, so component failure is not an available fact"

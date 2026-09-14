@@ -1,0 +1,18 @@
+id: ACS-REQ-0122
+title: "A load outside declared composition is denied"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 71c7ed9438a27a853e41504171b5bf94d43dec09f628fe237c8385fc21f691d4
+note: null
+predicate:
+  inexpressible: "load_path and composed_skills are not vocabulary relations"

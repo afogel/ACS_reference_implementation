@@ -1,0 +1,21 @@
+id: ACS-REQ-0052
+title: "A deterministic producer attaches provenance to every data-bearing field"
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: "provenance_producer: deterministic"
+modality_kind: obligation
+evidence_class: schema
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 335f50c078e3f0feb57ecf5f78566ab261cc45078165f8efc75fe55b93eedc77
+note: "The verifier validates hook payloads against the strict *.acs-provenance.json variants when the session negotiated acs-provenance."
+predicate:
+  subject: [Seq]
+  witness: [Schema, Path]
+  rules:
+    - "violation(Seq, Schema, Path) :- schema_violation(Seq, Schema, Path), strict_provenance_schema(Schema)."

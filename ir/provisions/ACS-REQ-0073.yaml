@@ -1,0 +1,18 @@
+id: ACS-REQ-0073
+title: "Approvers do not return ASK (pillar copy)"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: ACS-REQ-0072
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: bb97ff1a9d0f0ac9dd9e126a909a665ab8722489701bd7795117a7854ddafbd1
+note: null
+predicate:
+  alias_of: ACS-REQ-0072

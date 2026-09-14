@@ -1,0 +1,22 @@
+id: ACS-REQ-0076
+title: "A session-scope extension is appended, recorded, and carried with its own provenance"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "an Approver granted an intent_extension with scope: session"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 809cc111ec9e525960ac48dbf5a30a24313a25c748770ffe6e5fb453b9d538c6
+note: "Checks item 2 (the intent_extension ContextEntry). Item 1 is ACS-REQ-0011's territory; item 3, the extension's separate provenance, is not observable in any relation and is a partial coverage flagged here."
+predicate:
+  subject: [Session, Seq]
+  witness: [Capability]
+  rules:
+    - "violation(Session, Seq, Capability) :- intent_extension(Session, Seq, Capability), not extension_recorded(Session, Seq)."
+    - "extension_recorded(Session, Seq) :- context_entry(Session, EntryId, Seq, _), context_entry_step(Session, EntryId, \"intent_extension\")."

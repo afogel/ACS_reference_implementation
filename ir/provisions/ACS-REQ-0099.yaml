@@ -1,0 +1,16 @@
+id: ACS-REQ-0099
+title: "A ping failure may trigger transport recovery"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 88f15dbbea0e5a0eed910d80ffa1c192e91a978f8fa82eaca3a949a49ad264bf
+note: null

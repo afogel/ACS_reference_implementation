@@ -1,0 +1,21 @@
+id: ACS-REQ-0142
+title: "ACS-Provenance components carry registration_provenance"
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: ce96d3240472b030bc7324eb35e86189d8d68809faac80b50b82d218be4ee8db
+note: null
+predicate:
+  subject: [Seq, ComponentId]
+  witness: [Field]
+  rules:
+    - "violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = \"registration_provenance\", not agbom_component_field(Seq, ComponentId, \"registration_provenance\")."

@@ -20,6 +20,8 @@ export interface TraceLine {
   direction: "request" | "response";
   method: string | null;
   rpc_id: string | null;
+  /** When the Guardian recorded the line, from its envelope log; null for a bare JSON-RPC log. */
+  recorded_at: string | null;
   envelope: unknown;
 }
 
@@ -55,11 +57,12 @@ export function parseTrace(text: string): TraceLine[] {
         direction: value.direction === "response" ? "response" : "request",
         method: typeof value.method === "string" ? value.method : methodOf(value.envelope),
         rpc_id: idOf(value.envelope) ?? (value.rpc_id === undefined || value.rpc_id === null ? null : String(value.rpc_id)),
+        recorded_at: typeof value.recorded_at === "string" ? value.recorded_at : null,
         envelope: value.envelope,
       });
     } else {
       const isRequest = Array.isArray(value) ? true : "method" in value;
-      lines.push({ seq: n, direction: isRequest ? "request" : "response", method: methodOf(value), rpc_id: idOf(value), envelope: value });
+      lines.push({ seq: n, direction: isRequest ? "request" : "response", method: methodOf(value), rpc_id: idOf(value), recorded_at: null, envelope: value });
     }
   }
   return lines;
@@ -87,16 +90,58 @@ export function normalizeTrace(lines: TraceLine[]): NormalizedTrace {
       add("envelope", [line.seq, session, "request", method, line.rpc_id ?? ""]);
       add("request", [line.seq, session, method, str(params?.request_id) ?? "", str(params?.timestamp) ?? ""]);
       if (Array.isArray(line.envelope)) add("array_input", [line.seq]);
+      const sig = str(obj(params?.signature)?.algorithm);
+      if (sig !== null) add("signature_algorithm", [line.seq, sig]);
+      const nonce = str(params?.nonce);
+      if (nonce !== null) add("request_nonce", [line.seq, nonce]);
       if (method === "handshake/hello") {
         add("handshake", [line.seq, session]);
         const hello = obj(params?.payload) ?? params;
         for (const v of arr(hello?.acs_versions_supported)) if (typeof v === "string") add("client_version", [session, v]);
+        const producer = str(hello?.provenance_producer);
+        if (producer !== null) add("client_provenance_producer", [session, producer]);
         const info = sessions.get(session) ?? { session, profiles: [], negotiated_version: null };
         const supported = arr(hello?.profiles_supported).filter((p): p is string => typeof p === "string");
         if (info.profiles.length === 0 && supported.length) info.profiles = supported;
         sessions.set(session, info);
       }
       if (method.startsWith("steps/")) add("hook", [line.seq, session, method]);
+      const payload = obj(params?.payload);
+      const intent = obj(payload?.intent);
+      if (intent) {
+        const origin = str(obj(intent.parser_provenance)?.origin);
+        if (origin !== null) add("intent_parser_origin", [line.seq, origin]);
+        const mode = str(intent.scope_mode);
+        if (mode !== null) add("intent_scope_mode", [session, mode]);
+      }
+      if (method === "steps/postCompact") {
+        for (const id of arr(payload?.entries_compacted)) if (typeof id === "string") add("compaction_entry", [line.seq, id]);
+        const pid = str(obj(obj(payload?.summary)?.provenance)?.provenance_id);
+        if (pid !== null) add("compaction_summary_provenance", [line.seq, pid]);
+      }
+      if (method === "steps/skillRegister") {
+        const skill = str(payload?.skill_id);
+        const digest = str(obj(obj(payload?.definition)?.digest)?.value);
+        if (skill !== null) add("skill_register", [line.seq, session, skill, digest ?? ""]);
+      }
+      if (method === "steps/skillLoad") {
+        const skill = str(payload?.skill_id);
+        const digest = str(obj(payload?.digest)?.value);
+        if (skill !== null) add("skill_load", [line.seq, session, skill, digest ?? ""]);
+      }
+      if (method === "agbom/snapshot" || method === "agbom/changed") {
+        const doc = obj(payload?.agbom) ?? payload;
+        const components = [...arr(doc?.components), ...arr(obj(payload?.added)), ...arr(obj(payload?.changed))];
+        for (const c of components) {
+          const component = obj(c);
+          const id = str(component?.id);
+          const type = str(component?.type);
+          if (component && id !== null && type !== null) {
+            add("agbom_component", [line.seq, session, type, id]);
+            for (const field of Object.keys(component)) if (component[field] !== null && component[field] !== undefined) add("agbom_component_field", [line.seq, id, field]);
+          }
+        }
+      }
       if (!sessions.has(session) && session !== "") sessions.set(session, { session, profiles: [], negotiated_version: null });
       // Provenance objects anywhere in the payload.
       for (const p of findProvenance(params?.payload)) {
@@ -121,6 +166,11 @@ export function normalizeTrace(lines: TraceLine[]): NormalizedTrace {
     const result = obj(env?.result);
     const error = obj(env?.error);
     if (error && typeof error.code === "number") add("error_code", [line.seq, error.code]);
+    const data = obj(error?.data);
+    if (error && error.data !== undefined && error.data !== null) {
+      add("error_data", [line.seq]);
+      for (const field of Object.keys(data ?? {})) add("error_data_field", [line.seq, field]);
+    }
     if (result) {
       for (const field of Object.keys(result)) add("result_field", [line.seq, field]);
       const decision = str(result.decision);
@@ -135,7 +185,16 @@ export function normalizeTrace(lines: TraceLine[]): NormalizedTrace {
         for (const field of Object.keys(defer)) add("defer_field", [line.seq, field]);
         const reason = str(defer.reason);
         if (reason !== null) add("defer_reason", [line.seq, reason]);
+        const timeout = str(defer.timeout_decision);
+        if (timeout !== null) add("defer_timeout_decision", [line.seq, timeout]);
       }
+      const modifications = obj(result.modifications);
+      if (modifications) for (const field of Object.keys(modifications)) add("modification_field", [line.seq, field]);
+      for (const code of arr(result.reason_codes)) if (typeof code === "string") add("reason_code", [line.seq, code]);
+      const resultSig = str(obj(result.signature)?.algorithm);
+      if (resultSig !== null) add("signature_algorithm", [line.seq, resultSig]);
+      if (typeof result.skew_window_ms === "number" && session) add("skew_window", [session, result.skew_window_ms]);
+      for (const alg of arr(result.signature_algorithms_supported)) if (typeof alg === "string" && session) add("signature_algorithm_supported", [session, alg]);
       const accepted = arr(result.profiles_accepted).filter((p): p is string => typeof p === "string");
       if (accepted.length && session) {
         const info = sessions.get(session) ?? { session, profiles: [], negotiated_version: null };

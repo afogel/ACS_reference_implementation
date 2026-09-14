@@ -1,0 +1,23 @@
+id: ACS-REQ-0130
+title: "Skill components imply skill lifecycle hooks"
+actor: framework
+reported_against: framework
+profile: [acs-inspect]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 2acab647888655334a56f4a8d208a1dfdf969a7f05dbd017a9515e7b93fbfb11
+note: null
+predicate:
+  subject: [Session]
+  witness: [ComponentId]
+  rules:
+    - "violation(Session, ComponentId) :- agbom_component(_, Session, \"skill\", ComponentId), not skill_hook_seen(Session)."
+    - "skill_hook_seen(Session) :- hook(_, Session, \"steps/skillRegister\")."
+    - "skill_hook_seen(Session) :- hook(_, Session, \"steps/skillLoad\")."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0144
+title: "agbom/changed may serialize as a VEX diff or a full document"
+actor: deployment
+reported_against: deployment
+profile: [acs-inspect]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 54bda27f5991a3fbff5ac8697e1eb3d43214cac830362e7974d75e4cebb583e5
+note: null

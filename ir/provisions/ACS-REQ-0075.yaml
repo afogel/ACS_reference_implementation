@@ -1,0 +1,16 @@
+id: ACS-REQ-0075
+title: "An Approver's grant may extend Intent (pillar copy)"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: ACS-REQ-0074
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: aec341dd89c9a627a065d2766db7ef3ac2b928e2485ad499a7eb983740463f5b
+note: null

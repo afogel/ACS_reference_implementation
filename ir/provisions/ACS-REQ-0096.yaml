@@ -1,0 +1,21 @@
+id: ACS-REQ-0096
+title: "system/ping is not a ContextEntry"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 28e65d616669b0e35a80ee6328790524efc18c253f721cdc2d54b316b2e1f27b
+note: null
+predicate:
+  subject: [Session, Seq]
+  witness: [EntryId]
+  rules:
+    - "violation(Session, Seq, EntryId) :- request(Seq, Session, \"system/ping\", _, _), context_entry(Session, EntryId, Seq, _)."

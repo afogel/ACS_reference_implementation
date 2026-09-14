@@ -1,0 +1,18 @@
+id: ACS-REQ-0109
+title: "Every outward action fires toolCallRequest"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 51de7945faac4534937678cc5646996ee1f1cac52867d4002692b60401462caa
+note: null
+predicate:
+  inexpressible: "completeness of the hook stream can only be judged against an independent record of the agent's actions, which no relation carries"
