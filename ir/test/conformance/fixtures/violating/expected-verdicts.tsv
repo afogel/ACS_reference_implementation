@@ -1,0 +1,88 @@
+# The verdict relations both engines must derive over facts/: relation, then its columns (provision, session).
+# fail and deviates name the provisions this fixture breaches, by RFC 2119 strength; pass, not_exercised and not_activated
+# cover the rest of the compiled catalog; unevaluated lists what needs a relation facts/available.facts does not list.
+deviates	ACS-REQ-0012	session-violating
+deviates	ACS-REQ-0020	session-violating
+deviates	ACS-REQ-0027	session-violating
+deviates	ACS-REQ-0060	session-violating
+fail	ACS-REQ-0001	session-violating
+fail	ACS-REQ-0002	session-violating
+fail	ACS-REQ-0003	session-violating
+fail	ACS-REQ-0004	session-violating
+fail	ACS-REQ-0005	session-violating
+fail	ACS-REQ-0006	session-violating
+fail	ACS-REQ-0007	session-violating
+fail	ACS-REQ-0008	session-violating
+fail	ACS-REQ-0009	session-violating
+fail	ACS-REQ-0010	session-violating
+fail	ACS-REQ-0011	session-violating
+fail	ACS-REQ-0013	session-violating
+fail	ACS-REQ-0014	session-violating
+fail	ACS-REQ-0015	session-violating
+fail	ACS-REQ-0016	session-violating
+fail	ACS-REQ-0017	session-violating
+fail	ACS-REQ-0018	session-violating
+fail	ACS-REQ-0022	session-violating
+fail	ACS-REQ-0023	session-violating
+fail	ACS-REQ-0092	session-violating
+not_activated	ACS-REQ-0032	session-violating
+not_activated	ACS-REQ-0062	session-violating
+not_activated	ACS-REQ-0063	session-violating
+not_activated	ACS-REQ-0083	session-violating
+not_activated	ACS-REQ-0124	session-violating
+not_activated	ACS-REQ-0130	session-violating
+not_activated	ACS-REQ-0131	session-violating
+not_activated	ACS-REQ-0132	session-violating
+not_activated	ACS-REQ-0134	session-violating
+not_activated	ACS-REQ-0135	session-violating
+not_activated	ACS-REQ-0136	session-violating
+not_activated	ACS-REQ-0137	session-violating
+not_activated	ACS-REQ-0138	session-violating
+not_activated	ACS-REQ-0139	session-violating
+not_activated	ACS-REQ-0141	session-violating
+not_activated	ACS-REQ-0143	session-violating
+not_activated	ACS-REQ-0144	session-violating
+not_activated	ACS-REQ-0145	session-violating
+not_activated	ACS-REQ-0146	session-violating
+not_activated	ACS-REQ-0147	session-violating
+not_activated	ACS-REQ-0148	session-violating
+not_activated	ACS-REQ-0149	session-violating
+not_activated	ACS-REQ-0150	session-violating
+not_exercised	ACS-REQ-0102	session-violating
+pass	ACS-REQ-0028	session-violating
+pass	ACS-REQ-0039	session-violating
+pass	ACS-REQ-0052	session-violating
+pass	ACS-REQ-0053	session-violating
+pass	ACS-REQ-0061	session-violating
+pass	ACS-REQ-0066	session-violating
+pass	ACS-REQ-0067	session-violating
+pass	ACS-REQ-0072	session-violating
+pass	ACS-REQ-0081	session-violating
+pass	ACS-REQ-0082	session-violating
+pass	ACS-REQ-0086	session-violating
+pass	ACS-REQ-0087	session-violating
+pass	ACS-REQ-0095	session-violating
+pass	ACS-REQ-0096	session-violating
+pass	ACS-REQ-0097	session-violating
+pass	ACS-REQ-0103	session-violating
+pass	ACS-REQ-0113	session-violating
+pass	ACS-REQ-0114	session-violating
+pass	ACS-REQ-0117	session-violating
+pass	ACS-REQ-0120	session-violating
+pass	ACS-REQ-0121	session-violating
+pass	ACS-REQ-0142	session-violating
+unevaluated	ACS-REQ-0030
+unevaluated	ACS-REQ-0031
+unevaluated	ACS-REQ-0041
+unevaluated	ACS-REQ-0043
+unevaluated	ACS-REQ-0046
+unevaluated	ACS-REQ-0050
+unevaluated	ACS-REQ-0051
+unevaluated	ACS-REQ-0076
+unevaluated	ACS-REQ-0077
+unevaluated	ACS-REQ-0078
+unevaluated	ACS-REQ-0079
+unevaluated	ACS-REQ-0084
+unevaluated	ACS-REQ-0100
+unevaluated	ACS-REQ-0111
+unevaluated	ACS-REQ-0151

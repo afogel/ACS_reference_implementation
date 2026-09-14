@@ -20,7 +20,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type ColumnType = "symbol" | "number";
-export type RelationSource = "wire" | "external" | "guardian-state" | "deployment" | "static";
+/** Where a relation's tuples come from. `catalog` and `derived` are the verdict layer's: generated from the provision records, and computed by the verdict rules; neither is declared in relations.yaml. */
+export type RelationSource = "wire" | "external" | "guardian-state" | "deployment" | "static" | "catalog" | "derived";
 
 export interface Column {
   name: string;

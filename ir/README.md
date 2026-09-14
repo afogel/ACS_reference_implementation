@@ -18,9 +18,9 @@ bun run ir markers patch     # the overlay as a git patch against the spec repo:
 bun run ir extract           # writes ir/manifest/provisions.json from the marked corpus
 bun run ir render            # writes ir/dist/provision-index.md from manifest + records
 bun run ir lint              # spec-lint: failures by rule, records needing review, the migration worklist; exits 1 on either
-bun run ir compile           # predicates -> ir/dist/rules.dl (Soufflé), ir/.build/rules.json (evaluator), invariants.tla
+bun run ir compile           # predicates and the verdict layer -> ir/dist/rules.dl (Soufflé), ir/.build/rules.json (evaluator), invariants.tla
 bun run ir verify t.jsonl    # conformance report over an envelope log; add --guardian, --deployment, --hmac-key for the external facts
-bun run ir verify --facts d  # in-process evaluator over a directory of .facts; prints one line per violation: provision, subject values, witness values
+bun run ir verify --facts d  # in-process evaluator over a directory of .facts; prints one line per violation (provision, subject values, witness values), then one per verdict tuple (relation, provision, session)
 bun run ir differential      # both engines over ir/test/conformance/fixtures; SOUFFLE=/path enables the oracle locally
 bun run ir ids next REQ      # allocates the next ACS-REQ-NNNN and bumps the counter
 ```
@@ -43,12 +43,12 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | `markers/overlay.yaml` | authored | The staging overlay: where each provision's anchor and terminator go, by verbatim quote against the pinned corpus. Retired once markers are merged upstream. |
 | `ids/counter.yaml`, `ids/tombstones.yaml` | authored via `acs-ir ids next` | Monotonic ID allocation and retired IDs. |
 | `manifest/provisions.json` | generated | The mechanical half of every provision: id, type, source, line, block type, section slug, level, text, text hash. Written only by `acs-ir extract`. |
-| `provisions/<ID>.yaml` | authored | The semantic half: actor, profile, activation, modality, evidence class, schema refs, dependencies, restatement, status. One record per provision, joined to the manifest by ID. |
+| `provisions/<ID>.yaml` | authored | The semantic half: actor, profile, activation, modality, keyword where the marked span has none or a misleading one (with its basis), evidence class, schema refs, dependencies, restatement, status. One record per provision, joined to the manifest by ID. |
 | `dist/provision-index.md` | generated | The human-readable catalog. |
-| `vocabulary/relations.yaml` | authored | The fact vocabulary: every relation a predicate may name, typed, with its source (wire, external, guardian-state, deployment, static). |
+| `vocabulary/relations.yaml` | authored | The fact vocabulary: every relation a predicate may name, typed, with its source (wire, external, guardian-state, deployment, static). Two of them, `negotiated` and `available`, describe the run and feed the verdict layer. |
 | `dist/markers.patch`, `dist/markers-poc.patch` | generated | The overlay as unified diffs against the spec repository: the bulk marker PR's payload and the five-provision proof of concept. Both apply to the pinned checkout; the test suite proves it. |
-| `dist/rules.dl` | generated | The published Soufflé program: runnable by an auditor with stock Soufflé 2.5 and a directory of `.facts`. |
-| `test/conformance/fixtures/<name>/` | authored | `.facts` per relation plus `expected.tsv`, the violations both engines must derive, one per line as provision, subject values, witness values. Cites provision IDs. |
+| `dist/rules.dl` | generated | The published Soufflé program: runnable by an auditor with stock Soufflé 2.5 and a directory of `.facts`. It ends with the verdict layer: each compiled provision's RFC 2119 strength, profiles and needs as facts, and the rules that derive `fail`, `deviates`, `pass`, `unevaluated`, `not_activated` and `not_exercised` per session. |
+| `test/conformance/fixtures/<name>/` | authored | `.facts` per relation plus `expected.tsv`, the violations both engines must derive, one per line as provision, subject values, witness values, and `expected-verdicts.tsv`, the verdict tuples. `negotiated.facts` and `available.facts` describe the run. Cites provision IDs. |
 | `.build/rules.json`, `.build/invariants.tla` | generated, ignored | The evaluator's rule set and the declared invariant list. |
 | `.build/marked/` | generated, ignored | The marked copy of the corpus the extractor reads. |
 | `.build/stale.json`, `.build/lint.json`, `.build/impact.md` | generated, ignored | Provisions needing review and the worklist, the full lint report, and the PR comment, written by `acs-ir lint`. |
@@ -66,7 +66,7 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | `src/catalog/catalog.ts` | code | Record parsing and the manifest-to-record join. |
 | `src/catalog/staleness.ts` | code | Needs-review from a changed text, a changed dependency, or a changed canonical restatement; the migration worklist. |
 | `src/catalog/test-citations.ts` | code | Which conformance tests cite which IDs (empty until V5). |
-| `src/compile/` | code | The vocabulary, the predicate parser, the compiler, the Soufflé emitter, the TLA+ invariant list. |
+| `src/compile/` | code | The vocabulary, the predicate parser, the rule checker, the compiler, the verdict layer, the Soufflé emitter, the TLA+ invariant list. |
 | `src/verify/` | code | The trace normalizer, the ordinary-code facts (JCS, chain hashes, HMAC), Ajv over the pinned schemas, the semi-naive evaluator, verdicts, fact files, the differential oracle. |
 | `test/fixtures/trace/generate.ts` | code | Generates the clean and violating envelope logs, with a Guardian dump and deployment facts, that `verify` is tested against. |
 | `.build/conformance-report.md` | generated, ignored | The report `acs-ir verify <trace>` last produced. |
@@ -86,3 +86,4 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | V6 | shipped | The conformance report over an envelope log: verdicts with evidence, scoped to negotiated profiles, rosters printed. |
 | V7 | shipped | The full conversion: 155 provisions, 34 authored exclusions, zero unbound occurrences; the inexpressible set enumerated. |
 | V8 | shipped (tooling and drafts) | `markers patch` writes the bulk and proof-of-concept patches; the Discussion and both PR texts are drafted under `slices/v8/`. Posting them upstream is the maintainer's step. |
+| Keywords ([#49](https://github.com/afogel/ACS_reference_implementation/pull/49)) | shipped | RFC 2119 strength as facts and the verdicts as rules in both engines: a breached SHOULD is a deviation, not a failure; profile scoping, exercise and evaluability are Datalog; the published program outputs verdicts. |

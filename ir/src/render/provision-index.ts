@@ -5,7 +5,7 @@
  * will publish (U26), and U14 the test-coverage table from the citation
  * index over `ir/test/conformance/` (R6.3).
  */
-import type { Catalog, CatalogEntry } from "../catalog/catalog.ts";
+import { effectiveKeyword, type Catalog, type CatalogEntry } from "../catalog/catalog.ts";
 import { idToAnchor } from "../ids.ts";
 
 export function renderProvisionIndex(catalog: Catalog, corpus: { version: string | null; commit: string | null }, citations: Map<string, string[]> = new Map()): string {
@@ -20,11 +20,11 @@ export function renderProvisionIndex(catalog: Catalog, corpus: { version: string
     "## Index",
     "",
     ...table(
-      ["ID", "Type", "Level", "Actor", "Profile", "Evidence", "Modality", "Status", "Source", "Title"],
+      ["ID", "Type", "Keyword", "Actor", "Profile", "Evidence", "Modality", "Status", "Source", "Title"],
       catalog.entries.map(({ manifest: m, record: r }) => [
         `[${m.id}](#${m.id.toLowerCase()})`,
         m.type,
-        m.level ?? "—",
+        (m.type === "Requirement" ? effectiveKeyword(m, r) : m.level) ?? "—",
         r.actor,
         r.profile === "all" ? "all" : r.profile.join(", "),
         r.evidence_class,
@@ -60,8 +60,9 @@ function renderDetail({ manifest: m, record: r }: CatalogEntry): string[] {
     "",
     `- Actor: ${r.actor}; reported against: ${r.reported_against}`,
     `- Profile: ${r.profile === "all" ? "all" : r.profile.join(", ")}${r.activation ? `; activation: ${r.activation}` : ""}`,
-    `- Modality: ${r.modality_kind}; evidence: ${r.evidence_class}`,
+    `- Modality: ${r.modality_kind}; evidence: ${r.evidence_class}${m.type === "Requirement" ? `; keyword: ${effectiveKeyword(m, r) ?? "none"}` : ""}`,
   ];
+  if (r.keyword) lines.push(`- Keyword ${r.keyword} stated by the record, not the span (${m.level ?? "no keyword"}): ${r.keyword_basis}`);
   if (r.schema_refs.length) lines.push(`- Schema: ${r.schema_refs.map((s) => `\`${s.file}#${s.pointer}\``).join(", ")}`);
   if (r.depends_on.length) lines.push(`- Depends on: ${r.depends_on.map(link).join(", ")}`);
   if (r.restates) lines.push(`- Restates: ${link(r.restates)}`);

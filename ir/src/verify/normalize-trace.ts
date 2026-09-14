@@ -206,6 +206,8 @@ export function normalizeTrace(lines: TraceLine[]): NormalizedTrace {
   }
 
   const sessionList = [...sessions.values()].map((s) => ({ ...s, profiles: s.profiles.length ? s.profiles : ["acs-core"] }));
+  // The verdict layer activates a provision in a session through `negotiated`.
+  for (const s of sessionList) for (const profile of s.profiles) add("negotiated", [s.session, profile]);
   return { lines, facts, sessions: sessionList, sessionOf };
 }
 

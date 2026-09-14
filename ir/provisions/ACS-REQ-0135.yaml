@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-inspect]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "An imperative list item with no RFC 2119 word; the conformance page lists it as what a claim of the profile requires, which is a MUST."
 evidence_class: non-testable
 schema_refs: []
 depends_on: []

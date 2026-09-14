@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "The span is the §6 table body, whose first keyword is RECOMMENDED, the status of `reasoning` on an ALLOW. The obligation the rule checks is the required field per disposition, which the table states without a keyword."
 evidence_class: schema
 schema_refs:
   - file: response-envelope.json

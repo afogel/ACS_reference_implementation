@@ -9,6 +9,10 @@
  * construct nobody had checked.
  *
  * Running on a laptop needs only `bun install` and this file (R3.9).
+ *
+ * `evaluateProgram()` runs the provisions and then the verdict layer over
+ * their violation relations, returning both; `evaluate()` is the
+ * violations alone.
  */
 import type { CompiledProvision, RuleProgram } from "../compile/compile.ts";
 import type { Atom, Literal, Rule, Term } from "../compile/predicate.ts";
@@ -28,7 +32,17 @@ export function unified(v: Violation): string {
 type Store = Map<string, Map<string, Tuple>>;
 type Bindings = Map<string, Value>;
 
+export interface Evaluation {
+  violations: Violation[];
+  /** The verdict layer's output relations: fail, deviates, pass, unevaluated, not_activated, not_exercised. */
+  verdicts: FactSet;
+}
+
 export function evaluate(program: RuleProgram, facts: FactSet): Violation[] {
+  return evaluateProgram(program, facts).violations;
+}
+
+export function evaluateProgram(program: RuleProgram, facts: FactSet): Evaluation {
   const store: Store = new Map();
   for (const rel of program.relations) {
     const table = new Map<string, Tuple>();
@@ -43,15 +57,27 @@ export function evaluate(program: RuleProgram, facts: FactSet): Violation[] {
       violations.push({ provision: p.id, subject: t.slice(0, p.subject.length), witness: t.slice(p.subject.length) });
     }
   }
-  return violations.sort((a, b) => unified(a).localeCompare(unified(b)));
+  // The verdict layer: catalog facts seeded, derived relations empty, then its strata.
+  const layer = program.verdicts;
+  for (const rel of layer.catalog) store.set(rel.name, new Map(rel.facts.map((t) => [key(t), [...t]])));
+  for (const rel of layer.derived) store.set(rel.name, new Map());
+  runStrata(layer.rules, layer.strata, store);
+  const verdicts: FactSet = new Map();
+  for (const name of layer.outputs) verdicts.set(name, [...(store.get(name)?.values() ?? [])].sort((a, b) => key(a).localeCompare(key(b))));
+  return { violations: violations.sort((a, b) => unified(a).localeCompare(unified(b))), verdicts };
 }
 
 function evaluateProvision(p: CompiledProvision, store: Store): void {
   for (const h of p.helpers) store.set(h.name, new Map());
   store.set((p.violation as NonNullable<typeof p.violation>).name, new Map());
-  for (const stratum of p.strata) {
+  runStrata(p.rules, p.strata, store);
+}
+
+/** Semi-naive fixpoint per stratum, lowest first. */
+function runStrata(allRules: Rule[], strata: string[][], store: Store): void {
+  for (const stratum of strata) {
     const members = new Set(stratum);
-    const rules = p.rules.filter((r) => members.has(r.head.relation));
+    const rules = allRules.filter((r) => members.has(r.head.relation));
     // Semi-naive: after the first full round, only bindings that touch a delta tuple of a member relation can be new.
     let delta = new Map<string, Map<string, Tuple>>();
     for (const m of members) delta.set(m, new Map(store.get(m)));

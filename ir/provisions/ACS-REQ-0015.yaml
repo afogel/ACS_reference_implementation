@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "A cell stating the outcome as fact with no RFC 2119 word; the termination is a MUST on the Guardian."
 evidence_class: wire
 schema_refs: []
 depends_on: []

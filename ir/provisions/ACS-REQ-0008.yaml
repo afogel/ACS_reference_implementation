@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "The cell says 'always', which is not an RFC 2119 word; an unconditional ordering rule is a MUST."
 evidence_class: guardian-state
 schema_refs: []
 depends_on: []

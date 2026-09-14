@@ -30,6 +30,8 @@ const record = (id: string, extra: Partial<ProvisionRecord> = {}): ProvisionReco
   profile: ["acs-core"],
   activation: null,
   modality_kind: "obligation",
+  keyword: null,
+  keyword_basis: null,
   evidence_class: "wire",
   schema_refs: [],
   depends_on: [],
@@ -178,3 +180,54 @@ describe("parseVocabulary -- the vocabulary's own shape", () => {
     expect(() => parseVocabulary("relations:\n  - name: a\n    source: wire\n    columns: [{ name: seq, type: number }, { name: x, type: symbol, domain: seq }]\n")).toThrow("domain seq is number elsewhere, symbol here");
   });
 });
+
+describe("the verdict layer -- RFC 2119 strength as facts, verdicts as rules", () => {
+  const manifestEntry = (id: string, level: ManifestEntry["level"]): ManifestEntry => ({ ...entry(id), level, keywords: level ? [level] : [] });
+  const program = compileProgram(
+    vocabulary,
+    [
+      { manifest: manifestEntry("ACS-REQ-0007", "MUST"), record: record("ACS-REQ-0007", { predicate: rules(["Seq"], ["Session"], "violation(Seq, Session) :- hook(Seq, Session, _), not handshake(_, Session).") }) },
+      { manifest: manifestEntry("ACS-REQ-0012", "SHOULD"), record: record("ACS-REQ-0012", { profile: ["acs-audit"], predicate: rules(["Session"], ["Seq"], 'violation(Session, Seq) :- intent_modification_rejected(Session, Seq), not audit_event(Session, Seq, "intent_modification_rejected").') }) },
+      { manifest: manifestEntry("ACS-REQ-0022", "MUST"), record: record("ACS-REQ-0022", { modality_kind: "conditional-on-exercise", predicate: rules(["Session"], ["Field"], "violation(Session, Field) :- archived(Session), archive_required_field(Field), not archive_preserved(Session, Field).") }) },
+      { manifest: manifestEntry("ACS-REQ-0021", "MAY"), record: record("ACS-REQ-0021", { modality_kind: "permission" }) },
+      { manifest: manifestEntry("ACS-REQ-0003", "MUST"), record: record("ACS-REQ-0003", { predicate: rules(["Seq"], ["Field"], 'violation(Seq, "reasoning") :- decision(Seq, "deny"), not result_field(Seq, "reasoning").') }) },
+    ],
+    { version: null, commit: null },
+  );
+
+  it("states each compiled provision's strength, polarity, profiles and needs as facts, and every Requirement's profiles", () => {
+    const fact = (name: string) => program.verdicts.catalog.find((r) => r.name === name)?.facts;
+    expect(fact("strength")).toEqual([["ACS-REQ-0007", "must"], ["ACS-REQ-0012", "should"], ["ACS-REQ-0022", "must"], ["ACS-REQ-0003", "must"]]);
+    expect(fact("polarity")?.every((t) => t[1] === "obligation")).toBe(true);
+    expect(fact("provision")).toEqual([["ACS-REQ-0007"], ["ACS-REQ-0012"], ["ACS-REQ-0022"], ["ACS-REQ-0021"], ["ACS-REQ-0003"]]);
+    expect(fact("requires_profile")).toEqual([["ACS-REQ-0003", "acs-core"], ["ACS-REQ-0007", "acs-core"], ["ACS-REQ-0012", "acs-audit"], ["ACS-REQ-0021", "acs-core"], ["ACS-REQ-0022", "acs-core"]]);
+    expect(fact("needs")).toEqual([["ACS-REQ-0012", "audit_event"], ["ACS-REQ-0012", "intent_modification_rejected"], ["ACS-REQ-0022", "archive_preserved"], ["ACS-REQ-0022", "archived"]]);
+    expect(fact("conditional")).toEqual([["ACS-REQ-0022"]]);
+  });
+
+  it("attributes a violation to a session through a session column, or a seq column joined to envelope, and reads a conditional provision's exercise off its positive atoms", () => {
+    const sources = program.verdicts.rules.map((r) => r.source);
+    // A session column anywhere in the violation is used directly; a violation keyed by seq alone joins envelope.
+    expect(sources).toContain('violated("ACS-REQ-0007", S) :- acs_req_0007__violation(_, S).');
+    expect(sources).toContain('violated("ACS-REQ-0012", S) :- acs_req_0012__violation(S, _).');
+    expect(sources).toContain('violated("ACS-REQ-0003", S) :- acs_req_0003__violation(Q, _), envelope(Q, S, _, _, _).');
+    expect(sources).toContain('exercised("ACS-REQ-0022", Session) :- archived(Session).');
+    expect(program.verdicts.outputs).toEqual(["fail", "deviates", "pass", "unevaluated", "not_activated", "not_exercised"]);
+    expect(program.verdicts.strata.flat()).toEqual(["violated", "exercised", "active", "unevaluated", "not_activated", "not_exercised", "fail", "deviates", "pass"]);
+    expect(program.domains.map((d) => d.name)).toContain("provision");
+  });
+
+  it("refuses a provision whose violation names neither a session nor a seq, since no session could be judged by it", () => {
+    const p = compileProgram(vocabulary, [{ manifest: manifestEntry("ACS-REQ-0014", "MUST"), record: record("ACS-REQ-0014", { predicate: rules(["Pid"], ["Other"], "violation(Pid, Other) :- provenance(_, _, Pid, _), provenance(_, _, Other, _), Pid != Other.") }) }], { version: null, commit: null });
+    expect(p.problems.map((x) => x.message)).toEqual(["ACS-REQ-0014: no subject or witness column holds a session or a seq, so a violation cannot be attributed to a session"]);
+  });
+
+  it("emits the layer into the published program: catalog facts inline, the verdicts as outputs, the rules last", () => {
+    const dl = emitSouffleProgram(program);
+    expect(dl).toContain('.decl strength(provision:Provision, strength:Strength)\nstrength("ACS-REQ-0007", "must").');
+    expect(dl).toContain(".decl deviates(provision:Provision, session:Session)\n.output deviates");
+    expect(dl).toContain('deviates(P, S) :- violated(P, S), active(P, S), strength(P, "should"), !unevaluated(P).');
+    expect(dl).toContain(".type Provision <: symbol");
+  });
+});
+

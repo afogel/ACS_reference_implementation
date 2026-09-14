@@ -1,0 +1,4 @@
+# negotiated(session, profile)  source: wire
+# The profiles each session negotiated; the verdict rules activate a provision through this relation.
+session-clean	acs-core
+session-clean	acs-provenance

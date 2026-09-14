@@ -24,6 +24,8 @@ const record = (id: string, reviewed_against: string, extra: Partial<ProvisionRe
   profile: ["acs-core"],
   activation: null,
   modality_kind: "obligation",
+  keyword: null,
+  keyword_basis: null,
   evidence_class: "wire",
   schema_refs: [],
   depends_on: [],

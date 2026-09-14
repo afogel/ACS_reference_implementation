@@ -1,3 +1,14 @@
 # envelope(seq, session, direction, method, rpc_id)  source: wire
 # One tuple per envelope-log line. `direction` is request or response; `method` is the ACS method
-# the Guardian dispatched.
+# the Guardian dispatched. Every seq the other relations mention has a row here, which is how a
+# violation is attributed to its session by the verdict layer.
+2	session-violating	request	steps/toolCallRequest	rpc-2
+3	session-violating	request	handshake/hello	rpc-3
+4	session-violating	request	steps/toolCallRequest	rpc-4
+5	session-violating	request	steps/toolCallResult	rpc-5
+6	session-violating	request	steps/agentResponse	rpc-6
+20	session-violating	response	steps/toolCallRequest	rpc-2
+30	session-violating	response	handshake/hello	rpc-3
+40	session-violating	response	steps/toolCallRequest	rpc-4
+50	session-violating	response	steps/toolCallResult	rpc-5
+60	session-violating	response	steps/agentResponse	rpc-6

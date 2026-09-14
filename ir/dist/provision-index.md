@@ -6,7 +6,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 ## Index
 
-| ID | Type | Level | Actor | Profile | Evidence | Modality | Status | Source | Title |
+| ID | Type | Keyword | Actor | Profile | Evidence | Modality | Status | Source | Title |
 |---|---|---|---|---|---|---|---|---|---|
 | [ACS-DEF-0001](#acs-def-0001) | Definition | — | none | all | not-applicable | definition | active | spec/instrument/specification.md:295 | Signed input |
 | [ACS-DEF-0002](#acs-def-0002) | Definition | — | none | all | not-applicable | definition | active | concepts/provenance.md:19 | Lineage spans derivation |
@@ -15,21 +15,21 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-INV-0002](#acs-inv-0002) | Invariant | MUST NOT | none | all | guardian-state | invariant | active | concepts/intent.md:21 | The only conformant path to widen Intent |
 | [ACS-INV-0003](#acs-inv-0003) | Invariant | MUST NOT | none | all | not-applicable | invariant | active | concepts/identity.md:13 | Three identities are distinct |
 | [ACS-INV-0004](#acs-inv-0004) | Invariant | MUST NOT | none | all | guardian-state | invariant | active | concepts/trust.md:25 | The rungs do not collapse |
-| [ACS-REQ-0001](#acs-req-0001) | Requirement | — | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:56 | Response shape is a discriminated union |
+| [ACS-REQ-0001](#acs-req-0001) | Requirement | MUST | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:56 | Response shape is a discriminated union |
 | [ACS-REQ-0002](#acs-req-0002) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:59 | Non-batching Guardian rejects array input with -32600 |
-| [ACS-REQ-0003](#acs-req-0003) | Requirement | RECOMMENDED | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:113 | Required fields per disposition |
+| [ACS-REQ-0003](#acs-req-0003) | Requirement | MUST | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:113 | Required fields per disposition |
 | [ACS-REQ-0004](#acs-req-0004) | Requirement | MUST | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:119 | DEFER carries its resolution fields |
-| [ACS-REQ-0005](#acs-req-0005) | Requirement | — | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:119 | DEFER reason vocabulary |
+| [ACS-REQ-0005](#acs-req-0005) | Requirement | MUST | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:119 | DEFER reason vocabulary |
 | [ACS-REQ-0006](#acs-req-0006) | Requirement | MUST | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:119 | Cascading deferrals are bounded per session |
-| [ACS-REQ-0007](#acs-req-0007) | Requirement | — | observed-agent | acs-core | wire | obligation | active | spec/instrument/specification.md:65 | Handshake precedes any hook traffic |
-| [ACS-REQ-0008](#acs-req-0008) | Requirement | — | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:22 | Deterministic layer evaluates before the agent layer |
-| [ACS-REQ-0009](#acs-req-0009) | Requirement | — | framework | acs-provenance | wire | obligation | active | spec/instrument/specification.md:179 | derived_from is in-session lineage |
+| [ACS-REQ-0007](#acs-req-0007) | Requirement | MUST | observed-agent | acs-core | wire | obligation | active | spec/instrument/specification.md:65 | Handshake precedes any hook traffic |
+| [ACS-REQ-0008](#acs-req-0008) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:22 | Deterministic layer evaluates before the agent layer |
+| [ACS-REQ-0009](#acs-req-0009) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/instrument/specification.md:179 | derived_from is in-session lineage |
 | [ACS-REQ-0010](#acs-req-0010) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/instrument/specification.md:188 | agent_generated trust is the minimum over its lineage |
 | [ACS-REQ-0011](#acs-req-0011) | Requirement | MUST | framework | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:244 | Framework enforces Intent immutability |
 | [ACS-REQ-0012](#acs-req-0012) | Requirement | SHOULD | framework | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:244 | Rejected Intent modification is recorded as an audit event |
 | [ACS-REQ-0013](#acs-req-0013) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:228 | entry_hash chain computation |
-| [ACS-REQ-0014](#acs-req-0014) | Requirement | — | framework | acs-provenance | wire | obligation | active | spec/instrument/specification.md:176 | provenance_id is unique within a session |
-| [ACS-REQ-0015](#acs-req-0015) | Requirement | — | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:71 | Version mismatch terminates with UNSUPPORTED_VERSION |
+| [ACS-REQ-0014](#acs-req-0014) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/instrument/specification.md:176 | provenance_id is unique within a session |
+| [ACS-REQ-0015](#acs-req-0015) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:71 | Version mismatch terminates with UNSUPPORTED_VERSION |
 | [ACS-REQ-0016](#acs-req-0016) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:254 | Chain head is published on every content-bearing response |
 | [ACS-REQ-0017](#acs-req-0017) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:254 | Published chain head is covered by the response signature |
 | [ACS-REQ-0018](#acs-req-0018) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:295 | Verifier recomputes the canonical signed input |
@@ -37,10 +37,10 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0020](#acs-req-0020) | Requirement | SHOULD | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:248 | Chain hash mismatch triggers an audit event |
 | [ACS-REQ-0021](#acs-req-0021) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:248 | Guardian may archive above a byte threshold |
 | [ACS-REQ-0022](#acs-req-0022) | Requirement | MUST | guardian | acs-core | guardian-state | conditional-on-exercise | active | spec/instrument/specification.md:248 | Archival preserves chain_hash, provenance_summary and intent |
-| [ACS-REQ-0023](#acs-req-0023) | Requirement | REQUIRED | guardian | acs-core | guardian-state | obligation | active | concepts/agents.md:21 | Approver authentication and identity verification |
-| [ACS-REQ-0024](#acs-req-0024) | Requirement | REQUIRED | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:262 | Approver authentication and identity verification (pillar copy) |
+| [ACS-REQ-0023](#acs-req-0023) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | concepts/agents.md:21 | Approver authentication and identity verification |
+| [ACS-REQ-0024](#acs-req-0024) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:262 | Approver authentication and identity verification (pillar copy) |
 | [ACS-REQ-0025](#acs-req-0025) | Requirement | MUST NOT | framework | all | non-testable | obligation | active | spec/instrument/specification.md:12 | The agent has no knowledge of hooks |
-| [ACS-REQ-0026](#acs-req-0026) | Requirement | OPTIONAL | deployment | acs-provenance | not-applicable | permission | active | spec/instrument/specification.md:183 | The trust enum is optional on the wire |
+| [ACS-REQ-0026](#acs-req-0026) | Requirement | MAY | deployment | acs-provenance | not-applicable | permission | active | spec/instrument/specification.md:183 | The trust enum is optional on the wire |
 | [ACS-REQ-0027](#acs-req-0027) | Requirement | SHOULD | guardian | acs-provenance | wire | obligation | active | spec/conformance.md:61 | Populated trust follows the default channel mapping |
 | [ACS-REQ-0028](#acs-req-0028) | Requirement | SHOULD | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:59 | Guardians accept batched requests |
 | [ACS-REQ-0029](#acs-req-0029) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:71 | Unknown fields are ignored |
@@ -49,7 +49,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0032](#acs-req-0032) | Requirement | SHOULD | observed-agent | acs-trace | non-testable | obligation | active | spec/instrument/specification.md:77 | An unguarded session start surfaces on Trace events |
 | [ACS-REQ-0033](#acs-req-0033) | Requirement | SHOULD | observed-agent | acs-core | wire | obligation | active | spec/instrument/specification.md:77 | The Observed Agent retries the handshake for later sessions |
 | [ACS-REQ-0034](#acs-req-0034) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:130 | Audience-specific text is composed client-side |
-| [ACS-REQ-0035](#acs-req-0035) | Requirement | OPTIONAL | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:131 | policy_version is optional |
+| [ACS-REQ-0035](#acs-req-0035) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:131 | policy_version is optional |
 | [ACS-REQ-0036](#acs-req-0036) | Requirement | SHOULD | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:131 | policy_version is populated when replay matters |
 | [ACS-REQ-0037](#acs-req-0037) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:131 | A decision may cite several policy references |
 | [ACS-REQ-0038](#acs-req-0038) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:132 | Consumers switch on reason codes, not prose |
@@ -73,12 +73,12 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0058](#acs-req-0058) | Requirement | MAY | observed-agent | acs-core | not-applicable | permission | active | spec/instrument/specification.md:209 | The Observed Agent may cross-check the chain head |
 | [ACS-REQ-0059](#acs-req-0059) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:211 | The chain may initialize implicitly without sessionStart |
 | [ACS-REQ-0060](#acs-req-0060) | Requirement | SHOULD | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:222 | ContextEntry SHOULD carry request_hash, timestamp and provenance_summary |
-| [ACS-REQ-0061](#acs-req-0061) | Requirement | — | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:222 | previous_hash is present on every entry but the first |
+| [ACS-REQ-0061](#acs-req-0061) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:222 | previous_hash is present on every entry but the first |
 | [ACS-REQ-0062](#acs-req-0062) | Requirement | MUST | guardian | acs-audit | guardian-state | obligation | active | spec/instrument/specification.md:222 | ACS-Audit deployments populate request_hash |
 | [ACS-REQ-0063](#acs-req-0063) | Requirement | SHOULD | guardian | acs-audit | guardian-state | obligation | active | spec/conformance.md:75 | ACS-Audit entries carry timestamp and provenance_summary |
-| [ACS-REQ-0064](#acs-req-0064) | Requirement | OPTIONAL | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:238 | ProvenanceSummary fields are all optional |
-| [ACS-REQ-0065](#acs-req-0065) | Requirement | OPTIONAL | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:242 | Intent is optional |
-| [ACS-REQ-0066](#acs-req-0066) | Requirement | REQUIRED | framework | acs-core | schema | obligation | active | spec/instrument/specification.md:242 | parser_provenance is required when parsed is present |
+| [ACS-REQ-0064](#acs-req-0064) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:238 | ProvenanceSummary fields are all optional |
+| [ACS-REQ-0065](#acs-req-0065) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:242 | Intent is optional |
+| [ACS-REQ-0066](#acs-req-0066) | Requirement | MUST | framework | acs-core | schema | obligation | active | spec/instrument/specification.md:242 | parser_provenance is required when parsed is present |
 | [ACS-REQ-0067](#acs-req-0067) | Requirement | MUST | framework | acs-core | wire | obligation | active | spec/instrument/specification.md:242 | parser_provenance origin is user_input |
 | [ACS-REQ-0068](#acs-req-0068) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:256 | A Guardian may DENY or error on a chain mismatch |
 | [ACS-REQ-0069](#acs-req-0069) | Requirement | SHOULD | verifier | acs-core | non-testable | obligation | active | spec/instrument/specification.md:256 | A published chain head inconsistent with the chain is an integrity event |
@@ -93,8 +93,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0078](#acs-req-0078) | Requirement | MUST NOT | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:282 | No ASK to an approver-incapable client |
 | [ACS-REQ-0079](#acs-req-0079) | Requirement | MUST | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:282 | ASK is substituted with a fail-closed DEFER or a DENY |
 | [ACS-REQ-0080](#acs-req-0080) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:287 | Substitution prefers DEFER when recoverable |
-| [ACS-REQ-0081](#acs-req-0081) | Requirement | REQUIRED | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:293 | Every envelope carries a signature |
-| [ACS-REQ-0082](#acs-req-0082) | Requirement | RECOMMENDED | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:303 | The signature algorithm registry |
+| [ACS-REQ-0081](#acs-req-0081) | Requirement | MUST | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:293 | Every envelope carries a signature |
+| [ACS-REQ-0082](#acs-req-0082) | Requirement | MUST | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:303 | The signature algorithm registry |
 | [ACS-REQ-0083](#acs-req-0083) | Requirement | MUST | guardian | acs-crypto | wire | obligation | active | spec/instrument/specification.md:318 | Hybrid signatures verify both components |
 | [ACS-REQ-0084](#acs-req-0084) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:322 | Requests outside the skew window are rejected |
 | [ACS-REQ-0086](#acs-req-0086) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:322 | Duplicate request_id within a session is rejected |
@@ -105,7 +105,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0091](#acs-req-0091) | Requirement | MUST NOT | guardian | acs-core | non-testable | obligation | active | spec/instrument/specification.md:353 | The agent layer has no access to policy code |
 | [ACS-REQ-0092](#acs-req-0092) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | concepts/agents.md:15 | Decisions are logged with reasoning, model identifier, and confidence |
 | [ACS-REQ-0093](#acs-req-0093) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:354 | Decisions are logged (pillar copy) |
-| [ACS-REQ-0094](#acs-req-0094) | Requirement | OPTIONAL | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:357 | The agent layer is optional |
+| [ACS-REQ-0094](#acs-req-0094) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:357 | The agent layer is optional |
 | [ACS-REQ-0095](#acs-req-0095) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:371 | system/ping is always allowed |
 | [ACS-REQ-0096](#acs-req-0096) | Requirement | MUST NOT | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:372 | system/ping is not a ContextEntry |
 | [ACS-REQ-0097](#acs-req-0097) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:373 | system/ping needs no signature |
@@ -124,7 +124,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0110](#acs-req-0110) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:200 | A Guardian may deny compaction |
 | [ACS-REQ-0111](#acs-req-0111) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/instrument/hooks.md:210 | A compaction summary carries the union of its inputs' lineage |
 | [ACS-REQ-0112](#acs-req-0112) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:212 | A Guardian may rewrite a compaction summary |
-| [ACS-REQ-0113](#acs-req-0113) | Requirement | MAY | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:212 | A Guardian does not deny postCompact |
+| [ACS-REQ-0113](#acs-req-0113) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:212 | A Guardian does not deny postCompact |
 | [ACS-REQ-0114](#acs-req-0114) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/hooks.md:212 | The audit chain records the post-compact state |
 | [ACS-REQ-0116](#acs-req-0116) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:252 | A Guardian may deny a skill registration |
 | [ACS-REQ-0117](#acs-req-0117) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:252 | A denied skill cannot load |
@@ -145,11 +145,11 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | [ACS-REQ-0132](#acs-req-0132) | Requirement | MUST NOT | guardian | acs-trace | non-testable | obligation | active | spec/trace/events.md:72 | Trace emission never blocks enforcement |
 | [ACS-REQ-0133](#acs-req-0133) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/trace/events.md:72 | Trace events are emitted where feasible even without ACS-Trace |
 | [ACS-REQ-0134](#acs-req-0134) | Requirement | MUST | framework | acs-inspect | wire | obligation | active | spec/conformance.md:46 | ACS-Inspect emits agbom/snapshot before content-bearing hooks |
-| [ACS-REQ-0135](#acs-req-0135) | Requirement | — | guardian | acs-inspect | non-testable | obligation | active | spec/conformance.md:49 | ACS-Inspect serializes the AgBOM on request |
+| [ACS-REQ-0135](#acs-req-0135) | Requirement | MUST | guardian | acs-inspect | non-testable | obligation | active | spec/conformance.md:49 | ACS-Inspect serializes the AgBOM on request |
 | [ACS-REQ-0136](#acs-req-0136) | Requirement | MUST | framework | acs-inspect-dynamic | wire | obligation | active | spec/inspect/README.md:63 | ACS-Inspect-Dynamic emits agbom/changed on every mutation |
 | [ACS-REQ-0137](#acs-req-0137) | Requirement | MUST | guardian | acs-crypto | wire | obligation | active | spec/conformance.md:67 | ACS-Crypto supports ML-DSA-65 |
 | [ACS-REQ-0138](#acs-req-0138) | Requirement | SHOULD | guardian | acs-crypto | wire | obligation | active | spec/conformance.md:67 | ACS-Crypto supports SLH-DSA-128s |
-| [ACS-REQ-0139](#acs-req-0139) | Requirement | OPTIONAL | deployment | acs-crypto | not-applicable | permission | active | spec/conformance.md:67 | Hybrid composites are optional |
+| [ACS-REQ-0139](#acs-req-0139) | Requirement | MAY | deployment | acs-crypto | not-applicable | permission | active | spec/conformance.md:67 | Hybrid composites are optional |
 | [ACS-REQ-0140](#acs-req-0140) | Requirement | MUST | deployment | acs-core | non-testable | obligation | active | spec/inspect/README.md:10 | Inventory-dependent policy requires ACS-Inspect |
 | [ACS-REQ-0141](#acs-req-0141) | Requirement | SHOULD | framework | acs-inspect | wire | obligation | active | spec/inspect/README.md:42 | Components carry registration_provenance |
 | [ACS-REQ-0142](#acs-req-0142) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/inspect/README.md:42 | ACS-Provenance components carry registration_provenance |
@@ -260,7 +260,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): A schema-shaped table cell with no RFC 2119 word; the response shape is what the pinned schema enforces, and a schema constraint is a MUST.
 - Schema: `response-envelope.json#/properties/result/oneOf`, `response-envelope.json#/oneOf`
 - Status: active, since 0.1.0; reviewed against `42b94860cc35`
 - Note: The prose names the shape; v0.1.2's schema states the constraint a verifier checks: `result` is exactly one of AcsResult or ServerHello, and a response carries `result` or `error`, never both.
@@ -273,7 +274,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the Guardian does not support JSON-RPC batching
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `f49085a4e1af`
 - Note: The other half of §3's batching sentence (Guardians SHOULD accept arrays) is a separate, unmarked SHOULD.
 
@@ -289,7 +290,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
+- Keyword MUST stated by the record, not the span (RECOMMENDED): The span is the §6 table body, whose first keyword is RECOMMENDED, the status of `reasoning` on an ALLOW. The obligation the rule checks is the required field per disposition, which the table states without a keyword.
 - Schema: `response-envelope.json#/$defs/AcsResult/allOf`
 - Status: active, since 0.1.0; reviewed against `2eee6abd9102`
 - Note: One provision spanning the five body rows of the §6 table. The span rule handles a table body: the anchor sits in the first cell, the terminator in the last, and `block_type` is the anchor's cell. The text carries the table's pipe syntax; a reviewer reads it as the table.
@@ -302,7 +304,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the decision is DEFER
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
 - Schema: `defer-details.json#/required`
 - Status: active, since 0.1.0; reviewed against `1f8ef3c0ba29`
 - Note: Finding for upstream: defer-details.json requires reason, resolution_method and resolution_timeout_ms but not timeout_decision, which this sentence says DEFER MUST include (with default deny). A verifier must treat an absent timeout_decision as deny rather than as a schema failure until the schema and the prose agree.
@@ -315,7 +317,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the decision is DEFER
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): A table cell listing the reason vocabulary with no RFC 2119 word; a closed vocabulary is a MUST on the value.
 - Schema: `defer-details.json#/properties/reason/enum`
 - Status: active, since 0.1.0; reviewed against `874f308dd83c`
 - Note: Keyword-free; the enum is the obligation.
@@ -328,7 +331,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `6e5372943ee9`
 - Note: The bound is deployment-defined, so the verifier needs it as an external fact (V5); what the wire shows is the DEFER count per session. §9.2's substituted DEFERs count toward this bound.
 
@@ -340,7 +343,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): The cell says 'Required' in lowercase, which the keyword scan does not count; it is REQUIRED in RFC 2119's sense.
 - Status: active, since 0.1.0; reviewed against `2ad1827a2b1a`
 - Note: Keyword-free (the capital R in Required is prose, not RFC 2119). The V8 demo sentence.
 
@@ -352,7 +356,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): The cell says 'always', which is not an RFC 2119 word; an unconditional ordering rule is a MUST.
 - Status: active, since 0.1.0; reviewed against `c086c0aaa3a3`
 - Note: Keyword-free nested list item. Observable only from the Guardian's own decision log (agents.md decision logging) or from metadata.evaluator, never from the request wire.
 
@@ -364,7 +369,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: provenance_producer: deterministic
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): A field-definition cell with no RFC 2119 word; the in-session lineage constraint is a MUST on the value.
 - Schema: `provenance.json#/properties/derived_from`
 - Depends on: [ACS-DEF-0002](#acs-def-0002)
 - Status: active, since 0.1.0; reviewed against `edaa44057b7f`
@@ -378,7 +384,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Depends on: [ACS-DEF-0002](#acs-def-0002), [ACS-REQ-0009](#acs-req-0009)
 - Status: active, since 0.1.0; reviewed against `41d62d77d341`
 - Note: Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. The closure is over (descendant, ancestor) pairs, so it terminates on a derived_from cycle; the witness names the offending ancestor and both levels, and the evidence lists the derived_from facts for the subject. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (there is nothing to cite here).
@@ -391,7 +397,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core; activation: the session established an Intent (Intent is OPTIONAL, §8.4)
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Depends on: [ACS-INV-0001](#acs-inv-0001)
 - Status: active, since 0.1.0; reviewed against `8294e69b2c1a`
 - Note: Two MUSTs, one obligation: enforce, by ignoring or rejecting. The SHOULD in the same sentence is ACS-REQ-0012.
@@ -404,7 +410,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core; activation: the session established an Intent, and a modification attempt was rejected
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: SHOULD
 - Depends on: [ACS-REQ-0011](#acs-req-0011)
 - Status: active, since 0.1.0; reviewed against `0e766c4dd46c`
 - Note: The SHOULD half of §8.4's enforcement sentence, addressed separately from the MUST.
@@ -423,7 +429,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Schema: `context-entry.json#/properties/entry_hash`, `context-entry.json#/properties/previous_hash`
 - Status: active, since 0.1.0; reviewed against `dba9c6d83350`
 - Note: Spans a paragraph, a three-item list and a closing paragraph. SHA-256 and JCS enter as external facts; the verifier recomputes from the Guardian's entries and compares with the published chain_hash (ACS-REQ-0016).
@@ -436,7 +442,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: provenance_producer: deterministic
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): A field-definition cell with no RFC 2119 word; uniqueness is a MUST on the value.
 - Schema: `provenance.json#/properties/provenance_id`
 - Status: active, since 0.1.0; reviewed against `d87eacdf2d22`
 - Note: Keyword-free table cell.
@@ -449,7 +456,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): A cell stating the outcome as fact with no RFC 2119 word; the termination is a MUST on the Guardian.
 - Status: active, since 0.1.0; reviewed against `98e8b785e760`
 - Note: Keyword-free. Negotiation: no common acs_version between ClientHello and the Guardian yields -32001.
 
@@ -461,7 +469,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `5eb6235b1a30`
 - Note: First half of one §8.6 sentence; the second half is ACS-REQ-0017.
 
@@ -473,7 +481,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Depends on: [ACS-DEF-0001](#acs-def-0001), [ACS-REQ-0016](#acs-req-0016)
 - Status: active, since 0.1.0; reviewed against `e1a36f5dffdd`
 - Note: Cross-message: the chain_hash the Guardian publishes must fall inside the signed input, which ACS-DEF-0001 fixes as the whole envelope minus signature.
@@ -486,7 +494,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Depends on: [ACS-DEF-0001](#acs-def-0001)
 - Status: active, since 0.1.0; reviewed against `1f18a43a936e`
 - Note: Vocabulary gap found in V2: the spec's 'verifier' is whichever party checks a signature, so this binds the Observed Agent equally. The actor field holds one value; recorded as guardian with this note until the field can say 'either party'.
@@ -499,7 +507,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: provenance_producer: deterministic
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `51168a2c9d2a`
 - Note: Environmental: no trace can show which code path populated a field. Two sentences, one obligation; listed on the non-testable roster, never dropped.
 
@@ -511,7 +519,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: an Observed Agent's cross-check chain_hash disagrees with the Guardian's computed head
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `ab2d4412fd1c`
 - Note: SHOULD-level.
 
@@ -523,7 +531,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `a177e8226221`
 - Note: A permission: not archiving is conformant and yields no verdict. Exercising it activates ACS-REQ-0022.
 
@@ -535,7 +543,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: archival (ACS-REQ-0021) occurred in the session
-- Modality: conditional-on-exercise; evidence: guardian-state
+- Modality: conditional-on-exercise; evidence: guardian-state; keyword: MUST
 - Depends on: [ACS-REQ-0021](#acs-req-0021)
 - Status: active, since 0.1.0; reviewed against `d42401486d28`
 - Note: The §8.5 type case: an obligation conditional on an implementation choice.
@@ -548,7 +556,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the session uses ASK (a non-empty approver_types_supported)
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `b2043534abf5`
 - Note: The canonical copy, on the concept page (concepts/README.md:33). ACS-REQ-0024 restates it inline in §9. The taxonomy spike notes the callout is a Guardian obligation at concepts altitude.
 
@@ -560,7 +568,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the session uses ASK (a non-empty approver_types_supported)
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Restates: [ACS-REQ-0023](#acs-req-0023)
 - Status: active, since 0.1.0; reviewed against `2afe3fa652ea`
 - Note: The pillar's inline restatement of ACS-REQ-0023; on the migration worklist until §9 references the concept page instead.
@@ -573,7 +581,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: all
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `3957f333d277`
 - Note: §1.2 design principle; environmental, listed on the non-testable roster.
 
@@ -585,7 +593,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-provenance
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `fc2d8aedb132`
 - Note: Populating it activates ACS-REQ-0010 and ACS-REQ-0054.
 
@@ -597,7 +605,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `c60df09f1e38`
 - Note: The §7.2 table is the static relation default_trust in the vocabulary. agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
 
@@ -609,7 +617,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `930840a8ade5`
 - Note: SHOULD-level; the observable breach is a batch answered with -32600.
 
@@ -621,7 +629,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `9b230819cc76`
 - Note: Binds both parties; recorded as guardian, the same actor gap as ACS-REQ-0018.
 
@@ -633,7 +641,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `1a1bb4354c71`
 
 ### ACS-REQ-0031
@@ -644,7 +652,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core; activation: the handshake failed and the startup posture was proceed
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `d4c58251de24`
 - Note: A handshake with no response and no audit event.
 
@@ -656,7 +664,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `98cda73c20d6`
 - Note: Non-testable: no Trace-event relations in the vocabulary; Trace emission is out of the envelope log.
 
@@ -668,7 +676,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `2cce955a42ab`
 
 ### ACS-REQ-0034
@@ -679,7 +687,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `303ff2eb0162`
 
 ### ACS-REQ-0035
@@ -690,7 +698,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `064bbfeb73fb`
 
 ### ACS-REQ-0036
@@ -701,7 +709,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: replay or ledger-backed policy state matters to the deployment
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `918909651df9`
 
 ### ACS-REQ-0037
@@ -712,7 +720,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `9ce46540098e`
 
 ### ACS-REQ-0038
@@ -723,7 +731,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `805dc58c32a9`
 
 ### ACS-REQ-0039
@@ -734,7 +742,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST NOT
 - Schema: `modifications.json#/properties/modified_content`
 - Status: active, since 0.1.0; reviewed against `30ebd035ffdf`
 
@@ -746,7 +754,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `6203ed391766`
 
 ### ACS-REQ-0041
@@ -757,7 +765,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Schema: `modifications.json#/properties/redactions`
 - Status: active, since 0.1.0; reviewed against `7ce33e1a588b`
 - Note: JSON Pointer ancestry is ordinary code: modification_targets_overlap is computed by the verifier.
@@ -770,7 +778,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `646cf8618b1f`
 - Note: applied means the agent proceeded with the MODIFY; blocked is the conformant outcome.
 
@@ -782,7 +790,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core; activation: a malformed modifications object arrived
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `c08ff72f1d4b`
 
 ### ACS-REQ-0045
@@ -793,7 +801,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `d845664065de`
 
 ### ACS-REQ-0046
@@ -804,7 +812,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `ac3cdce41840`
 - Note: Observable half: a non-ALLOW decision the agent recorded as proceeded. Applying MODIFY correctly is not checked.
 
@@ -816,7 +824,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `9e2ddc2e6d29`
 
 ### ACS-REQ-0048
@@ -827,7 +835,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `9d4b0dc6e3c1`
 
 ### ACS-REQ-0050
@@ -838,7 +846,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `3a4c8fe64956`
 
 ### ACS-REQ-0051
@@ -849,7 +857,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `4d42af653d6d`
 - Note: Observable half: a DENY that arrived and was recorded as proceeded.
 
@@ -861,7 +869,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: provenance_producer: deterministic
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `335f50c078e3`
 - Note: The verifier validates hook payloads against the strict *.acs-provenance.json variants when the session negotiated acs-provenance.
 
@@ -873,7 +881,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
 - Schema: `provenance.json#/required`
 - Status: active, since 0.1.0; reviewed against `70f11405491c`
 
@@ -885,7 +893,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `1ba6384f846a`
 
 ### ACS-REQ-0055
@@ -896,7 +904,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `cd5af29f53be`
 
 ### ACS-REQ-0056
@@ -907,7 +915,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-provenance
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `b2fcfcd327b9`
 
 ### ACS-REQ-0057
@@ -918,7 +926,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-provenance; activation: the deployment overrides the default channel-to-trust mapping (ACS-REQ-0056)
-- Modality: conditional-on-exercise; evidence: guardian-state
+- Modality: conditional-on-exercise; evidence: guardian-state; keyword: SHOULD
 - Depends on: [ACS-REQ-0056](#acs-req-0056)
 - Status: active, since 0.1.0; reviewed against `2321adbd91b4`
 
@@ -930,7 +938,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `ff368d786ee2`
 
 ### ACS-REQ-0059
@@ -941,7 +949,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `02813e67c977`
 
 ### ACS-REQ-0060
@@ -952,7 +960,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: SHOULD
 - Schema: `context-entry.json#/properties/request_hash`
 - Status: active, since 0.1.0; reviewed against `f66605809a92`
 - Note: Carries two keywords: the SHOULD, and the ACS-Audit MUST on request_hash, which is ACS-REQ-0062's own sentence inside this one; the span is the list item.
@@ -965,7 +973,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): The cell says 'required' in lowercase, which the keyword scan does not count; it is REQUIRED in RFC 2119's sense.
 - Status: active, since 0.1.0; reviewed against `850d13a22d52`
 - Note: Keyword-free; the parenthetical requirement.
 
@@ -977,7 +986,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-audit
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `e8311dbcf186`
 
 ### ACS-REQ-0063
@@ -988,7 +997,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-audit
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `a07b3a3994a7`
 
 ### ACS-REQ-0064
@@ -999,7 +1008,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Schema: `provenance-summary.json#/properties`
 - Status: active, since 0.1.0; reviewed against `f52a23c60bc3`
 
@@ -1011,7 +1020,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Depends on: [ACS-INV-0001](#acs-inv-0001)
 - Status: active, since 0.1.0; reviewed against `f33cafc1c510`
 
@@ -1023,7 +1032,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core; activation: an Intent with parsed capabilities is established
-- Modality: obligation; evidence: schema
+- Modality: obligation; evidence: schema; keyword: MUST
 - Schema: `hooks/session-start.json#/properties/intent`
 - Status: active, since 0.1.0; reviewed against `dc5386ddfe74`
 - Note: The hook schemas carry the conditional as if/then; a failure surfaces at path /intent.
@@ -1036,7 +1045,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core; activation: an Intent with parsed capabilities is established
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `206c69b42c1e`
 
 ### ACS-REQ-0068
@@ -1047,7 +1056,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `b8b816055697`
 
 ### ACS-REQ-0069
@@ -1058,7 +1067,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: verifier; reported against: verifier
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `2a916723ff9a`
 
 ### ACS-REQ-0070
@@ -1069,7 +1078,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Schema: `ask-details.json#/properties/approver/properties/type`
 - Status: active, since 0.1.0; reviewed against `f330b880a32c`
 
@@ -1081,7 +1090,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Restates: [ACS-REQ-0070](#acs-req-0070)
 - Status: active, since 0.1.0; reviewed against `caaab40fca50`
 
@@ -1093,7 +1102,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `596e6efbbc42`
 
 ### ACS-REQ-0073
@@ -1104,7 +1113,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST NOT
 - Restates: [ACS-REQ-0072](#acs-req-0072)
 - Status: active, since 0.1.0; reviewed against `bb97ff1a9d0f`
 
@@ -1116,7 +1125,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Depends on: [ACS-INV-0001](#acs-inv-0001)
 - Status: active, since 0.1.0; reviewed against `a322d44f2534`
 
@@ -1128,7 +1137,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: approver; reported against: approver
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Restates: [ACS-REQ-0074](#acs-req-0074)
 - Status: active, since 0.1.0; reviewed against `aec341dd89c9`
 
@@ -1144,7 +1153,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: an Approver granted an intent_extension with scope: session
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `809cc111ec9e`
 - Note: Checks item 2 (the intent_extension ContextEntry). Item 1 is ACS-REQ-0011's territory; item 3, the extension's separate provenance, is not observable in any relation and is a partial coverage flagged here.
 
@@ -1156,7 +1165,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: scope_mode: strict
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST NOT
 - Restates: [ACS-INV-0002](#acs-inv-0002)
 - Status: active, since 0.1.0; reviewed against `0033f90eda4b`
 
@@ -1168,7 +1177,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the Guardian determined the client cannot resolve ASK
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `6e4db93c668f`
 
 ### ACS-REQ-0079
@@ -1182,7 +1191,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the Guardian determined the client cannot resolve ASK
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `4d14901e605c`
 - Note: Observable half: a DEFER to an approver-incapable client whose timeout_decision is not deny. Which decisions would have been ASK is not observable.
 
@@ -1194,7 +1203,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `0a70be5bf9c1`
 
 ### ACS-REQ-0081
@@ -1205,7 +1214,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `4b280ca6e17a`
 - Note: system/ping is exempt by §13. The handshake is exempted here because the per-session key is derived with the session_id it establishes; whether it is signed is a question for upstream.
 
@@ -1226,7 +1235,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
+- Keyword MUST stated by the record, not the span (RECOMMENDED): The span is the §10.1 table body, whose first keyword is RECOMMENDED, the status of HMAC-SHA256. The obligation the rule checks is registry membership, which §10's prose states without a keyword ('the algorithm drawn from the registry below').
 - Status: active, since 0.1.0; reviewed against `b6d956aea71c`
 - Note: One provision spanning the §10.1 table body, binding its eleven status keywords. The obligation it yields: an envelope's algorithm is a registered one.
 
@@ -1238,7 +1248,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-crypto
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `5108e7f73d49`
 
 ### ACS-REQ-0084
@@ -1249,7 +1259,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `5bce9413e657`
 - Note: Binds the MUST and the RECOMMENDED default (300000 ms), which the verifier applies when a ServerHello names no window. The window is judged against the Guardian's recorded_at.
 
@@ -1261,7 +1271,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `07a0d586fb4c`
 
 ### ACS-REQ-0087
@@ -1272,7 +1282,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `7517d30bb810`
 - Note: The sliding window is deployment-configured and not modelled; every repeat in the log is reported.
 
@@ -1284,7 +1294,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: none; reported against: none
 - Profile: all
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `12ab230162bb`
 - Note: A design constraint on the specification itself.
 
@@ -1296,7 +1306,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `270693d65410`
 
 ### ACS-REQ-0090
@@ -1307,7 +1317,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the deployment runs an agent evaluation layer
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `21410cd29f07`
 
 ### ACS-REQ-0091
@@ -1318,7 +1328,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the deployment runs an agent evaluation layer
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `aef6edc5e8ef`
 
 ### ACS-REQ-0092
@@ -1329,7 +1339,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `8bc76b31ea9b`
 - Note: A Guardian obligation at concepts altitude. Confidence is checked only when available, so only reasoning and model_identifier are required.
 
@@ -1341,7 +1351,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the deployment runs an agent evaluation layer
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Restates: [ACS-REQ-0092](#acs-req-0092)
 - Status: active, since 0.1.0; reviewed against `c1a64dee4730`
 
@@ -1353,7 +1363,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `95107eae27f5`
 
 ### ACS-REQ-0095
@@ -1364,7 +1374,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `661fbd40d3c0`
 
 ### ACS-REQ-0096
@@ -1375,7 +1385,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `28e65d616669`
 
 ### ACS-REQ-0097
@@ -1386,7 +1396,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `fe2e39e5c976`
 
 ### ACS-REQ-0098
@@ -1397,7 +1407,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `646597cda451`
 
 ### ACS-REQ-0099
@@ -1408,7 +1418,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `88f15dbbea0e`
 
 ### ACS-REQ-0100
@@ -1419,7 +1429,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `ec73112602cc`
 - Note: A ping that produced an enforcement audit event is the observable breach.
 
@@ -1431,7 +1441,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `4a37e8b58adb`
 
 ### ACS-REQ-0102
@@ -1442,7 +1452,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core; activation: the error response carries a data object (ACS-REQ-0101)
-- Modality: conditional-on-exercise; evidence: wire
+- Modality: conditional-on-exercise; evidence: wire; keyword: SHOULD
 - Depends on: [ACS-REQ-0101](#acs-req-0101)
 - Status: active, since 0.1.0; reviewed against `08fc6084dacd`
 - Note: The per-code fields are not checked.
@@ -1455,7 +1465,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `597265257e0d`
 
 ### ACS-REQ-0104
@@ -1466,7 +1476,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `7d06ec2f7f89`
 
 ### ACS-REQ-0105
@@ -1477,7 +1487,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `56cdac1aac6c`
 
 ### ACS-REQ-0106
@@ -1488,7 +1498,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `cb4a6c5a55e1`
 
 ### ACS-REQ-0107
@@ -1499,7 +1509,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `472d22d8d80b`
 
 ### ACS-REQ-0108
@@ -1510,7 +1520,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `53c10f4701c3`
 
 ### ACS-REQ-0109
@@ -1521,7 +1531,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: obligation; evidence: deployment-config
+- Modality: obligation; evidence: deployment-config; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `51de7945faac`
 
 ### ACS-REQ-0110
@@ -1532,7 +1542,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `849e3a92b4e3`
 
 ### ACS-REQ-0111
@@ -1543,7 +1553,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Depends on: [ACS-DEF-0002](#acs-def-0002)
 - Status: active, since 0.1.0; reviewed against `d79fbb903a78`
 - Note: entries_compacted lists step_ids and nothing on the wire ties a step_id to a provenance_id, so the union check reads step_provenance from the Guardian's records; a Guardian that does not supply it leaves this provision unevaluated rather than approximated. Extra derived_from entries are not reported.
@@ -1556,7 +1566,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `bdbce7a11430`
 
 ### ACS-REQ-0113
@@ -1567,7 +1577,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST NOT
+- Keyword MUST NOT stated by the record, not the span (MAY): The sentence says MAY NOT, which RFC 2119 does not define; read as MUST NOT, the prohibition the rule checks. Worth an upstream finding.
 - Status: active, since 0.1.0; reviewed against `415ba8b6ff4c`
 - Note: Finding for upstream: MAY NOT is not an RFC 2119 term; read here as the prohibition the sentence means.
 
@@ -1579,7 +1590,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `38b5f512e0dd`
 
 ### ACS-REQ-0116
@@ -1590,7 +1601,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `4f444e38e0ef`
 
 ### ACS-REQ-0117
@@ -1601,7 +1612,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `0a1b0a62f271`
 
 ### ACS-REQ-0118
@@ -1612,7 +1623,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `3bca90127d17`
 
 ### ACS-REQ-0119
@@ -1623,7 +1634,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `bc27f422c346`
 
 ### ACS-REQ-0120
@@ -1634,7 +1645,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `a8721161dcf6`
 - Note: Registrations are correlated within the session; a Guardian persists the pair across sessions, which the verifier cannot see.
 
@@ -1646,7 +1657,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `242488e96202`
 
 ### ACS-REQ-0122
@@ -1657,7 +1668,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `71c7ed9438a2`
 
 ### ACS-REQ-0123
@@ -1668,7 +1679,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `1d04053a843a`
 
 ### ACS-REQ-0124
@@ -1679,7 +1690,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-inspect
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `24d227c8494d`
 
 ### ACS-REQ-0125
@@ -1690,7 +1701,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `db09f6fa48cf`
 
 ### ACS-REQ-0126
@@ -1701,7 +1712,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `55d4831e632c`
 
 ### ACS-REQ-0127
@@ -1712,7 +1723,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `541d58f2f8bc`
 
 ### ACS-REQ-0128
@@ -1723,7 +1734,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: not-applicable
+- Modality: obligation; evidence: not-applicable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `7424e248ba41`
 
 ### ACS-REQ-0129
@@ -1734,7 +1745,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `41c701804f08`
 
 ### ACS-REQ-0130
@@ -1745,7 +1756,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-inspect
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `2acab6478886`
 
 ### ACS-REQ-0131
@@ -1760,7 +1771,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `3d2dff0ace85`
 - Note: Non-testable: no Trace-event relations in the vocabulary; Trace emission is out of the envelope log.
 
@@ -1772,7 +1783,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST NOT
 - Status: active, since 0.1.0; reviewed against `cf2b26045d5a`
 - Note: Non-testable: a Trace sink failure is not observable in the envelope log; the disposition it must not change is.
 
@@ -1784,7 +1795,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `a97096ade935`
 
 ### ACS-REQ-0134
@@ -1797,7 +1808,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-inspect
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `3440c71e59da`
 - Note: The stem and its first item. The second item is ACS-REQ-0135.
 
@@ -1809,7 +1820,8 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-inspect
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
+- Keyword MUST stated by the record, not the span (no keyword): An imperative list item with no RFC 2119 word; the conformance page lists it as what a claim of the profile requires, which is a MUST.
 - Status: active, since 0.1.0; reviewed against `209ec7826a83`
 - Note: Keyword-free list item under ACS-REQ-0134's stem Non-testable: serialization requests are Guardian-side and not on the wire in v0.1.
 
@@ -1821,7 +1833,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-inspect-dynamic
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `9403b8b8fd95`
 
 ### ACS-REQ-0137
@@ -1832,7 +1844,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-crypto
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `cc783b3ba691`
 - Note: Binds the MUST and the parenthetical RECOMMENDED. Judged from ServerHello's signature_algorithms_supported; profile scoping activates it only for acs-crypto sessions.
 
@@ -1844,7 +1856,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-crypto
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `062726c535ed`
 
 ### ACS-REQ-0139
@@ -1855,7 +1867,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-crypto
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `10bff837ec53`
 
 ### ACS-REQ-0140
@@ -1866,7 +1878,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-core
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `c9feed61920a`
 
 ### ACS-REQ-0141
@@ -1877,7 +1889,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-inspect
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: SHOULD
 - Schema: `agbom/component.json#/properties/registration_provenance`
 - Status: active, since 0.1.0; reviewed against `c6cadbe68b74`
 
@@ -1889,7 +1901,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-provenance
-- Modality: obligation; evidence: wire
+- Modality: obligation; evidence: wire; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `ce96d3240472`
 
 ### ACS-REQ-0143
@@ -1900,7 +1912,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-inspect
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `7e75dc82bee9`
 
 ### ACS-REQ-0144
@@ -1911,7 +1923,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: deployment; reported against: deployment
 - Profile: acs-inspect
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `54bda27f5991`
 
 ### ACS-REQ-0145
@@ -1922,7 +1934,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `6fb1cf6e4b10`
 - Note: Non-testable: no span relations in the vocabulary.
 
@@ -1934,7 +1946,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `0670a5350f65`
 - Note: Non-testable: no span relations in the vocabulary.
 
@@ -1946,7 +1958,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-trace
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `7b1bb47704f2`
 
 ### ACS-REQ-0148
@@ -1957,7 +1969,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: framework; reported against: framework
 - Profile: acs-trace
-- Modality: obligation; evidence: non-testable
+- Modality: obligation; evidence: non-testable; keyword: SHOULD
 - Status: active, since 0.1.0; reviewed against `cbd4d4e69103`
 
 ### ACS-REQ-0149
@@ -1968,7 +1980,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-trace
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `114502b26f93`
 
 ### ACS-REQ-0150
@@ -1979,7 +1991,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: observed-agent; reported against: observed-agent
 - Profile: acs-trace; activation: the ServerHello advertised a collector endpoint (ACS-REQ-0149)
-- Modality: conditional-on-exercise; evidence: non-testable
+- Modality: conditional-on-exercise; evidence: non-testable; keyword: SHOULD
 - Depends on: [ACS-REQ-0149](#acs-req-0149)
 - Status: active, since 0.1.0; reviewed against `94c2e68548dc`
 - Note: Non-testable: trace routing is out of the envelope log.
@@ -1992,7 +2004,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: obligation; evidence: guardian-state
+- Modality: obligation; evidence: guardian-state; keyword: MUST
 - Status: active, since 0.1.0; reviewed against `2172d6bd1998`
 - Note: A Guardian obligation at concepts altitude, inside the Intent-derivation callout.
 
@@ -2004,12 +2016,12 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
-- Modality: permission; evidence: not-applicable
+- Modality: permission; evidence: not-applicable; keyword: MAY
 - Status: active, since 0.1.0; reviewed against `c469c7c5a70a`
 
 ## Test coverage
 
-27 of 155 provisions are cited by a conformance test or fixture under `ir/test/conformance/`.
+85 of 155 provisions are cited by a conformance test or fixture under `ir/test/conformance/`.
 
 | ID | Conformance tests |
 |---|---|
@@ -2020,106 +2032,106 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | ACS-INV-0002 | none |
 | ACS-INV-0003 | none |
 | ACS-INV-0004 | none |
-| ACS-REQ-0001 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0002 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0003 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0004 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0005 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0006 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0007 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0008 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0009 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0010 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0011 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0012 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0013 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0014 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0015 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0016 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0017 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0018 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0001 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0002 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0003 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0004 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0005 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0006 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0007 | fixtures/conformant/README.md, fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0008 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0009 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0010 | fixtures/conformant/README.md, fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0011 | fixtures/conformant/README.md, fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0012 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0013 | fixtures/conformant/README.md, fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0014 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0015 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0016 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0017 | fixtures/conformant/README.md, fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0018 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
 | ACS-REQ-0019 | none |
-| ACS-REQ-0020 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0020 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
 | ACS-REQ-0021 | none |
-| ACS-REQ-0022 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0023 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0022 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0023 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
 | ACS-REQ-0024 | none |
 | ACS-REQ-0025 | none |
 | ACS-REQ-0026 | none |
-| ACS-REQ-0027 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0028 | none |
+| ACS-REQ-0027 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0028 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0029 | none |
-| ACS-REQ-0030 | none |
-| ACS-REQ-0031 | none |
-| ACS-REQ-0032 | none |
+| ACS-REQ-0030 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0031 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0032 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0033 | none |
 | ACS-REQ-0034 | none |
 | ACS-REQ-0035 | none |
 | ACS-REQ-0036 | none |
 | ACS-REQ-0037 | none |
 | ACS-REQ-0038 | none |
-| ACS-REQ-0039 | none |
+| ACS-REQ-0039 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0040 | none |
-| ACS-REQ-0041 | none |
-| ACS-REQ-0043 | none |
+| ACS-REQ-0041 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0043 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0044 | none |
 | ACS-REQ-0045 | none |
-| ACS-REQ-0046 | none |
+| ACS-REQ-0046 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0047 | none |
 | ACS-REQ-0048 | none |
-| ACS-REQ-0050 | none |
-| ACS-REQ-0051 | none |
-| ACS-REQ-0052 | none |
-| ACS-REQ-0053 | none |
+| ACS-REQ-0050 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0051 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0052 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0053 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0054 | none |
 | ACS-REQ-0055 | none |
 | ACS-REQ-0056 | none |
 | ACS-REQ-0057 | none |
 | ACS-REQ-0058 | none |
 | ACS-REQ-0059 | none |
-| ACS-REQ-0060 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0061 | none |
-| ACS-REQ-0062 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0063 | none |
+| ACS-REQ-0060 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0061 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0062 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0063 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0064 | none |
 | ACS-REQ-0065 | none |
-| ACS-REQ-0066 | none |
-| ACS-REQ-0067 | none |
+| ACS-REQ-0066 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0067 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0068 | none |
 | ACS-REQ-0069 | none |
 | ACS-REQ-0070 | none |
 | ACS-REQ-0071 | none |
-| ACS-REQ-0072 | none |
+| ACS-REQ-0072 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0073 | none |
 | ACS-REQ-0074 | none |
 | ACS-REQ-0075 | none |
-| ACS-REQ-0076 | none |
-| ACS-REQ-0077 | none |
-| ACS-REQ-0078 | none |
-| ACS-REQ-0079 | none |
+| ACS-REQ-0076 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0077 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0078 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0079 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0080 | none |
-| ACS-REQ-0081 | none |
-| ACS-REQ-0082 | none |
-| ACS-REQ-0083 | none |
-| ACS-REQ-0084 | none |
-| ACS-REQ-0086 | none |
-| ACS-REQ-0087 | none |
+| ACS-REQ-0081 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0082 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0083 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0084 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0086 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0087 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0088 | none |
 | ACS-REQ-0089 | none |
 | ACS-REQ-0090 | none |
 | ACS-REQ-0091 | none |
-| ACS-REQ-0092 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0092 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
 | ACS-REQ-0093 | none |
 | ACS-REQ-0094 | none |
-| ACS-REQ-0095 | none |
-| ACS-REQ-0096 | none |
-| ACS-REQ-0097 | none |
+| ACS-REQ-0095 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0096 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0097 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0098 | none |
 | ACS-REQ-0099 | none |
-| ACS-REQ-0100 | none |
+| ACS-REQ-0100 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0101 | none |
-| ACS-REQ-0102 | none |
-| ACS-REQ-0103 | none |
+| ACS-REQ-0102 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0103 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0104 | none |
 | ACS-REQ-0105 | none |
 | ACS-REQ-0106 | none |
@@ -2127,44 +2139,44 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 | ACS-REQ-0108 | none |
 | ACS-REQ-0109 | none |
 | ACS-REQ-0110 | none |
-| ACS-REQ-0111 | none |
+| ACS-REQ-0111 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0112 | none |
-| ACS-REQ-0113 | none |
-| ACS-REQ-0114 | none |
+| ACS-REQ-0113 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0114 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0116 | none |
-| ACS-REQ-0117 | none |
+| ACS-REQ-0117 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0118 | none |
 | ACS-REQ-0119 | none |
-| ACS-REQ-0120 | none |
-| ACS-REQ-0121 | none |
+| ACS-REQ-0120 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0121 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0122 | none |
 | ACS-REQ-0123 | none |
-| ACS-REQ-0124 | none |
+| ACS-REQ-0124 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0125 | none |
 | ACS-REQ-0126 | none |
 | ACS-REQ-0127 | none |
 | ACS-REQ-0128 | none |
 | ACS-REQ-0129 | none |
-| ACS-REQ-0130 | none |
-| ACS-REQ-0131 | none |
-| ACS-REQ-0132 | none |
+| ACS-REQ-0130 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0131 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0132 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0133 | none |
-| ACS-REQ-0134 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0135 | none |
-| ACS-REQ-0136 | none |
-| ACS-REQ-0137 | none |
-| ACS-REQ-0138 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
-| ACS-REQ-0139 | none |
+| ACS-REQ-0134 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0135 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0136 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0137 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0138 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/README.md, fixtures/violating/expected-verdicts.tsv, fixtures/violating/expected.tsv |
+| ACS-REQ-0139 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0140 | none |
-| ACS-REQ-0141 | none |
-| ACS-REQ-0142 | none |
-| ACS-REQ-0143 | none |
-| ACS-REQ-0144 | none |
-| ACS-REQ-0145 | none |
-| ACS-REQ-0146 | none |
-| ACS-REQ-0147 | none |
-| ACS-REQ-0148 | none |
-| ACS-REQ-0149 | none |
-| ACS-REQ-0150 | none |
-| ACS-REQ-0151 | none |
+| ACS-REQ-0141 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0142 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0143 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0144 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0145 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0146 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0147 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0148 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0149 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0150 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
+| ACS-REQ-0151 | fixtures/conformant/expected-verdicts.tsv, fixtures/violating/expected-verdicts.tsv |
 | ACS-REQ-0152 | none |

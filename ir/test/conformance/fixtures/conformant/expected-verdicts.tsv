@@ -1,0 +1,88 @@
+# The verdict relations both engines must derive over facts/: relation, then its columns (provision, session).
+# fail and deviates name the provisions this fixture breaches, by RFC 2119 strength; pass, not_exercised and not_activated
+# cover the rest of the compiled catalog; unevaluated lists what needs a relation facts/available.facts does not list.
+not_activated	ACS-REQ-0032	session-clean
+not_activated	ACS-REQ-0062	session-clean
+not_activated	ACS-REQ-0063	session-clean
+not_activated	ACS-REQ-0083	session-clean
+not_activated	ACS-REQ-0124	session-clean
+not_activated	ACS-REQ-0130	session-clean
+not_activated	ACS-REQ-0131	session-clean
+not_activated	ACS-REQ-0132	session-clean
+not_activated	ACS-REQ-0134	session-clean
+not_activated	ACS-REQ-0135	session-clean
+not_activated	ACS-REQ-0136	session-clean
+not_activated	ACS-REQ-0137	session-clean
+not_activated	ACS-REQ-0138	session-clean
+not_activated	ACS-REQ-0139	session-clean
+not_activated	ACS-REQ-0141	session-clean
+not_activated	ACS-REQ-0143	session-clean
+not_activated	ACS-REQ-0144	session-clean
+not_activated	ACS-REQ-0145	session-clean
+not_activated	ACS-REQ-0146	session-clean
+not_activated	ACS-REQ-0147	session-clean
+not_activated	ACS-REQ-0148	session-clean
+not_activated	ACS-REQ-0149	session-clean
+not_activated	ACS-REQ-0150	session-clean
+not_exercised	ACS-REQ-0102	session-clean
+pass	ACS-REQ-0002	session-clean
+pass	ACS-REQ-0003	session-clean
+pass	ACS-REQ-0004	session-clean
+pass	ACS-REQ-0005	session-clean
+pass	ACS-REQ-0006	session-clean
+pass	ACS-REQ-0007	session-clean
+pass	ACS-REQ-0008	session-clean
+pass	ACS-REQ-0009	session-clean
+pass	ACS-REQ-0010	session-clean
+pass	ACS-REQ-0011	session-clean
+pass	ACS-REQ-0013	session-clean
+pass	ACS-REQ-0014	session-clean
+pass	ACS-REQ-0015	session-clean
+pass	ACS-REQ-0016	session-clean
+pass	ACS-REQ-0017	session-clean
+pass	ACS-REQ-0027	session-clean
+pass	ACS-REQ-0028	session-clean
+pass	ACS-REQ-0039	session-clean
+pass	ACS-REQ-0060	session-clean
+pass	ACS-REQ-0061	session-clean
+pass	ACS-REQ-0067	session-clean
+pass	ACS-REQ-0076	session-clean
+pass	ACS-REQ-0082	session-clean
+pass	ACS-REQ-0086	session-clean
+pass	ACS-REQ-0087	session-clean
+pass	ACS-REQ-0092	session-clean
+pass	ACS-REQ-0095	session-clean
+pass	ACS-REQ-0096	session-clean
+pass	ACS-REQ-0097	session-clean
+pass	ACS-REQ-0103	session-clean
+pass	ACS-REQ-0113	session-clean
+pass	ACS-REQ-0114	session-clean
+pass	ACS-REQ-0117	session-clean
+pass	ACS-REQ-0120	session-clean
+pass	ACS-REQ-0121	session-clean
+pass	ACS-REQ-0142	session-clean
+unevaluated	ACS-REQ-0001
+unevaluated	ACS-REQ-0012
+unevaluated	ACS-REQ-0018
+unevaluated	ACS-REQ-0020
+unevaluated	ACS-REQ-0022
+unevaluated	ACS-REQ-0023
+unevaluated	ACS-REQ-0030
+unevaluated	ACS-REQ-0031
+unevaluated	ACS-REQ-0041
+unevaluated	ACS-REQ-0043
+unevaluated	ACS-REQ-0046
+unevaluated	ACS-REQ-0050
+unevaluated	ACS-REQ-0051
+unevaluated	ACS-REQ-0052
+unevaluated	ACS-REQ-0053
+unevaluated	ACS-REQ-0066
+unevaluated	ACS-REQ-0072
+unevaluated	ACS-REQ-0077
+unevaluated	ACS-REQ-0078
+unevaluated	ACS-REQ-0079
+unevaluated	ACS-REQ-0081
+unevaluated	ACS-REQ-0084
+unevaluated	ACS-REQ-0100
+unevaluated	ACS-REQ-0111
+unevaluated	ACS-REQ-0151
