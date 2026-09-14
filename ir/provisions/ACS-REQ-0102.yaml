@@ -18,5 +18,5 @@ predicate:
   subject: [Seq]
   witness: [Field]
   rules:
-    - "violation(Seq, Field) :- error_data(Seq), Field = \"reason\", not error_data_field(Seq, \"reason\")."
-    - "violation(Seq, Field) :- error_data(Seq), Field = \"message\", not error_data_field(Seq, \"message\")."
+    - "violation(Seq, \"reason\") :- error_data(Seq), not error_data_field(Seq, \"reason\")."
+    - "violation(Seq, \"message\") :- error_data(Seq), not error_data_field(Seq, \"message\")."

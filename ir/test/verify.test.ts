@@ -81,7 +81,8 @@ describe("acs-ir verify -- the clean trace", () => {
     const unevaluated = blind.verdicts.filter((v) => v.verdict === "unevaluated");
     const v2 = ["ACS-REQ-0002", "ACS-REQ-0006", "ACS-REQ-0008", "ACS-REQ-0011", "ACS-REQ-0012", "ACS-REQ-0013", "ACS-REQ-0015", "ACS-REQ-0017", "ACS-REQ-0018", "ACS-REQ-0020", "ACS-REQ-0022", "ACS-REQ-0023", "ACS-REQ-0024"];
     expect(unevaluated.map((v) => v.id).slice(0, v2.length)).toEqual(v2);
-    expect(unevaluated).toHaveLength(34);
+    // 35: the 34 V7 counted, plus ACS-REQ-0111, whose step_provenance relation only the Guardian can supply.
+    expect(unevaluated).toHaveLength(35);
     for (const v of unevaluated) expect(v.missing.length).toBeGreaterThan(0);
     expect(unevaluated.find((v) => v.id === "ACS-REQ-0017")?.missing).toEqual(["signature_covers"]);
     expect(byVerdict(blind.verdicts, "fail")).toEqual([]);
@@ -119,7 +120,7 @@ describe("acs-ir verify -- the violating trace", () => {
     const trust = r.verdicts.find((v) => v.id === "ACS-REQ-0010");
     expect(trust?.evidence).toHaveLength(1);
     expect(trust?.evidence[0]?.subject).toEqual([{ name: "Seq", value: 11 }, { name: "Pid", value: "p3" }]);
-    expect(trust?.evidence[0]?.witness.map((w) => `${w.name}=${w.value}`)).toEqual(["Ancestor=p2", "Path=p3<-p2", "Level=trusted", "AncestorLevel=untrusted"]);
+    expect(trust?.evidence[0]?.witness.map((w) => `${w.name}=${w.value}`)).toEqual(["Ancestor=p2", "Level=trusted", "AncestorLevel=untrusted"]);
     expect(trust?.evidence[0]?.facts).toContainEqual({ relation: "derived_from", tuple: [11, "p3", "p2"] });
     const chain = r.verdicts.find((v) => v.id === "ACS-REQ-0013");
     expect(chain?.evidence[0]?.subject.map((s) => s.name)).toEqual(["Session", "EntryId"]);

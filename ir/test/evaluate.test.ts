@@ -10,13 +10,13 @@ const vocabulary = parseVocabulary(`
 relations:
   - name: edge
     source: wire
-    columns: [{ name: from, type: symbol }, { name: to, type: symbol }]
+    columns: [{ name: from, type: symbol, domain: node }, { name: to, type: symbol, domain: node }]
   - name: item
     source: wire
-    columns: [{ name: session, type: symbol }, { name: seq, type: number }]
+    columns: [{ name: node, type: symbol }, { name: seq, type: number }]
   - name: bound
     source: deployment
-    columns: [{ name: session, type: symbol }, { name: max, type: number }]
+    columns: [{ name: node, type: symbol }, { name: max, type: number }]
   - name: blocked
     source: wire
     columns: [{ name: node, type: symbol }]
@@ -29,7 +29,7 @@ function program(id: string, subject: string[], witness: string[], ...rules: str
     schema_refs: [], depends_on: [], restates: null, status: "active", since: "0.1.0", superseded_by: [], reviewed_against: "", note: null,
     predicate: { kind: "rules", subject, witness, rules },
   };
-  return { generated_by: "t", corpus: { version: null, commit: null }, relations: [...vocabulary.relations.values()], provisions: [compileProvision(vocabulary, manifest, record, new Set([id]))], problems: [] };
+  return { generated_by: "t", corpus: { version: null, commit: null }, relations: [...vocabulary.relations.values()], domains: [...vocabulary.domains.entries()].map(([name, type]) => ({ name, type })), provisions: [compileProvision(vocabulary, manifest, record, new Set([id]))], problems: [] };
 }
 
 const facts = (init: Record<string, (string | number)[][]>): FactSet => new Map(Object.entries(init));
@@ -47,17 +47,16 @@ describe("evaluate -- the in-process engine's constructs", () => {
     expect(v.map(unified)).toEqual(["ACS-REQ-0001\ta\t3|2"]);
   });
 
-  it("recursion with a path-carrying witness, semi-naively", () => {
-    const p = program(
-      "ACS-REQ-0001",
-      ["X"],
-      ["Y", "Path"],
-      "violation(X, Y, Path) :- reach(X, Y, Path), blocked(Y).",
-      'reach(X, Y, Path) :- edge(X, Y), Path = cat(X, ">", Y).',
-      'reach(X, Z, Path) :- edge(X, Y), reach(Y, Z, Rest), Path = cat(X, ">", Rest).',
-    );
-    const v = evaluate(p, facts({ edge: [["a", "b"], ["b", "c"], ["c", "d"]], blocked: [["d"]] }));
-    expect(v.map(unified)).toEqual(["ACS-REQ-0001\ta\td|a>b>c>d", "ACS-REQ-0001\tb\td|b>c>d", "ACS-REQ-0001\tc\td|c>d"]);
+  it("recursion (a transitive closure), semi-naively, and it terminates on a cycle", () => {
+    const p = program("ACS-REQ-0001", ["X"], ["Y"], "violation(X, Y) :- reach(X, Y), blocked(Y).", "reach(X, Y) :- edge(X, Y).", "reach(X, Z) :- edge(X, Y), reach(Y, Z).");
+    const v = evaluate(p, facts({ edge: [["a", "b"], ["b", "c"], ["c", "d"], ["d", "b"]], blocked: [["d"]] }));
+    expect(v.map(unified)).toEqual(["ACS-REQ-0001\ta\td", "ACS-REQ-0001\tb\td", "ACS-REQ-0001\tc\td", "ACS-REQ-0001\td\td"]);
+  });
+
+  it("a constant in the head is emitted as the column's value", () => {
+    const p = program("ACS-REQ-0001", ["S"], ["Label"], 'violation(S, "missing") :- item(S, _), not blocked(S).');
+    const v = evaluate(p, facts({ item: [["a", 1], ["b", 2]], blocked: [["b"]] }));
+    expect(v.map(unified)).toEqual(["ACS-REQ-0001\ta\tmissing"]);
   });
 
   it("assignment binds a variable from an expression and to_string renders numbers", () => {

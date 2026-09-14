@@ -18,4 +18,4 @@ predicate:
   subject: [Session]
   witness: [Algorithm]
   rules:
-    - "violation(Session, Algorithm) :- handshake(_, Session), Algorithm = \"ML-DSA-65\", not signature_algorithm_supported(Session, \"ML-DSA-65\")."
+    - "violation(Session, \"ML-DSA-65\") :- handshake(_, Session), not signature_algorithm_supported(Session, \"ML-DSA-65\")."

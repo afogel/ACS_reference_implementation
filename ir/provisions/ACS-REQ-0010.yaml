@@ -13,11 +13,11 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 41d62d77d341c84ec776db1a24fc03edd609bab00006721187f88696ac3ba455
-note: "Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (R5.2 has nothing to cite here)."
+note: "Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. The closure is over (descendant, ancestor) pairs, so it terminates on a derived_from cycle; the witness names the offending ancestor and both levels, and the evidence lists the derived_from facts for the subject. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (R5.2 has nothing to cite here)."
 predicate:
   subject: [Seq, Pid]
-  witness: [Ancestor, Path, Level, AncestorLevel]
+  witness: [Ancestor, Level, AncestorLevel]
   rules:
-    - "violation(Seq, Pid, Ancestor, Path, Level, AncestorLevel) :- trust(Seq, Pid, Level), provenance(Seq, _, Pid, \"agent_generated\"), ancestor(Pid, Ancestor, Path), trust(_, Ancestor, AncestorLevel), trust_rank(Level, Rank), trust_rank(AncestorLevel, AncestorRank), Rank > AncestorRank."
-    - "ancestor(Pid, Parent, Path) :- derived_from(_, Pid, Parent), Path = cat(Pid, \"<-\", Parent)."
-    - "ancestor(Pid, Ancestor, Path) :- derived_from(_, Pid, Parent), ancestor(Parent, Ancestor, Rest), Path = cat(Pid, \"<-\", Rest)."
+    - "violation(Seq, Pid, Ancestor, Level, AncestorLevel) :- trust(Seq, Pid, Level), provenance(Seq, _, Pid, \"agent_generated\"), ancestor(Pid, Ancestor), trust(_, Ancestor, AncestorLevel), trust_rank(Level, Rank), trust_rank(AncestorLevel, AncestorRank), Rank > AncestorRank."
+    - "ancestor(Pid, Parent) :- derived_from(_, Pid, Parent)."
+    - "ancestor(Pid, Ancestor) :- derived_from(_, Pid, Parent), ancestor(Parent, Ancestor)."

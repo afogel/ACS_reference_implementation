@@ -20,7 +20,7 @@ bun run ir render            # writes ir/dist/provision-index.md from manifest +
 bun run ir lint              # spec-lint: failures by rule, records needing review, the migration worklist; exits 1 on either
 bun run ir compile           # predicates -> ir/dist/rules.dl (Soufflé), ir/.build/rules.json (evaluator), invariants.tla
 bun run ir verify t.jsonl    # conformance report over an envelope log; add --guardian, --deployment, --hmac-key for the external facts
-bun run ir verify --facts d  # in-process evaluator over a directory of .facts; prints unified violations
+bun run ir verify --facts d  # in-process evaluator over a directory of .facts; prints one line per violation: provision, subject values, witness values
 bun run ir differential      # both engines over ir/test/conformance/fixtures; SOUFFLE=/path enables the oracle locally
 bun run ir ids next REQ      # allocates the next ACS-REQ-NNNN and bumps the counter
 ```
@@ -48,7 +48,7 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | `vocabulary/relations.yaml` | authored | The fact vocabulary (S7): every relation a predicate may name, typed, with its source (wire, external, guardian-state, deployment, static). |
 | `dist/markers.patch`, `dist/markers-poc.patch` | generated | The overlay as unified diffs against the spec repository (N60): the bulk marker PR's payload and the five-provision proof of concept. Both apply to the pinned checkout; the test suite proves it. |
 | `dist/rules.dl` | generated | The published Soufflé program (S8): runnable by an auditor with stock Soufflé 2.5 and a directory of `.facts`. |
-| `test/conformance/fixtures/<name>/` | authored | `.facts` per relation plus `expected.tsv`, the unified violations both engines must derive (S14). Cites provision IDs. |
+| `test/conformance/fixtures/<name>/` | authored | `.facts` per relation plus `expected.tsv`, the violations both engines must derive, one per line as provision, subject values, witness values (S14). Cites provision IDs. |
 | `.build/rules.json`, `.build/invariants.tla` | generated, ignored | The evaluator's rule set (S16) and the declared invariant list (S15). |
 | `.build/marked/` | generated, ignored | The marked copy of the corpus (S3) the extractor reads. |
 | `.build/stale.json`, `.build/lint.json`, `.build/impact.md` | generated, ignored | Provisions needing review and the worklist (S12), the full lint report, and the PR comment (N27), written by `acs-ir lint`. |

@@ -13,7 +13,7 @@ The breaches, by provision:
 - ACS-REQ-0007: hook 2 fired before the handshake at 3.
 - ACS-REQ-0008: for decision 20 the agent layer ran (order 1) before the deterministic layer (order 2).
 - ACS-REQ-0009: `prov-agent` derives from `prov-unknown`, which never appeared in the session.
-- ACS-REQ-0010: `prov-agent` is `agent_generated` and `trusted` while its ancestor `prov-user-input` is `untrusted`; the witness carries the path.
+- ACS-REQ-0010: `prov-agent` is `agent_generated` and `trusted` while its ancestor `prov-user-input` is `untrusted`; the witness names the ancestor and both levels.
 - ACS-REQ-0011: `Intent.parsed` at step 4 holds `send`, absent at establishment (step 2) and never granted by an extension.
 - ACS-REQ-0012: a rejected modification at step 4 with no audit event.
 - ACS-REQ-0013: entry `entry-1` claims `hash-claimed`; recomputation gives `hash-recomputed`.

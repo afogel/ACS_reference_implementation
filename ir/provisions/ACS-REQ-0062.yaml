@@ -18,4 +18,4 @@ predicate:
   subject: [Session, EntryId]
   witness: [Field]
   rules:
-    - "violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), Field = \"request_hash\", not context_entry_field(Session, EntryId, \"request_hash\")."
+    - "violation(Session, EntryId, \"request_hash\") :- context_entry(Session, EntryId, _, _), not context_entry_field(Session, EntryId, \"request_hash\")."

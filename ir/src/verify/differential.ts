@@ -3,8 +3,9 @@
  * to identical violation sets (R3.8, X4).
  *
  * A fixture is a directory of `.facts` files plus `expected.tsv`, the
- * unified violations (provision, subject, witness) the fixture is meant to
- * produce. The evaluator runs in-process; Soufflé runs as a subprocess when
+ * violations the fixture is meant to produce, one per line as provision,
+ * subject values joined by "|", witness values joined by "|" (the unified
+ * form; Soufflé's per-provision CSVs are read back into it). The evaluator runs in-process; Soufflé runs as a subprocess when
  * a binary is available (`SOUFFLE` env var or `souffle` on PATH), which in
  * CI it always is. Divergence in either direction is reported as the
  * tuples only one side derived (U31), and the evaluator is additionally
@@ -81,7 +82,12 @@ export function runFixture(program: RuleProgram, dl: string, dir: string, name: 
   return result;
 }
 
-/** Run stock Soufflé on the published program over the fixture's facts and read back the unified violations. */
+/**
+ * Run stock Soufflé on the published program over the fixture's facts and
+ * read back every provision's violation CSV in the unified form the
+ * fixtures and the evaluator use: provision, subject values joined by
+ * "|", witness values joined by "|".
+ */
 export function runSouffle(souffle: string, dl: string, program: RuleProgram, facts: ReturnType<typeof readFacts>): string[] {
   const work = mkdtempSync(join(tmpdir(), "acs-ir-souffle-"));
   const factsDir = join(work, "facts");
@@ -94,12 +100,18 @@ export function runSouffle(souffle: string, dl: string, program: RuleProgram, fa
   if (run.exitCode !== 0) {
     throw new Error(`souffle exited ${run.exitCode}:\n${run.stderr.toString()}\n${run.stdout.toString()}`);
   }
-  const csv = join(outDir, "violation.csv");
-  if (!existsSync(csv)) return [];
-  return readFileSync(csv, "utf8")
-    .split("\n")
-    .filter((l) => l.trim() !== "")
-    .sort();
+  const rows: string[] = [];
+  for (const p of program.provisions) {
+    if (p.status !== "compiled" || !p.violation) continue;
+    const csv = join(outDir, `${p.violation.name}.csv`);
+    if (!existsSync(csv)) continue;
+    for (const line of readFileSync(csv, "utf8").split("\n")) {
+      if (line.trim() === "") continue;
+      const cells = line.split("\t");
+      rows.push(`${p.id}\t${cells.slice(0, p.subject.length).join("|")}\t${cells.slice(p.subject.length).join("|")}`);
+    }
+  }
+  return rows.sort();
 }
 
 function readExpected(path: string): string[] {

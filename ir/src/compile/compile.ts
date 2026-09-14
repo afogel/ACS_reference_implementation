@@ -8,15 +8,19 @@
  * never hand-written beside it). The checks:
  *
  *  - every relation is a vocabulary relation or a helper the predicate
- *    defines; arity matches; every variable has one type
+ *    defines; arity matches; every variable has one type and one domain
+ *    (a variable bound to a `seq` column cannot also fill a `bound`
+ *    column, and two different domains cannot be compared)
  *  - safety: every variable in a head, a negated atom, or a comparison is
  *    bound by a positive atom (or is the target of `count`, or the left
  *    side of `Var = expr` with `expr` bound)
  *  - stratification: no relation depends negatively on itself, directly or
  *    through helpers, so both engines compute the same fixpoint
- *  - N36: the `violation` head's arguments are exactly the declared
- *    `subject` then `witness` variables, both non-empty, all bound. A rule
- *    that derives a violation without naming its subject and witness does not compile
+ *  - N36: the `violation` head's arguments are the declared `subject` then
+ *    `witness` variables in that order, both lists non-empty, all bound. A
+ *    position may hold a constant instead of its variable, which is how a
+ *    rule names the field it found missing. A rule that derives a violation
+ *    without naming its subject and witness does not compile
  *  - R3.6: a Requirement with neither a predicate nor a declared
  *    `inexpressible` reason is a compile failure, never an unreported skip
  *
@@ -60,6 +64,8 @@ export interface RuleProgram {
   generated_by: string;
   corpus: { version: string | null; commit: string | null };
   relations: Relation[];
+  /** Every column domain the relations declare, with its base type; the Soufflé emitter declares each as a subtype. */
+  domains: { name: string; type: ColumnType }[];
   provisions: CompiledProvision[];
   problems: { id: string; message: string }[];
 }
@@ -83,7 +89,14 @@ export function compileProgram(
       problems.push({ id: manifest.id, message: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { generated_by: "acs-ir compile", corpus, relations: [...vocabulary.relations.values()], provisions, problems };
+  return {
+    generated_by: "acs-ir compile",
+    corpus,
+    relations: [...vocabulary.relations.values()],
+    domains: [...vocabulary.domains.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, type]) => ({ name, type })),
+    provisions,
+    problems,
+  };
 }
 
 function skipped(id: string, status: ProvisionStatus, reason: string | null, alias_of: string | null = null): CompiledProvision {
@@ -121,6 +134,24 @@ export function flagInexpressible(id: string, reason: string): CompiledProvision
   return skipped(id, "inexpressible", reason);
 }
 
+/** A column type as the checker sees it: the base type, and the domain when the value is known to come from one. */
+interface Ty {
+  base: ColumnType;
+  domain: string | null;
+}
+
+function describe(t: Ty): string {
+  return t.domain ?? t.base;
+}
+
+function sameTy(a: Ty | null, b: Ty | null): boolean {
+  return a === null || b === null ? a === b : a.base === b.base && a.domain === b.domain;
+}
+
+function toTy(c: Column): Ty {
+  return { base: c.type, domain: c.domain };
+}
+
 /** N31: parse, type, check safety and stratification, and rename helpers so provisions never collide. */
 export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extract<PredicateSpec, { kind: "rules" }>): CompiledProvision {
   const prefix = slug(id);
@@ -137,6 +168,8 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
   const helperNames = new Set(rules.map((r) => r.head.relation).filter((n) => n !== "violation"));
   for (const h of helperNames) {
     if (vocabulary.relations.has(h)) throw new Error(`${id}: helper ${h} shadows a vocabulary relation`);
+    const arities = new Set(rules.filter((r) => r.head.relation === h).map((r) => r.head.args.length));
+    if (arities.size > 1) throw new Error(`${id}: helper ${h} has ${[...arities].join(" and ")} columns in different rules`);
   }
   for (const rule of rules) {
     for (const lit of rule.body) {
@@ -149,52 +182,49 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
   }
   if (!rules.some((r) => r.head.relation === "violation")) throw new Error(`${id}: no rule derives violation`);
 
-  // N36: the violation head is subject then witness, all variables, both non-empty.
+  // N36: the violation head is subject then witness, both non-empty; each position is its variable or a constant.
   if (spec.subject.length === 0 || spec.witness.length === 0) throw new Error(`${id}: violation needs at least one subject and one witness column (R3.4)`);
   const expectedHead = [...spec.subject, ...spec.witness];
   if (new Set(expectedHead).size !== expectedHead.length) throw new Error(`${id}: subject and witness variables must be distinct`);
   for (const rule of rules.filter((r) => r.head.relation === "violation")) {
-    const names = rule.head.args.map((a) => (a.kind === "var" ? a.name : null));
-    if (names.some((n) => n === null) || names.join(",") !== expectedHead.join(",")) {
-      throw new Error(`${id}: violation(${expectedHead.join(", ")}) is the only allowed head; got violation(${rule.head.args.map((a) => (a.kind === "var" ? a.name : "?")).join(", ")}) (N36)`);
+    const ok =
+      rule.head.args.length === expectedHead.length &&
+      rule.head.args.every((a, i) => (a.kind === "var" && a.name === expectedHead[i]) || a.kind === "str" || a.kind === "num");
+    if (!ok) {
+      const got = rule.head.args.map((a) => (a.kind === "var" ? a.name : a.kind === "str" || a.kind === "num" ? "<constant>" : "?"));
+      throw new Error(`${id}: violation(${expectedHead.join(", ")}) is the only allowed head, each position its variable or a constant; got violation(${got.join(", ")}) (N36)`);
     }
   }
 
-  // Types: iterate until every helper column has a type.
-  const helperTypes = new Map<string, (ColumnType | null)[]>();
-  for (const rule of rules) if (rule.head.relation !== "violation") helperTypes.set(rule.head.relation, rule.head.args.map(() => null));
-  let violationTypes: (ColumnType | null)[] = expectedHead.map(() => null);
-  const relationTypes = (name: string): (ColumnType | null)[] | null =>
-    vocabulary.relations.get(name)?.columns.map((c) => c.type) ?? helperTypes.get(name) ?? null;
+  // Types: iterate until every helper column has a type. Each pass types every
+  // rule with what is known and recomputes each derived relation's columns
+  // from the heads that produce it.
+  const derived = new Map<string, (Ty | null)[]>();
+  for (const name of [...helperNames, "violation"]) {
+    const arity = rules.find((r) => r.head.relation === name)?.head.args.length ?? 0;
+    derived.set(name, Array.from({ length: arity }, () => null));
+  }
+  const relationTypes = (name: string): (Ty | null)[] | null => vocabulary.relations.get(name)?.columns.map(toTy) ?? derived.get(name) ?? null;
   for (let pass = 0; pass < 8; pass++) {
     let progressed = false;
-    for (const rule of rules) {
-      const env = typeRule(id, rule, relationTypes);
-      const target = rule.head.relation === "violation" ? violationTypes : helperTypes.get(rule.head.relation);
-      if (!target) continue;
-      rule.head.args.forEach((arg, i) => {
-        const t = termType(arg, env);
-        if (t && target[i] === null) {
-          target[i] = t;
-          progressed = true;
-        } else if (t && target[i] !== t) {
-          throw new Error(`${id}: ${rule.head.relation} column ${i + 1} is ${target[i]} in one rule and ${t} in another`);
-        }
-      });
-      if (rule.head.relation === "violation") violationTypes = target;
+    for (const [name, current] of derived) {
+      const producers = rules.filter((r) => r.head.relation === name);
+      const envs = producers.map((rule) => typeRule(id, rule, relationTypes));
+      const next = current.map((_, i) => headColumnType(id, name, i, producers, envs));
+      if (!next.every((t, i) => sameTy(t, current[i] ?? null))) {
+        derived.set(name, next);
+        progressed = true;
+      }
     }
     if (!progressed) break;
   }
-  for (const [name, types] of helperTypes) {
+  for (const [name, types] of derived) {
     const i = types.findIndex((t) => t === null);
-    if (i !== -1) {
-      const rule = rules.find((r) => r.head.relation === name);
-      const arg = rule?.head.args[i];
-      throw new Error(`${id}: helper ${name} column ${i + 1}${arg?.kind === "var" ? ` (${arg.name})` : ""} is not bound by a positive atom (unsafe)`);
-    }
+    if (i === -1) continue;
+    if (name === "violation") throw new Error(`${id}: violation variable ${expectedHead[i]} is not bound by a positive atom (unsafe)`);
+    const arg = rules.find((r) => r.head.relation === name)?.head.args[i];
+    throw new Error(`${id}: helper ${name} column ${i + 1}${arg?.kind === "var" ? ` (${arg.name})` : ""} is not bound by a positive atom (unsafe)`);
   }
-  const missing = violationTypes.findIndex((t) => t === null);
-  if (missing !== -1) throw new Error(`${id}: violation variable ${expectedHead[missing]} is not bound by a positive atom (unsafe)`);
   // A final pass with every type known checks each rule's body fully.
   for (const rule of rules) typeRule(id, rule, relationTypes, true);
 
@@ -221,14 +251,15 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
     body: r.body.map((lit) => renameLiteral(lit, rename)),
     source: r.source,
   }));
+  const column = (name: string, t: Ty | null): Column => ({ name, type: (t as Ty).base, domain: (t as Ty).domain });
   const helpers: HelperRelation[] = [...helperNames].map((h) => ({
     local: h,
     name: rename(h),
-    columns: (helperTypes.get(h) ?? []).map((t, i) => ({ name: `c${i + 1}`, type: t as ColumnType })),
+    columns: (derived.get(h) ?? []).map((t, i) => column(`c${i + 1}`, t)),
   }));
   const violation = {
     name: rename("violation"),
-    columns: expectedHead.map((name, i) => ({ name: `${i < spec.subject.length ? "subject" : "witness"}_${name.toLowerCase()}`, type: violationTypes[i] as ColumnType })),
+    columns: expectedHead.map((name, i) => column(`${i < spec.subject.length ? "subject" : "witness"}_${name.toLowerCase()}`, derived.get("violation")?.[i] ?? null)),
   };
   const used = new Set<string>();
   for (const rule of rules) for (const lit of rule.body) for (const a of literalAtoms(lit)) if (vocabulary.relations.has(a.relation)) used.add(a.relation);
@@ -253,32 +284,77 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
   };
 }
 
-type Env = Map<string, ColumnType>;
+/**
+ * The type of a derived relation's column from every rule that produces it.
+ * Variables and functors decide it: two rules must agree on the base type,
+ * and on the domain when both name one; a rule that supplies a base-typed
+ * value (a `cat` result, say) makes the column base-typed, which every
+ * domain fits. A constant fits any domain, so it only has to agree on the
+ * base type, and decides the column alone only when no rule supplies a
+ * variable.
+ */
+function headColumnType(id: string, relation: string, i: number, producers: Rule[], envs: Env[]): Ty | null {
+  let acc: Ty | null = null;
+  let constant: ColumnType | null = null;
+  producers.forEach((rule, r) => {
+    const arg = rule.head.args[i] as Term;
+    if (arg.kind === "str" || arg.kind === "num") {
+      const base: ColumnType = arg.kind === "str" ? "symbol" : "number";
+      if (constant && constant !== base) throw new Error(`${id}: ${relation} column ${i + 1} is ${constant} in one rule and ${base} in another`);
+      constant = base;
+      return;
+    }
+    const t = termType(arg, envs[r] as Env);
+    if (!t) return;
+    if (!acc) {
+      acc = t;
+      return;
+    }
+    if (acc.base !== t.base) throw new Error(`${id}: ${relation} column ${i + 1} is ${acc.base} in one rule and ${t.base} in another`);
+    if (acc.domain && t.domain && acc.domain !== t.domain) throw new Error(`${id}: ${relation} column ${i + 1} is ${acc.domain} in one rule and ${t.domain} in another`);
+    acc = { base: acc.base, domain: acc.domain && t.domain ? acc.domain : null };
+  });
+  const result: Ty | null = acc ?? (constant ? { base: constant, domain: null } : null);
+  if (result && constant && result.base !== constant) throw new Error(`${id}: ${relation} column ${i + 1} is ${result.base} in one rule and ${constant} in another`);
+  return result;
+}
+
+type Env = Map<string, Ty>;
 
 /** Type every variable in a rule from its positive atoms, then check the rest. Returns the environment. */
-function typeRule(id: string, rule: Rule, relationTypes: (name: string) => (ColumnType | null)[] | null, strict = false): Env {
+function typeRule(id: string, rule: Rule, relationTypes: (name: string) => (Ty | null)[] | null, strict = false): Env {
   const env: Env = new Map();
-  const bind = (name: string, type: ColumnType | null): void => {
+  // A variable's type is the meet of every column it fills: the base types
+  // must agree, and so must the domains when both are known.
+  const bindIn = (target: Env, name: string, type: Ty | null): void => {
     if (!type) return;
-    const known = env.get(name);
-    if (known && known !== type) throw new Error(`${id}: variable ${name} is used as both ${known} and ${type} in: ${rule.source}`);
-    env.set(name, type);
+    const known = target.get(name);
+    if (!known) {
+      target.set(name, type);
+      return;
+    }
+    if (known.base !== type.base || (known.domain && type.domain && known.domain !== type.domain)) {
+      throw new Error(`${id}: variable ${name} is used as both ${describe(known)} and ${describe(type)} in: ${rule.source}`);
+    }
+    if (!known.domain && type.domain) target.set(name, type);
   };
-  const bindAtom = (atom: Atom): void => {
+  const bindAtomIn = (target: Env, atom: Atom): void => {
     const types = relationTypes(atom.relation);
     if (!types) return;
     if (types.length !== atom.args.length) throw new Error(`${id}: ${atom.relation} takes ${types.length} argument(s), got ${atom.args.length} in: ${rule.source}`);
     atom.args.forEach((arg, i) => {
       const t = types[i] ?? null;
-      if (arg.kind === "var") bind(arg.name, t);
-      else if (arg.kind === "str" && t === "number") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a number, got a string in: ${rule.source}`);
-      else if (arg.kind === "num" && t === "symbol") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a symbol, got a number in: ${rule.source}`);
-      else if (arg.kind === "func" && t === "number") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a number, got ${arg.name}() in: ${rule.source}`);
+      if (arg.kind === "var") bindIn(target, arg.name, t);
+      else if (arg.kind === "str" && t?.base === "number") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a number, got a string in: ${rule.source}`);
+      else if (arg.kind === "num" && t?.base === "symbol") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a symbol, got a number in: ${rule.source}`);
+      else if (arg.kind === "func" && t?.base === "number") throw new Error(`${id}: ${atom.relation} argument ${i + 1} is a number, got ${arg.name}() in: ${rule.source}`);
     });
   };
+  const bind = (name: string, type: Ty | null): void => bindIn(env, name, type);
+  const bindAtom = (atom: Atom): void => bindAtomIn(env, atom);
   // Positive atoms bind; then assignments; then everything is checked.
   for (const lit of rule.body) if (lit.kind === "atom" && !lit.negated) bindAtom(lit.atom);
-  for (const lit of rule.body) if (lit.kind === "count") bind(lit.target, "number");
+  for (const lit of rule.body) if (lit.kind === "count") bind(lit.target, { base: "number", domain: null });
   let progressed = true;
   while (progressed) {
     progressed = false;
@@ -298,23 +374,23 @@ function typeRule(id: string, rule: Rule, relationTypes: (name: string) => (Colu
   for (const lit of rule.body) {
     if (lit.kind === "atom" && lit.negated) {
       for (const v of atomVars(lit.atom)) if (!env.has(v)) throw new Error(`${id}: variable ${v} in a negated atom is not bound by a positive atom (unsafe) in: ${rule.source}`);
-      bindAtom(lit.atom); // arity and constant types, now that every variable is known to be bound
+      bindAtom(lit.atom); // arity, constant types, and domains, now that every variable is known to be bound
     }
     if (lit.kind === "cmp") {
       if (!bound(lit.left) || !bound(lit.right)) {
         const missing = [...termVars(lit.left), ...termVars(lit.right)].filter((v) => !env.has(v));
         throw new Error(`${id}: variable ${missing[0]} in a comparison is not bound (unsafe) in: ${rule.source}`);
       }
-      const l = termType(lit.left, env);
-      const r = termType(lit.right, env);
-      if (l !== r) throw new Error(`${id}: comparing ${l} with ${r} in: ${rule.source}`);
-      if (lit.op !== "=" && lit.op !== "!=" && l !== "number") throw new Error(`${id}: ordering comparisons need numbers, got ${l} in: ${rule.source}`);
+      const l = termType(lit.left, env) as Ty;
+      const r = termType(lit.right, env) as Ty;
+      if (l.base !== r.base) throw new Error(`${id}: comparing ${l.base} with ${r.base} in: ${rule.source}`);
+      if (l.domain && r.domain && l.domain !== r.domain) throw new Error(`${id}: comparing a ${l.domain} with a ${r.domain} in: ${rule.source}`);
+      if (lit.op !== "=" && lit.op !== "!=" && l.base !== "number") throw new Error(`${id}: ordering comparisons need numbers, got ${l.base} in: ${rule.source}`);
     }
     if (lit.kind === "count") {
-      for (const atom of lit.atoms) {
-        const types = relationTypes(atom.relation);
-        if (types && types.length !== atom.args.length) throw new Error(`${id}: ${atom.relation} takes ${types.length} argument(s) in: ${rule.source}`);
-      }
+      // The aggregate's own variables are local to it; they are typed in a copy so they never count as bound outside.
+      const inner: Env = new Map(env);
+      for (const atom of lit.atoms) bindAtomIn(inner, atom);
     }
   }
   for (const v of atomVars(rule.head)) if (!env.has(v)) throw new Error(`${id}: head variable ${v} is not bound in the body (unsafe) in: ${rule.source}`);
@@ -322,16 +398,16 @@ function typeRule(id: string, rule: Rule, relationTypes: (name: string) => (Colu
   return env;
 }
 
-function termType(term: Term, env: Env): ColumnType | null {
+function termType(term: Term, env: Env): Ty | null {
   switch (term.kind) {
     case "var":
       return env.get(term.name) ?? null;
     case "str":
-      return "symbol";
+      return { base: "symbol", domain: null };
     case "num":
-      return "number";
+      return { base: "number", domain: null };
     case "func":
-      return "symbol";
+      return { base: "symbol", domain: null };
     case "wild":
       return null;
   }

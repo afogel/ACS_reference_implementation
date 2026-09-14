@@ -18,4 +18,4 @@ predicate:
   subject: [Session, Seq]
   witness: [Method]
   rules:
-    - "violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = \"steps/subagentStart\", not intent_derivation_recorded(Session, Seq, _)."
+    - "violation(Session, Seq, \"steps/subagentStart\") :- request(Seq, Session, \"steps/subagentStart\", _, _), not intent_derivation_recorded(Session, Seq, _)."

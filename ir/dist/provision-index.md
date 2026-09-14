@@ -381,7 +381,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: wire
 - Depends on: [ACS-DEF-0002](#acs-def-0002), [ACS-REQ-0009](#acs-req-0009)
 - Status: active, since 0.1.0; reviewed against `41d62d77d341`
-- Note: Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (R5.2 has nothing to cite here).
+- Note: Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. The closure is over (descendant, ancestor) pairs, so it terminates on a derived_from cycle; the witness names the offending ancestor and both levels, and the evidence lists the derived_from facts for the subject. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (R5.2 has nothing to cite here).
 
 ### ACS-REQ-0011
 
@@ -599,7 +599,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
 - Modality: obligation; evidence: wire
 - Status: active, since 0.1.0; reviewed against `c60df09f1e38`
-- Note: agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
+- Note: The §7.2 table is the static relation default_trust in the vocabulary. agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
 
 ### ACS-REQ-0028
 
@@ -1546,7 +1546,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: wire
 - Depends on: [ACS-DEF-0002](#acs-def-0002)
 - Status: active, since 0.1.0; reviewed against `d79fbb903a78`
-- Note: entries_compacted lists step_ids; the check treats each as the provenance_id the entry contributed, which is how the hook schema describes the union. Extra derived_from entries are not reported.
+- Note: entries_compacted lists step_ids and nothing on the wire ties a step_id to a provenance_id, so the union check reads step_provenance from the Guardian's records; a Guardian that does not supply it leaves this provision unevaluated (R4.5) rather than approximated. Extra derived_from entries are not reported.
 
 ### ACS-REQ-0112
 
