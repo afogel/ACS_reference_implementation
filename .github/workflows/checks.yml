@@ -88,6 +88,15 @@ jobs:
         # marked provision with no authored record fails here.
         if: ${{ !cancelled() }}
         run: bun run ir markers apply && bun run ir extract --check && bun run ir render --check
+      - name: Marker patches match the overlay (N60)
+        # ir/dist/markers.patch is the bulk marker PR's payload and
+        # ir/dist/markers-poc.patch the proof-of-concept's; both are cut
+        # from ir/markers/overlay.yaml and committed so reviewers can read
+        # them. The test suite proves they apply to the pinned checkout.
+        if: ${{ !cancelled() }}
+        run: |
+          bun run ir markers patch --check
+          bun run ir markers patch --check --ids ACS-REQ-0007,ACS-REQ-0010,ACS-REQ-0013,ACS-INV-0001,ACS-EXC-0001 --out ir/dist/markers-poc.patch
       - name: Verify no provision record needs review
         # A record whose reviewed_against no longer matches its provision's
         # text, or that depends on or restates one whose text changed, is

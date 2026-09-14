@@ -14,6 +14,7 @@ This tree reads `spec/acs` (the pinned submodule) and nothing else in the reposi
 bun install
 bun run ir census            # writes ir/census/provisions.yaml and prints the report
 bun run ir markers apply     # materializes the marked corpus under ir/.build/marked/
+bun run ir markers patch     # the overlay as a git patch against the spec repo: ir/dist/markers.patch (add --ids for a subset)
 bun run ir extract           # writes ir/manifest/provisions.json from the marked corpus
 bun run ir render            # writes ir/dist/provision-index.md from manifest + records
 bun run ir lint              # spec-lint: failures by rule, records needing review, the migration worklist; exits 1 on either
@@ -24,7 +25,7 @@ bun run ir differential      # both engines over ir/test/conformance/fixtures; S
 bun run ir ids next REQ      # allocates the next ACS-REQ-NNNN and bumps the counter
 ```
 
-Every generated file takes `--check`, which exits 1 when the committed copy is stale. CI runs the census, markers, extract, render, lint and compile checks on every push, and a separate job installs Soufflé 2.5 and runs the differential; `spec-lint.yml` additionally lints each pull request against its base branch and posts the normative-impact comment.
+Every generated file takes `--check`, which exits 1 when the committed copy is stale. CI runs the census, markers, extract, render, marker-patch, lint and compile checks on every push, and a separate job installs Soufflé 2.5 and runs the differential; `spec-lint.yml` additionally lints each pull request against its base branch and posts the normative-impact comment.
 
 To add a provision: allocate an ID, add an overlay entry quoting the prose, run `markers apply` and `extract`, write `ir/provisions/<ID>.yaml` with `reviewed_against` set to the manifest's `text_hash`, run `render` and `census`, and commit all of it. A keyword occurrence that restates a provision already carried gets an entry in `census/exclusions.yaml` instead of a record.
 
@@ -45,6 +46,7 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | `provisions/<ID>.yaml` | authored | The semantic half (S5): actor, profile, activation, modality, evidence class, schema refs, dependencies, restatement, status. One record per provision, joined to the manifest by ID. |
 | `dist/provision-index.md` | generated | The human-readable catalog (P2). |
 | `vocabulary/relations.yaml` | authored | The fact vocabulary (S7): every relation a predicate may name, typed, with its source (wire, external, guardian-state, deployment, static). |
+| `dist/markers.patch`, `dist/markers-poc.patch` | generated | The overlay as unified diffs against the spec repository (N60): the bulk marker PR's payload and the five-provision proof of concept. Both apply to the pinned checkout; the test suite proves it. |
 | `dist/rules.dl` | generated | The published Soufflé program (S8): runnable by an auditor with stock Soufflé 2.5 and a directory of `.facts`. |
 | `test/conformance/fixtures/<name>/` | authored | `.facts` per relation plus `expected.tsv`, the unified violations both engines must derive (S14). Cites provision IDs. |
 | `.build/rules.json`, `.build/invariants.tla` | generated, ignored | The evaluator's rule set (S16) and the declared invariant list (S15). |
@@ -54,7 +56,8 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | `src/markdown-blocks.ts` | code | Line-level block classifier: paragraph, list item, table cell, blockquote, heading, code fence. |
 | `src/census/` | code | N10 to N14 and N19: the census runner, the source census check, the keyword sweep, the callout scan, the footer-seeded dependency edges, and the authored exclusions (E8.2). |
 | `src/ids.ts` | code | N3: provision identity and allocation. |
-| `src/markers/overlay.ts` | code | N1, N2: overlay parsing, quote resolution, marker insertion. |
+| `src/markers/overlay.ts` | code | N1, N2: overlay parsing, quote resolution, marker insertion; refuses an anchor that would precede a block marker, and an entry whose marker the corpus already carries. |
+| `src/markers/patch.ts` | code | N60: the overlay as a git patch against the spec repository. |
 | `src/lint/marker-pairing.ts` | code | N22: unpaired, mismatched, or nested markers fail before extraction. |
 | `src/lint/spec-lint.ts` | code | N20 to N26: spec-lint against a baseline; unmarked keywords, tombstones, IDs, citations, schema refs. |
 | `src/lint/schema-refs.ts` | code | N26: JSON Pointer resolution and the pinned subschema hash (R2.8). |
@@ -82,4 +85,4 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | V5 | shipped | Twenty-one predicates compiled to Soufflé and to the in-process evaluator; both engines agree over shared fixtures. |
 | V6 | shipped | The conformance report over an envelope log: verdicts with evidence, scoped to negotiated profiles, rosters printed. |
 | V7 | shipped | The full conversion: 155 provisions, 34 authored exclusions, zero unbound occurrences; the inexpressible set enumerated. |
-| V8 | planned | Upstreaming the markers. |
+| V8 | shipped (tooling and drafts) | `markers patch` cuts the bulk and proof-of-concept patches; the Discussion and both PR texts are drafted under `slices/v8/`. Posting them upstream is the maintainer's step. |

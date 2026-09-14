@@ -295,6 +295,8 @@ So V8 is listed last because it *completes* last, but its first step is schedule
 
 **The overlay retires itself here.** S2 fed both the local applier (V2) and this patch. Once U30 merges, S2 is deleted and S3 becomes S1 — the extractor reads the submodule directly (E3.3).
 
+🟡 **Shipped, up to the posting** ([`ir/slices/v8/`](../../ir/slices/v8/README.md)). `acs-ir markers patch` (U8, N60) cuts the overlay into a unified diff against the spec repository: `ir/dist/markers.patch` (155 provisions, 14 files, one-line replacements only) and, with `--ids`, `ir/dist/markers-poc.patch` (the five worked provisions). Both apply to the pinned checkout with `git apply`, the spec repository's own guards pass on the patched tree, an MkDocs build shows the anchors in the HTML and nothing visible, and extracting from the patched tree yields the committed manifest, which is E3.3 proven before the patch is sent. One placement rule came out of it: an anchor must not precede a list, quote, table or heading marker on its line, and the resolver now refuses such a quote. The Discussion text (U28), the proof-of-concept PR text (U29) and the bulk PR text (U30) are drafted in that directory for Ariel to post under the `afogel` identity with no tool attribution (D-f); the posting itself, and the community's response, are not tooling work.
+
 ---
 
 ## Slice assignment

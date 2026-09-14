@@ -4,6 +4,7 @@
  *
  *   acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--exclusions <file>] [--out <file>] [--quiet]
  *   acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]
+ *   acs-ir markers patch [--check] [--corpus <dir>] [--overlay <file>] [--ids <ID,ID,...>] [--out <file>]
  *   acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]
  *   acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]
  *   acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>]
@@ -51,6 +52,7 @@ import { loadCorpus, readSource } from "./corpus.ts";
 import { defaultManifestPath, extractProvisions, type Manifest } from "./extract/extract.ts";
 import { allocateId, defaultIdsDir, PROVISION_TYPES, type ProvisionType } from "./ids.ts";
 import { applyOverlay, defaultBuildDir, defaultMarkersDir, parseOverlay, resolveOverlay } from "./markers/overlay.ts";
+import { materializeMarkerPatch } from "./markers/patch.ts";
 import { renderCensus } from "./render/census.ts";
 import { renderProvisionIndex } from "./render/provision-index.ts";
 import { renderImpactComment } from "./render/impact.ts";
@@ -76,6 +78,7 @@ const USAGE = [
   "usage:",
   "  acs-ir census        [--check] [--corpus <dir>] [--sources <file>] [--overlay <file>] [--exclusions <file>] [--out <file>] [--quiet]",
   "  acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]",
+  "  acs-ir markers patch [--check] [--corpus <dir>] [--overlay <file>] [--ids <ID,ID,...>] [--out <file>]",
   "  acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]",
   "  acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]",
   "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>] [--exclusions <file>]",
@@ -98,6 +101,7 @@ export function main(argv: string[]): number {
       return census(rest);
     case "markers":
       if (rest[0] === "apply") return markersApply(rest.slice(1));
+      if (rest[0] === "patch") return markersPatch(rest.slice(1));
       break;
     case "extract":
       return extract(rest);
@@ -151,6 +155,31 @@ function markersApply(rest: string[]): number {
   const written = applyOverlay(corpus, resolution.spans, (file) => readSource(corpus, file), buildDir);
   console.error(`acs-ir markers apply: ${resolution.spans.length} provisions marked across ${written.length} files in ${buildDir}`);
   return 0;
+}
+
+function markersPatch(rest: string[]): number {
+  const check = rest.includes("--check");
+  const corpus = loadCorpus(flagValue(rest, "--corpus"));
+  const overlayFile = flagValue(rest, "--overlay") ?? join(defaultMarkersDir(), "overlay.yaml");
+  const idsFlag = flagValue(rest, "--ids");
+  const only = idsFlag === undefined ? null : new Set(idsFlag.split(",").map((s) => s.trim()).filter(Boolean));
+  const out = flagValue(rest, "--out") ?? join(defaultDistDir(), only === null ? "markers.patch" : "markers-subset.patch");
+  const entries = existsSync(overlayFile) ? parseOverlay(readFileSync(overlayFile, "utf8")) : [];
+  const resolution = resolveOverlay(entries, (file) => (corpus.files.includes(file) ? readSource(corpus, file) : null));
+  if (resolution.problems.length > 0) {
+    for (const p of resolution.problems) console.error(`overlay: ${p}`);
+    console.error(`acs-ir markers patch: ${resolution.problems.length} problem(s); nothing written.`);
+    return 1;
+  }
+  let patch: ReturnType<typeof materializeMarkerPatch>;
+  try {
+    patch = materializeMarkerPatch(corpus, resolution.spans, (file) => readSource(corpus, file), only);
+  } catch (error) {
+    console.error(`acs-ir markers patch: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+  console.error(`acs-ir markers patch: ${patch.provisions.length} provision(s) across ${patch.files.length} file(s), against ${corpus.root}.`);
+  return deliver("markers patch", out, patch.patch, check);
 }
 
 function extract(rest: string[]): number {

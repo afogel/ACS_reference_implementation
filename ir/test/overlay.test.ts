@@ -40,10 +40,35 @@ describe("resolveOverlay -- the whole overlay against the corpus", () => {
     );
     expect(spans.map((s) => s.id)).toEqual(["ACS-REQ-0001", "ACS-REQ-0002", "ACS-REQ-0001"]);
     expect(problems).toEqual([
+      'ACS-REQ-0002: anchor would precede the block marker "-" in x.md; start the quote after it',
       "ACS-REQ-0001: appears more than once in the overlay",
       "ACS-REQ-0003: source missing.md is not in the corpus",
       "ACS-REQ-0001 and ACS-REQ-0002 overlap in x.md; spans must not nest or cross",
     ]);
+  });
+
+  it("accepts a quote that starts after the block marker, and refuses one on a heading, a quote, a table row or a numbered item", () => {
+    const page = "# Title MUST\n\n> Quoted MUST\n\n| a | b MUST |\n\n1. first MAY\n\n- gamma\n";
+    const readPage = (source: string): string | null => (source === "p.md" ? page : null);
+    const ok = resolveOverlay([{ ...entry("ACS-REQ-0001", "gamma"), source: "p.md" }, { ...entry("ACS-REQ-0002", "Quoted MUST"), source: "p.md" }], readPage);
+    expect(ok.problems).toEqual([]);
+    const bad = resolveOverlay(
+      [
+        { ...entry("ACS-REQ-0003", "# Title MUST"), source: "p.md" },
+        { ...entry("ACS-REQ-0004", "> Quoted MUST"), source: "p.md" },
+        { ...entry("ACS-REQ-0005", "| a | b MUST |"), source: "p.md" },
+        { ...entry("ACS-REQ-0006", "1. first MAY"), source: "p.md" },
+      ],
+      readPage,
+    );
+    expect(bad.problems.map((p) => p.split(":")[0])).toEqual(["ACS-REQ-0003", "ACS-REQ-0004", "ACS-REQ-0005", "ACS-REQ-0006"]);
+  });
+
+  it("retires an entry whose marker the corpus already carries (E3.3), rather than marking it twice", () => {
+    const marked = text.replace("delta MAY epsilon", `${anchorFor("ACS-REQ-0001")}delta MAY epsilon${terminatorFor("ACS-REQ-0001")}`);
+    const { spans, problems } = resolveOverlay([entry("ACS-REQ-0001", "delta MAY epsilon")], (source) => (source === "x.md" ? marked : null));
+    expect(spans).toEqual([]);
+    expect(problems).toEqual(["ACS-REQ-0001: already marked in x.md; remove its overlay entry, the corpus carries the marker now (E3.3)"]);
   });
 });
 

@@ -99,8 +99,17 @@ export function resolveOverlay(entries: MarkerEntry[], read: (source: string) =>
       problems.push(`${entry.id}: source ${entry.source} is not in the corpus`);
       continue;
     }
+    // E3.3: once a marker has landed upstream, its overlay entry is retired,
+    // not applied a second time.
+    if (text.includes(anchorFor(entry.id))) {
+      problems.push(`${entry.id}: already marked in ${entry.source}; remove its overlay entry, the corpus carries the marker now (E3.3)`);
+      continue;
+    }
     try {
-      spans.push(resolveQuote(entry, text));
+      const span = resolveQuote(entry, text);
+      const blocked = blockSyntaxProblem(span, text);
+      if (blocked) problems.push(blocked);
+      spans.push(span);
     } catch (error) {
       problems.push(error instanceof Error ? error.message : String(error));
     }
@@ -112,6 +121,23 @@ export function resolveOverlay(entries: MarkerEntry[], read: (source: string) =>
     }
   }
   return { spans, problems };
+}
+
+const BLOCK_MARKER = /^(?:[-*+] |\d+[.)] |\| |> |#{1,6} )/;
+
+/**
+ * An anchor is inline HTML. Inserted where only whitespace precedes it on
+ * the line, it would push a list, quote, table or heading marker off the
+ * line start and the renderer would lose the block. Such a quote must start
+ * after the marker (V8 found one: §8.1's `- **SHOULD:**` item).
+ */
+export function blockSyntaxProblem(span: ResolvedSpan, text: string): string | null {
+  const lineStart = text.lastIndexOf("\n", span.start - 1) + 1;
+  if (text.slice(lineStart, span.start).trim() !== "") return null;
+  const lineEnd = text.indexOf("\n", span.start);
+  const rest = text.slice(span.start, lineEnd === -1 ? text.length : lineEnd);
+  const marker = BLOCK_MARKER.exec(rest);
+  return marker ? `${span.id}: anchor would precede the block marker ${JSON.stringify(marker[0].trim())} in ${span.source}; start the quote after it` : null;
 }
 
 export function anchorFor(id: string): string {
