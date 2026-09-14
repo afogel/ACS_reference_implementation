@@ -1,2 +1,3 @@
-s2	e1	tool_call_request
-s2	e2	intent_extension
+# context_entry_step(session, entry_id, step_type)  source: guardian-state
+session-clean	entry-1	tool_call_request
+session-clean	entry-2	intent_extension

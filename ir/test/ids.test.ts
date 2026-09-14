@@ -15,7 +15,7 @@ describe("provision IDs -- opaque, typed, four digits", () => {
 });
 
 describe("allocateId -- the counter only goes up", () => {
-  it("hands out the next number and persists it", () => {
+  it("allocates the next number and persists it", () => {
     const dir = mkdtempSync(join(tmpdir(), "acs-ir-ids-"));
     writeFileSync(join(dir, "counter.yaml"), "REQ: 2\nDEF: 0\nINV: 0\nEXC: 0\n");
     writeFileSync(join(dir, "tombstones.yaml"), "tombstones: []\n");
@@ -34,7 +34,7 @@ describe("allocateId -- the counter only goes up", () => {
   });
 });
 
-describe("checkAllocated -- IDs in use must come from the counter and not from the graveyard", () => {
+describe("checkAllocated -- IDs in use must come from the counter and not from the tombstones", () => {
   const counter = { REQ: 3, DEF: 1, INV: 0, EXC: 0 };
   const tombstones = [{ id: "ACS-REQ-0002", withdrawn_in: "0.1.2", reason: "merged into ACS-REQ-0003" }];
 

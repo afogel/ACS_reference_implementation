@@ -1,1 +1,3 @@
-3	s1
+# handshake(seq, session)  source: wire
+# A `handshake/hello` request.
+3	session-violating

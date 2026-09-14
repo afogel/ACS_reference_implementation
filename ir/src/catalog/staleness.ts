@@ -3,8 +3,8 @@
  * N18 `checkRestatement()`.
  *
  * One computation, three edge types. A record pins `reviewed_against`, the
- * `text_hash` it was last reviewed against; a mismatch means the prose moved
- * under the record (R2.4). From every such root the walk follows the
+ * `text_hash` it was last reviewed against; a mismatch means the prose
+ * changed after the record was reviewed (R2.4). From every such root the walk follows the
  * catalog's edges in reverse: a Requirement that `depends_on` a changed
  * Definition or Invariant is stale even though no keyword sentence changed
  * (R2.6), and a pillar copy that `restates` a changed concept-page provision
@@ -15,7 +15,7 @@
  * classifies the change as editorial, semantic, or split, and clears the
  * flag by updating `reviewed_against` (or issuing new IDs).
  *
- * The migration worklist (R6.6) falls out of the same pass: every live
+ * The migration worklist (R6.6) is computed by the same pass: every live
  * `restates` edge is an inline pillar copy still awaiting replacement by a
  * reference to the concept page.
  */
@@ -75,7 +75,7 @@ export function checkStaleness(catalog: Catalog, citations: TestCitations = new 
     return created;
   };
 
-  // N16: roots -- records whose prose moved under them.
+  // N16: roots -- records whose prose changed since they were reviewed.
   const roots: string[] = [];
   for (const { manifest, record } of catalog.entries) {
     if (record.reviewed_against !== manifest.text_hash) {

@@ -1,16 +1,16 @@
 /**
  * N12: `provisionCensus()` -- per source, counts by node type, plus every
- * keyword occurrence and what became of it.
+ * keyword occurrence and its state.
  *
  * R1.3 and R1.6: every RFC 2119 occurrence in the corpus ends up in exactly
  * one of three states -- bound to a provision ID, excluded with a
  * machine-readable reason, or unbound. Nothing is dropped. In V1 nothing is
- * bound yet, so the census is the complete burn-down list: an occurrence in
+ * bound yet, so the census is the complete list of occurrences still to bind: an occurrence in
  * a normative source is `unbound`, and one in a source the census declares
  * informative or editorial is `excluded` with that source status as the
  * reason. Later slices add the finer exclusions X3 found necessary
  * (`restatement_of`). An occurrence inside a resolved marker span is bound
- * to that provision, which is how the unbound count burns down.
+ * to that provision, which is how the unbound count decreases.
  *
  * `by_node_type` is carried per source from V1 so the shape of the report
  * does not change when V2 starts filling it.
@@ -81,7 +81,7 @@ export interface ProvisionCensus {
   dependency_edges: FooterEdge[];
   dependency_audit: DependencyAudit;
   occurrences: OccurrenceRow[];
-  /** Exclusion entries that did not cover exactly one occurrence: an authoring error the census refuses to hide. */
+  /** Exclusion entries that did not cover exactly one occurrence: an authoring error the census reports as a problem. */
   exclusion_problems: string[];
 }
 

@@ -1,2 +1,5 @@
-s2	p1	fA
-s2	p2	fB
+# provenance_fingerprint(session, pid, fingerprint)  source: wire
+# Hash of a Provenance object's own fields, so two different objects sharing a `provenance_id` are
+# visible.
+session-clean	prov-user-input	fingerprint-a
+session-clean	prov-agent	fingerprint-b

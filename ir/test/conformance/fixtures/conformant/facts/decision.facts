@@ -1,2 +1,4 @@
+# decision(seq, disposition)  source: wire
+# A response's `result.decision`, lowercase.
 20	deny
 30	allow

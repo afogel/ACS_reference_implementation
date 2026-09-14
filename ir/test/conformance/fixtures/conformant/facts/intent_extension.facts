@@ -1,1 +1,3 @@
-s2	4	send
+# intent_extension(session, seq, capability)  source: guardian-state
+# A capability an Approver's `intent_extension` with `scope: session` appended.
+session-clean	4	send

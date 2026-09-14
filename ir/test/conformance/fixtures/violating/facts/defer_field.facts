@@ -1,3 +1,5 @@
+# defer_field(seq, field)  source: wire
+# A field present in a DEFER response's `defer_details`.
 40	resolution_method
 50	resolution_method
 50	resolution_timeout_ms

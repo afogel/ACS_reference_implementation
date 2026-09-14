@@ -1,1 +1,4 @@
-60	s1	approver-1
+# ask_resolved(seq, session, approver)  source: guardian-state
+# The Guardian's record that an Approver, by `ask_details.approver.id`, returned the decision at
+# `seq`. Guardian-to-Approver traffic is not in the Observed Agent's log.
+60	session-violating	approver-1

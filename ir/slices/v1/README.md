@@ -1,6 +1,6 @@
 # V1: The corpus, inventoried
 
-**Demo:** `bun run ir census` prints two reports. The source census names all eight concept pages and every pillar document with its normative status and what makes it normative. The provision census reports every RFC 2119 keyword occurrence by block type, the ten `(normative)` callouts, and the eight `Referenced by` footers as candidate dependency edges. Nothing is bound yet: 197 occurrences in normative sources are listed as unbound, and 11 in informative or editorial sources are excluded with that reason.
+**Demo:** `bun run ir census` prints two reports. The source census lists all eight concept pages and every pillar document with its normative status and what makes it normative. The provision census reports every RFC 2119 keyword occurrence by block type, the ten `(normative)` callouts, and the eight `Referenced by` footers as candidate dependency edges. Nothing is bound yet: 197 occurrences in normative sources are listed as unbound, and 11 in informative or editorial sources are excluded with that reason.
 
 **Master doc:** [`docs/shaping/normative-ir-slices.md`](../../../docs/shaping/normative-ir-slices.md) §V1, authoritative for this slice's scope.
 
@@ -26,7 +26,7 @@ The shaping survey measured 203 occurrences at `c259f57` (v0.1.0). Pointed at th
 
 ## The three things the census decides
 
-**Corpus membership is declared, not grepped (R1.1).** `ir/census/sources.yaml` lists every file under `spec/acs/docs/` with a status and, for normative ones, what makes them normative. `acs-ir census` fails when the tree and the declaration disagree in either direction. That is what makes `concepts/provenance.md`, with zero keywords and two invariants, a normative source, and `identity/overview.md`, with three MUSTs that restate §6.4, not one.
+**Corpus membership is declared, not grepped (R1.1).** `ir/census/sources.yaml` lists every file under `spec/acs/docs/` with a status and, for normative ones, what makes them normative. `acs-ir census` fails when the tree and the declaration disagree in either direction. Under that declaration, `concepts/provenance.md`, with zero keywords and two invariants, is a normative source, and `identity/overview.md`, with three MUSTs that restate §6.4, is not.
 
 **Every occurrence is in exactly one state (R1.6).** Bound to a provision ID, excluded with a machine-readable reason, or unbound. In V1 the reasons are `informative_source` and `editorial_source`; V2 adds the bindings and the finer exclusions X3 found necessary, such as `restatement_of`.
 
@@ -47,4 +47,4 @@ The shaping survey measured 203 occurrences at `c259f57` (v0.1.0). Pointed at th
 
 ## Not in this slice
 
-No markers, no IDs, no provisions, no predicates. The unbound count is the burn-down every later slice reduces.
+No markers, no IDs, no provisions, no predicates. The unbound count is the number every later slice reduces.

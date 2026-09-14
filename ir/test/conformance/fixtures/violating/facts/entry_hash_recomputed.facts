@@ -1,1 +1,3 @@
-e1	hY
+# entry_hash_recomputed(entry_id, hash)  source: external
+# SHA-256 over JCS per §8.2, recomputed from the entry's fields by the verifier.
+entry-1	hash-recomputed

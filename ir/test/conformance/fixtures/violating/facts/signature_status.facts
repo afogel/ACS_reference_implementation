@@ -1,1 +1,3 @@
+# signature_status(seq, status)  source: external
+# valid, invalid, or absent, from recomputing the §10 canonical form.
 4	invalid

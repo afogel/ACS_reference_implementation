@@ -1,2 +1,5 @@
+# signature_covers(seq, field)  source: external
+# The envelope's signature verified over the §10 canonical input, and that input contained
+# `field`.
 20	chain_hash
 30	chain_hash

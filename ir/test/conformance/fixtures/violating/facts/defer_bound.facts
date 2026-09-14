@@ -1,1 +1,3 @@
-s1	1
+# defer_bound(session, bound)  source: deployment
+# The deployment's cascading-deferral limit (§6).
+session-violating	1

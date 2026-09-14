@@ -1,2 +1,3 @@
-s2	e1	3	hX
-s2	e2	4	hZ
+# context_entry(session, entry_id, seq, entry_hash)  source: guardian-state
+session-clean	entry-1	3	hash-entry-1
+session-clean	entry-2	4	hash-entry-2

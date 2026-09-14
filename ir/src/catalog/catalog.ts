@@ -7,7 +7,7 @@
  * and what it depends on or restates. `loadCatalog()` joins those records
  * to the generated manifest by ID and nothing else. S4 is written only by
  * the extractor; S5 is written only by a human; this is the only place they
- * meet, which is what lets R2.5 and R7.1 hold at once.
+ * are joined, which is what lets R2.5 and R7.1 hold at once.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";

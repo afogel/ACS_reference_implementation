@@ -4,7 +4,7 @@
 
 **Master doc:** [`docs/shaping/normative-ir-slices.md`](../../../docs/shaping/normative-ir-slices.md) §V7, authoritative for this slice's scope.
 
-**Affordances:** none new. E8 (the census) is the gate; E8.2 (authored exclusions) is the one piece of mechanism this slice added because the conversion needed it.
+**Affordances:** none new. E8 (the census) is the acceptance criterion. E8.2 (authored exclusions) is the one piece of mechanism this slice added because the conversion needed it.
 
 **Stacked on V6.**
 
@@ -48,7 +48,7 @@ The 23 not-activated rows are the ACS-Audit, ACS-Inspect and ACS-Crypto provisio
 
 **Every occurrence accounted for.** 127 new records and 127 new overlay entries, on top of V2's 28. The unbound count went from 174 to 0. R1.6 holds in the strict form: bound, excluded with a reason, or unbound, and the third set is empty.
 
-**Authored exclusions (E8.2).** The slices doc expected the occurrence count to be an upper bound on provisions, not a count, and it was. The spec restates rules inside their own parentheticals ("deployments claiming ACS-Audit MUST populate `request_hash`" appears inside the sentence that already makes `request_hash` a SHOULD), talks about keywords, and describes roadmap intent in normative sources. `ir/census/exclusions.yaml` names each such occurrence by a verbatim quote and a reason from a closed set: `restatement_of` (with the provision that carries the rule), `mention`, `roadmap`, `rationale`. The census fails when a quote does not resolve, resolves more than once, or covers more than one keyword occurrence, so an exclusion cannot quietly swallow a second obligation. Spec-lint reads the same file: a keyword with neither a marker nor an exclusion is still a failure (N21).
+**Authored exclusions (E8.2).** The slices doc expected the occurrence count to be an upper bound on provisions, not a count, and it was. The spec restates rules inside their own parentheticals ("deployments claiming ACS-Audit MUST populate `request_hash`" appears inside the sentence that already makes `request_hash` a SHOULD), talks about keywords, and describes roadmap intent in normative sources. `ir/census/exclusions.yaml` identifies each such occurrence by a verbatim quote and a reason from a closed set: `restatement_of` (with the provision that carries the rule), `mention`, `roadmap`, `rationale`. The census fails when a quote does not resolve, resolves more than once, or covers more than one keyword occurrence, so one exclusion cannot cover a second obligation. Spec-lint reads the same file: a keyword with neither a marker nor an exclusion is still a failure (N21).
 
 **The vocabulary grew from 42 relations to 76.** The new wire relations restate what the normalizer can read from the log without judging it: signature algorithms per envelope and per session, request nonces, the intent parser's origin and scope mode, compaction entries and summaries, skill registration and load with digests, AgBOM components and their fields, error data, DEFER timeout decisions, modification fields, reason codes, the skew window. The new guardian-state relations are what a Guardian's dump carries: ContextEntry fields and step types, decision-log fields, agent audit events, agent step outcomes, whether an intent derivation was recorded. The new external relations are computed in ordinary code: timestamp-out-of-window, modification target overlap, the strict-mode schema check. The new deployment relations are two declared facts: whether policy requires provenance, and whether strict mode is forbidden.
 
@@ -69,7 +69,7 @@ The 23 not-activated rows are the ACS-Audit, ACS-Inspect and ACS-Crypto provisio
 | ACS-REQ-0128 | the conjunction of every acs-core provision; reported as the profile summary (U16), not as one predicate |
 | ACS-REQ-0136 | component mutations that did not produce `agbom/changed` are, by definition, not in the log |
 
-Each is a candidate for a later vocabulary addition, and each names what that addition would have to carry.
+Each is a candidate for a later vocabulary addition, and each states what that addition would have to carry.
 
 **Both engines still agree.** The conformant fixture derives nothing on either engine; the violating fixture derives 33 tuples on both, the 24 from V5 plus nine deliberate V7 breaches its README lists.
 
@@ -79,12 +79,12 @@ Each is a candidate for a later vocabulary addition, and each names what that ad
 - **Four allocated IDs are unused: ACS-REQ-0042, 0049, 0085, 0115.** They were allocated during the conversion for occurrences that turned out, on reading, to restate a provision already carried, and became exclusions instead. The counter is monotonic and they were never marked, so they are gaps, not tombstones.
 - **A span that contains another provision's occurrence is split, not nested.** §8.1's SHOULD list item contains both the ACS-Audit MUST for `request_hash` and the `previous_hash` rule; ACS-REQ-0060 was narrowed to the clause before them so the applier's no-nesting rule (N2) holds.
 - **The differential fixtures satisfy every profile.** The differential compares engines, not verdicts, so profile-scoped predicates fire as raw tuples there. Rather than filter, the conformant fixture now carries an `agbom/snapshot` before its hooks, both ACS-Crypto algorithms, and full ContextEntry and decision-log fields, and the violating fixture breaches a chosen few. Scoping stays in the report layer, where R4.3 puts it.
-- **§7.2's default trust mapping is checked as a SHOULD on the wire.** A `user_input` object populated `untrusted` is reported against ACS-REQ-0027; a policy override (ACS-REQ-0056) would need the audit metadata the mapping rule cannot see, so an overriding deployment sees a RECOMMENDED-level finding, not a MUST failure.
+- **§7.2's default trust mapping is checked as a SHOULD on the wire.** A `user_input` object populated `untrusted` is reported against ACS-REQ-0027. A policy override (ACS-REQ-0056) would need the audit metadata the mapping rule does not read, so an overriding deployment receives a RECOMMENDED-level finding, not a MUST failure.
 
 ## Findings for upstream, from this slice
 
-- `hooks.md` uses `MAY NOT`, which is not an RFC 2119 term; the record for ACS-REQ-0113 reads it as the prohibition the sentence means.
-- Whether the handshake request is itself signed under §10 is not stated; the per-session key is derived from the `session_id` the handshake establishes. ACS-REQ-0081 exempts it, with the question noted.
+- `hooks.md` uses `MAY NOT`, which is not an RFC 2119 term; the record for ACS-REQ-0113 treats it as the prohibition the sentence means.
+- Whether the handshake request is itself signed under §10 is not stated. The per-session key is derived from the `session_id` the handshake establishes. ACS-REQ-0081 exempts it, with the question noted.
 
 Both are added to the accumulated findings table in the slices doc.
 

@@ -1,2 +1,4 @@
-20	h20
-30	h30
+# chain_hash_published(seq, hash)  source: wire
+# A response carrying `chain_hash`.
+20	head-20
+30	head-30

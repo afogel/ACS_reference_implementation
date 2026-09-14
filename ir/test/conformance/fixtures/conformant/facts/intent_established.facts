@@ -1,1 +1,2 @@
-s2	3
+# intent_established(session, seq)  source: guardian-state
+session-clean	3

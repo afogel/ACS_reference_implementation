@@ -1,2 +1,3 @@
-4	p2	p1
-4	p2	p9
+# derived_from(seq, pid, parent)  source: wire
+4	prov-agent	prov-user-input
+4	prov-agent	prov-unknown

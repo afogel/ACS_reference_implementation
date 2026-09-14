@@ -3,7 +3,7 @@
  *
  * R2.7: tests cite provision IDs only, never quoted English, so a citation
  * is a literal `ACS-XXX-NNNN` in a file under `ir/test/conformance/`. The
- * directory arrives with the fixtures in V5; until then the index is empty
+ * directory is added with the fixtures in V5; until then the index is empty
  * and the stale list's `tests` column says so rather than omitting it.
  */
 import { existsSync, readFileSync } from "node:fs";

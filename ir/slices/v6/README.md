@@ -23,7 +23,7 @@ pass 21, not-exercised 1, permission 1, non-testable 1, exclusion 1, invariant 1
 | acs-provenance | 3 | 3 | 0 | 0 |
 ```
 
-The violating one, which breaches nine provisions on purpose:
+The violating one, which is constructed to breach nine provisions:
 
 ```
 ## Summary (U11)
@@ -59,11 +59,11 @@ fail 7, pass 2, unevaluated 13, permission 1, non-testable 1, exclusion 1, invar
 
 ## What this slice delivers
 
-**The four-layer split, complete.** `normalizeTrace()` (N41) restates the wire as facts. `validateSchemas()` (N43) runs Ajv over the 44 pinned schemas, every envelope against its envelope schema and every hook payload against its hook schema, and emits `schema_violation` facts: the JSON-Schema layer, cited by the structural provision (ACS-REQ-0001) and never restated in Datalog (R5). `computeExternalFacts()` (N42) does the work Datalog cannot: RFC 8785 canonicalization, §8.2's `entry_hash` recomputation over `content || raw(previous_hash)`, and HMAC-SHA256 verification over §10's signed input with `signature` removed. The evaluator (N44, V5) derives the violations. Then the scoping layer the source's table did not name: `scopeByProfile()` (N45), `applyModality()` (N46), `attachEvidence()` (N47).
+**The four-layer split, complete.** `normalizeTrace()` (N41) restates the wire as facts. `validateSchemas()` (N43) runs Ajv over the 44 pinned schemas, every envelope against its envelope schema and every hook payload against its hook schema, and emits `schema_violation` facts: the JSON-Schema layer, cited by the structural provision (ACS-REQ-0001) and never restated in Datalog (R5). `computeExternalFacts()` (N42) does the work Datalog cannot: RFC 8785 canonicalization, §8.2's `entry_hash` recomputation over `content || raw(previous_hash)`, and HMAC-SHA256 verification over §10's signed input with `signature` removed. The evaluator (N44, V5) derives the violations. Then the scoping layer the source's table did not list: `scopeByProfile()` (N45), `applyModality()` (N46), `attachEvidence()` (N47).
 
 **Every provision gets one of eleven verdicts**, and no verdict is a dropped row: `pass`, `fail`, `not-activated` (the session never negotiated the profile, R4.3), `not-exercised` (the permission the obligation is conditional on was not taken, R4.6), `permission`, `non-testable` and `inexpressible` (listed on the U18 roster, R4.4 and R3.6), `exclusion` (the U34 roster, R4.8), `definition`, `invariant`, and `unevaluated`.
 
-**`unevaluated` is the verdict the slices doc did not have.** Predicates read relations whose source is the Guardian's own records, the deployment's configuration, or a key the verifier holds. When those were not supplied, the provisions that need them are reported as not evaluated, naming the missing relation, rather than passing on an empty relation. The compiler's per-provision external-fact list (E7.1, V5) is what makes this mechanical.
+**`unevaluated` is the verdict the slices doc did not have.** Predicates read relations whose source is the Guardian's own records, the deployment's configuration, or a key the verifier holds. When those were not supplied, the provisions that need them are reported as not evaluated, listing the missing relation, rather than passing on an empty relation. The compiler's per-provision external-fact list (E7.1, V5) is what makes this mechanical.
 
 **Evidence (U17, R3.4).** Each violation carries its subject and witness columns by name and the facts from the predicate's relations that mention the subject, so the failure is readable without re-running the verifier.
 
@@ -71,10 +71,10 @@ fail 7, pass 2, unevaluated 13, permission 1, non-testable 1, exclusion 1, invar
 
 - **The trace format is the Guardian's envelope log**, `{seq, recorded_at, direction, method, rpc_id, envelope}` per line, and also a bare JSON-RPC log (direction from shape, `seq` from line number), so a log from any conformant deployment works. Nothing in `ir/` imports from `packages/`: the format is described here, not shared (R8.2).
 - **The Guardian's records arrive as a dump directory:** `context-entries.jsonl` with full ContextEntry objects (so the §8.2 recomputation has something to recompute) and `facts/<relation>.facts` for the other guardian-state relations. Deployment facts are a directory of `.facts`. A Guardian that wants to be verified against the guardian-state provisions exports this; one that does not is reported as unevaluated on exactly those.
-- **Two vocabulary corrections from building the normalizer.** `ask_resolved` moved from `wire` to `guardian-state`: Guardian-to-Approver traffic is not in the Observed Agent's log. `chain_mismatch_observed` is derived on the wire from `metadata.session_state.chain_hash` against the head the Guardian last published for the session, which the request schema names as the cross-check's location.
+- **Two vocabulary corrections from building the normalizer.** `ask_resolved` moved from `wire` to `guardian-state`: Guardian-to-Approver traffic is not in the Observed Agent's log. `chain_mismatch_observed` is derived on the wire from `metadata.session_state.chain_hash` against the head the Guardian last published for the session, which the request schema identifies as the cross-check's location.
 - **Activation conditions stay prose (R4.5).** The ones this catalog needed mechanically are already inside the predicates (`decision(Seq, "defer")`, `archived(Session)`); the prose is carried into the report as text.
 - **A permission that was not exercised is not a pass.** ACS-REQ-0022 reports `not-exercised` when the guardian-state relations it reads are empty, and ACS-REQ-0021 always reports `permission`. Neither counts toward met or unmet.
 
 ## Not in this slice
 
-No timestamp-window or URI facts (E7.1 names them; no V2 provision needs them yet). No signature algorithms beyond HMAC-SHA256: an asymmetric signature is reported `unverifiable`, which yields no `signature_status` fact and therefore an honest `unevaluated`. Both arrive with the provisions that need them in V7.
+No timestamp-window or URI facts (E7.1 names them; no V2 provision needs them yet). No signature algorithms beyond HMAC-SHA256: an asymmetric signature is reported `unverifiable`, which yields no `signature_status` fact and therefore an `unevaluated` verdict. Both are added in V7 with the provisions that need them.

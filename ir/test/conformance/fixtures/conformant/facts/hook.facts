@@ -1,2 +1,4 @@
-3	s2	steps/toolCallRequest
-4	s2	steps/agentResponse
+# hook(seq, session, method)  source: wire
+# A `steps/*` request.
+3	session-clean	steps/toolCallRequest
+4	session-clean	steps/agentResponse

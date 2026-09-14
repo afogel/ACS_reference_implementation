@@ -1,1 +1,3 @@
-s1	unsupported
+# session_batching(session, support)  source: deployment
+# supported or unsupported; whether the Guardian accepts JSON-RPC batches.
+session-violating	unsupported

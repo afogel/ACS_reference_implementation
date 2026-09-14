@@ -1,1 +1,2 @@
-s1	e1	2	hX
+# context_entry(session, entry_id, seq, entry_hash)  source: guardian-state
+session-violating	entry-1	2	hash-claimed

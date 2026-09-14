@@ -1,2 +1,4 @@
-s1	e1	timestamp
-s1	e1	provenance_summary
+# context_entry_field(session, entry_id, field)  source: guardian-state
+# A field present and non-null on an exported ContextEntry.
+session-violating	entry-1	timestamp
+session-violating	entry-1	provenance_summary

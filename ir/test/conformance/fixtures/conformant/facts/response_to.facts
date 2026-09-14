@@ -1,3 +1,5 @@
+# response_to(request_seq, response_seq)  source: wire
+# Pairs a response with its request by JSON-RPC id.
 1	10
 3	20
 4	30

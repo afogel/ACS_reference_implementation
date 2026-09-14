@@ -7,7 +7,7 @@
  * (`normative-ir-slices.md` §V1: "If V1's scan disagrees with those, V1's
  * scan is wrong"), so this classifier names those four block types and
  * also keeps the ones that must come out empty, so that an occurrence
- * turning up in a heading is reported as such rather than mis-filed.
+ * found in a heading is reported as such rather than mis-filed.
  *
  * This is a line-level classifier, not a CommonMark parser. It knows the
  * constructs the corpus uses -- fences, ATX headings, blockquotes, pipe

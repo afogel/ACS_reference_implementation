@@ -1,1 +1,4 @@
-s1	6
+# chain_mismatch_observed(session, seq)  source: wire
+# The Observed Agent's cross-check `metadata.session_state.chain_hash` disagreed with the head the
+# Guardian last published for the session.
+session-violating	6

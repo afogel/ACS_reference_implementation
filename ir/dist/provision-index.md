@@ -948,13 +948,13 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 **ContextEntry SHOULD carry request_hash, timestamp and provenance_summary.** Requirement, SHOULD. `spec/instrument/specification.md:222` (list_item, §`81-contextentry`). Anchor: `#acs-req-0060`.
 
-> - **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so
+> **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so
 
 - Actor: guardian; reported against: guardian
 - Profile: acs-core
 - Modality: obligation; evidence: guardian-state
 - Schema: `context-entry.json#/properties/request_hash`
-- Status: active, since 0.1.0; reviewed against `008c8a8c2a5e`
+- Status: active, since 0.1.0; reviewed against `f66605809a92`
 - Note: Carries two keywords: the SHOULD, and the ACS-Audit MUST on request_hash, which is ACS-REQ-0062's own sentence inside this one; the span is the list item.
 
 ### ACS-REQ-0061

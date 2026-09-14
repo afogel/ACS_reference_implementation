@@ -256,7 +256,7 @@ markers:
   # ContextEntry SHOULD carry request_hash, timestamp and provenance_summary
   - id: ACS-REQ-0060
     source: spec/instrument/specification.md
-    start: "- **SHOULD:** `request_hash`"
+    start: "**SHOULD:** `request_hash`"
     end: "commits only to step metadata, not to request content, so"
   # previous_hash is present on every entry but the first
   - id: ACS-REQ-0061

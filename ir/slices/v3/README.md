@@ -46,15 +46,15 @@ Exit status 1. On the unedited corpus the same command reports nothing to review
 
 **One computation, three edge types.** `checkStaleness()` (N16) finds every record whose `reviewed_against` no longer equals its provision's `text_hash` (R2.4). From each such root it walks the catalog's edges in reverse: `depends_on` (N17, R2.6) and `restates` (N18, R2.9). A Requirement that depends on a changed Definition or Invariant is stale though no sentence of its own changed; a pillar copy that restates a changed concept-page provision is stale because the concept page is canonical, and a changed pillar copy never stales the concept page. Each stale entry carries why, what it invalidated, and the conformance tests that cite it.
 
-**Nothing is ever marked invalid.** The output is needs-review. A person classifies the change as editorial, semantic, or split, and clears the flag by updating `reviewed_against` in the record, or by issuing new IDs. `acs-ir lint` exits 1 while anything needs review, so a spec change is never silently fine, and it is never silently broken either.
+**Nothing is ever marked invalid.** The output is needs-review. A person classifies the change as editorial, semantic, or split, and clears the flag by updating `reviewed_against` in the record, or by issuing new IDs. `acs-ir lint` exits 1 while anything needs review, so a spec change is never accepted without review, and never marked invalid either.
 
-**The migration worklist is free.** N18 already walks every `restates` edge, so listing them is the to-do list `concepts/README.md:33` promises: which inline pillar copies still await replacement by a reference. One entry today: §9's approver-authentication sentence restating `concepts/agents.md`.
+**The migration worklist needs no extra computation.** N18 already walks every `restates` edge, so listing them is the to-do list `concepts/README.md:33` promises: which inline pillar copies still await replacement by a reference. One entry today: §9's approver-authentication sentence restating `concepts/agents.md`.
 
 ## Decisions made here
 
 - **`restates` is a dependency edge with a fixed direction.** No second hash is pinned for the pair. A changed canonical text stales the pillar copy with reason `restatement_diverged`; a changed pillar copy is its own `text_changed`. This is R2.9's "the concept page wins" expressed as an edge rather than as a comparison of two prose strings, which no tool could judge.
 - **Tests are cited by literal ID.** `collectTestCitations()` scans `ir/test/conformance/` for `ACS-XXX-NNNN` literals (R2.7). The directory arrives in V5; until then every stale entry says so in its `tests` line rather than omitting the line.
-- **The demo runs on the marked corpus.** Once markers live upstream, editing the prose and re-running is the whole workflow. While the overlay stages them, a reword inside a quoted span also needs the overlay quote updated, and the lint's answer is the same.
+- **The demo runs on the marked corpus.** Once markers are in the upstream spec, editing the prose and re-running is the whole workflow. While the overlay stages them, a reword inside a quoted span also needs the overlay quote updated, and the lint's answer is the same.
 - **`acs-ir lint` exists from V3 with staleness only.** V4 adds the unmarked-keyword, tombstone, duplicate-ID, unknown-citation and schema-ref rules around it and the PR comment.
 
 ## Wires to later slices

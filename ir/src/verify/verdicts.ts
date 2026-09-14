@@ -51,7 +51,7 @@ export interface ProvisionVerdict {
   profile: string[] | "all";
   activation: string | null;
   verdict: Verdict;
-  /** The record is stale (V3): the verdict stands on a text the reviewer has not re-read. */
+  /** The record is stale (V3): the verdict is based on a text the reviewer has not re-read. */
   needs_review: boolean;
   reason: string | null;
   /** Relations the predicate needed and nobody supplied. */

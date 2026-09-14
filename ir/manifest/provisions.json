@@ -898,8 +898,8 @@
       "keywords": [
         "SHOULD"
       ],
-      "text": "- **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so",
-      "text_hash": "008c8a8c2a5e8dd60eb0633070a934273cd56414ec6d718c68bc2b3659e51ec0"
+      "text": "**SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so",
+      "text_hash": "f66605809a92789aea311a9eb08df40b079fc530828cef4ed23e80fe9aa2b5c1"
     },
     {
       "id": "ACS-REQ-0061",

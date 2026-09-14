@@ -1,0 +1,3 @@
+# envelope(seq, session, direction, method, rpc_id)  source: wire
+# One tuple per envelope-log line. `direction` is request or response; `method` is the ACS method
+# the Guardian dispatched.

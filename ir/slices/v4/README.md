@@ -1,6 +1,6 @@
 # V4: The spec PR polices itself
 
-**Demo:** On a copy of the marked corpus, (a) add a sentence containing `MUST` with no marker and (b) delete a marked provision without tombstoning its ID. `bun run ir lint --build <copy>` fails, and the comment it writes names both: the unmarked statement with `file:line`, and the ID that needs a tombstone.
+**Demo:** On a copy of the marked corpus, (a) add a sentence containing `MUST` with no marker and (b) delete a marked provision without tombstoning its ID. `bun run ir lint --build <copy>` fails, and the comment it writes lists both: the unmarked statement with `file:line`, and the ID that needs a tombstone.
 
 **Master doc:** [`docs/shaping/normative-ir-slices.md`](../../../docs/shaping/normative-ir-slices.md) §V4, authoritative for this slice's scope.
 
@@ -77,21 +77,21 @@ Exit status 1. Tombstone the ID and withdraw its record, and only the unmarked `
 
 Failures and needs-review both exit 1. A failure is fixed in the tree; needs-review is cleared by classifying the change and updating the record.
 
-**Two CI surfaces (N61).** `checks.yml` runs `bun run ir lint` in the hermetic suite with the tree as its own baseline. The new `spec-lint.yml` runs per pull request and weekly, materializes the base branch's manifest and census with `git show`, lints against them, and posts one comment carrying `impact.md`, updated in place on every push. It is the only workflow with write access, and only to pull-request comments; a fork's PR gets the report in the log and the red check.
+**Two CI workflows (N61).** `checks.yml` runs `bun run ir lint` in the hermetic suite with the tree as its own baseline. The new `spec-lint.yml` runs per pull request and weekly, materializes the base branch's manifest and census with `git show`, lints against them, and posts one comment carrying `impact.md`, updated in place on every push. It is the only workflow with write access, and only to pull-request comments; a fork's PR gets the report in the log and the red check.
 
 ## Decisions made here
 
 - **The baseline is what makes "new" mean something.** Only 28 of 202 keyword occurrences in normative sources are marked until V7, so an absolute "unmarked keyword fails" rule would fail every run. N21 fails on occurrences that are unbound now and were not unbound in the baseline census. An occurrence's identity across edits is its source, keyword, and context window, not its line number, so a reflow elsewhere in the file does not make it new, and an edit to its own sentence does. That is the right sensitivity: a changed sentence containing an unmarked MUST should be looked at again.
-- **The census sees prose, never markers.** `unmark()` strips the markers from the marked corpus and re-bases each span's offsets, so a context window taken during lint equals the one in the committed census.
-- **Schema refs pin a hash (R2.8).** `pinned` is the SHA-256 of the canonicalized subschema at the pointer. The seven records with schema refs carry eight pins. An unpinned ref is a failure that tells the editor what to pin; a moved subschema is needs-review with the same shape as a moved sentence.
-- **The catalog's own complaint is kept alongside the tombstone rule.** Deleting a marked provision produces both "has a record but is not marked" and "gone from the corpus, not tombstoned". They are the same event seen from the record side and the ID side, and the fix (withdraw the record, tombstone the ID) clears both.
+- **The census reads prose, never markers.** `unmark()` strips the markers from the marked corpus and re-bases each span's offsets, so a context window taken during lint equals the one in the committed census.
+- **Schema refs pin a hash (R2.8).** `pinned` is the SHA-256 of the canonicalized subschema at the pointer. The seven records with schema refs carry eight pins. An unpinned ref is a failure whose message says what to pin; a moved subschema is needs-review with the same shape as a moved sentence.
+- **The catalog's own failure is kept alongside the tombstone rule.** Deleting a marked provision produces both "has a record but is not marked" and "gone from the corpus, not tombstoned". They are the same event seen from the record side and the ID side, and the fix (withdraw the record, tombstone the ID) clears both.
 
 ## Wires to later slices
 
 - N25 lints an empty registry until V5 brings `ir/test/conformance/`; the rule and the U23 column are exercised by tests with synthetic citations.
 - U22's "tests now needs-review" column reads the same registry.
-- The overlay is still the staging mechanism: with markers in the overlay rather than the prose, deleting a provision from the spec makes `markers apply` fail on the unresolved quote before `lint` runs. The demo therefore runs on the marked copy, which is the shape of the corpus once markers land upstream (E3.3).
+- The overlay is still the staging mechanism: with markers in the overlay rather than the prose, deleting a provision from the spec makes `markers apply` fail on the unresolved quote before `lint` runs. The demo therefore runs on the marked copy, which is the shape of the corpus once markers are merged upstream (E3.3).
 
 ## Not in this slice
 
-No predicates, no vocabulary, no verifier. V1 to V4 are a working traceability and drift system with zero Datalog, which was the point of putting them first.
+No predicates, no vocabulary, no verifier. V1 to V4 are a working traceability and drift system with zero Datalog, which was the reason for putting them first.

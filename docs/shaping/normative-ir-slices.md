@@ -64,7 +64,7 @@ So V1 is the wide census (Phase 0), V2–V6 are the deep vertical on ~20 semanti
 
 **Reference numbers to reproduce** (measured in X3, at `c259f57`): paragraph 145, list item 33, table cell 17, blockquote 8, total 203; zero in headings, code fences, or inline code spans. If V1's scan disagrees with those, V1's scan is wrong.
 
-🟡 **Shipped** ([`ir/slices/v1/`](../../ir/slices/v1/README.md)). The scan reproduces X3 exactly at `c259f57` (203 in 132 blocks, 145 / 33 / 17 / 8). Against the current pin, `6fce2a0` (v0.1.2), it reports **208 in 134 blocks**, 145 / 33 / **22** / 8: the five additions are table cells in the two new `identity/` pages, which the source census declares informative because they say of themselves that they propose no normative requirements yet. So the burn-down V2 starts from is **197 unbound**, with 11 excluded by source status. The corpus is 38 documents: 19 normative, 18 informative, 1 editorial (`concepts/README.md`). All eight footers parsed, 22 pillar entries, none dangling.
+🟡 **Shipped** ([`ir/slices/v1/`](../../ir/slices/v1/README.md)). The scan reproduces X3 exactly at `c259f57` (203 in 132 blocks, 145 / 33 / 17 / 8). Against the current pin, `6fce2a0` (v0.1.2), it reports **208 in 134 blocks**, 145 / 33 / **22** / 8: the five additions are table cells in the two new `identity/` pages, which the source census declares informative because they say of themselves that they propose no normative requirements yet. So the count V2 starts from is **197 unbound**, with 11 excluded by source status. The corpus is 38 documents: 19 normative, 18 informative, 1 editorial (`concepts/README.md`). All eight footers parsed, 22 pillar entries, none dangling.
 
 **Wires to future slices:** `N52` also feeds `U32` (V3) and `U34` (V6); those columns render empty until then.
 
@@ -126,7 +126,7 @@ That is 22 rows covering 20-odd provisions — §8.5 alone supplies three kinds,
 | S5 | P1 | store | `ir/provisions/*.yaml` — **authored**, joined to S4 by ID | — | — | → N15 |
 | S6 | P1 | store | `ir/ids/{counter,tombstones}.yaml` | — | — | → N3 |
 
-🟡 **Shipped** ([`ir/slices/v2/`](../../ir/slices/v2/README.md)). Twenty-eight provisions, not twenty: 24 Requirements, 2 Definitions, 1 Invariant, 1 Exclusion, every row of the specimen table covered, with §6's disposition table and its DEFER sentence both marked and §8.6's sentence split into its two MUSTs. Unbound fell from 197 to 174 (23 occurrences bound). Three spans cross blocks, which is why the overlay grew a `start`/`end` form beside `quote`. Two spec/schema disagreements surfaced and are in the upstream findings table below; one vocabulary gap (`actor` cannot say "either party") is carried to V5.
+🟡 **Shipped** ([`ir/slices/v2/`](../../ir/slices/v2/README.md)). Twenty-eight provisions, not twenty: 24 Requirements, 2 Definitions, 1 Invariant, 1 Exclusion, every row of the specimen table covered, with §6's disposition table and its DEFER sentence both marked and §8.6's sentence split into its two MUSTs. Unbound fell from 197 to 174 (23 occurrences bound). Three spans cross blocks, which is why a `start`/`end` form was added to the overlay beside `quote`. Two spec/schema disagreements were found and are in the upstream findings table below; one vocabulary gap (`actor` cannot say "either party") is carried to V5.
 
 **N22 is pulled forward out of V4 deliberately.** X3 made the terminator mandatory. A slice that inserts markers without a pairing lint can silently ship an anchor whose span runs to the end of a block — the exact over-capture X3 measured at 35%. The lint is what makes the mandatory rule real, so it ships with the markers, not two slices later.
 
@@ -149,7 +149,7 @@ That is R2.6 demonstrated in one command: **a definition or invariant change inv
 | N18 | P1 | `ir/catalog` | `checkRestatement()` — concept page canonical (R2.9); emits the worklist | call | → U32 | → N16 |
 | S12 | P1 | store | `ir/.build/stale.json` | — | — | → U10 |
 
-🟡 **Shipped** ([`ir/slices/v3/`](../../ir/slices/v3/README.md)). The demo runs as a test: one word changed in the Intent immutability callout, and `acs-ir lint` names `ACS-INV-0001`, then `ACS-REQ-0011` (depends on it), then `ACS-REQ-0012` (depends on that), with no keyword moved. `restates` is walked as a dependency edge with the fixed R2.9 direction, so a changed concept page stales its pillar copy and never the reverse. The worklist has one entry (§9's approver sentence restating `agents.md`). Tests citing a stale provision are collected by literal ID from `ir/test/conformance/`, which is empty until V5, and the report says so rather than dropping the column.
+🟡 **Shipped** ([`ir/slices/v3/`](../../ir/slices/v3/README.md)). The demo runs as a test: one word changed in the Intent immutability callout, and `acs-ir lint` lists `ACS-INV-0001`, then `ACS-REQ-0011` (depends on it), then `ACS-REQ-0012` (depends on that), with no keyword moved. `restates` is walked as a dependency edge with the fixed R2.9 direction, so a changed concept page stales its pillar copy and never the reverse. The worklist has one entry (§9's approver sentence restating `agents.md`). Tests citing a stale provision are collected by literal ID from `ir/test/conformance/`, which is empty until V5, and the report says so rather than dropping the column.
 
 **One computation, three edge types.** R2.4 (own text changed), R2.6 (a dependency changed), and R2.9 (a restatement diverged) are the same mechanism over different edges — which is why they cost one affordance rather than three. Nothing is ever marked *invalid*; the reviewer classifies the change as editorial, semantic, or split.
 
@@ -178,7 +178,7 @@ That is R2.6 demonstrated in one command: **a definition or invariant change inv
 | N27 | P1 | `ir/lint` | `renderImpactComment()` | call | → U22, → U23, → U24, → U25 | — |
 | N61 | TRIGGER: CI | `.github/workflows` | `spec-lint` job, per-PR and scheduled | invoke | → N20, → N27 | — |
 
-🟡 **Shipped** ([`ir/slices/v4/`](../../ir/slices/v4/README.md)). The demo runs as a test on the marked corpus: an unmarked `MUST` and a deleted provision both fail, named with `file:line` and ID in the terminal report and in the comment `spec-lint.yml` posts. The rule set judges the tree against a **baseline** (the committed manifest and census, or the base branch's on a PR), which is what lets "new unmarked keyword" mean something while 174 occurrences are still unbound by design. Schema refs now pin a subschema hash (R2.8), so a moved subschema is needs-review with the same shape as a moved sentence.
+🟡 **Shipped** ([`ir/slices/v4/`](../../ir/slices/v4/README.md)). The demo runs as a test on the marked corpus: an unmarked `MUST` and a deleted provision both fail, identified by `file:line` and ID in the terminal report and in the comment `spec-lint.yml` posts. The rule set judges the tree against a **baseline** (the committed manifest and census, or the base branch's on a PR), which is what lets "new unmarked keyword" mean something while 174 occurrences are still intentionally unbound. Schema refs now pin a subschema hash (R2.8), so a moved subschema is needs-review with the same shape as a moved sentence.
 
 **N22 already shipped in V2.** V4 completes the rule set around it.
 
@@ -294,6 +294,8 @@ No new affordances. This is the editorial conversion the source described as *"d
 So V8 is listed last because it *completes* last, but its first step is scheduled off V5. Attribution on all three: Ariel's `afogel` identity, no Claude session attribution.
 
 **The overlay retires itself here.** S2 fed both the local applier (V2) and this patch. Once U30 merges, S2 is deleted and S3 becomes S1 — the extractor reads the submodule directly (E3.3).
+
+🟡 **Shipped, up to the posting** ([`ir/slices/v8/`](../../ir/slices/v8/README.md)). `acs-ir markers patch` (U8, N60) writes the overlay as a unified diff against the spec repository: `ir/dist/markers.patch` (155 provisions, 14 files, one-line replacements only) and, with `--ids`, `ir/dist/markers-poc.patch` (the five worked provisions). Both apply to the pinned checkout with `git apply`, the spec repository's own guards pass on the patched tree, an MkDocs build shows the anchors in the HTML and nothing visible, and extracting from the patched tree yields the committed manifest, which is E3.3 proven before the patch is sent. One placement rule came out of it: an anchor must not precede a list, quote, table or heading marker on its line, and the resolver now refuses such a quote. The Discussion text (U28), the proof-of-concept PR text (U29) and the bulk PR text (U30) are drafted in that directory for Ariel to post under the `afogel` identity with no tool attribution (D-f); the posting itself, and the community's response, are not tooling work.
 
 ---
 
