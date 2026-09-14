@@ -18,6 +18,7 @@ bun run ir extract           # writes ir/manifest/provisions.json from the marke
 bun run ir render            # writes ir/dist/provision-index.md from manifest + records
 bun run ir lint              # spec-lint: failures by rule, records needing review, the migration worklist; exits 1 on either
 bun run ir compile           # predicates -> ir/dist/rules.dl (Soufflé), ir/.build/rules.json (evaluator), invariants.tla
+bun run ir verify t.jsonl    # conformance report over an envelope log; add --guardian, --deployment, --hmac-key for the external facts
 bun run ir verify --facts d  # in-process evaluator over a directory of .facts; prints unified violations
 bun run ir differential      # both engines over ir/test/conformance/fixtures; SOUFFLE=/path enables the oracle locally
 bun run ir ids next REQ      # allocates the next ACS-REQ-NNNN and bumps the counter
@@ -62,8 +63,10 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | `src/catalog/staleness.ts` | code | N16 to N18: needs-review from a changed text, a changed dependency, or a changed canonical restatement; the migration worklist. |
 | `src/catalog/test-citations.ts` | code | Which conformance tests cite which IDs (empty until V5). |
 | `src/compile/` | code | N30 the vocabulary, the predicate parser, N31/N32/N36 the compiler, N34 the Soufflé emitter, N33 the TLA+ list. |
-| `src/verify/` | code | N44 the semi-naive evaluator, S9 fact files, N63 the differential oracle. |
-| `src/render/` | code | N52 the census report, N50 the provision index, U9 the lint report, U10/U32 the stale list and worklist, N27 the impact comment, the compile summary and U31. |
+| `src/verify/` | code | N41 the trace normalizer, N42 the ordinary-code facts (JCS, chain hashes, HMAC), N43 Ajv over the pinned schemas, N44 the semi-naive evaluator, N45 to N47 verdicts, S9 fact files, N63 the differential oracle. |
+| `test/fixtures/trace/generate.ts` | code | Generates the clean and violating envelope logs, with a Guardian dump and deployment facts, that `verify` is tested against. |
+| `.build/conformance-report.md` | generated, ignored | The report `acs-ir verify <trace>` last produced (P3). |
+| `src/render/` | code | N52 the census report, N50 the provision index, U9 the lint report, U10/U32 the stale list and worklist, N27 the impact comment, the compile summary and U31, N51 the conformance report. |
 | `src/main.ts` | code | The `acs-ir` command line. |
 | `test/` | tests | Unit tests on a fixture corpus, plus the pinned corpus held to the survey's reference numbers. |
 
@@ -76,4 +79,5 @@ When the spec changes under a provision, `lint` names it and everything downstre
 | V3 | shipped | Staleness propagates: a changed concept page names the unchanged Requirements that depend on it. |
 | V4 | shipped | The spec PR polices itself: spec-lint against a baseline, and the normative-impact comment. |
 | V5 | shipped | Twenty-one predicates compiled to Soufflé and to the in-process evaluator; both engines agree over shared fixtures. |
-| V6 to V8 | planned | The conformance report over an envelope log, the full conversion, upstreaming. |
+| V6 | shipped | The conformance report over an envelope log: verdicts with evidence, scoped to negotiated profiles, rosters printed. |
+| V7, V8 | planned | The full conversion of all 197 unbound occurrences; upstreaming the markers. |

@@ -82,14 +82,10 @@ relations:
     source: wire
     columns: [{ name: session, type: symbol }, { name: version, type: symbol }]
     doc: "An entry of ClientHello's `acs_versions_supported`."
-  - name: ask_resolved
-    source: wire
-    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: approver, type: symbol }]
-    doc: "A decision returned by an Approver, identified by `ask_details.approver.id`."
   - name: chain_mismatch_observed
     source: wire
     columns: [{ name: session, type: symbol }, { name: seq, type: number }]
-    doc: "The Observed Agent's cross-check `chain_hash` disagreed with the Guardian's published head."
+    doc: "The Observed Agent's cross-check `metadata.session_state.chain_hash` disagreed with the head the Guardian last published for the session."
   # --- computed by ordinary code (E7.1) ---
   - name: entry_hash_recomputed
     source: external
@@ -142,6 +138,10 @@ relations:
   - name: approver_verified
     source: guardian-state
     columns: [{ name: session, type: symbol }, { name: approver, type: symbol }]
+  - name: ask_resolved
+    source: guardian-state
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: approver, type: symbol }]
+    doc: "The Guardian's record that an Approver, by `ask_details.approver.id`, returned the decision at `seq`. Guardian-to-Approver traffic is not in the Observed Agent's log."
   # --- told to the verifier ---
   - name: session_batching
     source: deployment
