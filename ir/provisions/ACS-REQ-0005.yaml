@@ -9,6 +9,7 @@ evidence_class: schema
 schema_refs:
   - file: defer-details.json
     pointer: /properties/reason/enum
+    pinned: 7621b3e50cd99c8e8b70feb802c9dfd538f6bb1bc1a87ea53667cd404192749e
 depends_on: []
 restates: null
 status: active

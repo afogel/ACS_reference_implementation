@@ -9,6 +9,7 @@ evidence_class: wire
 schema_refs:
   - file: provenance.json
     pointer: /properties/provenance_id
+    pinned: 1af52342f2de3116d2080d3c1f89c3f23c9129bd13cd09a75392a387f7903780
 depends_on: []
 restates: null
 status: active

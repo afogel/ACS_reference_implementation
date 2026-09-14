@@ -9,6 +9,7 @@ evidence_class: schema
 schema_refs:
   - file: defer-details.json
     pointer: /required
+    pinned: df8a13245dac0b382646fb2c1beacd0fd6be98ca2656e5287a3798be7dcf8676
 depends_on: []
 restates: null
 status: active

@@ -9,6 +9,7 @@ evidence_class: schema
 schema_refs:
   - file: response-envelope.json
     pointer: /$defs/AcsResult/allOf
+    pinned: a13baa385679b373ac267dd3466e0569a2b5f24fc14c1d413247d642c0ffa05b
 depends_on: []
 restates: null
 status: active

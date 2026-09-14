@@ -9,8 +9,10 @@ evidence_class: guardian-state
 schema_refs:
   - file: context-entry.json
     pointer: /properties/entry_hash
+    pinned: 75d8f465b56124b6786cf4923bc84280ab4eb444238a2615cd12b91b36375eb3
   - file: context-entry.json
     pointer: /properties/previous_hash
+    pinned: a747a2ceb51e88ba8304e166616af0380ab6bf01e2313c6f6039f6019be4c0d5
 depends_on: []
 restates: null
 status: active

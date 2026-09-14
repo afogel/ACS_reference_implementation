@@ -1,0 +1,81 @@
+name: spec-lint
+
+# N61: the Normative IR's own gate, per pull request and on a schedule.
+#
+# `acs-ir lint` judges the tree against a baseline. On a pull request the
+# baseline is the base branch's committed manifest and census, so the
+# report names what this PR changed: provisions whose text moved and the
+# records now needing review, new unmarked RFC 2119 keywords, provisions
+# removed without a tombstone. The same report is posted as one comment on
+# the PR (N27), updated in place on every push. On the schedule and on
+# `main` the baseline is the tree itself, so only absolute failures and
+# staleness can fire.
+#
+# checks.yml already runs `bun run ir lint` in the hermetic suite with the
+# tree as its own baseline. This workflow exists for the two things that
+# job deliberately does not do: compare against the base branch, and write
+# to the pull request. It is the only workflow with write access, and only
+# to pull-request comments.
+on:
+  pull_request:
+  schedule:
+    # Weekly, Monday 06:00 UTC: catches drift that lands without a PR
+    # touching ir/, such as a submodule bump merged elsewhere.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  spec-lint:
+    name: normative impact
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          submodules: recursive
+          # The base branch's generated files are read from history, so the
+          # checkout needs more than the PR head.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Materialize the base branch's manifest and census as the baseline
+        # Absent on the base branch (the first IR PR) means an empty
+        # baseline: every provision is "added" and nothing can be "removed".
+        run: |
+          mkdir -p .baseline/manifest .baseline/census
+          if [ -n "${{ github.base_ref }}" ]; then
+            git show "origin/${{ github.base_ref }}:ir/manifest/provisions.json" > .baseline/manifest/provisions.json 2>/dev/null || true
+            git show "origin/${{ github.base_ref }}:ir/census/provisions.yaml" > .baseline/census/provisions.yaml 2>/dev/null || true
+          else
+            cp ir/manifest/provisions.json .baseline/manifest/ 2>/dev/null || true
+            cp ir/census/provisions.yaml .baseline/census/ 2>/dev/null || true
+          fi
+      - name: Apply markers and lint against the baseline
+        id: lint
+        # `continue-on-error` so the comment step below still posts the
+        # report; the job's own status is restored at the end.
+        continue-on-error: true
+        run: bun run ir markers apply && bun run ir lint --baseline .baseline
+      - name: Post or update the normative-impact comment
+        # Only same-repository PRs carry a token that may write; a fork's PR
+        # gets the report in the job log and the red check, and no comment.
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          body="$(cat ir/.build/impact.md)"
+          existing="$(gh api "repos/${{ github.repository }}/issues/$PR/comments" --paginate --jq '.[] | select(.body | startswith("<!-- acs-ir-impact -->")) | .id' | head -1)"
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/$existing" -f body="$body" > /dev/null
+          else
+            gh api --method POST "repos/${{ github.repository }}/issues/$PR/comments" -f body="$body" > /dev/null
+          fi
+      - name: Fail the job if the lint failed
+        if: ${{ steps.lint.outcome == 'failure' }}
+        run: exit 1

@@ -29,6 +29,8 @@ export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 export interface SchemaRef {
   file: string;
   pointer: string;
+  /** SHA-256 of the canonicalized subschema at `pointer`, as last reviewed (R2.8). Required from V4; `lintSchemaRefs()` says what to pin. */
+  pinned?: string;
 }
 
 export interface ProvisionRecord {
@@ -129,7 +131,8 @@ export function loadCatalog(manifest: Manifest, records: ProvisionRecord[]): Cat
     entries.push({ manifest: m, record });
   }
   for (const r of records) {
-    if (!manifestIds.has(r.id)) problems.push(`${r.id}: has a record but is not marked in the corpus`);
+    // A withdrawn record is expected to have no marker: that is what withdrawal means (R2.2).
+    if (!manifestIds.has(r.id) && r.status !== "withdrawn") problems.push(`${r.id}: has a record but is not marked in the corpus`);
   }
   const sourceOf = new Map(manifest.provisions.map((p) => [p.id, p.source_file]));
   for (const { record } of entries) {
@@ -183,6 +186,11 @@ function schemaRefs(r: Record<string, unknown>, id: string): SchemaRef[] {
     if (typeof o.file !== "string" || typeof o.pointer !== "string" || !o.pointer.startsWith("/")) {
       throw new Error(`${id}: each schema_ref needs a file and a JSON Pointer starting with /`);
     }
-    return { file: o.file, pointer: o.pointer };
+    const parsed: SchemaRef = { file: o.file, pointer: o.pointer };
+    if (o.pinned !== undefined) {
+      if (typeof o.pinned !== "string" || !/^[0-9a-f]{64}$/.test(o.pinned)) throw new Error(`${id}: schema_ref pinned must be a SHA-256 hex digest`);
+      parsed.pinned = o.pinned;
+    }
+    return parsed;
   });
 }
