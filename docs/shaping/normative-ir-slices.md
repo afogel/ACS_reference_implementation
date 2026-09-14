@@ -178,6 +178,8 @@ That is R2.6 demonstrated in one command: **a definition or invariant change inv
 | N27 | P1 | `ir/lint` | `renderImpactComment()` | call | → U22, → U23, → U24, → U25 | — |
 | N61 | TRIGGER: CI | `.github/workflows` | `spec-lint` job, per-PR and scheduled | invoke | → N20, → N27 | — |
 
+🟡 **Shipped** ([`ir/slices/v4/`](../../ir/slices/v4/README.md)). The demo runs as a test on the marked corpus: an unmarked `MUST` and a deleted provision both fail, named with `file:line` and ID in the terminal report and in the comment `spec-lint.yml` posts. The rule set judges the tree against a **baseline** (the committed manifest and census, or the base branch's on a PR), which is what lets "new unmarked keyword" mean something while 174 occurrences are still unbound by design. Schema refs now pin a subschema hash (R2.8), so a moved subschema is needs-review with the same shape as a moved sentence.
+
 **N22 already shipped in V2.** V4 completes the rule set around it.
 
 **N25 lints an empty registry until V5.** Conformance tests and their provision citations (S14) arrive with the fixtures in V5, so this rule passes trivially at V4. That is a genuine wire-to-a-future-slice, called out rather than hidden.

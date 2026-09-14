@@ -9,8 +9,10 @@ evidence_class: schema
 schema_refs:
   - file: response-envelope.json
     pointer: /properties/result/oneOf
+    pinned: 194c1796ddae1ef65688df8fdb23bc6c2b1f1b325108a7c5a4d0e527bfdf56ba
   - file: response-envelope.json
     pointer: /oneOf
+    pinned: 2195d9a0fa1507515112b7b2a4a19e47fb356158b68bbc7e1027d3cfd4c8f9ad
 depends_on: []
 restates: null
 status: active
