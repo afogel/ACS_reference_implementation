@@ -13,10 +13,10 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: d79fbb903a7882d1a5d197e95c1cf0b33e72557e93cec937c7b21b73d0edd237
-note: "entries_compacted lists step_ids; the check treats each as the provenance_id the entry contributed, which is how the hook schema describes the union. Extra derived_from entries are not reported."
+note: "entries_compacted lists step_ids and nothing on the wire ties a step_id to a provenance_id, so the union check reads step_provenance from the Guardian's records; a Guardian that does not supply it leaves this provision unevaluated rather than approximated. Extra derived_from entries are not reported."
 predicate:
   subject: [Seq]
   witness: [Summary, Detail]
   rules:
     - "violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), provenance(Seq, _, Summary, Origin), Origin != \"agent_generated\", Detail = cat(\"origin=\", Origin)."
-    - "violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), compaction_entry(Seq, StepId), not derived_from(Seq, Summary, StepId), Detail = cat(\"missing=\", StepId)."
+    - "violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), hook(Seq, Session, _), compaction_entry(Seq, StepId), step_provenance(Session, StepId, Pid), not derived_from(Seq, Summary, Pid), Detail = cat(\"missing=\", Pid)."

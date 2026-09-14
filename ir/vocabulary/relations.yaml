@@ -1,12 +1,12 @@
-# The fact vocabulary (S7, E6): every relation a predicate may mention, with
+# The fact vocabulary: every relation a predicate may mention, with
 # its columns, their types, and where its tuples come from. Predicates are
-# written over these names and nothing else (R3.2); a predicate naming a
+# written over these names and nothing else; a predicate naming a
 # relation not declared here fails to compile.
 #
 # source:
-#   wire           derived from the envelope log by `acs-ir verify` (N41)
+#   wire           derived from the envelope log by `acs-ir verify`
 #   external       computed by ordinary code, not Datalog: hashes, JCS,
-#                  signatures, schema validation (E7.1, N42/N43 in V6)
+#                  signatures, schema validation
 #   guardian-state the Guardian's own records: its decision log, session
 #                  context, intent snapshots; supplied as facts by a Guardian
 #                  that opts in to being verified
@@ -15,7 +15,13 @@
 #                  inside the compiled program
 #
 # Types are `symbol` (a string) and `number` (an integer), Soufflé's two
-# scalar kinds the evaluator also distinguishes.
+# scalar kinds the evaluator also distinguishes. Every column also has a
+# domain, which names what it holds: `seq`, `session`, `pid`, `field`. The
+# domain defaults to the column name; a column holding the same kind of
+# value under another name declares it (`request_seq` is a `seq`, `parent`
+# is a `pid`). A rule that joins or compares two different domains does
+# not compile, and the published Soufflé program declares each domain as
+# a subtype so Soufflé refuses it too.
 relations:
   # --- the wire ---
   - name: envelope
@@ -27,7 +33,7 @@ relations:
     columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: method, type: symbol }, { name: request_id, type: symbol }, { name: timestamp, type: symbol }]
   - name: response_to
     source: wire
-    columns: [{ name: request_seq, type: number }, { name: response_seq, type: number }]
+    columns: [{ name: request_seq, type: number, domain: seq }, { name: response_seq, type: number, domain: seq }]
     doc: "Pairs a response with its request by JSON-RPC id."
   - name: decision
     source: wire
@@ -39,7 +45,7 @@ relations:
     doc: "A top-level field present in a response's result."
   - name: error_code
     source: wire
-    columns: [{ name: seq, type: number }, { name: code, type: number }]
+    columns: [{ name: seq, type: number }, { name: code, type: number, domain: error_code }]
   - name: array_input
     source: wire
     columns: [{ name: seq, type: number }]
@@ -69,14 +75,14 @@ relations:
     doc: "Hash of a Provenance object's own fields, so two different objects sharing a `provenance_id` are visible."
   - name: derived_from
     source: wire
-    columns: [{ name: seq, type: number }, { name: pid, type: symbol }, { name: parent, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: pid, type: symbol }, { name: parent, type: symbol, domain: pid }]
   - name: trust
     source: wire
     columns: [{ name: seq, type: number }, { name: pid, type: symbol }, { name: level, type: symbol }]
     doc: "The OPTIONAL `trust` label, when a deployment populates it."
   - name: chain_hash_published
     source: wire
-    columns: [{ name: seq, type: number }, { name: hash, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: hash, type: symbol, domain: chain_hash }]
     doc: "A response carrying `chain_hash`."
   - name: client_version
     source: wire
@@ -86,10 +92,10 @@ relations:
     source: wire
     columns: [{ name: session, type: symbol }, { name: seq, type: number }]
     doc: "The Observed Agent's cross-check `metadata.session_state.chain_hash` disagreed with the head the Guardian last published for the session."
-  # --- computed by ordinary code (E7.1) ---
+  # --- computed by ordinary code ---
   - name: entry_hash_recomputed
     source: external
-    columns: [{ name: entry_id, type: symbol }, { name: hash, type: symbol }]
+    columns: [{ name: entry_id, type: symbol }, { name: hash, type: symbol, domain: entry_hash }]
     doc: "SHA-256 over JCS per \u00a78.2, recomputed from the entry's fields by the verifier."
   - name: signature_covers
     source: external
@@ -101,7 +107,7 @@ relations:
     doc: "valid, invalid, or absent, from recomputing the \u00a710 canonical form."
   - name: schema_violation
     source: external
-    columns: [{ name: seq, type: number }, { name: schema, type: symbol }, { name: path, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: schema, type: symbol }, { name: path, type: symbol, domain: json_path }]
     doc: "An envelope that failed validation against a pinned schema, with the JSON path of the failure."
   # --- the Guardian's own records ---
   - name: evaluator_ran
@@ -182,6 +188,17 @@ relations:
     columns: [{ name: level, type: symbol }, { name: rank, type: number }]
     doc: "Ordering for the monotonicity rule (ACS-REQ-0010)."
     facts: [[untrusted, 0], [unknown, 1], [trusted, 2]]
+  - name: default_trust
+    source: static
+    columns: [{ name: origin, type: symbol }, { name: level, type: symbol }]
+    doc: "\u00a77.2's default trust per origin channel (ACS-REQ-0027). agent_generated is absent: its default is the lineage minimum, ACS-REQ-0010."
+    facts:
+      - [user_input, trusted]
+      - [system, trusted]
+      - [tool_output, untrusted]
+      - [retrieved, untrusted]
+      - [a2a_inbound, untrusted]
+      - [external, untrusted]
   - name: content_bearing_method
     source: static
     columns: [{ name: method, type: symbol }]
@@ -203,7 +220,7 @@ relations:
   # --- V7 additions: what the other 128 provisions needed ---
   - name: client_provenance_producer
     source: wire
-    columns: [{ name: session, type: symbol }, { name: mode, type: symbol }]
+    columns: [{ name: session, type: symbol }, { name: mode, type: symbol, domain: producer_mode }]
     doc: "ClientHello's `provenance_producer`: deterministic or none."
   - name: modification_field
     source: wire
@@ -215,13 +232,13 @@ relations:
     doc: "`intent.parser_provenance.origin` on a sessionStart or agentTrigger payload."
   - name: intent_scope_mode
     source: wire
-    columns: [{ name: session, type: symbol }, { name: mode, type: symbol }]
+    columns: [{ name: session, type: symbol }, { name: mode, type: symbol, domain: scope_mode }]
   - name: defer_timeout_decision
     source: wire
-    columns: [{ name: seq, type: number }, { name: value, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: value, type: symbol, domain: disposition }]
   - name: reason_code
     source: wire
-    columns: [{ name: seq, type: number }, { name: code, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: code, type: symbol, domain: reason_code }]
     doc: "An entry of a response's `reason_codes`."
   - name: signature_algorithm
     source: wire
@@ -258,18 +275,18 @@ relations:
     columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: skill_id, type: symbol }, { name: digest, type: symbol }]
   - name: agbom_component
     source: wire
-    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: type, type: symbol }, { name: id, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: type, type: symbol, domain: component_type }, { name: id, type: symbol, domain: component_id }]
     doc: "A component of an agbom/snapshot or agbom/changed payload."
   - name: agbom_component_field
     source: wire
-    columns: [{ name: seq, type: number }, { name: id, type: symbol }, { name: field, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: id, type: symbol, domain: component_id }, { name: field, type: symbol }]
   - name: signature_algorithm_supported
     source: wire
     columns: [{ name: session, type: symbol }, { name: algorithm, type: symbol }]
     doc: "An entry of ServerHello's `signature_algorithms_supported`."
   - name: modification_targets_overlap
     source: external
-    columns: [{ name: seq, type: number }, { name: redaction_path, type: symbol }, { name: override_path, type: symbol }]
+    columns: [{ name: seq, type: number }, { name: redaction_path, type: symbol, domain: json_path }, { name: override_path, type: symbol, domain: json_path }]
     doc: "A redaction path and a parameter-override target that are equal or ancestor/descendant (§6.3); JSON Pointer comparison is ordinary code."
   - name: timestamp_out_of_window
     source: external
@@ -286,6 +303,10 @@ relations:
     source: guardian-state
     columns: [{ name: seq, type: number }, { name: field, type: symbol }]
     doc: "A field the Guardian's decision log recorded for the decision at seq: reasoning, model_identifier, confidence."
+  - name: step_provenance
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: step_id, type: symbol }, { name: pid, type: symbol }]
+    doc: "The provenance_id of the Provenance object the step with this step_id carried. The wire ties a Provenance object to a seq, never to a step_id, and postCompact's entries_compacted lists step_ids, so the compaction union check (ACS-REQ-0111) needs this from the Guardian's records."
   - name: intent_derivation_recorded
     source: guardian-state
     columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: derivation, type: symbol }]

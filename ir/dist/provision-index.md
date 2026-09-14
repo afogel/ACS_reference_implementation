@@ -188,7 +188,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: all
 - Modality: definition; evidence: not-applicable
 - Status: active, since 0.1.0; reviewed against `15cbdddac436`
-- Note: X5 read this callout as an Invariant; the slices doc's specimen table types it a Definition, because it defines what lineage means rather than constraining an actor. Editorial call per E1.4, made here and recorded. ACS-REQ-0009 and ACS-REQ-0010 depend on it.
+- Note: The taxonomy spike read this callout as an Invariant; the specimen table types it a Definition, because it defines what lineage means rather than constraining an actor. Editorial call per E1.4, made here and recorded. ACS-REQ-0009 and ACS-REQ-0010 depend on it.
 
 ### ACS-EXC-0001
 
@@ -200,7 +200,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: all
 - Modality: exclusion; evidence: not-applicable
 - Status: active, since 0.1.0; reviewed against `b196c01da913`
-- Note: A deliberate non-requirement (R4.8). The verifier never reports a tenant-isolation violation; the exclusion roster (U34) lists this.
+- Note: A deliberate non-requirement. The verifier never reports a tenant-isolation violation; the exclusion roster lists this.
 
 ### ACS-INV-0001
 
@@ -224,7 +224,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: all
 - Modality: invariant; evidence: guardian-state
 - Status: active, since 0.1.0; reviewed against `38f1e7bab7dd`
-- Note: X5 typed this callout an Invariant; its strict-mode sentence is a Guardian obligation the pillar restates as ACS-REQ-0077.
+- Note: The taxonomy spike typed this callout an Invariant; its strict-mode sentence is a Guardian obligation the pillar restates as ACS-REQ-0077.
 
 ### ACS-INV-0003
 
@@ -263,7 +263,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: schema
 - Schema: `response-envelope.json#/properties/result/oneOf`, `response-envelope.json#/oneOf`
 - Status: active, since 0.1.0; reviewed against `42b94860cc35`
-- Note: The prose names the shape; v0.1.2's schema states the constraint a verifier checks: `result` is exactly one of AcsResult or ServerHello, and a response carries `result` or `error`, never both (R5.2).
+- Note: The prose names the shape; v0.1.2's schema states the constraint a verifier checks: `result` is exactly one of AcsResult or ServerHello, and a response carries `result` or `error`, never both.
 
 ### ACS-REQ-0002
 
@@ -318,7 +318,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: schema
 - Schema: `defer-details.json#/properties/reason/enum`
 - Status: active, since 0.1.0; reviewed against `874f308dd83c`
-- Note: Keyword-free; the enum is the obligation (R1.7).
+- Note: Keyword-free; the enum is the obligation.
 
 ### ACS-REQ-0006
 
@@ -381,7 +381,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: wire
 - Depends on: [ACS-DEF-0002](#acs-def-0002), [ACS-REQ-0009](#acs-req-0009)
 - Status: active, since 0.1.0; reviewed against `41d62d77d341`
-- Note: Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (R5.2 has nothing to cite here).
+- Note: Recursive: trust of an agent_generated object is min over the transitive derived_from closure, which is what ACS-DEF-0002 makes transitive. The closure is over (descendant, ancestor) pairs, so it terminates on a derived_from cycle; the witness names the offending ancestor and both levels, and the evidence lists the derived_from facts for the subject. No schema ref: provenance.json says trust is not a v0.1 schema field and implementations that carry it extend the schema, so there is no pointer to pin (there is nothing to cite here).
 
 ### ACS-REQ-0011
 
@@ -407,7 +407,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: guardian-state
 - Depends on: [ACS-REQ-0011](#acs-req-0011)
 - Status: active, since 0.1.0; reviewed against `0e766c4dd46c`
-- Note: The SHOULD half of §8.4's enforcement sentence, addressed separately from the MUST (R1.8).
+- Note: The SHOULD half of §8.4's enforcement sentence, addressed separately from the MUST.
 
 ### ACS-REQ-0013
 
@@ -426,7 +426,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: guardian-state
 - Schema: `context-entry.json#/properties/entry_hash`, `context-entry.json#/properties/previous_hash`
 - Status: active, since 0.1.0; reviewed against `dba9c6d83350`
-- Note: Spans a paragraph, a three-item list and a closing paragraph. SHA-256 and JCS enter as external facts (E7.1); the verifier recomputes from the Guardian's entries and compares with the published chain_hash (ACS-REQ-0016).
+- Note: Spans a paragraph, a three-item list and a closing paragraph. SHA-256 and JCS enter as external facts; the verifier recomputes from the Guardian's entries and compares with the published chain_hash (ACS-REQ-0016).
 
 ### ACS-REQ-0014
 
@@ -501,7 +501,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-provenance; activation: provenance_producer: deterministic
 - Modality: obligation; evidence: non-testable
 - Status: active, since 0.1.0; reviewed against `51168a2c9d2a`
-- Note: Environmental: no trace can show which code path populated a field. Two sentences, one obligation; listed on the non-testable roster (U18), never dropped.
+- Note: Environmental: no trace can show which code path populated a field. Two sentences, one obligation; listed on the non-testable roster, never dropped.
 
 ### ACS-REQ-0020
 
@@ -525,7 +525,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-core
 - Modality: permission; evidence: not-applicable
 - Status: active, since 0.1.0; reviewed against `a177e8226221`
-- Note: A permission: not archiving is conformant and yields no verdict (R4.6). Exercising it activates ACS-REQ-0022.
+- Note: A permission: not archiving is conformant and yields no verdict. Exercising it activates ACS-REQ-0022.
 
 ### ACS-REQ-0022
 
@@ -550,7 +550,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-core; activation: the session uses ASK (a non-empty approver_types_supported)
 - Modality: obligation; evidence: guardian-state
 - Status: active, since 0.1.0; reviewed against `b2043534abf5`
-- Note: The canonical copy, on the concept page (concepts/README.md:33). ACS-REQ-0024 restates it inline in §9. X5 notes the callout is a Guardian obligation at concepts altitude.
+- Note: The canonical copy, on the concept page (concepts/README.md:33). ACS-REQ-0024 restates it inline in §9. The taxonomy spike notes the callout is a Guardian obligation at concepts altitude.
 
 ### ACS-REQ-0024
 
@@ -563,7 +563,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: guardian-state
 - Restates: [ACS-REQ-0023](#acs-req-0023)
 - Status: active, since 0.1.0; reviewed against `2afe3fa652ea`
-- Note: The pillar's inline restatement of ACS-REQ-0023; on the migration worklist (R6.6) until §9 references the concept page instead.
+- Note: The pillar's inline restatement of ACS-REQ-0023; on the migration worklist until §9 references the concept page instead.
 
 ### ACS-REQ-0025
 
@@ -599,7 +599,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
 - Modality: obligation; evidence: wire
 - Status: active, since 0.1.0; reviewed against `c60df09f1e38`
-- Note: agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
+- Note: The §7.2 table is the static relation default_trust in the vocabulary. agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
 
 ### ACS-REQ-0028
 
@@ -760,7 +760,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: wire
 - Schema: `modifications.json#/properties/redactions`
 - Status: active, since 0.1.0; reviewed against `7ce33e1a588b`
-- Note: JSON Pointer ancestry is ordinary code (E7.1): modification_targets_overlap is computed by the verifier.
+- Note: JSON Pointer ancestry is ordinary code: modification_targets_overlap is computed by the verifier.
 
 ### ACS-REQ-0043
 
@@ -1331,7 +1331,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-core
 - Modality: obligation; evidence: guardian-state
 - Status: active, since 0.1.0; reviewed against `8bc76b31ea9b`
-- Note: X5: a Guardian obligation at concepts altitude. Confidence is checked only when available, so only reasoning and model_identifier are required.
+- Note: A Guardian obligation at concepts altitude. Confidence is checked only when available, so only reasoning and model_identifier are required.
 
 ### ACS-REQ-0093
 
@@ -1546,7 +1546,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Modality: obligation; evidence: wire
 - Depends on: [ACS-DEF-0002](#acs-def-0002)
 - Status: active, since 0.1.0; reviewed against `d79fbb903a78`
-- Note: entries_compacted lists step_ids; the check treats each as the provenance_id the entry contributed, which is how the hook schema describes the union. Extra derived_from entries are not reported.
+- Note: entries_compacted lists step_ids and nothing on the wire ties a step_id to a provenance_id, so the union check reads step_provenance from the Guardian's records; a Guardian that does not supply it leaves this provision unevaluated rather than approximated. Extra derived_from entries are not reported.
 
 ### ACS-REQ-0112
 
@@ -1994,7 +1994,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 - Profile: acs-core
 - Modality: obligation; evidence: guardian-state
 - Status: active, since 0.1.0; reviewed against `2172d6bd1998`
-- Note: X5: a Guardian obligation at concepts altitude, inside the Intent-derivation callout.
+- Note: A Guardian obligation at concepts altitude, inside the Intent-derivation callout.
 
 ### ACS-REQ-0152
 
@@ -2009,7 +2009,7 @@ ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 ## Test coverage
 
-27 of 155 provisions are cited by a conformance test or fixture under `ir/test/conformance/` (R6.3).
+27 of 155 provisions are cited by a conformance test or fixture under `ir/test/conformance/`.
 
 | ID | Conformance tests |
 |---|---|

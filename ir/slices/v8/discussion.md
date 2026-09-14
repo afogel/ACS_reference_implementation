@@ -24,7 +24,7 @@ I have been maintaining a catalog against the pinned v0.1.2 text that gives ever
 
 1. **prose → ID**: the marked span is the provision's text; a hash of it is stored with the catalog record, so any edit to the sentence flags the record for review, and anything that depends on the record is flagged with it.
 2. **ID → predicate**: a Datalog rule over a fixed vocabulary of facts read from the envelope log (and from the Guardian's own records, where the obligation is about those).
-3. **predicate → rule**: the rule compiles to a Soufflé program an auditor can run with stock Soufflé over a directory of `.facts`, and to an in-process evaluator. CI checks that the two engines agree on shared fixtures.
+3. **predicate → rule**: the rule compiles to a Soufflé program an auditor can run with stock Soufflé over a directory of `.facts` (one typed output relation per provision), and to an in-process evaluator. CI checks that the two engines agree on shared fixtures.
 4. **rule → tests**: conformance fixtures cite provision IDs and nothing else, so a spec change reaches the tests that exercise it by ID, never by text search.
 
 The catalog is not what I am proposing to upstream here. The proposal is only the anchors, because they are the one part that has to be in the spec source to be stable.
@@ -68,18 +68,18 @@ Test: the violating fixture fires `steps/toolCallRequest` at seq 2 and the hands
 
 Record: actor `framework`, profile `acs-provenance`, depends on `ACS-DEF-0002` (the trust levels) and `ACS-REQ-0009` (lineage stays within the session). A session that did not negotiate `acs-provenance` is never judged against it.
 
-Rule (the lineage closure carries the path so the finding can show it):
+Rule (a transitive closure over `derived_from`; the finding names the offending ancestor and both trust levels):
 
 ```
-violation(Seq, Pid, Ancestor, Path, Level, AncestorLevel) :-
+violation(Seq, Pid, Ancestor, Level, AncestorLevel) :-
     trust(Seq, Pid, Level), provenance(Seq, _, Pid, "agent_generated"),
-    ancestor(Pid, Ancestor, Path), trust(_, Ancestor, AncestorLevel),
+    ancestor(Pid, Ancestor), trust(_, Ancestor, AncestorLevel),
     trust_rank(Level, Rank), trust_rank(AncestorLevel, AncestorRank), Rank > AncestorRank.
-ancestor(Pid, Parent, Path) :- derived_from(_, Pid, Parent), Path = cat(Pid, "<-", Parent).
-ancestor(Pid, Ancestor, Path) :- derived_from(_, Pid, Parent), ancestor(Parent, Ancestor, Rest), Path = cat(Pid, "<-", Rest).
+ancestor(Pid, Parent) :- derived_from(_, Pid, Parent).
+ancestor(Pid, Ancestor) :- derived_from(_, Pid, Parent), ancestor(Parent, Ancestor).
 ```
 
-Test: `prov-agent` is `agent_generated` and `trusted` while its ancestor `prov-user-input` is `untrusted`; the finding's witness is `prov-user-input|prov-agent<-prov-user-input|trusted|untrusted`.
+Test: `prov-agent` is `agent_generated` and `trusted` while its ancestor `prov-user-input` is `untrusted`; the finding's witness is `prov-user-input|trusted|untrusted`, and the report lists the `derived_from` facts for `prov-agent` under it.
 
 #### 3. An obligation whose check is ordinary code, not Datalog: `ACS-REQ-0013`
 

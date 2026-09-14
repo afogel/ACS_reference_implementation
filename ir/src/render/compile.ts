@@ -25,7 +25,7 @@ export function renderCompile(program: RuleProgram): string {
 }
 
 export function renderDifferential(report: DifferentialReport): string {
-  const out = ["## Differential (U31)", "", report.souffle ? `Soufflé: ${report.souffle}` : "Soufflé: not available; evaluator checked against expectations only.", ""];
+  const out = ["## Differential", "", report.souffle ? `Soufflé: ${report.souffle}` : "Soufflé: not available; evaluator checked against expectations only.", ""];
   for (const f of report.fixtures) {
     out.push(`### ${f.fixture}: ${f.ok ? "agree" : "DIVERGE"} (evaluator ${f.evaluator.length}, expected ${f.expected.length}${f.souffle ? `, souffle ${f.souffle.length}` : ""})`);
     const rows: string[] = [];

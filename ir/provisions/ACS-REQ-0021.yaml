@@ -13,4 +13,4 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: a177e8226221e439b1e77a64fa86b07c0d54dab730eecd5d2c8004bfaad1aa63
-note: "A permission: not archiving is conformant and yields no verdict (R4.6). Exercising it activates ACS-REQ-0022."
+note: "A permission: not archiving is conformant and yields no verdict. Exercising it activates ACS-REQ-0022."

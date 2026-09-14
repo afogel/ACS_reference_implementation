@@ -13,4 +13,4 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 51168a2c9d2a6a8327862b086e4abd5f4502237639641e378cc367925b78c803
-note: "Environmental: no trace can show which code path populated a field. Two sentences, one obligation; listed on the non-testable roster (U18), never dropped."
+note: "Environmental: no trace can show which code path populated a field. Two sentences, one obligation; listed on the non-testable roster, never dropped."

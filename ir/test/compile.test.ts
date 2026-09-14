@@ -49,8 +49,8 @@ describe("compileProvision -- what the type checker refuses", () => {
   it("compiles a well-typed, safe, stratified predicate and renames its helpers", () => {
     const c = compileOne(record("ACS-REQ-0007", { predicate: rules(["Seq"], ["Session"], "violation(Seq, Session) :- hook(Seq, Session, _), not before(Session, Seq).", "before(Session, Seq) :- handshake(H, Session), hook(Seq, Session, _), H < Seq.") }));
     expect(c.status).toBe("compiled");
-    expect(c.violation).toEqual({ name: "acs_req_0007__violation", columns: [{ name: "subject_seq", type: "number" }, { name: "witness_session", type: "symbol" }] });
-    expect(c.helpers).toEqual([{ local: "before", name: "acs_req_0007__before", columns: [{ name: "c1", type: "symbol" }, { name: "c2", type: "number" }] }]);
+    expect(c.violation).toEqual({ name: "acs_req_0007__violation", columns: [{ name: "subject_seq", type: "number", domain: "seq" }, { name: "witness_session", type: "symbol", domain: "session" }] });
+    expect(c.helpers).toEqual([{ local: "before", name: "acs_req_0007__before", columns: [{ name: "c1", type: "symbol", domain: "session" }, { name: "c2", type: "number", domain: "seq" }] }]);
     expect(c.strata).toEqual([["acs_req_0007__before"], ["acs_req_0007__violation"]]);
     expect(c.external_facts).toEqual([]);
     expect(slug("ACS-REQ-0007")).toBe("acs_req_0007");
@@ -59,8 +59,30 @@ describe("compileProvision -- what the type checker refuses", () => {
   it("refuses an unknown relation, a wrong arity, and a type clash (R3.2)", () => {
     expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- nope(S, X).") }))).toThrow("neither a vocabulary relation nor a helper");
     expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X).") }))).toThrow("hook takes 3 argument(s), got 2");
-    expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X, _), decision(X, _).") }))).toThrow("used as both symbol and number");
+    expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X, _), decision(X, _).") }))).toThrow("used as both session and seq");
     expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], 'violation(S, X) :- hook(S, X, _), S < "a".') }))).toThrow("comparing number with symbol");
+  });
+
+  it("refuses a join or a comparison across two domains of the same base type (a seq is not a bound)", () => {
+    expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X, _), defer_bound(X, S).") }))).toThrow("variable S is used as both seq and bound");
+    expect(() => compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X, _), defer_bound(X, B), S > B.") }))).toThrow("comparing a seq with a bound");
+    // The same value under another column name is one domain: response_to's request_seq is a seq.
+    const c = compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], 'violation(S, X) :- hook(S, X, _), response_to(S, R), decision(R, "deny").') }));
+    expect(c.status).toBe("compiled");
+  });
+
+  it("accepts a constant in a head position, typed by the base type, and a base-typed value alongside a domain in another rule", () => {
+    const c = compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["Field"], 'violation(S, "reasoning") :- hook(S, _, _), not result_field(S, "reasoning").') }));
+    expect(c.violation?.columns[1]).toEqual({ name: "witness_field", type: "symbol", domain: null });
+    const mixed = compileOne(
+      record("ACS-REQ-0001", {
+        predicate: rules(["S"], ["Detail"], "violation(S, Detail) :- hook(S, _, _), result_field(S, Detail).", 'violation(S, Detail) :- hook(S, _, _), decision(S, D), Detail = cat("decision=", D).'),
+      }),
+    );
+    expect(mixed.violation?.columns[1]).toEqual({ name: "witness_detail", type: "symbol", domain: null });
+    expect(() =>
+      compileOne(record("ACS-REQ-0001", { predicate: rules(["S"], ["X"], "violation(S, X) :- hook(S, X, _).", "violation(S, X) :- hook(S, _, X).") })),
+    ).toThrow("violation column 2 is session in one rule and method in another");
   });
 
   it("refuses unsafe rules: a negated or compared variable nothing binds, a head variable nothing binds", () => {
@@ -119,18 +141,24 @@ describe("the real catalog compiles", () => {
     expect(byId["ACS-REQ-0007"]?.external_facts).toEqual([]);
   });
 
-  it("puts the recursive, path-carrying closure in its own stratum below the violation", () => {
+  it("puts the recursive lineage closure in its own stratum below the violation", () => {
     const p = program.provisions.find((x) => x.id === "ACS-REQ-0010");
     expect(p?.strata).toEqual([["acs_req_0010__ancestor"], ["acs_req_0010__violation"]]);
   });
 
-  it("emits a Soufflé program with inputs, inline static facts, and the unified output", () => {
+  it("emits a Soufflé program with domain subtypes, typed inputs, inline static facts, and one typed output per provision", () => {
     const dl = emitSouffleProgram(program);
-    expect(dl).toContain(".decl hook(seq:number, session:symbol, method:symbol)\n.input hook(IO=file, filename=\"hook.facts\", delimiter=\"\\t\")");
+    expect(dl).toContain(".type Seq <: number\n");
+    expect(dl).toContain(".type EntryId <: symbol\n");
+    expect(dl).toContain(".decl hook(seq:Seq, session:Session, method:Method)\n.input hook(IO=file, filename=\"hook.facts\", delimiter=\"\\t\")");
+    expect(dl).toContain(".decl response_to(request_seq:Seq, response_seq:Seq)");
     expect(dl).toContain('required_field("deny", "reasoning").');
-    expect(dl).toContain(".decl violation(provision:symbol, subject:symbol, witness:symbol)");
-    expect(dl).toContain('violation("ACS-REQ-0007", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0007__violation(V0, V1, V2).');
-    expect(dl).toContain("acs_req_0010__ancestor(Pid, Ancestor, Path) :- derived_from(_, Pid, Parent), acs_req_0010__ancestor(Parent, Ancestor, Rest), Path = cat(cat(Pid, \"<-\"), Rest).");
+    expect(dl).toContain('default_trust("user_input", "trusted").');
+    expect(dl).toContain(".decl acs_req_0007__violation(subject_seq:Seq, witness_session:Session, witness_method:Method)\n.output acs_req_0007__violation\n");
+    expect(dl).not.toContain("cat(cat(");
+    expect(dl).not.toContain(".decl violation(");
+    expect(dl).toContain("acs_req_0010__ancestor(Pid, Ancestor) :- derived_from(_, Pid, Parent), acs_req_0010__ancestor(Parent, Ancestor).");
+    expect(dl).toContain('acs_req_0062__violation(Session, EntryId, "request_hash") :- context_entry(Session, EntryId, _, _), !context_entry_field(Session, EntryId, "request_hash").');
     expect(dl).toContain("Deferrals = count : { acs_req_0006__defer_in(Session, _) }");
   });
 });
@@ -141,5 +169,12 @@ describe("parseVocabulary -- the vocabulary's own shape", () => {
     expect(() => parseVocabulary("relations:\n  - name: a\n    source: wire\n    columns: [{ name: x, type: symbol }]\n    facts: [[y]]\n")).toThrow("only static relations carry facts");
     expect(() => parseVocabulary("relations:\n  - name: a\n    source: static\n    columns: [{ name: x, type: symbol }]\n    facts: [[y, z]]\n")).toThrow("wrong arity");
     expect(() => parseVocabulary("relations:\n  - name: a\n    source: static\n    columns: [{ name: x, type: number }]\n    facts: [[y]]\n")).toThrow("must be a number");
+  });
+
+  it("gives every column a domain, defaulting to its name, and refuses one domain with two base types", () => {
+    const v = parseVocabulary("relations:\n  - name: a\n    source: wire\n    columns: [{ name: seq, type: number }, { name: parent_seq, type: number, domain: seq }]\n");
+    expect(v.relations.get("a")?.columns.map((c) => c.domain)).toEqual(["seq", "seq"]);
+    expect([...v.domains.entries()]).toEqual([["seq", "number"]]);
+    expect(() => parseVocabulary("relations:\n  - name: a\n    source: wire\n    columns: [{ name: seq, type: number }, { name: x, type: symbol, domain: seq }]\n")).toThrow("domain seq is number elsewhere, symbol here");
   });
 });

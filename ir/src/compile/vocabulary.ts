@@ -6,6 +6,15 @@
  * the vocabulary's validator (the breadboard's one gap, closed by letting
  * the compiler find what the vocabulary cannot express rather than a
  * separate lint guess at it).
+ *
+ * Every column has a base type (`symbol` or `number`) and a domain. The
+ * domain names what the column holds: `seq`, `session`, `pid`, `field`.
+ * It defaults to the column name, and a column that holds the same kind
+ * of value under another name says so with `domain:` (`request_seq` is a
+ * `seq`; `parent` is a `pid`). The compiler refuses a rule that joins or
+ * compares two different domains, and the published Soufflé program
+ * declares each domain as a subtype (`.type Seq <: number`), so Soufflé
+ * refuses the same rule.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -16,6 +25,8 @@ export type RelationSource = "wire" | "external" | "guardian-state" | "deploymen
 export interface Column {
   name: string;
   type: ColumnType;
+  /** The domain, or null for a column that holds the base type only (a helper column built by `cat`, for example). */
+  domain: string | null;
 }
 
 export interface Relation {
@@ -29,6 +40,8 @@ export interface Relation {
 
 export interface Vocabulary {
   relations: Map<string, Relation>;
+  /** Every domain a column declares, with its base type. */
+  domains: Map<string, ColumnType>;
 }
 
 const NAME = /^[a-z][a-z0-9_]*$/;
@@ -46,6 +59,7 @@ export function parseVocabulary(yamlText: string): Vocabulary {
   const parsed = Bun.YAML.parse(yamlText) as { relations?: unknown };
   if (!Array.isArray(parsed?.relations)) throw new Error("relations.yaml: expected a top-level `relations:` list");
   const relations = new Map<string, Relation>();
+  const domains = new Map<string, ColumnType>();
   for (const raw of parsed.relations) {
     if (typeof raw !== "object" || raw === null) throw new Error("relations.yaml: each relation must be a map");
     const r = raw as Record<string, unknown>;
@@ -57,7 +71,12 @@ export function parseVocabulary(yamlText: string): Vocabulary {
       const col = c as Record<string, unknown>;
       if (typeof col.name !== "string" || !NAME.test(col.name)) throw new Error(`relations.yaml: ${r.name}: bad column name`);
       if (col.type !== "symbol" && col.type !== "number") throw new Error(`relations.yaml: ${r.name}.${col.name}: type must be symbol | number`);
-      return { name: col.name, type: col.type };
+      const domain = col.domain === undefined ? col.name : col.domain;
+      if (typeof domain !== "string" || !NAME.test(domain)) throw new Error(`relations.yaml: ${r.name}.${col.name}: bad domain name`);
+      const known = domains.get(domain);
+      if (known && known !== col.type) throw new Error(`relations.yaml: ${r.name}.${col.name}: domain ${domain} is ${known} elsewhere, ${col.type} here`);
+      domains.set(domain, col.type);
+      return { name: col.name, type: col.type, domain };
     });
     const facts: (string | number)[][] = [];
     if (r.facts !== undefined) {
@@ -78,5 +97,13 @@ export function parseVocabulary(yamlText: string): Vocabulary {
     }
     relations.set(r.name, { name: r.name, source: r.source as RelationSource, columns, doc: typeof r.doc === "string" ? r.doc : null, facts });
   }
-  return { relations };
+  return { relations, domains };
+}
+
+/** The Soufflé type name for a domain: `entry_id` is declared as `.type EntryId <: symbol`. */
+export function domainTypeName(domain: string): string {
+  return domain
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
 }

@@ -15,4 +15,4 @@ superseded_by: []
 reviewed_against: 7424e248ba41eb208acf5658183c513dfa17269e20ae27fb2f21a19d30d8f794
 note: null
 predicate:
-  inexpressible: "the conjunction of every acs-core provision; reported as the profile summary (U16), not as one predicate"
+  inexpressible: "the conjunction of every acs-core provision; reported as the profile summary, not as one predicate"

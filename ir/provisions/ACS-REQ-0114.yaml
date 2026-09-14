@@ -18,4 +18,4 @@ predicate:
   subject: [Session, Seq]
   witness: [Method]
   rules:
-    - "violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = \"steps/postCompact\", not context_entry(Session, _, Seq, _)."
+    - "violation(Session, Seq, \"steps/postCompact\") :- request(Seq, Session, \"steps/postCompact\", _, _), not context_entry(Session, _, Seq, _)."

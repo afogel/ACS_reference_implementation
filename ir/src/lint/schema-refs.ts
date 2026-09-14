@@ -81,7 +81,7 @@ export function lintSchemaRefs(refs: { id: string; refs: SchemaRef[] }[], schema
       }
       const current = hashSubschema(sub);
       if (!ref.pinned) {
-        problems.push(`${id}: schema_refs ${ref.file}#${ref.pointer} has no pinned hash; pin ${current.slice(0, 12)}… (R2.8)`);
+        problems.push(`${id}: schema_refs ${ref.file}#${ref.pointer} has no pinned hash; pin ${current.slice(0, 12)}…`);
       } else if (ref.pinned !== current) {
         changed.push({ id, ref, pinned: ref.pinned, current });
       }

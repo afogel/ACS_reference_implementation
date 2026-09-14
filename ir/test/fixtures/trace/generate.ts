@@ -136,6 +136,7 @@ export function generate(kind: "clean" | "violating"): { trace: Line[]; entries:
       .map((l) => `${l.seq}\treasoning\n${l.seq}\tmodel_identifier\n`)
       .join(""),
     "intent_derivation_recorded.facts": "",
+    "step_provenance.facts": "",
   };
   const deploymentFacts: Record<string, string> = {
     "session_batching.facts": `${SESSION}\tsupported\n`,

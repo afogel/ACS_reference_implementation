@@ -90,7 +90,7 @@ export function judge(
       evidence: [],
     };
     const c = compiled.get(manifest.id);
-    if (manifest.type === "Exclusion") verdicts.set(manifest.id, { ...base, verdict: "exclusion", reason: "ACS deliberately requires nothing here (R4.8)" });
+    if (manifest.type === "Exclusion") verdicts.set(manifest.id, { ...base, verdict: "exclusion", reason: "ACS deliberately requires nothing here" });
     else if (manifest.type === "Definition") verdicts.set(manifest.id, { ...base, verdict: "definition", reason: "a definition; verified through the Requirements that depend on it" });
     else if (manifest.type === "Invariant") verdicts.set(manifest.id, { ...base, verdict: "invariant", reason: "an invariant; verified through the Requirements that enforce it" });
     else if (!c) verdicts.set(manifest.id, { ...base, verdict: "unevaluated", reason: "not compiled" });
@@ -134,7 +134,7 @@ function applyModality(
   if (modality === "conditional-on-exercise") {
     const stateRelations = c.relations_used.filter((r) => relations.get(r)?.source === "guardian-state");
     if (stateRelations.every((r) => (facts.get(r) ?? []).length === 0)) {
-      return { ...base, verdict: "not-exercised", reason: "the permission it is conditional on was not exercised in this trace (R4.6)" };
+      return { ...base, verdict: "not-exercised", reason: "the permission it is conditional on was not exercised in this trace" };
     }
   }
   if (violations.length === 0) return base;

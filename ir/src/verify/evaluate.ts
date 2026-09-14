@@ -20,7 +20,7 @@ export interface Violation {
   witness: Value[];
 }
 
-/** The unified form both engines produce: values joined with "|". */
+/** The unified form the fixtures pin and both engines are compared in: provision, then subject and witness values each joined with "|". */
 export function unified(v: Violation): string {
   return `${v.provision}\t${v.subject.map(String).join("|")}\t${v.witness.map(String).join("|")}`;
 }

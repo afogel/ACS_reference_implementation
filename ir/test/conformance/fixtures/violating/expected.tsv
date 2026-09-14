@@ -10,7 +10,7 @@ ACS-REQ-0006	session-violating	2|1
 ACS-REQ-0007	2	session-violating|steps/toolCallRequest
 ACS-REQ-0008	20	1|2
 ACS-REQ-0009	4|prov-agent	prov-unknown
-ACS-REQ-0010	4|prov-agent	prov-user-input|prov-agent<-prov-user-input|trusted|untrusted
+ACS-REQ-0010	4|prov-agent	prov-user-input|trusted|untrusted
 ACS-REQ-0011	session-violating|4	send
 ACS-REQ-0012	session-violating	4
 ACS-REQ-0013	session-violating|entry-1	hash-claimed|hash-recomputed

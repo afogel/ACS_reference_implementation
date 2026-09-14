@@ -21,4 +21,4 @@ predicate:
   subject: [Seq, ComponentId]
   witness: [Field]
   rules:
-    - "violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = \"registration_provenance\", not agbom_component_field(Seq, ComponentId, \"registration_provenance\")."
+    - "violation(Seq, ComponentId, \"registration_provenance\") :- agbom_component(Seq, _, _, ComponentId), not agbom_component_field(Seq, ComponentId, \"registration_provenance\")."

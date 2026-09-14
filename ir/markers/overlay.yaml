@@ -1,7 +1,7 @@
-# The staging overlay (S2, E3). Where each provision's anchor and terminator go,
+# The staging overlay. Where each provision's anchor and terminator go,
 # by verbatim quote against the pinned corpus. `quote` marks one run of text;
 # `start` + `end` mark a span across blocks. `start` must be unique in the file.
-# Retires when the markers land upstream (E3.3); until then this file is the
+# Retires when the markers land upstream; until then this file is the
 # payload of the bulk marker PR.
 #
 # V2 specimens: chosen for semantic diversity, not document order
@@ -53,7 +53,7 @@ markers:
     source: spec/instrument/specification.md
     start: "The framework MUST enforce it:"
     end: "MUST be ignored or rejected"
-  # stateful, SHOULD -- the audit half of the same sentence, addressed separately (R1.8)
+  # stateful, SHOULD -- the audit half of the same sentence, addressed separately
   - id: ACS-REQ-0012
     source: spec/instrument/specification.md
     quote: "SHOULD be recorded as an audit event."

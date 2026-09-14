@@ -112,8 +112,8 @@ describe("renderStale -- U10 and U32", () => {
   it("names each stale provision, why, what it invalidated, and its tests", () => {
     const text = renderStale(checkStaleness(loadCatalog(manifest("inv-reworded"), records), new Map([["ACS-REQ-0011", ["intent.test.ts"]]])));
     expect(text).toContain("3 provision(s) need review");
-    expect(text).toContain("- **ACS-INV-0001** (`concepts/intent.md:1`)\n  - its text changed: reviewed against `inv`, now `inv-reworded` (R2.4)\n  - invalidates: ACS-REQ-0011");
-    expect(text).toContain("- it depends on ACS-INV-0001, which needs review (R2.6)\n  - invalidates: ACS-REQ-0012\n  - tests citing it: intent.test.ts");
+    expect(text).toContain("- **ACS-INV-0001** (`concepts/intent.md:1`)\n  - its text changed: reviewed against `inv`, now `inv-reworded`\n  - invalidates: ACS-REQ-0011");
+    expect(text).toContain("- it depends on ACS-INV-0001, which needs review\n  - invalidates: ACS-REQ-0012\n  - tests citing it: intent.test.ts");
     expect(text).toContain("| ACS-REQ-0024 | spec/s.md:1 | ACS-REQ-0023 | concepts/agents.md |");
   });
 

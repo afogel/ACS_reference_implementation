@@ -27,13 +27,13 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadCatalog, loadRecords } from "../catalog/catalog.ts";
+import { loadCatalog, loadRecords, type ProvisionRecord } from "../catalog/catalog.ts";
 import { checkStaleness, type StaleEntry, type StalenessReport, type TestCitations } from "../catalog/staleness.ts";
 import { provisionCensus, type ProvisionCensus } from "../census/provision-census.ts";
 import { parseSourceDeclarations, sourceCensus } from "../census/source-census.ts";
 import { parseExclusions, resolveExclusions } from "../census/exclusions.ts";
 import type { Corpus } from "../corpus.ts";
-import { extractProvisions, type Manifest } from "../extract/extract.ts";
+import { extractProvisions, type Manifest, type ManifestEntry } from "../extract/extract.ts";
 import { checkAllocated, ID_PATTERN, readCounter, readTombstones } from "../ids.ts";
 import type { ResolvedSpan } from "../markers/overlay.ts";
 import { lintSchemaRefs } from "./schema-refs.ts";
@@ -56,15 +56,30 @@ export interface UnmarkedOccurrence {
   context: string;
 }
 
+/** A provision new since the baseline, with what a reviewer needs to place it. */
+export interface AddedProvision {
+  id: string;
+  title: string;
+  actor: string;
+  source_file: string;
+  line: number;
+}
+
 export interface LintReport {
   corpus: { version: string | null; commit: string | null };
+  /** Base URL for a permalink to a source line at the pinned commit (`<remote>/blob/<commit>/docs`), when the corpus has a remote. */
+  spec_url: string | null;
+  /** Title per provision ID, for every provision the catalog joins. */
+  titles: Record<string, string>;
   findings: Finding[];
   /** U25: keyword occurrences new since the baseline and bound to nothing. */
   unmarked: UnmarkedOccurrence[];
   /** U24: IDs gone from the corpus with no tombstone. */
   removed_without_tombstone: string[];
-  /** U23: IDs new since the baseline with no conformance test citing them. */
-  added_without_test: string[];
+  /** U23: provisions new since the baseline that a fixture could cite (a Requirement with a predicate of its own) and none does. */
+  added_without_test: AddedProvision[];
+  /** Provisions new since the baseline that take no test by construction, with why: permission, non-testable, inexpressible, alias, or not an obligation. */
+  added_untestable: { id: string; title: string; status: string }[];
   /** U22: needs-review, with what each invalidated and the tests citing it. */
   stale: StaleEntry[];
   worklist: StalenessReport["worklist"];
@@ -91,13 +106,14 @@ export interface LintInputs {
   baseline: Baseline;
 }
 
-/** The committed generated files under `dir` (`manifest/provisions.json`, `census/provisions.yaml`), each absent-tolerant. */
+/** The committed generated files under `dir` (`manifest/provisions.json`, `census/provisions.yaml`); a missing or empty file is no baseline. */
 export function loadBaseline(dir: string): Baseline {
   const manifestPath = join(dir, "manifest", "provisions.json");
   const censusPath = join(dir, "census", "provisions.yaml");
+  const present = (path: string): boolean => existsSync(path) && readFileSync(path, "utf8").trim() !== "";
   return {
-    manifest: existsSync(manifestPath) ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest) : null,
-    census: existsSync(censusPath) ? (Bun.YAML.parse(readFileSync(censusPath, "utf8")) as ProvisionCensus) : null,
+    manifest: present(manifestPath) ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest) : null,
+    census: present(censusPath) ? (Bun.YAML.parse(readFileSync(censusPath, "utf8")) as ProvisionCensus) : null,
   };
 }
 
@@ -166,7 +182,7 @@ export function specLint(inputs: LintInputs): LintReport {
   for (const id of (inputs.baseline.manifest?.provisions ?? []).map((p) => p.id)) {
     if (!live.has(id) && !retired.has(id)) removedWithoutTombstone.push(id);
   }
-  for (const id of removedWithoutTombstone) at("tombstone", null, `${id}: marked in the baseline, gone from the corpus, and not tombstoned (R2.2)`);
+  for (const id of removedWithoutTombstone) at("tombstone", null, `${id}: marked in the baseline, gone from the corpus, and not tombstoned; add an entry to ir/ids/tombstones.yaml`);
   for (const r of records.records) {
     if (r.status === "withdrawn" && !retired.has(r.id)) at("tombstone", null, `${r.id}: record is withdrawn but ids/tombstones.yaml has no entry for it`);
     if (r.status === "active" && retired.has(r.id)) at("tombstone", null, `${r.id}: tombstoned, yet its record is still active`);
@@ -217,16 +233,28 @@ export function specLint(inputs: LintInputs): LintReport {
   const changed = extraction.manifest.provisions
     .filter((p) => baselineHashes.has(p.id) && baselineHashes.get(p.id) !== p.text_hash)
     .map((p) => ({ id: p.id, source_file: p.source_file, line: p.line }));
-  const addedWithoutTest = inputs.baseline.manifest
-    ? extraction.manifest.provisions.filter((p) => !baselineHashes.has(p.id) && !inputs.citations.get(p.id)?.length).map((p) => p.id)
-    : [];
+  const added = inputs.baseline.manifest ? extraction.manifest.provisions.filter((p) => !baselineHashes.has(p.id)) : [];
+  const entryOf = new Map(catalog.entries.map((e) => [e.manifest.id, e]));
+  const statusOf = (id: string): string => {
+    const e = entryOf.get(id);
+    return e ? testStatus(e.manifest, e.record) : "unknown";
+  };
+  const titles: Record<string, string> = {};
+  for (const r of records.records) titles[r.id] = r.title;
+  const addedWithoutTest: AddedProvision[] = added
+    .filter((p) => statusOf(p.id) === "testable" && !inputs.citations.get(p.id)?.length)
+    .map((p) => ({ id: p.id, title: titles[p.id] ?? "", actor: entryOf.get(p.id)?.record.actor ?? "", source_file: p.source_file, line: p.line }));
+  const addedUntestable = added.filter((p) => statusOf(p.id) !== "testable").map((p) => ({ id: p.id, title: titles[p.id] ?? "", status: statusOf(p.id) }));
 
   return {
     corpus: extraction.manifest.corpus,
+    spec_url: corpus.remote && corpus.commit ? `${corpus.remote}/blob/${corpus.commit}/docs` : null,
+    titles,
     findings,
     unmarked,
     removed_without_tombstone: removedWithoutTombstone,
     added_without_test: addedWithoutTest,
+    added_untestable: addedUntestable,
     stale,
     worklist: staleness.worklist,
     changed,
@@ -237,4 +265,19 @@ export function specLint(inputs: LintInputs): LintReport {
 /** An occurrence's identity across edits: where it is by prose, not by line number. */
 function identity(o: { source: string; keyword: string; context: string }): string {
   return `${o.source} ${o.keyword} ${o.context}`;
+}
+
+/**
+ * Whether a conformance fixture could cite this provision at all. Only a
+ * Requirement with a predicate of its own is "testable"; everything else
+ * is reported by the reason it takes no test, so a count of untested
+ * provisions counts only what a test could cover.
+ */
+export function testStatus(manifest: ManifestEntry, record: ProvisionRecord): "testable" | "permission" | "non-testable" | "inexpressible" | "alias" | "definition" | "invariant" | "exclusion" {
+  if (manifest.type !== "Requirement") return manifest.type.toLowerCase() as "definition" | "invariant" | "exclusion";
+  if (record.modality_kind === "permission") return "permission";
+  if (record.evidence_class === "non-testable") return "non-testable";
+  if (record.predicate?.kind === "inexpressible") return "inexpressible";
+  if (record.predicate?.kind === "alias") return "alias";
+  return "testable";
 }

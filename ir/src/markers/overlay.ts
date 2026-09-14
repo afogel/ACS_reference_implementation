@@ -102,7 +102,7 @@ export function resolveOverlay(entries: MarkerEntry[], read: (source: string) =>
     // E3.3: once a marker has landed upstream, its overlay entry is retired,
     // not applied a second time.
     if (text.includes(anchorFor(entry.id))) {
-      problems.push(`${entry.id}: already marked in ${entry.source}; remove its overlay entry, the corpus carries the marker now (E3.3)`);
+      problems.push(`${entry.id}: already marked in ${entry.source}; remove its overlay entry, the corpus carries the marker now`);
       continue;
     }
     try {

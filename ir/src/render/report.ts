@@ -34,13 +34,13 @@ export function renderConformanceReport(input: ReportInput): string {
     `Sessions: ${input.sessions.length ? input.sessions.map((s) => `\`${s.session}\` (${s.profiles.join(", ")}${s.negotiated_version ? `, ${s.negotiated_version}` : ""})`).join("; ") : "none"}.`,
     `Negotiated profiles: ${input.negotiated.join(", ")}. External facts available: ${input.available.length ? input.available.join(", ") : "none beyond the wire"}.`,
     "",
-    "## Summary (U11)",
+    "## Summary",
     "",
     ORDER.filter((k) => counts.has(k))
       .map((k) => `${k} ${counts.get(k)}`)
       .join(", ") + (review ? `; ${review} needs-review` : "") + ".",
     "",
-    "## Obligations per claimed profile (U16)",
+    "## Obligations per claimed profile",
     "",
     "| profile | active obligations | met | unmet | unevaluated |",
     "|---|---|---|---|---|",
@@ -52,12 +52,12 @@ export function renderConformanceReport(input: ReportInput): string {
     const unevaluated = active.filter((v) => v.verdict === "unevaluated").length;
     out.push(`| ${profile} | ${active.length} | ${met} | ${unmet} | ${unevaluated} |`);
   }
-  out.push("", "## Verdicts (U15)", "", "| provision | verdict | level | actor | profile | reason |", "|---|---|---|---|---|---|");
+  out.push("", "## Verdicts", "", "| provision | verdict | level | actor | profile | reason |", "|---|---|---|---|---|---|");
   for (const v of [...input.verdicts].sort((a, b) => ORDER.indexOf(a.verdict) - ORDER.indexOf(b.verdict) || a.id.localeCompare(b.id))) {
     out.push(`| ${v.id} ${v.title} | ${v.verdict}${v.needs_review ? " (needs-review)" : ""} | ${v.level ?? "—"} | ${v.actor} | ${v.profile === "all" ? "all" : v.profile.join(", ")} | ${(v.reason ?? "").replace(/\|/g, "\\|")} |`);
   }
   const failures = input.verdicts.filter((v) => v.verdict === "fail");
-  out.push("", "## Evidence (U17)", "");
+  out.push("", "## Evidence", "");
   if (failures.length === 0) out.push("No violations.");
   for (const v of failures) {
     out.push(`### ${v.id}: ${v.title}`, "", `${v.evidence.length} violation(s).`, "");
@@ -69,9 +69,9 @@ export function renderConformanceReport(input: ReportInput): string {
   }
   out.push(...roster("Not evaluated: facts the verifier was not given", input.verdicts.filter((v) => v.verdict === "unevaluated"), (v) => `needs ${v.missing.join(", ")}`));
   out.push(...roster("Not activated by the negotiated profiles", input.verdicts.filter((v) => v.verdict === "not-activated")));
-  out.push(...roster("Non-testable roster (U18)", input.verdicts.filter((v) => v.verdict === "non-testable" || v.verdict === "inexpressible")));
-  out.push(...roster("Exclusion roster (U34): ACS deliberately requires nothing here", input.verdicts.filter((v) => v.verdict === "exclusion")));
-  out.push(...roster("Permissions: no obligation from non-exercise (R4.6)", input.verdicts.filter((v) => v.verdict === "permission" || v.verdict === "not-exercised")));
+  out.push(...roster("Non-testable roster", input.verdicts.filter((v) => v.verdict === "non-testable" || v.verdict === "inexpressible")));
+  out.push(...roster("Exclusion roster: ACS deliberately requires nothing here", input.verdicts.filter((v) => v.verdict === "exclusion")));
+  out.push(...roster("Permissions: no obligation from non-exercise", input.verdicts.filter((v) => v.verdict === "permission" || v.verdict === "not-exercised")));
   return out.join("\n") + "\n";
 }
 

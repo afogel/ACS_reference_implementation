@@ -43,7 +43,7 @@ export function renderProvisionIndex(catalog: Catalog, corpus: { version: string
   out.push(
     "## Test coverage",
     "",
-    `${catalog.entries.length - untested} of ${catalog.entries.length} provisions are cited by a conformance test or fixture under \`ir/test/conformance/\` (R6.3).`,
+    `${catalog.entries.length - untested} of ${catalog.entries.length} provisions are cited by a conformance test or fixture under \`ir/test/conformance/\`.`,
     "",
     ...table(["ID", "Conformance tests"], catalog.entries.map(({ manifest: m }) => [m.id, citations.get(m.id)?.join(", ") ?? "none"])),
   );

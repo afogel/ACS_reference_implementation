@@ -102,7 +102,7 @@ export function allocateId(type: ProvisionType, dir: string = defaultIdsDir()): 
   counter[type] += 1;
   writeFileSync(
     join(dir, "counter.yaml"),
-    "# Monotonic ID allocation (S6). Bumped by `acs-ir ids next <type>`; never edited down.\n" + toYaml({ ...counter }),
+    "# Monotonic ID allocation. Bumped by `acs-ir ids next <type>`; never edited down.\n" + toYaml({ ...counter }),
   );
   return formatId(type, counter[type]);
 }

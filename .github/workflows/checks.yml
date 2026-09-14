@@ -88,7 +88,7 @@ jobs:
         # marked provision with no authored record fails here.
         if: ${{ !cancelled() }}
         run: bun run ir markers apply && bun run ir extract --check && bun run ir render --check
-      - name: Marker patches match the overlay (N60)
+      - name: Marker patches match the overlay
         # ir/dist/markers.patch is the bulk marker PR's payload and
         # ir/dist/markers-poc.patch the proof-of-concept's; both are cut
         # from ir/markers/overlay.yaml and committed so reviewers can read

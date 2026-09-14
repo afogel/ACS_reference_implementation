@@ -1,4 +1,4 @@
-# Authored census exclusions (E8.2). Each quote contains exactly one RFC 2119
+# Authored census exclusions. Each quote contains exactly one RFC 2119
 # keyword occurrence that is not a provision of its own, with the reason. The
 # census fails on a quote that no longer resolves or covers more than one occurrence.
 exclusions:
@@ -69,7 +69,7 @@ exclusions:
     quote: "a Guardian whose policy needs provenance MAY refuse a client that does not declare `acs-provenance`"
     reason: restatement_of
     of: ACS-REQ-0127
-    note: "X3's parenthetical restatement."
+    note: "A parenthetical restatement, as the marker-span spike read it."
   - source: spec/conformance.md
     quote: "Guardians MUST reject replays per [§10.3](./instrument/specification.md#103-replay-protection)."
     reason: restatement_of

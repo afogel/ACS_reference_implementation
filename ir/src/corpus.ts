@@ -21,6 +21,8 @@ export interface Corpus {
   commit: string | null;
   /** Contents of `version.txt`, trimmed, or null when absent. */
   version: string | null;
+  /** The checkout's `origin` URL without a trailing `.git`, or null when it has none: where a permalink to a source line points. */
+  remote: string | null;
   /** Every `*.md` under `docs/`, relative to `docs/`, POSIX separators, sorted. */
   files: string[];
 }
@@ -41,7 +43,8 @@ export function loadCorpus(root: string = defaultCorpusRoot()): Corpus {
   const files = Array.from(new Bun.Glob("**/*.md").scanSync({ cwd: docsDir, onlyFiles: true }))
     .map((f) => f.split("\\").join("/"))
     .sort();
-  return { root: absRoot, docsDir, commit: readCommit(absRoot), version: readVersion(absRoot), files };
+  const commit = readCommit(absRoot);
+  return { root: absRoot, docsDir, commit, version: readVersion(absRoot), remote: commit ? readRemote(absRoot) : null, files };
 }
 
 export function readSource(corpus: Corpus, file: string): string {
@@ -51,6 +54,13 @@ export function readSource(corpus: Corpus, file: string): string {
 function readVersion(root: string): string | null {
   const path = join(root, "version.txt");
   return existsSync(path) ? readFileSync(path, "utf8").trim() : null;
+}
+
+function readRemote(root: string): string | null {
+  const result = Bun.spawnSync(["git", "-C", root, "remote", "get-url", "origin"], { stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) return null;
+  const url = result.stdout.toString().trim().replace(/\.git$/, "");
+  return /^https:\/\//.test(url) ? url : null;
 }
 
 function readCommit(root: string): string | null {

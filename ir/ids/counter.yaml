@@ -1,4 +1,4 @@
-# Monotonic ID allocation (S6). Bumped by `acs-ir ids next <type>`; never edited down.
+# Monotonic ID allocation. Bumped by `acs-ir ids next <type>`; never edited down.
 REQ: 152
 DEF: 2
 INV: 4
