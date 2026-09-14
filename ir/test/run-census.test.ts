@@ -113,7 +113,7 @@ describe("renderCensus -- the four V1 panels", () => {
   const report = renderCensus(run.sources, run.provisions);
 
   it("renders the source census, provision census, unbound table and edge audit", () => {
-    for (const heading of ["## Source census (U19)", "## Provision census (U20)", "## Unbound and excluded occurrences (U21)", "## Dependency-edge audit (U33)"]) {
+    for (const heading of ["## Source census", "## Provision census", "## Unbound and excluded occurrences", "## Dependency-edge audit"]) {
       expect(report).toContain(heading);
     }
     expect(report).toContain("| spec/rules.md:1:14 | MUST | heading | unbound |");

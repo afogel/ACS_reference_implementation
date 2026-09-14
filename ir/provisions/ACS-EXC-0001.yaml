@@ -13,4 +13,4 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: b196c01da9134aad6e808443805187922261ad334f5475736defa2ddf7a43534
-note: "A deliberate non-requirement (R4.8). The verifier never reports a tenant-isolation violation; the exclusion roster (U34) lists this."
+note: "A deliberate non-requirement. The verifier never reports a tenant-isolation violation; the exclusion roster lists this."

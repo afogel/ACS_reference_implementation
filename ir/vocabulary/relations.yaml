@@ -1,12 +1,12 @@
-# The fact vocabulary (S7, E6): every relation a predicate may mention, with
+# The fact vocabulary: every relation a predicate may mention, with
 # its columns, their types, and where its tuples come from. Predicates are
-# written over these names and nothing else (R3.2); a predicate naming a
+# written over these names and nothing else; a predicate naming a
 # relation not declared here fails to compile.
 #
 # source:
-#   wire           derived from the envelope log by `acs-ir verify` (N41)
+#   wire           derived from the envelope log by `acs-ir verify`
 #   external       computed by ordinary code, not Datalog: hashes, JCS,
-#                  signatures, schema validation (E7.1, N42/N43 in V6)
+#                  signatures, schema validation
 #   guardian-state the Guardian's own records: its decision log, session
 #                  context, intent snapshots; supplied as facts by a Guardian
 #                  that opts in to being verified
@@ -92,7 +92,7 @@ relations:
     source: wire
     columns: [{ name: session, type: symbol }, { name: seq, type: number }]
     doc: "The Observed Agent's cross-check `metadata.session_state.chain_hash` disagreed with the head the Guardian last published for the session."
-  # --- computed by ordinary code (E7.1) ---
+  # --- computed by ordinary code ---
   - name: entry_hash_recomputed
     source: external
     columns: [{ name: entry_id, type: symbol }, { name: hash, type: symbol, domain: entry_hash }]

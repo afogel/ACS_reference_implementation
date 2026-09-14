@@ -17,7 +17,7 @@ export function renderImpactComment(report: LintReport): string {
     "",
     report.ok ? "**No failures, nothing to review.**" : `**${report.findings.length} failure(s), ${report.stale.length} provision(s) to review.**`,
     "",
-    "### Changed provisions and their tests (U22)",
+    "### Changed provisions and their tests",
     "",
   ];
   if (report.stale.length === 0) out.push("None.");
@@ -30,15 +30,22 @@ export function renderImpactComment(report: LintReport): string {
       out.push(`| ${s.id} (\`${s.source_file}:${s.line}\`) | ${why} | ${s.invalidates.join(", ") || "none"} | ${s.tests.join(", ") || "none"} |`);
     }
   }
-  out.push("", "### Added provisions with no conformance test (U23)", "");
+  out.push("", "### Added provisions with no conformance test", "");
   out.push(report.added_without_test.length ? report.added_without_test.map((id) => `- ${id}`).join("\n") : "None.");
-  out.push("", "### Removed provisions missing a tombstone (U24)", "");
+  if (report.added_untestable.length) {
+    // Grouped by the reason a fixture cannot cite them, so the list above counts only what a test could cover.
+    const byStatus = new Map<string, string[]>();
+    for (const a of report.added_untestable) byStatus.set(a.status, [...(byStatus.get(a.status) ?? []), a.id]);
+    out.push("", "Added provisions that take no test, by reason:", "");
+    for (const [status, ids] of [...byStatus.entries()].sort(([a], [b]) => a.localeCompare(b))) out.push(`- ${status} (${ids.length}): ${ids.join(", ")}`);
+  }
+  out.push("", "### Removed provisions missing a tombstone", "");
   out.push(
     report.removed_without_tombstone.length
-      ? report.removed_without_tombstone.map((id) => `- ${id}: add an entry to \`ir/ids/tombstones.yaml\` (R2.2)`).join("\n")
+      ? report.removed_without_tombstone.map((id) => `- ${id}: add an entry to \`ir/ids/tombstones.yaml\``).join("\n")
       : "None.",
   );
-  out.push("", "### Unmarked normative statements (U25)", "");
+  out.push("", "### Unmarked normative statements", "");
   if (report.unmarked.length === 0) out.push("None.");
   else {
     out.push("| location | keyword | context |", "|---|---|---|");

@@ -130,12 +130,12 @@ describe("acs-ir verify -- the violating trace", () => {
 
   it("renders the report with every roster present", () => {
     const report = renderConformanceReport({ corpus: program.corpus, trace: r.trace, sessions: r.normalized.sessions, negotiated: r.negotiated, available: [...r.external.available].sort(), verdicts: r.verdicts });
-    for (const h of ["## Summary (U11)", "## Obligations per claimed profile (U16)", "## Verdicts (U15)", "## Evidence (U17)", "## Non-testable roster (U18)", "## Exclusion roster (U34)", "## Not evaluated", "## Permissions"]) {
+    for (const h of ["## Summary", "## Obligations per claimed profile", "## Verdicts", "## Evidence", "## Non-testable roster", "## Exclusion roster", "## Not evaluated", "## Permissions"]) {
       expect(report).toContain(h);
     }
     expect(report).toContain("fail 9, pass 54,");
     expect(report).toContain("| acs-core | 58 | 50 | 8 | 0 |");
-    expect(report).toContain("- ACS-EXC-0001 Multi-tenant isolation is unspecified in v0.1: ACS deliberately requires nothing here (R4.8)");
+    expect(report).toContain("- ACS-EXC-0001 Multi-tenant isolation is unspecified in v0.1: ACS deliberately requires nothing here");
   });
 });
 

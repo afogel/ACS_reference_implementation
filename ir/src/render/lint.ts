@@ -6,7 +6,7 @@ import type { LintReport } from "../lint/spec-lint.ts";
 import { renderStale } from "./stale.ts";
 
 export function renderLint(report: LintReport): string {
-  const out: string[] = ["## Lint (U9)", ""];
+  const out: string[] = ["## Lint", ""];
   if (report.findings.length === 0) {
     out.push("No failures.");
   } else {

@@ -1,4 +1,4 @@
-# The normative source census (S11, authored). R1.1: corpus membership is
+# The normative source census (authored). Corpus membership is
 # declared here, never inferred from an RFC 2119 grep. Every Markdown file
 # under spec/acs/docs/ appears exactly once; `acs-ir census` fails when the
 # tree and this list disagree in either direction.
@@ -14,7 +14,7 @@
 #                   elsewhere and are excluded with reason editorial_source.
 #
 # Surveyed at ACS v0.1.2 (6fce2a0). Decisions carried from the shaping doc and
-# spike X5 (docs/shaping/spike-provision-taxonomy.md): all eight concept pages
+# the taxonomy spike (docs/shaping/spike-provision-taxonomy.md): all eight concept pages
 # are in; concepts/README.md is the taxonomy's source, not a provision source.
 
 sources:
@@ -35,7 +35,7 @@ sources:
     status: informative
     note: Worked example. Its OPTIONAL and MAY describe the example deployment's choices, not obligations.
 
-  # --- concepts: canonical definitions and cross-cutting invariants (X5, D-g) ---
+  # --- concepts: canonical definitions and cross-cutting invariants ---
   - path: concepts/README.md
     status: editorial
     pillar: concepts
@@ -46,7 +46,7 @@ sources:
     pillar: concepts
     referenced_by:
       - concepts/README.md#convention
-    note: Two (normative) callouts, both Guardian obligations (X5 flags the altitude); restates §9 approver rules (R2.9 pair).
+    note: Two (normative) callouts, both Guardian obligations (the taxonomy spike flags the altitude); restates §9 approver rules.
   - path: concepts/capability.md
     status: normative
     normative_by: reference
@@ -76,7 +76,7 @@ sources:
     referenced_by:
       - spec/instrument/specification.md#7-provenance
       - concepts/README.md#convention
-    note: Cited "(normative)" from §7; two Invariant callouts and zero RFC 2119 keywords, the reason R1.1 exists.
+    note: Cited "(normative)" from §7; two Invariant callouts and zero RFC 2119 keywords, the reason corpus membership is declared rather than inferred.
   - path: concepts/session-lifecycle.md
     status: normative
     normative_by: reference
@@ -114,7 +114,7 @@ sources:
     status: normative
     normative_by: self
     pillar: conformance
-    note: Seven profiles and what each obliges. The profile field on every provision (R4.3) resolves here.
+    note: Seven profiles and what each obliges. The profile field on every provision resolves here.
 
   # --- instrument pillar ---
   - path: spec/instrument/README.md
@@ -188,7 +188,7 @@ sources:
     status: normative
     normative_by: self
     pillar: trace
-    note: OCSF mapping; zero RFC 2119 keywords, its obligations are table-borne (R1.7).
+    note: OCSF mapping; zero RFC 2119 keywords, its obligations are table-borne.
   - path: spec/trace/OCSF/implementation_examples.md
     status: informative
     pillar: trace

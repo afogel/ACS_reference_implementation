@@ -21,7 +21,7 @@ export function renderCensus(sources: SourceCensus, census: ProvisionCensus | nu
 }
 
 function renderSourceCensus(sources: SourceCensus): string[] {
-  const lines = ["## Source census (U19)", ""];
+  const lines = ["## Source census", ""];
   if (sources.problems.length > 0) {
     lines.push("The declaration and the corpus disagree. Fix `ir/census/sources.yaml`:", "");
     for (const p of sources.problems) lines.push(`- ${p}`);
@@ -42,7 +42,7 @@ function renderSourceCensus(sources: SourceCensus): string[] {
 function renderProvisionCensus(census: ProvisionCensus): string[] {
   const t = census.totals;
   const lines = [
-    `## Provision census (U20) -- ACS ${census.corpus.version ?? "?"} at ${census.corpus.commit?.slice(0, 7) ?? "unknown commit"}`,
+    `## Provision census -- ACS ${census.corpus.version ?? "?"} at ${census.corpus.commit?.slice(0, 7) ?? "unknown commit"}`,
     "",
     `${t.occurrences} RFC 2119 keyword occurrences in ${t.blocks_with_keywords} blocks across ${census.corpus.documents} documents; ${t.masked} inside inline code or comments.`,
     `By keyword: ${entries(t.by_keyword)}.`,
@@ -72,7 +72,7 @@ function renderProvisionCensus(census: ProvisionCensus): string[] {
 }
 
 function renderUnbound(census: ProvisionCensus): string[] {
-  const lines = ["## Unbound and excluded occurrences (U21)", ""];
+  const lines = ["## Unbound and excluded occurrences", ""];
   const rows = census.occurrences
     .filter((o) => o.binding.kind !== "bound")
     .map((o) => [
@@ -90,7 +90,7 @@ function renderEdgeAudit(census: ProvisionCensus): string[] {
   const audit = census.dependency_audit;
   const pillar = census.dependency_edges.filter((e) => e.kind === "pillar");
   const lines = [
-    "## Dependency-edge audit (U33)",
+    "## Dependency-edge audit",
     "",
     `${pillar.length} pillar entries in Referenced-by footers; ${audit.entries_without_depending_provision} with no provision depending back (provisions arrive in V2).`,
   ];

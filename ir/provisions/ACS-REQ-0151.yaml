@@ -13,7 +13,7 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 2172d6bd199812e55a030be40a10063106682e9cc7914e508554485aefc3ce35
-note: "X5: a Guardian obligation at concepts altitude, inside the Intent-derivation callout."
+note: "A Guardian obligation at concepts altitude, inside the Intent-derivation callout."
 predicate:
   subject: [Session, Seq]
   witness: [Method]

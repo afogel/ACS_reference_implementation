@@ -16,7 +16,7 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 7ce33e1a588b31b78aa95dfcad11f9a358c7202723d5e31e8c8d5bfb03fb9492
-note: "JSON Pointer ancestry is ordinary code (E7.1): modification_targets_overlap is computed by the verifier."
+note: "JSON Pointer ancestry is ordinary code: modification_targets_overlap is computed by the verifier."
 predicate:
   subject: [Seq]
   witness: [RedactionPath, OverridePath]

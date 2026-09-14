@@ -111,14 +111,14 @@ export function compileProvision(vocabulary: Vocabulary, manifest: ManifestEntry
     return skipped(id, "no-predicate", `${manifest.type}s are not obligations`);
   }
   if (record.modality_kind === "permission") {
-    if (spec) throw new Error(`${id}: a permission generates no obligation and so no predicate (R4.6)`);
-    return skipped(id, "permission", "a MAY that was not exercised yields no verdict (R4.6)");
+    if (spec) throw new Error(`${id}: a permission generates no obligation and so no predicate`);
+    return skipped(id, "permission", "a MAY that was not exercised yields no verdict");
   }
   if (record.evidence_class === "non-testable") {
-    if (spec) throw new Error(`${id}: non-testable provisions carry no predicate (R4.4)`);
-    return skipped(id, "non-testable", "no trace can falsify it; listed on the non-testable roster (R4.4)");
+    if (spec) throw new Error(`${id}: non-testable provisions carry no predicate`);
+    return skipped(id, "non-testable", "no trace can falsify it; listed on the non-testable roster");
   }
-  if (!spec) throw new Error(`${id}: a testable Requirement needs a predicate, or a declared inexpressible reason (R3.1, R3.6)`);
+  if (!spec) throw new Error(`${id}: a testable Requirement needs a predicate, or a declared inexpressible reason`);
   if (spec.kind === "inexpressible") return flagInexpressible(id, spec.reason);
   if (spec.kind === "alias") {
     if (!ids.has(spec.alias_of)) throw new Error(`${id}: predicate aliases ${spec.alias_of}, which is not in the catalog`);
@@ -175,7 +175,7 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
     for (const lit of rule.body) {
       for (const atom of literalAtoms(lit)) {
         if (!vocabulary.relations.has(atom.relation) && !helperNames.has(atom.relation)) {
-          throw new Error(`${id}: ${atom.relation} is neither a vocabulary relation nor a helper defined by this predicate (R3.2)`);
+          throw new Error(`${id}: ${atom.relation} is neither a vocabulary relation nor a helper defined by this predicate`);
         }
       }
     }
@@ -183,7 +183,7 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
   if (!rules.some((r) => r.head.relation === "violation")) throw new Error(`${id}: no rule derives violation`);
 
   // N36: the violation head is subject then witness, both non-empty; each position is its variable or a constant.
-  if (spec.subject.length === 0 || spec.witness.length === 0) throw new Error(`${id}: violation needs at least one subject and one witness column (R3.4)`);
+  if (spec.subject.length === 0 || spec.witness.length === 0) throw new Error(`${id}: violation needs at least one subject and one witness column`);
   const expectedHead = [...spec.subject, ...spec.witness];
   if (new Set(expectedHead).size !== expectedHead.length) throw new Error(`${id}: subject and witness variables must be distinct`);
   for (const rule of rules.filter((r) => r.head.relation === "violation")) {
@@ -192,7 +192,7 @@ export function compilePredicate(vocabulary: Vocabulary, id: string, spec: Extra
       rule.head.args.every((a, i) => (a.kind === "var" && a.name === expectedHead[i]) || a.kind === "str" || a.kind === "num");
     if (!ok) {
       const got = rule.head.args.map((a) => (a.kind === "var" ? a.name : a.kind === "str" || a.kind === "num" ? "<constant>" : "?"));
-      throw new Error(`${id}: violation(${expectedHead.join(", ")}) is the only allowed head, each position its variable or a constant; got violation(${got.join(", ")}) (N36)`);
+      throw new Error(`${id}: violation(${expectedHead.join(", ")}) is the only allowed head, each position its variable or a constant; got violation(${got.join(", ")})`);
     }
   }
 

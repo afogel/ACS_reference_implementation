@@ -68,7 +68,7 @@ describe("resolveOverlay -- the whole overlay against the corpus", () => {
     const marked = text.replace("delta MAY epsilon", `${anchorFor("ACS-REQ-0001")}delta MAY epsilon${terminatorFor("ACS-REQ-0001")}`);
     const { spans, problems } = resolveOverlay([entry("ACS-REQ-0001", "delta MAY epsilon")], (source) => (source === "x.md" ? marked : null));
     expect(spans).toEqual([]);
-    expect(problems).toEqual(["ACS-REQ-0001: already marked in x.md; remove its overlay entry, the corpus carries the marker now (E3.3)"]);
+    expect(problems).toEqual(["ACS-REQ-0001: already marked in x.md; remove its overlay entry, the corpus carries the marker now"]);
   });
 });
 

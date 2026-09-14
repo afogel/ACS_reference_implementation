@@ -13,6 +13,6 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 2afe3fa652ea6bdd12008d2e6e67e7846ee730644c38f771baab9de0fc39b2b2
-note: "The pillar's inline restatement of ACS-REQ-0023; on the migration worklist (R6.6) until \u00a79 references the concept page instead."
+note: "The pillar's inline restatement of ACS-REQ-0023; on the migration worklist until \u00a79 references the concept page instead."
 predicate:
   alias_of: ACS-REQ-0023

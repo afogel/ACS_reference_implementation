@@ -13,7 +13,7 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 0e766c4dd46cf80e4ed5551937e1730baa79937e5ff9fe416c0de5da0fddd513
-note: "The SHOULD half of \u00a78.4's enforcement sentence, addressed separately from the MUST (R1.8)."
+note: "The SHOULD half of \u00a78.4's enforcement sentence, addressed separately from the MUST."
 predicate:
   subject: [Session]
   witness: [Seq]

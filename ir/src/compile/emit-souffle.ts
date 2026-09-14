@@ -26,7 +26,7 @@ export function emitSouffleProgram(program: RuleProgram): string {
     "// ---- column domains: a value's kind, as a subtype, so a seq is never joined to a bound ----",
   ];
   for (const d of program.domains) out.push(`.type ${domainTypeName(d.name)} <: ${d.type}`);
-  out.push("", "// ---- fact vocabulary (S7) ----");
+  out.push("", "// ---- fact vocabulary ----");
   for (const rel of program.relations) {
     out.push(`.decl ${rel.name}(${columns(rel.columns)})`);
     if (rel.source === "static") {
@@ -35,7 +35,7 @@ export function emitSouffleProgram(program: RuleProgram): string {
       out.push(`.input ${rel.name}(IO=file, filename="${rel.name}.facts", delimiter="\\t")`);
     }
   }
-  out.push("", "// ---- violations (R3.4: subject columns, then witness columns; one .output per provision) ----");
+  out.push("", "// ---- violations: subject columns, then witness columns; one .output per provision ----");
   for (const p of program.provisions) {
     out.push("", `// ${p.id}: ${p.status}${p.reason ? ` -- ${p.reason}` : ""}${p.alias_of ? ` (${p.alias_of})` : ""}`);
     if (p.status !== "compiled" || !p.violation) continue;

@@ -16,7 +16,7 @@ status: active
 since: "0.1.0"
 superseded_by: []
 reviewed_against: 874f308dd83cac64e3550f7bffbd8292459587a19fc812c42d503d738d823107
-note: "Keyword-free; the enum is the obligation (R1.7)."
+note: "Keyword-free; the enum is the obligation."
 predicate:
   subject: [Seq]
   witness: [Reason]
