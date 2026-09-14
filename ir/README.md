@@ -54,23 +54,23 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | `.build/stale.json`, `.build/lint.json`, `.build/impact.md` | generated, ignored | Provisions needing review and the worklist, the full lint report, and the PR comment, written by `acs-ir lint`. |
 | `src/corpus.ts` | code | Locates the submodule, lists `docs/**/*.md`, reads the commit and version. |
 | `src/markdown-blocks.ts` | code | Line-level block classifier: paragraph, list item, table cell, blockquote, heading, code fence. |
-| `src/census/` | code | N10 to N14 and N19: the census runner, the source census check, the keyword sweep, the callout scan, the footer-seeded dependency edges, and the authored exclusions. |
-| `src/ids.ts` | code | N3: provision identity and allocation. |
-| `src/markers/overlay.ts` | code | N1, N2: overlay parsing, quote resolution, marker insertion; refuses an anchor that would precede a block marker, and an entry whose marker the corpus already carries. |
-| `src/markers/patch.ts` | code | N60: the overlay as a git patch against the spec repository. |
-| `src/lint/marker-pairing.ts` | code | N22: unpaired, mismatched, or nested markers fail before extraction. |
-| `src/lint/spec-lint.ts` | code | N20 to N26: spec-lint against a baseline; unmarked keywords, tombstones, IDs, citations, schema refs. |
+| `src/census/` | code | The census runner, the source census check, the keyword sweep, the callout scan, the footer-seeded dependency edges, and the authored exclusions. |
+| `src/ids.ts` | code | Provision identity and allocation. |
+| `src/markers/overlay.ts` | code | Overlay parsing, quote resolution, marker insertion; refuses an anchor that would precede a block marker, and an entry whose marker the corpus already carries. |
+| `src/markers/patch.ts` | code | The overlay as a git patch against the spec repository. |
+| `src/lint/marker-pairing.ts` | code | Unpaired, mismatched, or nested markers fail before extraction. |
+| `src/lint/spec-lint.ts` | code | Spec-lint against a baseline; unmarked keywords, tombstones, IDs, citations, schema refs. |
 | `src/lint/schema-refs.ts` | code | JSON Pointer resolution and the pinned subschema hash. |
 | `src/lint/unmark.ts` | code | The marked corpus read back as prose plus spans. |
-| `src/extract/extract.ts` | code | N4 to N6: span reading, text hashing, the manifest. |
-| `src/catalog/catalog.ts` | code | N15: record parsing and the manifest-to-record join. |
-| `src/catalog/staleness.ts` | code | N16 to N18: needs-review from a changed text, a changed dependency, or a changed canonical restatement; the migration worklist. |
+| `src/extract/extract.ts` | code | Span reading, text hashing, the manifest. |
+| `src/catalog/catalog.ts` | code | Record parsing and the manifest-to-record join. |
+| `src/catalog/staleness.ts` | code | Needs-review from a changed text, a changed dependency, or a changed canonical restatement; the migration worklist. |
 | `src/catalog/test-citations.ts` | code | Which conformance tests cite which IDs (empty until V5). |
-| `src/compile/` | code | N30 the vocabulary, the predicate parser, N31/N32/N36 the compiler, N34 the Soufflé emitter, N33 the TLA+ list. |
-| `src/verify/` | code | N41 the trace normalizer, N42 the ordinary-code facts (JCS, chain hashes, HMAC), N43 Ajv over the pinned schemas, N44 the semi-naive evaluator, N45 to N47 verdicts, S9 fact files, N63 the differential oracle. |
+| `src/compile/` | code | The vocabulary, the predicate parser, the compiler, the Soufflé emitter, the TLA+ invariant list. |
+| `src/verify/` | code | The trace normalizer, the ordinary-code facts (JCS, chain hashes, HMAC), Ajv over the pinned schemas, the semi-naive evaluator, verdicts, fact files, the differential oracle. |
 | `test/fixtures/trace/generate.ts` | code | Generates the clean and violating envelope logs, with a Guardian dump and deployment facts, that `verify` is tested against. |
-| `.build/conformance-report.md` | generated, ignored | The report `acs-ir verify <trace>` last produced (P3). |
-| `src/render/` | code | N52 the census report, N50 the provision index, U9 the lint report, U10/U32 the stale list and worklist, N27 the impact comment, the compile summary and U31, N51 the conformance report. |
+| `.build/conformance-report.md` | generated, ignored | The report `acs-ir verify <trace>` last produced. |
+| `src/render/` | code | The census report, the provision index, the lint report, the stale list and worklist, the impact comment, the compile summary and the differential report, the conformance report. |
 | `src/main.ts` | code | The `acs-ir` command line. |
 | `test/` | tests | Unit tests on a fixture corpus, plus the pinned corpus held to the survey's reference numbers. |
 
