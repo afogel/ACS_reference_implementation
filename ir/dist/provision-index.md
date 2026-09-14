@@ -402,33 +402,35 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 
 ## Test coverage
 
+21 of 28 provisions are cited by a conformance test or fixture under `ir/test/conformance/` (R6.3).
+
 | ID | Conformance tests |
 |---|---|
-| ACS-DEF-0001 | none yet (V5) |
-| ACS-DEF-0002 | none yet (V5) |
-| ACS-EXC-0001 | none yet (V5) |
-| ACS-INV-0001 | none yet (V5) |
-| ACS-REQ-0001 | none yet (V5) |
-| ACS-REQ-0002 | none yet (V5) |
-| ACS-REQ-0003 | none yet (V5) |
-| ACS-REQ-0004 | none yet (V5) |
-| ACS-REQ-0005 | none yet (V5) |
-| ACS-REQ-0006 | none yet (V5) |
-| ACS-REQ-0007 | none yet (V5) |
-| ACS-REQ-0008 | none yet (V5) |
-| ACS-REQ-0009 | none yet (V5) |
-| ACS-REQ-0010 | none yet (V5) |
-| ACS-REQ-0011 | none yet (V5) |
-| ACS-REQ-0012 | none yet (V5) |
-| ACS-REQ-0013 | none yet (V5) |
-| ACS-REQ-0014 | none yet (V5) |
-| ACS-REQ-0015 | none yet (V5) |
-| ACS-REQ-0016 | none yet (V5) |
-| ACS-REQ-0017 | none yet (V5) |
-| ACS-REQ-0018 | none yet (V5) |
-| ACS-REQ-0019 | none yet (V5) |
-| ACS-REQ-0020 | none yet (V5) |
-| ACS-REQ-0021 | none yet (V5) |
-| ACS-REQ-0022 | none yet (V5) |
-| ACS-REQ-0023 | none yet (V5) |
-| ACS-REQ-0024 | none yet (V5) |
+| ACS-DEF-0001 | none |
+| ACS-DEF-0002 | none |
+| ACS-EXC-0001 | none |
+| ACS-INV-0001 | none |
+| ACS-REQ-0001 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0002 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0003 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0004 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0005 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0006 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0007 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0008 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0009 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0010 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0011 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0012 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0013 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0014 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0015 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0016 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0017 | fixtures/conformant/README.md, fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0018 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0019 | none |
+| ACS-REQ-0020 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0021 | none |
+| ACS-REQ-0022 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0023 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0024 | none |
