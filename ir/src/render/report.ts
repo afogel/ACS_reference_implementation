@@ -20,7 +20,7 @@ export interface ReportInput {
   verdicts: ProvisionVerdict[];
 }
 
-const ORDER: Verdict[] = ["fail", "pass", "unevaluated", "not-exercised", "not-activated", "permission", "non-testable", "inexpressible", "exclusion", "invariant", "definition"];
+const ORDER: Verdict[] = ["fail", "deviates", "pass", "unevaluated", "not-exercised", "not-activated", "permission", "non-testable", "inexpressible", "exclusion", "invariant", "definition"];
 
 export function renderConformanceReport(input: ReportInput): string {
   const counts = new Map<Verdict, number>();
@@ -42,25 +42,28 @@ export function renderConformanceReport(input: ReportInput): string {
     "",
     "## Obligations per claimed profile",
     "",
-    "| profile | active obligations | met | unmet | unevaluated |",
-    "|---|---|---|---|---|",
+    "| profile | active obligations | met | unmet | deviating | unevaluated |",
+    "|---|---|---|---|---|---|",
   ];
   for (const profile of input.negotiated) {
-    const active = input.verdicts.filter((v) => v.type === "Requirement" && (v.profile === "all" || v.profile.includes(profile)) && ["pass", "fail", "unevaluated", "not-exercised"].includes(v.verdict));
+    const active = input.verdicts.filter((v) => v.type === "Requirement" && (v.profile === "all" || v.profile.includes(profile)) && ["pass", "fail", "deviates", "unevaluated", "not-exercised"].includes(v.verdict));
     const met = active.filter((v) => v.verdict === "pass" || v.verdict === "not-exercised").length;
     const unmet = active.filter((v) => v.verdict === "fail").length;
+    const deviating = active.filter((v) => v.verdict === "deviates").length;
     const unevaluated = active.filter((v) => v.verdict === "unevaluated").length;
-    out.push(`| ${profile} | ${active.length} | ${met} | ${unmet} | ${unevaluated} |`);
+    out.push(`| ${profile} | ${active.length} | ${met} | ${unmet} | ${deviating} | ${unevaluated} |`);
   }
-  out.push("", "## Verdicts", "", "| provision | verdict | level | actor | profile | reason |", "|---|---|---|---|---|---|");
+  const several = input.sessions.length > 1;
+  out.push("", "## Verdicts", "", "| provision | verdict | keyword | actor | profile | reason |", "|---|---|---|---|---|---|");
   for (const v of [...input.verdicts].sort((a, b) => ORDER.indexOf(a.verdict) - ORDER.indexOf(b.verdict) || a.id.localeCompare(b.id))) {
-    out.push(`| ${v.id} ${v.title} | ${v.verdict}${v.needs_review ? " (needs-review)" : ""} | ${v.level ?? "—"} | ${v.actor} | ${v.profile === "all" ? "all" : v.profile.join(", ")} | ${(v.reason ?? "").replace(/\|/g, "\\|")} |`);
+    const perSession = several && v.sessions.length ? `${v.reason ? " " : ""}sessions: ${v.sessions.map((s) => `${s.session} ${s.verdict}`).join(", ")}` : "";
+    out.push(`| ${v.id} ${v.title} | ${v.verdict}${v.needs_review ? " (needs-review)" : ""} | ${v.keyword ?? "—"} | ${v.actor} | ${v.profile === "all" ? "all" : v.profile.join(", ")} | ${((v.reason ?? "") + perSession).replace(/\|/g, "\\|")} |`);
   }
-  const failures = input.verdicts.filter((v) => v.verdict === "fail");
+  const failures = input.verdicts.filter((v) => v.verdict === "fail" || v.verdict === "deviates");
   out.push("", "## Evidence", "");
   if (failures.length === 0) out.push("No violations.");
   for (const v of failures) {
-    out.push(`### ${v.id}: ${v.title}`, "", `${v.evidence.length} violation(s).`, "");
+    out.push(`### ${v.id}: ${v.title}`, "", `${v.evidence.length} violation(s)${v.verdict === "deviates" ? ` of a ${v.keyword ?? "SHOULD"}: a deviation, not a failure` : ""}.`, "");
     for (const e of v.evidence) {
       out.push(`- subject ${e.subject.map((s) => `${s.name}=${s.value}`).join(", ")}; witness ${e.witness.map((w) => `${w.name}=${w.value}`).join(", ")}`);
       for (const f of e.facts) out.push(`  - ${f.relation}(${f.tuple.join(", ")})`);

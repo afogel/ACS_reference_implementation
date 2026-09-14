@@ -40,6 +40,24 @@ describe("differentialCheck -- the evaluator against the fixtures' expectations"
     expect([...provisions].sort()).toEqual([...v5, ...v7]);
   });
 
+  it("derives the verdicts beside the violations, and holds them to expected-verdicts.tsv", () => {
+    const violating = report.fixtures.find((f) => f.fixture === "violating");
+    const rows = violating?.verdicts ?? [];
+    expect(violating?.verdicts_vs_expected).toEqual({ only_evaluator: [], only_expected: [] });
+    expect(rows).toContain("fail\tACS-REQ-0007\tsession-violating");
+    // ACS-REQ-0012 is a SHOULD: its breach is a deviation, not a failure.
+    expect(rows).toContain("deviates\tACS-REQ-0012\tsession-violating");
+    expect(rows.filter((r) => r.startsWith("fail\tACS-REQ-0012"))).toEqual([]);
+    // ACS-REQ-0102 is conditional on an error carrying data, which this fixture never sends.
+    expect(rows).toContain("not_exercised\tACS-REQ-0102\tsession-violating");
+    // ACS-REQ-0084 needs skew_window, which the fixture does not list as available: unevaluated, not passed.
+    expect(rows).toContain("unevaluated\tACS-REQ-0084");
+    expect(rows.filter((r) => /^pass\tACS-REQ-0084/.test(r))).toEqual([]);
+    const conformant = report.fixtures.find((f) => f.fixture === "conformant");
+    expect(conformant?.verdicts.filter((r) => /^(fail|deviates)\t/.test(r))).toEqual([]);
+    expect(conformant?.verdicts_vs_expected).toEqual({ only_evaluator: [], only_expected: [] });
+  });
+
   it("reports a mismatch between the evaluator and expected.tsv as divergence", () => {
     const tampered: RuleProgram = JSON.parse(JSON.stringify(program));
     const p = tampered.provisions.find((x) => x.id === "ACS-REQ-0007");

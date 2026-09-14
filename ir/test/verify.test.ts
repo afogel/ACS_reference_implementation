@@ -12,7 +12,7 @@ import { loadVocabulary } from "../src/compile/vocabulary.ts";
 import { defaultManifestPath, type Manifest } from "../src/extract/extract.ts";
 import { defaultSchemaDir } from "../src/lint/schema-refs.ts";
 import { renderConformanceReport } from "../src/render/report.ts";
-import { evaluate } from "../src/verify/evaluate.ts";
+import { evaluateProgram } from "../src/verify/evaluate.ts";
 import { computeExternalFacts } from "../src/verify/external-facts.ts";
 import { canonicalize, chainEntryHash, signHmac, verifyHmac } from "../src/verify/jcs.ts";
 import { findProvenance, normalizeTrace, parseTrace, readTrace } from "../src/verify/normalize-trace.ts";
@@ -38,7 +38,9 @@ function run(kind: "clean" | "violating", options: { key?: boolean; guardian?: b
   for (const rel of program.relations) if (rel.source === "static") facts.set(rel.name, rel.facts.map((t) => [...t]));
   for (const [r, tuples] of external.facts) facts.set(r, [...(facts.get(r) ?? []), ...tuples]);
   const negotiated = options.negotiated ?? [...new Set(normalized.sessions.flatMap((s) => s.profiles))];
-  const verdicts = judge(program, catalog, evaluate(program, facts), facts, negotiated, external.available, new Set());
+  // An override of the negotiated profiles is an override of the `negotiated` facts the verdict rules read.
+  if (options.negotiated) facts.set("negotiated", normalized.sessions.flatMap((s) => (options.negotiated as string[]).map((p) => [s.session, p])));
+  const verdicts = judge(program, catalog, evaluateProgram(program, facts), facts, new Set());
   return { dir, trace, normalized, external, facts, verdicts, negotiated };
 }
 
@@ -116,6 +118,16 @@ describe("acs-ir verify -- the violating trace", () => {
     ]);
   });
 
+  it("judges per session, and the report's verdict is the fold: this trace has one session, so it is that session's", () => {
+    const early = r.verdicts.find((v) => v.id === "ACS-REQ-0007");
+    expect(early?.sessions).toEqual([{ session: SESSION, verdict: "fail" }]);
+    expect(early?.keyword).toBe("MUST");
+    const archival = r.verdicts.find((v) => v.id === "ACS-REQ-0102");
+    expect(archival?.sessions).toEqual([{ session: SESSION, verdict: "not-exercised" }]);
+    // No SHOULD is breached in this trace, so nothing deviates; the verdict exists for the trace that does.
+    expect(byVerdict(r.verdicts, "deviates")).toEqual([]);
+  });
+
   it("attaches evidence that names the subject, the witness, and the facts (R3.4)", () => {
     const trust = r.verdicts.find((v) => v.id === "ACS-REQ-0010");
     expect(trust?.evidence).toHaveLength(1);
@@ -134,7 +146,11 @@ describe("acs-ir verify -- the violating trace", () => {
       expect(report).toContain(h);
     }
     expect(report).toContain("fail 9, pass 54,");
-    expect(report).toContain("| acs-core | 58 | 50 | 8 | 0 |");
+    expect(report).toContain("| profile | active obligations | met | unmet | deviating | unevaluated |");
+    expect(report).toContain("| acs-core | 58 | 50 | 8 | 0 | 0 |");
+    // The verdict table shows the keyword each provision is judged by, the record's override included (ACS-REQ-0003's span starts with a RECOMMENDED).
+    expect(report).toContain("| ACS-REQ-0003 Required fields per disposition | fail | MUST | guardian | acs-core |");
+    expect(report).toContain("| ACS-REQ-0113 A Guardian does not deny postCompact | pass | MUST NOT |");
     expect(report).toContain("- ACS-EXC-0001 Multi-tenant isolation is unspecified in v0.1: ACS deliberately requires nothing here");
   });
 });

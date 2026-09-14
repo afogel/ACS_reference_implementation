@@ -5,6 +5,8 @@ reported_against: framework
 profile: [acs-provenance]
 activation: "provenance_producer: deterministic"
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "A field-definition cell with no RFC 2119 word; uniqueness is a MUST on the value."
 evidence_class: wire
 schema_refs:
   - file: provenance.json

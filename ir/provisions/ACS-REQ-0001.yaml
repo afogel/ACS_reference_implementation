@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "A schema-shaped table cell with no RFC 2119 word; the response shape is what the pinned schema enforces, and a schema constraint is a MUST."
 evidence_class: schema
 schema_refs:
   - file: response-envelope.json

@@ -1,0 +1,22 @@
+# available(relation)  source: external
+# Every non-wire relation this fixture supplies; a provision needing one not listed here is unevaluated.
+approver_verified
+archive_preserved
+archived
+ask_resolved
+audit_event
+context_entry
+context_entry_field
+decision_log_field
+defer_bound
+entry_hash_recomputed
+evaluator_ran
+guardian_version
+intent_established
+intent_extension
+intent_modification_rejected
+intent_parsed
+schema_violation
+session_batching
+signature_covers
+signature_status

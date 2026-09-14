@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "The cell says 'required' in lowercase, which the keyword scan does not count; it is REQUIRED in RFC 2119's sense."
 evidence_class: guardian-state
 schema_refs: []
 depends_on: []

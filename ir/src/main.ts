@@ -64,7 +64,8 @@ import { emitSouffleProgram } from "./compile/emit-souffle.ts";
 import { emitTlaInvariants } from "./compile/emit-tla.ts";
 import { defaultVocabularyPath, loadVocabulary } from "./compile/vocabulary.ts";
 import { differentialCheck, findSouffle } from "./verify/differential.ts";
-import { evaluate, unified } from "./verify/evaluate.ts";
+import { evaluateProgram, unified } from "./verify/evaluate.ts";
+import { verdictRows } from "./verify/differential.ts";
 import { readFacts } from "./verify/facts.ts";
 import { renderCompile, renderDifferential } from "./render/compile.ts";
 import { renderConformanceReport } from "./render/report.ts";
@@ -84,7 +85,7 @@ const USAGE = [
   "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>] [--exclusions <file>]",
   "  acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]",
   "  acs-ir verify        <trace.jsonl> [--guardian <dir>] [--deployment <dir>] [--hmac-key <hex|file>] [--out <file>] [--json <file>]",
-  "  acs-ir verify        --facts <dir> [--build <dir>]",
+  "  acs-ir verify        --facts <dir> [--build <dir>]   (prints violations, then verdict rows: relation, provision, session)",
   "  acs-ir differential  [--fixtures <dir>] [--build <dir>] [--dist <dir>] [--souffle <path>]",
   "  acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]",
 ].join("\n");
@@ -304,9 +305,10 @@ function verify(rest: string[]): number {
   const program = loadProgram(buildRoot);
   if (!program) return 1;
   if (factsDir) {
-    const violations = evaluate(program, readFacts(factsDir, program.relations));
-    process.stdout.write(violations.length ? violations.map(unified).join("\n") + "\n" : "");
-    console.error(`acs-ir verify: ${violations.length} violation(s) over ${factsDir}.`);
+    const evaluation = evaluateProgram(program, readFacts(factsDir, program.relations));
+    const rows = [...evaluation.violations.map(unified), ...verdictRows(evaluation.verdicts)];
+    process.stdout.write(rows.length ? rows.join("\n") + "\n" : "");
+    console.error(`acs-ir verify: ${evaluation.violations.length} violation(s) over ${factsDir}; ${rows.length - evaluation.violations.length} verdict row(s).`);
     return 0;
   }
   const trace = rest.find((a) => !a.startsWith("--") && !flagValues(rest).has(a));
@@ -328,11 +330,11 @@ function verify(rest: string[]): number {
   const facts = new Map(normalized.facts);
   for (const rel of program.relations) if (rel.source === "static") facts.set(rel.name, rel.facts.map((t) => [...t]));
   for (const [relation, tuples] of external.facts) facts.set(relation, [...(facts.get(relation) ?? []), ...tuples]);
-  const violations = evaluate(program, facts);
+  const evaluation = evaluateProgram(program, facts);
   const negotiated = [...new Set(normalized.sessions.flatMap((s) => s.profiles))];
   const stale = new Set(checkStaleness(catalog).stale.map((s) => s.id));
-  const verdicts = judge(program, catalog, violations, facts, negotiated.length ? negotiated : ["acs-core"], external.available, stale);
-  const input = { corpus: program.corpus, trace, sessions: normalized.sessions, negotiated: negotiated.length ? negotiated : ["acs-core"], available: [...external.available].sort(), verdicts };
+  const verdicts = judge(program, catalog, evaluation, facts, stale);
+  const input = { corpus: program.corpus, trace, sessions: normalized.sessions, negotiated: negotiated.length ? negotiated : ["acs-core"], available: [...external.available].filter((r) => r !== "available").sort(), verdicts };
   const report = renderConformanceReport(input);
   process.stdout.write(report);
   mkdirSync(buildRoot, { recursive: true });
@@ -340,7 +342,8 @@ function verify(rest: string[]): number {
   writeFileSync(out, report);
   writeFileSync(flagValue(rest, "--json") ?? join(buildRoot, "conformance-report.json"), JSON.stringify(input, null, 2) + "\n");
   const failed = verdicts.filter((v) => v.verdict === "fail").length;
-  console.error(`acs-ir verify: ${failed} provision(s) violated; wrote ${out}.`);
+  const deviating = verdicts.filter((v) => v.verdict === "deviates").length;
+  console.error(`acs-ir verify: ${failed} provision(s) violated, ${deviating} deviating from a SHOULD; wrote ${out}.`);
   return failed === 0 ? 0 : 1;
 }
 

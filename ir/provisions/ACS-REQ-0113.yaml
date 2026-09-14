@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST NOT
+keyword_basis: "The sentence says MAY NOT, which RFC 2119 does not define; read as MUST NOT, the prohibition the rule checks. Worth an upstream finding."
 evidence_class: wire
 schema_refs: []
 depends_on: []

@@ -1,30 +1,32 @@
 /**
- * E12 and N45 to N47: from violation tuples to verdicts a report can carry.
+ * E12 and N45 to N47: from the verdict relations to verdicts a report can carry.
  *
- * `scopeByProfile()` drops provisions the session never activated (R4.3):
- * a provision's profile list must meet the profiles the trace negotiated,
- * `all` always does. `applyModality()` gives permissions no verdict (R4.6)
- * and marks a conditional-on-exercise obligation `not-exercised` when the
- * Guardian-state relations it reads are empty. Exclusions never yield a
- * violation and are reported as such (R4.8); non-testable and inexpressible
- * provisions are listed, never dropped (R4.4, R3.6). A provision whose
- * predicate needs a relation nobody supplied is `unevaluated`, never
- * `pass`. `attachEvidence()` names each violation's subject and witness
- * columns and gathers the facts that mention the subject (R3.4).
+ * The judgement itself is Datalog (`compile/verdict-layer.ts`): which
+ * sessions activated a provision, whether the relations it needs were
+ * supplied, whether a conditional obligation's condition arose, and
+ * whether a violation is a failure (MUST) or a deviation (SHOULD). This
+ * module reads those relations back and folds the per-session verdicts of
+ * a provision into the one the report shows: any failure is a failure,
+ * else any deviation, else any pass, else not exercised, else not
+ * activated. Provisions that did not compile get their verdict from the
+ * catalog as before: permissions yield none (R4.6), exclusions are listed
+ * (R4.8), non-testable and inexpressible ones are listed, never dropped
+ * (R4.4, R3.6). `attachEvidence()` names each violation's subject and
+ * witness columns and gathers the facts that mention the subject (R3.4).
  *
  * Activation conditions written in prose (R4.5) are carried into the
  * report as text; the ones this catalog needed mechanically are already
  * inside the predicates (`decision(Seq, "defer")`, `archived(Session)`).
  */
-import type { Catalog } from "../catalog/catalog.ts";
+import { effectiveKeyword, type CanonicalKeyword, type Catalog } from "../catalog/catalog.ts";
 import type { CompiledProvision, RuleProgram } from "../compile/compile.ts";
-import type { Relation } from "../compile/vocabulary.ts";
-import type { Violation } from "./evaluate.ts";
+import type { Evaluation, Violation } from "./evaluate.ts";
 import type { FactSet, Value } from "./facts.ts";
 
 export type Verdict =
   | "pass"
   | "fail"
+  | "deviates"
   | "not-activated"
   | "not-exercised"
   | "permission"
@@ -47,6 +49,8 @@ export interface ProvisionVerdict {
   title: string;
   type: string;
   level: string | null;
+  /** The RFC 2119 keyword the provision is judged by (the record's, else the marked span's). */
+  keyword: CanonicalKeyword | null;
   actor: string;
   profile: string[] | "all";
   activation: string | null;
@@ -57,21 +61,22 @@ export interface ProvisionVerdict {
   /** Relations the predicate needed and nobody supplied. */
   missing: string[];
   evidence: Evidence[];
+  /** For a compiled provision, the verdict in each session the trace holds; the report shows the fold. */
+  sessions: { session: string; verdict: Verdict }[];
 }
 
-export function judge(
-  program: RuleProgram,
-  catalog: Catalog,
-  violations: Violation[],
-  facts: FactSet,
-  negotiated: string[],
-  available: Set<string>,
-  stale: Set<string>,
-): ProvisionVerdict[] {
+/** The fold over sessions: the first of these that any session reached. */
+const FOLD: Verdict[] = ["fail", "deviates", "pass", "not-exercised", "not-activated"];
+
+export function judge(program: RuleProgram, catalog: Catalog, evaluation: Evaluation, facts: FactSet, stale: Set<string>): ProvisionVerdict[] {
   const compiled = new Map(program.provisions.map((p) => [p.id, p]));
-  const relations = new Map(program.relations.map((r) => [r.name, r]));
   const byProvision = new Map<string, Violation[]>();
-  for (const v of violations) byProvision.set(v.provision, [...(byProvision.get(v.provision) ?? []), v]);
+  for (const v of evaluation.violations) byProvision.set(v.provision, [...(byProvision.get(v.provision) ?? []), v]);
+  const sessions = [...new Set((facts.get("negotiated") ?? []).map((t) => String(t[0])))].sort();
+  const available = new Set((facts.get("available") ?? []).map((t) => String(t[0])));
+  const needs = new Map<string, string[]>();
+  for (const t of program.verdicts.catalog.find((r) => r.name === "needs")?.facts ?? []) needs.set(String(t[0]), [...(needs.get(String(t[0])) ?? []), String(t[1])]);
+  const held = (relation: string, id: string, session: string): boolean => (evaluation.verdicts.get(relation) ?? []).some((t) => t[0] === id && (t.length < 2 || t[1] === session));
   const verdicts = new Map<string, ProvisionVerdict>();
 
   for (const { manifest, record } of catalog.entries) {
@@ -80,6 +85,7 @@ export function judge(
       title: record.title,
       type: manifest.type,
       level: manifest.level,
+      keyword: manifest.type === "Requirement" ? effectiveKeyword(manifest, record) : null,
       actor: record.actor,
       profile: record.profile,
       activation: record.activation,
@@ -88,57 +94,66 @@ export function judge(
       reason: null,
       missing: [],
       evidence: [],
+      sessions: [],
     };
     const c = compiled.get(manifest.id);
+    // Not activated in every session: the Datalog `not_activated` relation, over every Requirement (R4.3), checked before the catalog statuses as the report always has.
+    const inactive = sessions.length > 0 && sessions.every((session) => held("not_activated", manifest.id, session));
     if (manifest.type === "Exclusion") verdicts.set(manifest.id, { ...base, verdict: "exclusion", reason: "ACS deliberately requires nothing here" });
     else if (manifest.type === "Definition") verdicts.set(manifest.id, { ...base, verdict: "definition", reason: "a definition; verified through the Requirements that depend on it" });
     else if (manifest.type === "Invariant") verdicts.set(manifest.id, { ...base, verdict: "invariant", reason: "an invariant; verified through the Requirements that enforce it" });
     else if (!c) verdicts.set(manifest.id, { ...base, verdict: "unevaluated", reason: "not compiled" });
-    else if (!scopeByProfile(record.profile, negotiated)) verdicts.set(manifest.id, { ...base, verdict: "not-activated", reason: `needs ${(record.profile as string[]).join(" or ")}; the session negotiated ${negotiated.join(", ")}` });
-    else if (c.status === "permission") verdicts.set(manifest.id, { ...base, verdict: "permission", reason: c.reason });
+    else if (inactive) {
+      const negotiated = [...new Set((facts.get("negotiated") ?? []).map((t) => String(t[1])))].sort();
+      verdicts.set(manifest.id, { ...base, verdict: "not-activated", reason: `needs ${(record.profile as string[]).join(" or ")}; the session negotiated ${negotiated.join(", ")}`, sessions: sessions.map((session) => ({ session, verdict: "not-activated" as const })) });
+    } else if (c.status === "permission") verdicts.set(manifest.id, { ...base, verdict: "permission", reason: c.reason });
     else if (c.status === "non-testable") verdicts.set(manifest.id, { ...base, verdict: "non-testable", reason: c.reason });
     else if (c.status === "inexpressible") verdicts.set(manifest.id, { ...base, verdict: "inexpressible", reason: c.reason });
     else if (c.status === "alias") verdicts.set(manifest.id, base); // filled below once the target is known
-    else verdicts.set(manifest.id, applyModality(base, c, record.modality_kind, facts, relations, available, byProvision.get(manifest.id) ?? []));
+    else if ((evaluation.verdicts.get("unevaluated") ?? []).some((t) => t[0] === manifest.id)) {
+      const missing = (needs.get(manifest.id) ?? []).filter((r) => !available.has(r));
+      verdicts.set(manifest.id, { ...base, verdict: "unevaluated", missing, reason: `needs ${missing.join(", ")}, which the verifier was not given` });
+    } else {
+      const perSession = sessions.map((session) => {
+        const verdict: Verdict = held("fail", manifest.id, session)
+          ? "fail"
+          : held("deviates", manifest.id, session)
+            ? "deviates"
+            : held("pass", manifest.id, session)
+              ? "pass"
+              : held("not_exercised", manifest.id, session)
+                ? "not-exercised"
+                : "not-activated";
+        return { session, verdict };
+      });
+      const verdict = FOLD.find((v) => perSession.some((s) => s.verdict === v)) ?? "not-activated";
+      const reason =
+        verdict === "not-activated"
+          ? sessions.length
+            ? `needs ${record.profile === "all" ? "any profile" : (record.profile as string[]).join(" or ")}; no session negotiated it`
+            : "no session negotiated a profile"
+          : verdict === "not-exercised"
+            ? "the permission it is conditional on was not exercised in this trace"
+            : verdict === "deviates"
+              ? `a ${base.keyword ?? "SHOULD"}: a deviation, not a failure`
+              : null;
+      const evidence = verdict === "fail" || verdict === "deviates" ? (byProvision.get(manifest.id) ?? []).map((v) => attachEvidence(c, v, facts)) : [];
+      verdicts.set(manifest.id, { ...base, verdict, reason, evidence, sessions: perSession });
+    }
   }
   for (const c of program.provisions) {
     if (c.status !== "alias" || !c.alias_of) continue;
     const target = verdicts.get(c.alias_of);
     const own = verdicts.get(c.id);
-    if (target && own) verdicts.set(c.id, { ...own, verdict: target.verdict, reason: `${c.reason}: ${target.reason ?? target.verdict}`, missing: target.missing, evidence: target.evidence });
+    if (target && own) verdicts.set(c.id, { ...own, verdict: target.verdict, reason: `${c.reason}: ${target.reason ?? target.verdict}`, missing: target.missing, evidence: target.evidence, sessions: target.sessions });
   }
   return [...verdicts.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** N45 */
+/** N45: a provision's profile list meets the negotiated profiles; `all` always does. The verdict rules do this per session; the report uses it per claimed profile. */
 export function scopeByProfile(profile: string[] | "all", negotiated: string[]): boolean {
   if (profile === "all") return true;
   return profile.some((p) => negotiated.includes(p));
-}
-
-/** N46, then N47 for a failing obligation. */
-function applyModality(
-  base: ProvisionVerdict,
-  c: CompiledProvision,
-  modality: string,
-  facts: FactSet,
-  relations: Map<string, Relation>,
-  available: Set<string>,
-  violations: Violation[],
-): ProvisionVerdict {
-  const missing = c.relations_used.filter((r) => {
-    const source = relations.get(r)?.source;
-    return source !== "wire" && source !== "static" && !available.has(r);
-  });
-  if (missing.length) return { ...base, verdict: "unevaluated", missing, reason: `needs ${missing.join(", ")}, which the verifier was not given` };
-  if (modality === "conditional-on-exercise") {
-    const stateRelations = c.relations_used.filter((r) => relations.get(r)?.source === "guardian-state");
-    if (stateRelations.every((r) => (facts.get(r) ?? []).length === 0)) {
-      return { ...base, verdict: "not-exercised", reason: "the permission it is conditional on was not exercised in this trace" };
-    }
-  }
-  if (violations.length === 0) return base;
-  return { ...base, verdict: "fail", evidence: violations.map((v) => attachEvidence(c, v, facts)) };
 }
 
 /** N47 */

@@ -5,6 +5,8 @@ reported_against: deployment
 profile: [acs-core]
 activation: null
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "The span is the §10.1 table body, whose first keyword is RECOMMENDED, the status of HMAC-SHA256. The obligation the rule checks is registry membership, which §10's prose states without a keyword ('the algorithm drawn from the registry below')."
 evidence_class: wire
 schema_refs: []
 depends_on: []

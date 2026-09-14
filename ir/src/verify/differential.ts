@@ -5,7 +5,11 @@
  * A fixture is a directory of `.facts` files plus `expected.tsv`, the
  * violations the fixture is meant to produce, one per line as provision,
  * subject values joined by "|", witness values joined by "|" (the unified
- * form; Soufflé's per-provision CSVs are read back into it). The evaluator runs in-process; Soufflé runs as a subprocess when
+ * form; Soufflé's per-provision CSVs are read back into it), and
+ * optionally `expected-verdicts.tsv`, the verdict relations' tuples, one
+ * per line as relation then columns. The verdict relations are compared
+ * between the engines on every fixture, and against the expectation when
+ * the file exists. The evaluator runs in-process; Soufflé runs as a subprocess when
  * a binary is available (`SOUFFLE` env var or `souffle` on PATH), which in
  * CI it always is. Divergence in either direction is reported as the
  * tuples only one side derived (U31), and the evaluator is additionally
@@ -17,8 +21,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RuleProgram } from "../compile/compile.ts";
-import { evaluate, unified } from "./evaluate.ts";
-import { readFacts, writeFacts } from "./facts.ts";
+import { evaluateProgram, unified } from "./evaluate.ts";
+import { readFacts, writeFacts, type FactSet } from "./facts.ts";
 
 export interface FixtureResult {
   fixture: string;
@@ -29,7 +33,20 @@ export interface FixtureResult {
   evaluator_vs_expected: { only_evaluator: string[]; only_expected: string[] };
   /** Present only when Soufflé ran. */
   evaluator_vs_souffle: { only_evaluator: string[]; only_souffle: string[] } | null;
+  /** The verdict relations' tuples, one per line as relation then columns. */
+  verdicts: string[];
+  souffle_verdicts: string[] | null;
+  /** Present when the fixture has `expected-verdicts.tsv`. */
+  verdicts_vs_expected: { only_evaluator: string[]; only_expected: string[] } | null;
+  verdicts_vs_souffle: { only_evaluator: string[]; only_souffle: string[] } | null;
   ok: boolean;
+}
+
+/** A verdict relation's tuples in the form the fixtures pin: relation, then each column, tab-separated. */
+export function verdictRows(verdicts: FactSet): string[] {
+  const rows: string[] = [];
+  for (const [relation, tuples] of verdicts) for (const t of tuples) rows.push([relation, ...t.map(String)].join("\t"));
+  return rows.sort();
 }
 
 export interface DifferentialReport {
@@ -60,8 +77,11 @@ export function differentialCheck(program: RuleProgram, dl: string, fixturesDir:
 
 export function runFixture(program: RuleProgram, dl: string, dir: string, name: string, souffle: string | null): FixtureResult {
   const facts = readFacts(join(dir, "facts"), program.relations);
-  const evaluator = evaluate(program, facts).map(unified);
+  const evaluation = evaluateProgram(program, facts);
+  const evaluator = evaluation.violations.map(unified);
+  const verdicts = verdictRows(evaluation.verdicts);
   const expected = readExpected(join(dir, "expected.tsv"));
+  const expectedVerdicts = existsSync(join(dir, "expected-verdicts.tsv")) ? readExpected(join(dir, "expected-verdicts.tsv")) : null;
   const result: FixtureResult = {
     fixture: name,
     evaluator,
@@ -69,26 +89,33 @@ export function runFixture(program: RuleProgram, dl: string, dir: string, name: 
     expected,
     evaluator_vs_expected: { only_evaluator: minus(evaluator, expected), only_expected: minus(expected, evaluator) },
     evaluator_vs_souffle: null,
+    verdicts,
+    souffle_verdicts: null,
+    verdicts_vs_expected: expectedVerdicts ? { only_evaluator: minus(verdicts, expectedVerdicts), only_expected: minus(expectedVerdicts, verdicts) } : null,
+    verdicts_vs_souffle: null,
     ok: false,
   };
   if (souffle) {
-    result.souffle = runSouffle(souffle, dl, program, facts);
-    result.evaluator_vs_souffle = { only_evaluator: minus(evaluator, result.souffle), only_souffle: minus(result.souffle, evaluator) };
+    const ran = runSouffle(souffle, dl, program, facts);
+    result.souffle = ran.violations;
+    result.souffle_verdicts = ran.verdicts;
+    result.evaluator_vs_souffle = { only_evaluator: minus(evaluator, ran.violations), only_souffle: minus(ran.violations, evaluator) };
+    result.verdicts_vs_souffle = { only_evaluator: minus(verdicts, ran.verdicts), only_souffle: minus(ran.verdicts, verdicts) };
   }
-  result.ok =
-    result.evaluator_vs_expected.only_evaluator.length === 0 &&
-    result.evaluator_vs_expected.only_expected.length === 0 &&
-    (result.evaluator_vs_souffle === null || (result.evaluator_vs_souffle.only_evaluator.length === 0 && result.evaluator_vs_souffle.only_souffle.length === 0));
+  const agree = (d: { only_evaluator: string[]; only_expected?: string[]; only_souffle?: string[] } | null): boolean =>
+    d === null || (d.only_evaluator.length === 0 && (d.only_expected ?? d.only_souffle ?? []).length === 0);
+  result.ok = agree(result.evaluator_vs_expected) && agree(result.evaluator_vs_souffle) && agree(result.verdicts_vs_expected) && agree(result.verdicts_vs_souffle);
   return result;
 }
 
 /**
  * Run stock Soufflé on the published program over the fixture's facts and
  * read back every provision's violation CSV in the unified form the
- * fixtures and the evaluator use: provision, subject values joined by
- * "|", witness values joined by "|".
+ * fixtures and the evaluator use (provision, subject values joined by
+ * "|", witness values joined by "|"), and every verdict relation's CSV as
+ * relation then columns.
  */
-export function runSouffle(souffle: string, dl: string, program: RuleProgram, facts: ReturnType<typeof readFacts>): string[] {
+export function runSouffle(souffle: string, dl: string, program: RuleProgram, facts: ReturnType<typeof readFacts>): { violations: string[]; verdicts: string[] } {
   const work = mkdtempSync(join(tmpdir(), "acs-ir-souffle-"));
   const factsDir = join(work, "facts");
   const outDir = join(work, "out");
@@ -111,7 +138,13 @@ export function runSouffle(souffle: string, dl: string, program: RuleProgram, fa
       rows.push(`${p.id}\t${cells.slice(0, p.subject.length).join("|")}\t${cells.slice(p.subject.length).join("|")}`);
     }
   }
-  return rows.sort();
+  const verdicts: string[] = [];
+  for (const relation of program.verdicts.outputs) {
+    const csv = join(outDir, `${relation}.csv`);
+    if (!existsSync(csv)) continue;
+    for (const line of readFileSync(csv, "utf8").split("\n")) if (line.trim() !== "") verdicts.push(`${relation}\t${line}`);
+  }
+  return { violations: rows.sort(), verdicts: verdicts.sort() };
 }
 
 function readExpected(path: string): string[] {

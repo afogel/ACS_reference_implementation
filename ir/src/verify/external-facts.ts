@@ -126,6 +126,9 @@ export function computeExternalFacts(normalized: NormalizedTrace, relations: Rel
   if (options.deploymentDir && existsSync(options.deploymentDir)) {
     mergeFactFiles(options.deploymentDir, relations.filter((r) => r.source === "deployment"), facts, available);
   }
+  // What was supplied, as a relation, so the verdict rules can tell an empty relation from an absent one.
+  facts.set("available", [...available].sort().map((r) => [r]));
+  available.add("available");
   return { facts, available };
 }
 

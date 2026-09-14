@@ -5,6 +5,8 @@ reported_against: guardian
 profile: [acs-core]
 activation: "the decision is DEFER"
 modality_kind: obligation
+keyword: MUST
+keyword_basis: "A table cell listing the reason vocabulary with no RFC 2119 word; a closed vocabulary is a MUST on the value."
 evidence_class: schema
 schema_refs:
   - file: defer-details.json

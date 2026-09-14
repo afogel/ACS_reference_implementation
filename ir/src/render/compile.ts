@@ -11,6 +11,9 @@ export function renderCompile(program: RuleProgram): string {
   const counts = new Map<string, number>();
   for (const p of program.provisions) counts.set(p.status, (counts.get(p.status) ?? 0) + 1);
   out.push(`${program.provisions.length} provisions: ${[...counts.entries()].map(([k, v]) => `${v} ${k}`).join(", ")}.`, "");
+  const strength = new Map<string, number>();
+  for (const t of program.verdicts.catalog.find((r) => r.name === "strength")?.facts ?? []) strength.set(String(t[1]), (strength.get(String(t[1])) ?? 0) + 1);
+  out.push(`Verdict layer: ${program.verdicts.rules.length} rules over ${program.verdicts.catalog.length} catalog relations; compiled provisions by strength: ${[...strength.entries()].map(([k, v]) => `${v} ${k}`).join(", ")}.`, "");
   out.push("| provision | status | subject | witness | external facts | detail |", "|---|---|---|---|---|---|");
   for (const p of program.provisions) {
     out.push(
@@ -27,12 +30,18 @@ export function renderCompile(program: RuleProgram): string {
 export function renderDifferential(report: DifferentialReport): string {
   const out = ["## Differential", "", report.souffle ? `Soufflé: ${report.souffle}` : "Soufflé: not available; evaluator checked against expectations only.", ""];
   for (const f of report.fixtures) {
-    out.push(`### ${f.fixture}: ${f.ok ? "agree" : "DIVERGE"} (evaluator ${f.evaluator.length}, expected ${f.expected.length}${f.souffle ? `, souffle ${f.souffle.length}` : ""})`);
+    out.push(
+      `### ${f.fixture}: ${f.ok ? "agree" : "DIVERGE"} (evaluator ${f.evaluator.length}, expected ${f.expected.length}${f.souffle ? `, souffle ${f.souffle.length}` : ""}; verdicts: evaluator ${f.verdicts.length}${f.souffle_verdicts ? `, souffle ${f.souffle_verdicts.length}` : ""})`,
+    );
     const rows: string[] = [];
     for (const t of f.evaluator_vs_expected.only_evaluator) rows.push(`- only the evaluator, not expected: ${t}`);
     for (const t of f.evaluator_vs_expected.only_expected) rows.push(`- expected, not derived by the evaluator: ${t}`);
     for (const t of f.evaluator_vs_souffle?.only_evaluator ?? []) rows.push(`- only the evaluator, not Soufflé: ${t}`);
     for (const t of f.evaluator_vs_souffle?.only_souffle ?? []) rows.push(`- only Soufflé, not the evaluator: ${t}`);
+    for (const t of f.verdicts_vs_expected?.only_evaluator ?? []) rows.push(`- verdict only the evaluator derived, not expected: ${t}`);
+    for (const t of f.verdicts_vs_expected?.only_expected ?? []) rows.push(`- verdict expected, not derived by the evaluator: ${t}`);
+    for (const t of f.verdicts_vs_souffle?.only_evaluator ?? []) rows.push(`- verdict only the evaluator derived, not Soufflé: ${t}`);
+    for (const t of f.verdicts_vs_souffle?.only_souffle ?? []) rows.push(`- verdict only Soufflé derived, not the evaluator: ${t}`);
     out.push(...rows, "");
   }
   return out.join("\n") + "\n";

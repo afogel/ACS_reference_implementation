@@ -26,6 +26,54 @@ export type Modality = (typeof MODALITIES)[number];
 export const EVIDENCE_CLASSES = ["wire", "schema", "guardian-state", "deployment-config", "non-testable", "not-applicable"] as const;
 export type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
 
+/**
+ * The RFC 2119 keyword a provision binds, in its canonical form. RFC 2119
+ * defines REQUIRED and SHALL as MUST, RECOMMENDED as SHOULD, OPTIONAL as
+ * MAY, and the negated forms likewise; the catalog keeps the five
+ * canonical words. The strength (must, should, may) and polarity
+ * (obligation, prohibition) the verdict rules read are derived from it.
+ */
+export const KEYWORDS = ["MUST", "MUST NOT", "SHOULD", "SHOULD NOT", "MAY"] as const;
+export type CanonicalKeyword = (typeof KEYWORDS)[number];
+export type Strength = "must" | "should" | "may";
+export type Polarity = "obligation" | "prohibition";
+
+const CANONICAL: Record<string, CanonicalKeyword> = {
+  MUST: "MUST",
+  SHALL: "MUST",
+  REQUIRED: "MUST",
+  "MUST NOT": "MUST NOT",
+  "SHALL NOT": "MUST NOT",
+  SHOULD: "SHOULD",
+  RECOMMENDED: "SHOULD",
+  "SHOULD NOT": "SHOULD NOT",
+  "NOT RECOMMENDED": "SHOULD NOT",
+  MAY: "MAY",
+  OPTIONAL: "MAY",
+};
+
+/** The canonical keyword for any RFC 2119 word, or null for none. */
+export function canonicalKeyword(keyword: string | null | undefined): CanonicalKeyword | null {
+  return keyword ? (CANONICAL[keyword] ?? null) : null;
+}
+
+export function strengthOf(keyword: CanonicalKeyword): Strength {
+  return keyword === "MAY" ? "may" : keyword.startsWith("SHOULD") ? "should" : "must";
+}
+
+export function polarityOf(keyword: CanonicalKeyword): Polarity {
+  return keyword.endsWith("NOT") ? "prohibition" : "obligation";
+}
+
+/**
+ * The keyword a provision is judged by: the record's own `keyword` when it
+ * states one, else the canonical form of the manifest's `level`, the first
+ * RFC 2119 word in the marked span. Null when neither says.
+ */
+export function effectiveKeyword(manifest: { level: string | null }, record: { keyword: CanonicalKeyword | null }): CanonicalKeyword | null {
+  return record.keyword ?? canonicalKeyword(manifest.level);
+}
+
 export interface SchemaRef {
   file: string;
   pointer: string;
@@ -43,6 +91,16 @@ export interface ProvisionRecord {
   /** Session state that activates a conditional provision, in prose; null when unconditional (R4.5). */
   activation: string | null;
   modality_kind: Modality;
+  /**
+   * The RFC 2119 keyword the provision is judged by, when the marked span's
+   * own keyword is absent or misleading: a schema cell with no keyword, a
+   * `MAY NOT` the RFC does not define, a table whose first keyword is not
+   * the obligation the rule checks. Null means the manifest's `level`
+   * stands. Stating one requires `keyword_basis`.
+   */
+  keyword: CanonicalKeyword | null;
+  /** Why the record's keyword differs from the marked span's. */
+  keyword_basis: string | null;
   evidence_class: EvidenceClass;
   schema_refs: SchemaRef[];
   depends_on: string[];
@@ -94,6 +152,8 @@ export function parseProvisionRecord(yamlText: string, expectedId?: string): Pro
     profile: profile as Profile[] | "all",
     activation: optStr(r, "activation"),
     modality_kind: oneOf(r, "modality_kind", MODALITIES, id),
+    keyword: r.keyword === undefined || r.keyword === null ? null : oneOf(r, "keyword", KEYWORDS, id),
+    keyword_basis: optStr(r, "keyword_basis"),
     evidence_class: oneOf(r, "evidence_class", EVIDENCE_CLASSES, id),
     schema_refs: schemaRefs(r, id),
     depends_on: list(r, "depends_on"),
@@ -108,6 +168,8 @@ export function parseProvisionRecord(yamlText: string, expectedId?: string): Pro
   for (const ref of [...record.depends_on, ...record.superseded_by, ...(record.restates ? [record.restates] : [])]) {
     if (!ID_PATTERN.test(ref)) throw new Error(`${id}: ${ref} is not a provision ID`);
   }
+  if (record.keyword && !record.keyword_basis) throw new Error(`${id}: keyword ${record.keyword} overrides the marked span's; say why in keyword_basis`);
+  if (!record.keyword && record.keyword_basis) throw new Error(`${id}: keyword_basis without a keyword`);
   return record;
 }
 
@@ -143,7 +205,16 @@ export function loadCatalog(manifest: Manifest, records: ProvisionRecord[]): Cat
     if (!manifestIds.has(r.id) && r.status !== "withdrawn") problems.push(`${r.id}: has a record but is not marked in the corpus`);
   }
   const sourceOf = new Map(manifest.provisions.map((p) => [p.id, p.source_file]));
-  for (const { record } of entries) {
+  for (const { manifest: m, record } of entries) {
+    // The keyword and the modality say the same thing twice, so they must agree: a permission is a MAY, an obligation is not.
+    if (m.type === "Requirement") {
+      const keyword = effectiveKeyword(m, record);
+      if (!keyword) problems.push(`${record.id}: the marked span has no RFC 2119 keyword; state keyword: with keyword_basis`);
+      else if (record.modality_kind === "permission" && keyword !== "MAY") problems.push(`${record.id}: a permission is judged by MAY, not ${keyword}`);
+      else if ((record.modality_kind === "obligation" || record.modality_kind === "conditional-on-exercise") && keyword === "MAY") {
+        problems.push(`${record.id}: an ${record.modality_kind} is judged by MUST or SHOULD, not MAY; if the sentence says MAY NOT, state keyword: MUST NOT with keyword_basis`);
+      }
+    }
     for (const dep of record.depends_on) {
       if (!manifestIds.has(dep)) problems.push(`${record.id}: depends_on ${dep}, which is not in the catalog`);
     }

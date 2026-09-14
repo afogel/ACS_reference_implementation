@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { loadCatalog, parseProvisionRecord, type ProvisionRecord } from "../src/catalog/catalog.ts";
+import { canonicalKeyword, effectiveKeyword, loadCatalog, parseProvisionRecord, polarityOf, strengthOf, type ProvisionRecord } from "../src/catalog/catalog.ts";
 import type { Manifest, ManifestEntry } from "../src/extract/extract.ts";
 
 const entry = (id: string, source_file = "spec/x.md"): ManifestEntry => ({
@@ -22,6 +22,8 @@ const record = (id: string, extra: Partial<ProvisionRecord> = {}): ProvisionReco
   profile: ["acs-core"],
   activation: null,
   modality_kind: "obligation",
+  keyword: null,
+  keyword_basis: null,
   evidence_class: "wire",
   schema_refs: [],
   depends_on: [],
@@ -95,3 +97,40 @@ describe("parseProvisionRecord -- the authored shape", () => {
     expect(() => parseProvisionRecord(base.concat("schema_refs:\n  - file: a.json\n    pointer: x").join("\n"))).toThrow("JSON Pointer starting with /");
   });
 });
+
+describe("the RFC 2119 keyword a provision is judged by", () => {
+  it("canonicalizes the RFC's synonyms and derives strength and polarity", () => {
+    expect(["REQUIRED", "SHALL", "MUST NOT", "SHALL NOT", "RECOMMENDED", "NOT RECOMMENDED", "OPTIONAL"].map(canonicalKeyword)).toEqual(["MUST", "MUST", "MUST NOT", "MUST NOT", "SHOULD", "SHOULD NOT", "MAY"]);
+    expect(canonicalKeyword(null)).toBeNull();
+    expect(["MUST", "MUST NOT", "SHOULD", "SHOULD NOT", "MAY"].map((k) => [strengthOf(k as "MUST"), polarityOf(k as "MUST")])).toEqual([["must", "obligation"], ["must", "prohibition"], ["should", "obligation"], ["should", "prohibition"], ["may", "obligation"]]);
+  });
+
+  it("is the marked span's first keyword unless the record states one", () => {
+    expect(effectiveKeyword({ level: "RECOMMENDED" }, { keyword: null })).toBe("SHOULD");
+    expect(effectiveKeyword({ level: "RECOMMENDED" }, { keyword: "MUST" })).toBe("MUST");
+    expect(effectiveKeyword({ level: null }, { keyword: null })).toBeNull();
+  });
+
+  it("a record that states a keyword says why, and never a basis without a keyword", () => {
+    const base = ["id: ACS-REQ-0001", "title: T", "actor: guardian", "reported_against: guardian", "profile: [acs-core]", "modality_kind: obligation", "evidence_class: wire", "status: active", "since: 0.1.0", "reviewed_against: h"];
+    expect(parseProvisionRecord([...base, "keyword: MUST NOT", "keyword_basis: the sentence says MAY NOT"].join("\n"))).toMatchObject({ keyword: "MUST NOT", keyword_basis: "the sentence says MAY NOT" });
+    expect(() => parseProvisionRecord([...base, "keyword: MUST NOT"].join("\n"))).toThrow("say why in keyword_basis");
+    expect(() => parseProvisionRecord([...base, "keyword_basis: why"].join("\n"))).toThrow("keyword_basis without a keyword");
+    expect(() => parseProvisionRecord([...base, "keyword: REQUIRED", "keyword_basis: x"].join("\n"))).toThrow("keyword must be one of");
+  });
+
+  it("the join refuses a keyword that disagrees with the modality, and a Requirement with no keyword at all", () => {
+    const catalog = loadCatalog(manifest({ ...entry("ACS-REQ-0001"), level: "MAY", keywords: ["MAY"] }, { ...entry("ACS-REQ-0002"), level: "MUST" }, { ...entry("ACS-REQ-0003"), level: null, keywords: [] }, { ...entry("ACS-REQ-0004"), level: "MAY", keywords: ["MAY"] }), [
+      record("ACS-REQ-0001"),
+      record("ACS-REQ-0002", { modality_kind: "permission" }),
+      record("ACS-REQ-0003"),
+      record("ACS-REQ-0004", { keyword: "MUST NOT", keyword_basis: "the sentence says MAY NOT" }),
+    ]);
+    expect(catalog.problems).toEqual([
+      "ACS-REQ-0001: an obligation is judged by MUST or SHOULD, not MAY; if the sentence says MAY NOT, state keyword: MUST NOT with keyword_basis",
+      "ACS-REQ-0002: a permission is judged by MAY, not MUST",
+      "ACS-REQ-0003: the marked span has no RFC 2119 keyword; state keyword: with keyword_basis",
+    ]);
+  });
+});
+
