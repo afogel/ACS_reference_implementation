@@ -110,6 +110,93 @@ content_bearing_method("steps/postCompact").
 archive_required_field("chain_hash").
 archive_required_field("provenance_summary").
 archive_required_field("intent").
+.decl client_provenance_producer(session:symbol, mode:symbol)
+.input client_provenance_producer(IO=file, filename="client_provenance_producer.facts", delimiter="\t")
+.decl modification_field(seq:number, field:symbol)
+.input modification_field(IO=file, filename="modification_field.facts", delimiter="\t")
+.decl intent_parser_origin(seq:number, origin:symbol)
+.input intent_parser_origin(IO=file, filename="intent_parser_origin.facts", delimiter="\t")
+.decl intent_scope_mode(session:symbol, mode:symbol)
+.input intent_scope_mode(IO=file, filename="intent_scope_mode.facts", delimiter="\t")
+.decl defer_timeout_decision(seq:number, value:symbol)
+.input defer_timeout_decision(IO=file, filename="defer_timeout_decision.facts", delimiter="\t")
+.decl reason_code(seq:number, code:symbol)
+.input reason_code(IO=file, filename="reason_code.facts", delimiter="\t")
+.decl signature_algorithm(seq:number, algorithm:symbol)
+.input signature_algorithm(IO=file, filename="signature_algorithm.facts", delimiter="\t")
+.decl skew_window(session:symbol, ms:number)
+.input skew_window(IO=file, filename="skew_window.facts", delimiter="\t")
+.decl request_nonce(seq:number, nonce:symbol)
+.input request_nonce(IO=file, filename="request_nonce.facts", delimiter="\t")
+.decl error_data(seq:number)
+.input error_data(IO=file, filename="error_data.facts", delimiter="\t")
+.decl error_data_field(seq:number, field:symbol)
+.input error_data_field(IO=file, filename="error_data_field.facts", delimiter="\t")
+.decl compaction_entry(seq:number, step_id:symbol)
+.input compaction_entry(IO=file, filename="compaction_entry.facts", delimiter="\t")
+.decl compaction_summary_provenance(seq:number, pid:symbol)
+.input compaction_summary_provenance(IO=file, filename="compaction_summary_provenance.facts", delimiter="\t")
+.decl skill_register(seq:number, session:symbol, skill_id:symbol, digest:symbol)
+.input skill_register(IO=file, filename="skill_register.facts", delimiter="\t")
+.decl skill_load(seq:number, session:symbol, skill_id:symbol, digest:symbol)
+.input skill_load(IO=file, filename="skill_load.facts", delimiter="\t")
+.decl agbom_component(seq:number, session:symbol, type:symbol, id:symbol)
+.input agbom_component(IO=file, filename="agbom_component.facts", delimiter="\t")
+.decl agbom_component_field(seq:number, id:symbol, field:symbol)
+.input agbom_component_field(IO=file, filename="agbom_component_field.facts", delimiter="\t")
+.decl signature_algorithm_supported(session:symbol, algorithm:symbol)
+.input signature_algorithm_supported(IO=file, filename="signature_algorithm_supported.facts", delimiter="\t")
+.decl modification_targets_overlap(seq:number, redaction_path:symbol, override_path:symbol)
+.input modification_targets_overlap(IO=file, filename="modification_targets_overlap.facts", delimiter="\t")
+.decl timestamp_out_of_window(seq:number)
+.input timestamp_out_of_window(IO=file, filename="timestamp_out_of_window.facts", delimiter="\t")
+.decl context_entry_field(session:symbol, entry_id:symbol, field:symbol)
+.input context_entry_field(IO=file, filename="context_entry_field.facts", delimiter="\t")
+.decl context_entry_step(session:symbol, entry_id:symbol, step_type:symbol)
+.input context_entry_step(IO=file, filename="context_entry_step.facts", delimiter="\t")
+.decl decision_log_field(seq:number, field:symbol)
+.input decision_log_field(IO=file, filename="decision_log_field.facts", delimiter="\t")
+.decl intent_derivation_recorded(session:symbol, seq:number, derivation:symbol)
+.input intent_derivation_recorded(IO=file, filename="intent_derivation_recorded.facts", delimiter="\t")
+.decl policy_requires_provenance(session:symbol)
+.input policy_requires_provenance(IO=file, filename="policy_requires_provenance.facts", delimiter="\t")
+.decl strict_mode_forbidden(session:symbol, capability:symbol)
+.input strict_mode_forbidden(IO=file, filename="strict_mode_forbidden.facts", delimiter="\t")
+.decl client_ask_capable(session:symbol, capable:symbol)
+.input client_ask_capable(IO=file, filename="client_ask_capable.facts", delimiter="\t")
+.decl agent_step_outcome(session:symbol, seq:number, outcome:symbol)
+.input agent_step_outcome(IO=file, filename="agent_step_outcome.facts", delimiter="\t")
+.decl agent_audit_event(session:symbol, seq:number, kind:symbol)
+.input agent_audit_event(IO=file, filename="agent_audit_event.facts", delimiter="\t")
+.decl strict_provenance_schema(schema:symbol)
+strict_provenance_schema("hooks/agent-response.acs-provenance.json").
+strict_provenance_schema("hooks/knowledge-retrieval.acs-provenance.json").
+strict_provenance_schema("hooks/memory-context-retrieval.acs-provenance.json").
+strict_provenance_schema("hooks/memory-store.acs-provenance.json").
+strict_provenance_schema("hooks/tool-call-request.acs-provenance.json").
+strict_provenance_schema("hooks/tool-call-result.acs-provenance.json").
+strict_provenance_schema("hooks/user-message.acs-provenance.json").
+.decl registered_algorithm(algorithm:symbol)
+registered_algorithm("HMAC-SHA256").
+registered_algorithm("ECDSA-P256").
+registered_algorithm("RSA-PSS-SHA256").
+registered_algorithm("ML-DSA-65").
+registered_algorithm("ML-DSA-44").
+registered_algorithm("ML-DSA-87").
+registered_algorithm("SLH-DSA-128s").
+registered_algorithm("SLH-DSA-128f").
+registered_algorithm("ML-DSA-65+ECDSA-P256").
+registered_algorithm("ML-DSA-65+RSA-PSS-SHA256").
+.decl entry_should_field(field:symbol)
+entry_should_field("request_hash").
+entry_should_field("timestamp").
+entry_should_field("provenance_summary").
+.decl audit_entry_field(field:symbol)
+audit_entry_field("timestamp").
+audit_entry_field("provenance_summary").
+.decl decision_log_required(field:symbol)
+decision_log_required("reasoning").
+decision_log_required("model_identifier").
 
 // ---- violations (R3.4: subject columns, then witness columns) ----
 .decl violation(provision:symbol, subject:symbol, witness:symbol)
@@ -122,6 +209,12 @@ archive_required_field("intent").
 // ACS-EXC-0001: no-predicate -- Exclusions are not obligations
 
 // ACS-INV-0001: no-predicate -- Invariants are not obligations
+
+// ACS-INV-0002: no-predicate -- Invariants are not obligations
+
+// ACS-INV-0003: no-predicate -- Invariants are not obligations
+
+// ACS-INV-0004: no-predicate -- Invariants are not obligations
 
 // ACS-REQ-0001: compiled
 .decl acs_req_0001__violation(subject_seq:number, witness_path:symbol)
@@ -277,3 +370,496 @@ acs_req_0023__violation(Seq, Session, Approver) :- ask_resolved(Seq, Session, Ap
 violation("ACS-REQ-0023", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0023__violation(V0, V1, V2).
 
 // ACS-REQ-0024: alias -- verified through ACS-REQ-0023, which it restates (ACS-REQ-0023)
+
+// ACS-REQ-0025: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0026: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0027: compiled
+.decl acs_req_0027__default_trust(c1:symbol, c2:symbol)
+.decl acs_req_0027__violation(subject_seq:number, subject_pid:symbol, witness_origin:symbol, witness_level:symbol)
+// violation(Seq, Pid, Origin, Level) :- trust(Seq, Pid, Level), provenance(Seq, _, Pid, Origin), default_trust(Origin, Expected), Level != Expected.
+acs_req_0027__violation(Seq, Pid, Origin, Level) :- trust(Seq, Pid, Level), provenance(Seq, _, Pid, Origin), acs_req_0027__default_trust(Origin, Expected), Level != Expected.
+// default_trust("user_input", "trusted") :- trust(_, _, _).
+acs_req_0027__default_trust("user_input", "trusted") :- trust(_, _, _).
+// default_trust("system", "trusted") :- trust(_, _, _).
+acs_req_0027__default_trust("system", "trusted") :- trust(_, _, _).
+// default_trust("tool_output", "untrusted") :- trust(_, _, _).
+acs_req_0027__default_trust("tool_output", "untrusted") :- trust(_, _, _).
+// default_trust("retrieved", "untrusted") :- trust(_, _, _).
+acs_req_0027__default_trust("retrieved", "untrusted") :- trust(_, _, _).
+// default_trust("a2a_inbound", "untrusted") :- trust(_, _, _).
+acs_req_0027__default_trust("a2a_inbound", "untrusted") :- trust(_, _, _).
+// default_trust("external", "untrusted") :- trust(_, _, _).
+acs_req_0027__default_trust("external", "untrusted") :- trust(_, _, _).
+violation("ACS-REQ-0027", cat(cat(to_string(V0), "|"), V1), cat(cat(V2, "|"), V3)) :- acs_req_0027__violation(V0, V1, V2, V3).
+
+// ACS-REQ-0028: compiled
+.decl acs_req_0028__violation(subject_seq:number, witness_session:symbol)
+// violation(Seq, Session) :- request(Seq, Session, _, _, _), array_input(Seq), response_to(Seq, R), error_code(R, -32600).
+acs_req_0028__violation(Seq, Session) :- request(Seq, Session, _, _, _), array_input(Seq), response_to(Seq, R), error_code(R, -32600).
+violation("ACS-REQ-0028", to_string(V0), V1) :- acs_req_0028__violation(V0, V1).
+
+// ACS-REQ-0029: inexpressible -- no relation records whether an envelope carried a field outside its schema nor how the receiver treated it; a rejection on an unknown field looks like any other error
+
+// ACS-REQ-0030: compiled
+.decl acs_req_0030__refused(c1:number)
+.decl acs_req_0030__violation(subject_seq:number, witness_session:symbol)
+// violation(Seq, Session) :- handshake(Seq, Session), client_provenance_producer(Session, "none"), policy_requires_provenance(Session), not refused(Seq).
+acs_req_0030__violation(Seq, Session) :- handshake(Seq, Session), client_provenance_producer(Session, "none"), policy_requires_provenance(Session), !acs_req_0030__refused(Seq).
+// refused(Seq) :- response_to(Seq, R), error_code(R, -32002).
+acs_req_0030__refused(Seq) :- response_to(Seq, R), error_code(R, -32002).
+violation("ACS-REQ-0030", to_string(V0), V1) :- acs_req_0030__violation(V0, V1).
+
+// ACS-REQ-0031: compiled
+.decl acs_req_0031__violation(subject_session:symbol, witness_seq:number)
+// violation(Session, Seq) :- handshake(Seq, Session), not response_to(Seq, _), not agent_audit_event(Session, Seq, "unguarded_start").
+acs_req_0031__violation(Session, Seq) :- handshake(Seq, Session), !response_to(Seq, _), !agent_audit_event(Session, Seq, "unguarded_start").
+violation("ACS-REQ-0031", V0, to_string(V1)) :- acs_req_0031__violation(V0, V1).
+
+// ACS-REQ-0032: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0033: inexpressible -- needs a view across sessions of one deployment; a single envelope log holds one session's attempts
+
+// ACS-REQ-0034: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0035: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0036: inexpressible -- whether replay or ledger-backed policy state matters is a deployment judgment no relation records
+
+// ACS-REQ-0037: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0038: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0039: compiled
+.decl acs_req_0039__violation(subject_seq:number, witness_field:symbol)
+// violation(Seq, Field) :- decision(Seq, "modify"), modification_field(Seq, "modified_content"), modification_field(Seq, Field), Field != "modified_content".
+acs_req_0039__violation(Seq, Field) :- decision(Seq, "modify"), modification_field(Seq, "modified_content"), modification_field(Seq, Field), Field != "modified_content".
+violation("ACS-REQ-0039", to_string(V0), V1) :- acs_req_0039__violation(V0, V1).
+
+// ACS-REQ-0040: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0041: compiled
+.decl acs_req_0041__violation(subject_seq:number, witness_redactionpath:symbol, witness_overridepath:symbol)
+// violation(Seq, RedactionPath, OverridePath) :- modification_targets_overlap(Seq, RedactionPath, OverridePath).
+acs_req_0041__violation(Seq, RedactionPath, OverridePath) :- modification_targets_overlap(Seq, RedactionPath, OverridePath).
+violation("ACS-REQ-0041", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0041__violation(V0, V1, V2).
+
+// ACS-REQ-0043: compiled
+.decl acs_req_0043__malformed_modify(c1:number)
+.decl acs_req_0043__violation(subject_seq:number, witness_session:symbol)
+// violation(Seq, Session) :- malformed_modify(R), response_to(Seq, R), request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "applied").
+acs_req_0043__violation(Seq, Session) :- acs_req_0043__malformed_modify(R), response_to(Seq, R), request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "applied").
+// malformed_modify(R) :- modification_targets_overlap(R, _, _).
+acs_req_0043__malformed_modify(R) :- modification_targets_overlap(R, _, _).
+// malformed_modify(R) :- decision(R, "modify"), modification_field(R, "modified_content"), modification_field(R, F), F != "modified_content".
+acs_req_0043__malformed_modify(R) :- decision(R, "modify"), modification_field(R, "modified_content"), modification_field(R, F), F != "modified_content".
+violation("ACS-REQ-0043", to_string(V0), V1) :- acs_req_0043__violation(V0, V1).
+
+// ACS-REQ-0044: inexpressible -- the deployment's audit log has no kind for a malformed MODIFY; agent_audit_event kinds are deployment-defined
+
+// ACS-REQ-0045: inexpressible -- whether the agent acted before the decision arrived needs timing from the agent side; agent_step_outcome carries the outcome, not when it happened
+
+// ACS-REQ-0046: compiled
+.decl acs_req_0046__violation(subject_seq:number, witness_session:symbol, witness_disposition:symbol)
+// violation(Seq, Session, Disposition) :- response_to(Seq, R), decision(R, Disposition), Disposition != "allow", request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "proceeded").
+acs_req_0046__violation(Seq, Session, Disposition) :- response_to(Seq, R), decision(R, Disposition), Disposition != "allow", request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "proceeded").
+violation("ACS-REQ-0046", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0046__violation(V0, V1, V2).
+
+// ACS-REQ-0047: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0048: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0050: compiled
+.decl acs_req_0050__decided(c1:number)
+.decl acs_req_0050__violation(subject_session:symbol, witness_seq:number)
+// violation(Session, Seq) :- hook(Seq, Session, _), agent_step_outcome(Session, Seq, "proceeded"), not decided(Seq), not agent_audit_event(Session, Seq, "fail_open_proceed").
+acs_req_0050__violation(Session, Seq) :- hook(Seq, Session, _), agent_step_outcome(Session, Seq, "proceeded"), !acs_req_0050__decided(Seq), !agent_audit_event(Session, Seq, "fail_open_proceed").
+// decided(Seq) :- response_to(Seq, R), decision(R, _).
+acs_req_0050__decided(Seq) :- response_to(Seq, R), decision(R, _).
+violation("ACS-REQ-0050", V0, to_string(V1)) :- acs_req_0050__violation(V0, V1).
+
+// ACS-REQ-0051: compiled
+.decl acs_req_0051__violation(subject_seq:number, witness_session:symbol)
+// violation(Seq, Session) :- response_to(Seq, R), decision(R, "deny"), request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "proceeded").
+acs_req_0051__violation(Seq, Session) :- response_to(Seq, R), decision(R, "deny"), request(Seq, Session, _, _, _), agent_step_outcome(Session, Seq, "proceeded").
+violation("ACS-REQ-0051", to_string(V0), V1) :- acs_req_0051__violation(V0, V1).
+
+// ACS-REQ-0052: compiled
+.decl acs_req_0052__violation(subject_seq:number, witness_schema:symbol, witness_path:symbol)
+// violation(Seq, Schema, Path) :- schema_violation(Seq, Schema, Path), strict_provenance_schema(Schema).
+acs_req_0052__violation(Seq, Schema, Path) :- schema_violation(Seq, Schema, Path), strict_provenance_schema(Schema).
+violation("ACS-REQ-0052", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0052__violation(V0, V1, V2).
+
+// ACS-REQ-0053: compiled
+.decl acs_req_0053__violation(subject_seq:number, witness_path:symbol)
+// violation(Seq, Path) :- schema_violation(Seq, "provenance.json", Path).
+acs_req_0053__violation(Seq, Path) :- schema_violation(Seq, "provenance.json", Path).
+violation("ACS-REQ-0053", to_string(V0), V1) :- acs_req_0053__violation(V0, V1).
+
+// ACS-REQ-0054: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0055: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0056: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0057: inexpressible -- no relation records a policy override of the default mapping or the audit metadata that would carry it
+
+// ACS-REQ-0058: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0059: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0060: compiled
+.decl acs_req_0060__violation(subject_session:symbol, subject_entryid:symbol, witness_field:symbol)
+// violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), entry_should_field(Field), not context_entry_field(Session, EntryId, Field).
+acs_req_0060__violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), entry_should_field(Field), !context_entry_field(Session, EntryId, Field).
+violation("ACS-REQ-0060", cat(cat(V0, "|"), V1), V2) :- acs_req_0060__violation(V0, V1, V2).
+
+// ACS-REQ-0061: compiled
+.decl acs_req_0061__violation(subject_session:symbol, subject_entryid:symbol, witness_seq:number)
+// violation(Session, EntryId, Seq) :- context_entry(Session, EntryId, Seq, _), not context_entry_field(Session, EntryId, "previous_hash"), context_entry(Session, _, Earlier, _), Earlier < Seq.
+acs_req_0061__violation(Session, EntryId, Seq) :- context_entry(Session, EntryId, Seq, _), !context_entry_field(Session, EntryId, "previous_hash"), context_entry(Session, _, Earlier, _), Earlier < Seq.
+violation("ACS-REQ-0061", cat(cat(V0, "|"), V1), to_string(V2)) :- acs_req_0061__violation(V0, V1, V2).
+
+// ACS-REQ-0062: compiled
+.decl acs_req_0062__violation(subject_session:symbol, subject_entryid:symbol, witness_field:symbol)
+// violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), Field = "request_hash", not context_entry_field(Session, EntryId, "request_hash").
+acs_req_0062__violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), Field = "request_hash", !context_entry_field(Session, EntryId, "request_hash").
+violation("ACS-REQ-0062", cat(cat(V0, "|"), V1), V2) :- acs_req_0062__violation(V0, V1, V2).
+
+// ACS-REQ-0063: compiled
+.decl acs_req_0063__violation(subject_session:symbol, subject_entryid:symbol, witness_field:symbol)
+// violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), audit_entry_field(Field), not context_entry_field(Session, EntryId, Field).
+acs_req_0063__violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), audit_entry_field(Field), !context_entry_field(Session, EntryId, Field).
+violation("ACS-REQ-0063", cat(cat(V0, "|"), V1), V2) :- acs_req_0063__violation(V0, V1, V2).
+
+// ACS-REQ-0064: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0065: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0066: compiled
+.decl acs_req_0066__intent_schema(c1:symbol)
+.decl acs_req_0066__violation(subject_seq:number, witness_schema:symbol)
+// violation(Seq, Schema) :- schema_violation(Seq, Schema, "/intent"), intent_schema(Schema).
+acs_req_0066__violation(Seq, Schema) :- schema_violation(Seq, Schema, "/intent"), acs_req_0066__intent_schema(Schema).
+// intent_schema("hooks/session-start.json") :- schema_violation(_, "hooks/session-start.json", _).
+acs_req_0066__intent_schema("hooks/session-start.json") :- schema_violation(_, "hooks/session-start.json", _).
+// intent_schema("hooks/agent-trigger.json") :- schema_violation(_, "hooks/agent-trigger.json", _).
+acs_req_0066__intent_schema("hooks/agent-trigger.json") :- schema_violation(_, "hooks/agent-trigger.json", _).
+violation("ACS-REQ-0066", to_string(V0), V1) :- acs_req_0066__violation(V0, V1).
+
+// ACS-REQ-0067: compiled
+.decl acs_req_0067__violation(subject_seq:number, witness_origin:symbol)
+// violation(Seq, Origin) :- intent_parser_origin(Seq, Origin), Origin != "user_input".
+acs_req_0067__violation(Seq, Origin) :- intent_parser_origin(Seq, Origin), Origin != "user_input".
+violation("ACS-REQ-0067", to_string(V0), V1) :- acs_req_0067__violation(V0, V1).
+
+// ACS-REQ-0068: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0069: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0070: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0071: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0072: compiled
+.decl acs_req_0072__violation(subject_seq:number, witness_session:symbol, witness_approver:symbol)
+// violation(Seq, Session, Approver) :- ask_resolved(Seq, Session, Approver), decision(Seq, "ask").
+acs_req_0072__violation(Seq, Session, Approver) :- ask_resolved(Seq, Session, Approver), decision(Seq, "ask").
+violation("ACS-REQ-0072", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0072__violation(V0, V1, V2).
+
+// ACS-REQ-0073: alias -- verified through ACS-REQ-0072, which it restates (ACS-REQ-0072)
+
+// ACS-REQ-0074: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0075: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0076: compiled
+.decl acs_req_0076__extension_recorded(c1:symbol, c2:number)
+.decl acs_req_0076__violation(subject_session:symbol, subject_seq:number, witness_capability:symbol)
+// violation(Session, Seq, Capability) :- intent_extension(Session, Seq, Capability), not extension_recorded(Session, Seq).
+acs_req_0076__violation(Session, Seq, Capability) :- intent_extension(Session, Seq, Capability), !acs_req_0076__extension_recorded(Session, Seq).
+// extension_recorded(Session, Seq) :- context_entry(Session, EntryId, Seq, _), context_entry_step(Session, EntryId, "intent_extension").
+acs_req_0076__extension_recorded(Session, Seq) :- context_entry(Session, EntryId, Seq, _), context_entry_step(Session, EntryId, "intent_extension").
+violation("ACS-REQ-0076", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0076__violation(V0, V1, V2).
+
+// ACS-REQ-0077: compiled
+.decl acs_req_0077__violation(subject_session:symbol, subject_seq:number, witness_capability:symbol)
+// violation(Session, Seq, Capability) :- intent_scope_mode(Session, "strict"), intent_extension(Session, Seq, Capability), strict_mode_forbidden(Session, Capability).
+acs_req_0077__violation(Session, Seq, Capability) :- intent_scope_mode(Session, "strict"), intent_extension(Session, Seq, Capability), strict_mode_forbidden(Session, Capability).
+violation("ACS-REQ-0077", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0077__violation(V0, V1, V2).
+
+// ACS-REQ-0078: compiled
+.decl acs_req_0078__violation(subject_seq:number, witness_session:symbol)
+// violation(Seq, Session) :- request(Seq, Session, _, _, _), client_ask_capable(Session, "no"), response_to(Seq, R), decision(R, "ask").
+acs_req_0078__violation(Seq, Session) :- request(Seq, Session, _, _, _), client_ask_capable(Session, "no"), response_to(Seq, R), decision(R, "ask").
+violation("ACS-REQ-0078", to_string(V0), V1) :- acs_req_0078__violation(V0, V1).
+
+// ACS-REQ-0079: compiled
+.decl acs_req_0079__violation(subject_seq:number, witness_session:symbol, witness_timeoutdecision:symbol)
+// violation(Seq, Session, TimeoutDecision) :- request(Seq, Session, _, _, _), client_ask_capable(Session, "no"), response_to(Seq, R), decision(R, "defer"), defer_timeout_decision(R, TimeoutDecision), TimeoutDecision != "deny".
+acs_req_0079__violation(Seq, Session, TimeoutDecision) :- request(Seq, Session, _, _, _), client_ask_capable(Session, "no"), response_to(Seq, R), decision(R, "defer"), defer_timeout_decision(R, TimeoutDecision), TimeoutDecision != "deny".
+violation("ACS-REQ-0079", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0079__violation(V0, V1, V2).
+
+// ACS-REQ-0080: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0081: compiled
+.decl acs_req_0081__violation(subject_seq:number, witness_method:symbol)
+// violation(Seq, Method) :- envelope(Seq, _, _, Method, _), signature_status(Seq, "absent"), Method != "system/ping", Method != "handshake/hello".
+acs_req_0081__violation(Seq, Method) :- envelope(Seq, _, _, Method, _), signature_status(Seq, "absent"), Method != "system/ping", Method != "handshake/hello".
+violation("ACS-REQ-0081", to_string(V0), V1) :- acs_req_0081__violation(V0, V1).
+
+// ACS-REQ-0082: compiled
+.decl acs_req_0082__violation(subject_seq:number, witness_algorithm:symbol)
+// violation(Seq, Algorithm) :- signature_algorithm(Seq, Algorithm), not registered_algorithm(Algorithm).
+acs_req_0082__violation(Seq, Algorithm) :- signature_algorithm(Seq, Algorithm), !registered_algorithm(Algorithm).
+violation("ACS-REQ-0082", to_string(V0), V1) :- acs_req_0082__violation(V0, V1).
+
+// ACS-REQ-0083: inexpressible -- the verifier implements HMAC-SHA256 only; a hybrid signature yields signature_status unverifiable, so component failure is not an available fact
+
+// ACS-REQ-0084: compiled
+.decl acs_req_0084__violation(subject_seq:number, witness_response:number)
+// violation(Seq, Response) :- timestamp_out_of_window(Seq), response_to(Seq, Response), not error_code(Response, -32006).
+acs_req_0084__violation(Seq, Response) :- timestamp_out_of_window(Seq), response_to(Seq, Response), !error_code(Response, -32006).
+violation("ACS-REQ-0084", to_string(V0), to_string(V1)) :- acs_req_0084__violation(V0, V1).
+
+// ACS-REQ-0086: compiled
+.decl acs_req_0086__violation(subject_seq:number, witness_session:symbol, witness_requestid:symbol)
+// violation(Seq, Session, RequestId) :- request(Earlier, Session, _, RequestId, _), request(Seq, Session, _, RequestId, _), Earlier < Seq, response_to(Seq, R), not error_code(R, -32005).
+acs_req_0086__violation(Seq, Session, RequestId) :- request(Earlier, Session, _, RequestId, _), request(Seq, Session, _, RequestId, _), Earlier < Seq, response_to(Seq, R), !error_code(R, -32005).
+violation("ACS-REQ-0086", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0086__violation(V0, V1, V2).
+
+// ACS-REQ-0087: compiled
+.decl acs_req_0087__violation(subject_seq:number, witness_nonce:symbol)
+// violation(Seq, Nonce) :- request_nonce(Earlier, Nonce), request_nonce(Seq, Nonce), Earlier < Seq, response_to(Seq, R), not error_code(R, -32005).
+acs_req_0087__violation(Seq, Nonce) :- request_nonce(Earlier, Nonce), request_nonce(Seq, Nonce), Earlier < Seq, response_to(Seq, R), !error_code(R, -32005).
+violation("ACS-REQ-0087", to_string(V0), V1) :- acs_req_0087__violation(V0, V1).
+
+// ACS-REQ-0088: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0089: inexpressible -- no relation identifies which payload fields are resource identifiers; the hook schemas do not mark them
+
+// ACS-REQ-0090: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0091: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0092: compiled
+.decl acs_req_0092__violation(subject_seq:number, witness_field:symbol)
+// violation(Seq, Field) :- decision(Seq, _), decision_log_required(Field), not decision_log_field(Seq, Field).
+acs_req_0092__violation(Seq, Field) :- decision(Seq, _), decision_log_required(Field), !decision_log_field(Seq, Field).
+violation("ACS-REQ-0092", to_string(V0), V1) :- acs_req_0092__violation(V0, V1).
+
+// ACS-REQ-0093: alias -- verified through ACS-REQ-0092, which it restates (ACS-REQ-0092)
+
+// ACS-REQ-0094: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0095: compiled
+.decl acs_req_0095__violation(subject_seq:number, witness_response:number)
+// violation(Seq, Response) :- request(Seq, _, "system/ping", _, _), response_to(Seq, Response), not decision(Response, "allow").
+acs_req_0095__violation(Seq, Response) :- request(Seq, _, "system/ping", _, _), response_to(Seq, Response), !decision(Response, "allow").
+violation("ACS-REQ-0095", to_string(V0), to_string(V1)) :- acs_req_0095__violation(V0, V1).
+
+// ACS-REQ-0096: compiled
+.decl acs_req_0096__violation(subject_session:symbol, subject_seq:number, witness_entryid:symbol)
+// violation(Session, Seq, EntryId) :- request(Seq, Session, "system/ping", _, _), context_entry(Session, EntryId, Seq, _).
+acs_req_0096__violation(Session, Seq, EntryId) :- request(Seq, Session, "system/ping", _, _), context_entry(Session, EntryId, Seq, _).
+violation("ACS-REQ-0096", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0096__violation(V0, V1, V2).
+
+// ACS-REQ-0097: compiled
+.decl acs_req_0097__violation(subject_seq:number, witness_response:number)
+// violation(Seq, Response) :- request(Seq, _, "system/ping", _, _), response_to(Seq, Response), error_code(Response, -32004).
+acs_req_0097__violation(Seq, Response) :- request(Seq, _, "system/ping", _, _), response_to(Seq, Response), error_code(Response, -32004).
+violation("ACS-REQ-0097", to_string(V0), to_string(V1)) :- acs_req_0097__violation(V0, V1).
+
+// ACS-REQ-0098: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0099: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0100: compiled
+.decl acs_req_0100__violation(subject_session:symbol, subject_seq:number, witness_kind:symbol)
+// violation(Session, Seq, Kind) :- request(Seq, Session, "system/ping", _, _), agent_audit_event(Session, Seq, Kind).
+acs_req_0100__violation(Session, Seq, Kind) :- request(Seq, Session, "system/ping", _, _), agent_audit_event(Session, Seq, Kind).
+violation("ACS-REQ-0100", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0100__violation(V0, V1, V2).
+
+// ACS-REQ-0101: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0102: compiled
+.decl acs_req_0102__violation(subject_seq:number, witness_field:symbol)
+// violation(Seq, Field) :- error_data(Seq), Field = "reason", not error_data_field(Seq, "reason").
+acs_req_0102__violation(Seq, Field) :- error_data(Seq), Field = "reason", !error_data_field(Seq, "reason").
+// violation(Seq, Field) :- error_data(Seq), Field = "message", not error_data_field(Seq, "message").
+acs_req_0102__violation(Seq, Field) :- error_data(Seq), Field = "message", !error_data_field(Seq, "message").
+violation("ACS-REQ-0102", to_string(V0), V1) :- acs_req_0102__violation(V0, V1).
+
+// ACS-REQ-0103: compiled
+.decl acs_req_0103__violation(subject_seq:number, witness_code:number)
+// violation(Seq, Code) :- request(Seq, _, "system/ping", _, _), response_to(Seq, R), error_code(R, Code), Code <= -32000, Code >= -32099.
+acs_req_0103__violation(Seq, Code) :- request(Seq, _, "system/ping", _, _), response_to(Seq, R), error_code(R, Code), Code <= -32000, Code >= -32099.
+violation("ACS-REQ-0103", to_string(V0), to_string(V1)) :- acs_req_0103__violation(V0, V1).
+
+// ACS-REQ-0104: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0105: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0106: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0107: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0108: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0109: inexpressible -- completeness of the hook stream can only be judged against an independent record of the agent's actions, which no relation carries
+
+// ACS-REQ-0110: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0111: compiled
+.decl acs_req_0111__violation(subject_seq:number, witness_summary:symbol, witness_detail:symbol)
+// violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), provenance(Seq, _, Summary, Origin), Origin != "agent_generated", Detail = cat("origin=", Origin).
+acs_req_0111__violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), provenance(Seq, _, Summary, Origin), Origin != "agent_generated", Detail = cat("origin=", Origin).
+// violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), compaction_entry(Seq, StepId), not derived_from(Seq, Summary, StepId), Detail = cat("missing=", StepId).
+acs_req_0111__violation(Seq, Summary, Detail) :- compaction_summary_provenance(Seq, Summary), compaction_entry(Seq, StepId), !derived_from(Seq, Summary, StepId), Detail = cat("missing=", StepId).
+violation("ACS-REQ-0111", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0111__violation(V0, V1, V2).
+
+// ACS-REQ-0112: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0113: compiled
+.decl acs_req_0113__violation(subject_seq:number, witness_response:number)
+// violation(Seq, Response) :- request(Seq, _, "steps/postCompact", _, _), response_to(Seq, Response), decision(Response, "deny").
+acs_req_0113__violation(Seq, Response) :- request(Seq, _, "steps/postCompact", _, _), response_to(Seq, Response), decision(Response, "deny").
+violation("ACS-REQ-0113", to_string(V0), to_string(V1)) :- acs_req_0113__violation(V0, V1).
+
+// ACS-REQ-0114: compiled
+.decl acs_req_0114__violation(subject_session:symbol, subject_seq:number, witness_method:symbol)
+// violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = "steps/postCompact", not context_entry(Session, _, Seq, _).
+acs_req_0114__violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = "steps/postCompact", !context_entry(Session, _, Seq, _).
+violation("ACS-REQ-0114", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0114__violation(V0, V1, V2).
+
+// ACS-REQ-0116: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0117: compiled
+.decl acs_req_0117__approved_since(c1:symbol, c2:symbol, c3:number)
+.decl acs_req_0117__violation(subject_loadseq:number, witness_session:symbol, witness_skillid:symbol)
+// violation(LoadSeq, Session, SkillId) :- skill_register(RegSeq, Session, SkillId, _), response_to(RegSeq, RR), decision(RR, "deny"), skill_load(LoadSeq, Session, SkillId, _), RegSeq < LoadSeq, response_to(LoadSeq, LR), decision(LR, "allow"), not approved_since(Session, SkillId, RegSeq).
+acs_req_0117__violation(LoadSeq, Session, SkillId) :- skill_register(RegSeq, Session, SkillId, _), response_to(RegSeq, RR), decision(RR, "deny"), skill_load(LoadSeq, Session, SkillId, _), RegSeq < LoadSeq, response_to(LoadSeq, LR), decision(LR, "allow"), !acs_req_0117__approved_since(Session, SkillId, RegSeq).
+// approved_since(Session, SkillId, RegSeq) :- skill_register(RegSeq, Session, SkillId, _), skill_register(Later, Session, SkillId, _), Later > RegSeq, response_to(Later, R), decision(R, "allow").
+acs_req_0117__approved_since(Session, SkillId, RegSeq) :- skill_register(RegSeq, Session, SkillId, _), skill_register(Later, Session, SkillId, _), Later > RegSeq, response_to(Later, R), decision(R, "allow").
+violation("ACS-REQ-0117", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0117__violation(V0, V1, V2).
+
+// ACS-REQ-0118: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0119: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0120: compiled
+.decl acs_req_0120__approved(c1:symbol, c2:symbol, c3:symbol)
+.decl acs_req_0120__violation(subject_loadseq:number, witness_session:symbol, witness_skillid:symbol, witness_digest:symbol)
+// violation(LoadSeq, Session, SkillId, Digest) :- skill_load(LoadSeq, Session, SkillId, Digest), not approved(Session, SkillId, Digest).
+acs_req_0120__violation(LoadSeq, Session, SkillId, Digest) :- skill_load(LoadSeq, Session, SkillId, Digest), !acs_req_0120__approved(Session, SkillId, Digest).
+// approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, R), decision(R, "allow").
+acs_req_0120__approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, R), decision(R, "allow").
+violation("ACS-REQ-0120", to_string(V0), cat(cat(cat(cat(V1, "|"), V2), "|"), V3)) :- acs_req_0120__violation(V0, V1, V2, V3).
+
+// ACS-REQ-0121: compiled
+.decl acs_req_0121__approved(c1:symbol, c2:symbol, c3:symbol)
+.decl acs_req_0121__violation(subject_loadseq:number, witness_session:symbol, witness_skillid:symbol)
+// violation(LoadSeq, Session, SkillId) :- skill_load(LoadSeq, Session, SkillId, Digest), not approved(Session, SkillId, Digest), response_to(LoadSeq, R), decision(R, "allow").
+acs_req_0121__violation(LoadSeq, Session, SkillId) :- skill_load(LoadSeq, Session, SkillId, Digest), !acs_req_0121__approved(Session, SkillId, Digest), response_to(LoadSeq, R), decision(R, "allow").
+// approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, RR), decision(RR, "allow").
+acs_req_0121__approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, RR), decision(RR, "allow").
+violation("ACS-REQ-0121", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0121__violation(V0, V1, V2).
+
+// ACS-REQ-0122: inexpressible -- load_path and composed_skills are not vocabulary relations
+
+// ACS-REQ-0123: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0124: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0125: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0126: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0127: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0128: inexpressible -- the conjunction of every acs-core provision; reported as the profile summary (U16), not as one predicate
+
+// ACS-REQ-0129: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0130: compiled
+.decl acs_req_0130__skill_hook_seen(c1:symbol)
+.decl acs_req_0130__violation(subject_session:symbol, witness_componentid:symbol)
+// violation(Session, ComponentId) :- agbom_component(_, Session, "skill", ComponentId), not skill_hook_seen(Session).
+acs_req_0130__violation(Session, ComponentId) :- agbom_component(_, Session, "skill", ComponentId), !acs_req_0130__skill_hook_seen(Session).
+// skill_hook_seen(Session) :- hook(_, Session, "steps/skillRegister").
+acs_req_0130__skill_hook_seen(Session) :- hook(_, Session, "steps/skillRegister").
+// skill_hook_seen(Session) :- hook(_, Session, "steps/skillLoad").
+acs_req_0130__skill_hook_seen(Session) :- hook(_, Session, "steps/skillLoad").
+violation("ACS-REQ-0130", V0, V1) :- acs_req_0130__violation(V0, V1).
+
+// ACS-REQ-0131: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0132: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0133: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0134: compiled
+.decl acs_req_0134__snapshot_before(c1:symbol, c2:number)
+.decl acs_req_0134__violation(subject_seq:number, witness_session:symbol, witness_method:symbol)
+// violation(Seq, Session, Method) :- hook(Seq, Session, Method), content_bearing_method(Method), not snapshot_before(Session, Seq).
+acs_req_0134__violation(Seq, Session, Method) :- hook(Seq, Session, Method), content_bearing_method(Method), !acs_req_0134__snapshot_before(Session, Seq).
+// snapshot_before(Session, Seq) :- request(Snapshot, Session, "agbom/snapshot", _, _), hook(Seq, Session, _), Snapshot < Seq.
+acs_req_0134__snapshot_before(Session, Seq) :- request(Snapshot, Session, "agbom/snapshot", _, _), hook(Seq, Session, _), Snapshot < Seq.
+violation("ACS-REQ-0134", to_string(V0), cat(cat(V1, "|"), V2)) :- acs_req_0134__violation(V0, V1, V2).
+
+// ACS-REQ-0135: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0136: inexpressible -- component mutations that did not produce agbom/changed are, by definition, not in the log
+
+// ACS-REQ-0137: compiled
+.decl acs_req_0137__violation(subject_session:symbol, witness_algorithm:symbol)
+// violation(Session, Algorithm) :- handshake(_, Session), Algorithm = "ML-DSA-65", not signature_algorithm_supported(Session, "ML-DSA-65").
+acs_req_0137__violation(Session, Algorithm) :- handshake(_, Session), Algorithm = "ML-DSA-65", !signature_algorithm_supported(Session, "ML-DSA-65").
+violation("ACS-REQ-0137", V0, V1) :- acs_req_0137__violation(V0, V1).
+
+// ACS-REQ-0138: compiled
+.decl acs_req_0138__violation(subject_session:symbol, witness_algorithm:symbol)
+// violation(Session, Algorithm) :- handshake(_, Session), Algorithm = "SLH-DSA-128s", not signature_algorithm_supported(Session, "SLH-DSA-128s").
+acs_req_0138__violation(Session, Algorithm) :- handshake(_, Session), Algorithm = "SLH-DSA-128s", !signature_algorithm_supported(Session, "SLH-DSA-128s").
+violation("ACS-REQ-0138", V0, V1) :- acs_req_0138__violation(V0, V1).
+
+// ACS-REQ-0139: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0140: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0141: compiled
+.decl acs_req_0141__violation(subject_seq:number, subject_componentid:symbol, witness_field:symbol)
+// violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = "registration_provenance", not agbom_component_field(Seq, ComponentId, "registration_provenance").
+acs_req_0141__violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = "registration_provenance", !agbom_component_field(Seq, ComponentId, "registration_provenance").
+violation("ACS-REQ-0141", cat(cat(to_string(V0), "|"), V1), V2) :- acs_req_0141__violation(V0, V1, V2).
+
+// ACS-REQ-0142: compiled
+.decl acs_req_0142__violation(subject_seq:number, subject_componentid:symbol, witness_field:symbol)
+// violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = "registration_provenance", not agbom_component_field(Seq, ComponentId, "registration_provenance").
+acs_req_0142__violation(Seq, ComponentId, Field) :- agbom_component(Seq, _, _, ComponentId), Field = "registration_provenance", !agbom_component_field(Seq, ComponentId, "registration_provenance").
+violation("ACS-REQ-0142", cat(cat(to_string(V0), "|"), V1), V2) :- acs_req_0142__violation(V0, V1, V2).
+
+// ACS-REQ-0143: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0144: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0145: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0146: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0147: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0148: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0149: permission -- a MAY that was not exercised yields no verdict (R4.6)
+
+// ACS-REQ-0150: non-testable -- no trace can falsify it; listed on the non-testable roster (R4.4)
+
+// ACS-REQ-0151: compiled
+.decl acs_req_0151__violation(subject_session:symbol, subject_seq:number, witness_method:symbol)
+// violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = "steps/subagentStart", not intent_derivation_recorded(Session, Seq, _).
+acs_req_0151__violation(Session, Seq, Method) :- request(Seq, Session, Method, _, _), Method = "steps/subagentStart", !intent_derivation_recorded(Session, Seq, _).
+violation("ACS-REQ-0151", cat(cat(V0, "|"), to_string(V1)), V2) :- acs_req_0151__violation(V0, V1, V2).
+
+// ACS-REQ-0152: permission -- a MAY that was not exercised yields no verdict (R4.6)
