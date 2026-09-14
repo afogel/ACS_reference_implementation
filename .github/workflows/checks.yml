@@ -88,6 +88,13 @@ jobs:
         # marked provision with no authored record fails here.
         if: ${{ !cancelled() }}
         run: bun run ir markers apply && bun run ir extract --check && bun run ir render --check
+      - name: Verify no provision record needs review
+        # A record whose reviewed_against no longer matches its provision's
+        # text, or that depends on or restates one whose text changed, is
+        # needs-review (R2.4, R2.6, R2.9). The reviewer clears it by
+        # classifying the change and updating the record, never the tool.
+        if: ${{ !cancelled() }}
+        run: bun run ir lint
 
   # The network half, deliberately separate. Both of these shallow-clone AGT
   # at agt.lock's PINNED ref -- an immutable commit, so neither can be broken

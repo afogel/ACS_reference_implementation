@@ -6,7 +6,14 @@
  *   acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]
  *   acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]
  *   acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]
+ *   acs-ir lint          [--corpus <dir>] [--build <dir>] [--provisions <dir>] [--out <file>]
  *   acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]
+ *
+ * `lint` (V3: staleness only; the rest of spec-lint is V4) re-extracts from
+ * the marked corpus, joins the catalog, and reports every provision whose
+ * record needs review, with what it invalidated. It writes
+ * `ir/.build/stale.json` and exits 1 while anything needs review, so a
+ * spec change is never silently fine.
  *
  * Each generated file (`ir/census/provisions.yaml`, `ir/manifest/provisions.json`,
  * `ir/dist/provision-index.md`) is committed so its diff is reviewable, and
@@ -20,6 +27,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadRecords, loadCatalog, defaultProvisionsDir } from "./catalog/catalog.ts";
+import { checkStaleness } from "./catalog/staleness.ts";
+import { collectTestCitations } from "./catalog/test-citations.ts";
 import { defaultCensusDir, runCensus } from "./census/run-census.ts";
 import { loadCorpus, readSource } from "./corpus.ts";
 import { defaultManifestPath, extractProvisions, type Manifest } from "./extract/extract.ts";
@@ -27,6 +36,7 @@ import { allocateId, defaultIdsDir, PROVISION_TYPES, type ProvisionType } from "
 import { applyOverlay, defaultBuildDir, defaultMarkersDir, parseOverlay, resolveOverlay } from "./markers/overlay.ts";
 import { renderCensus } from "./render/census.ts";
 import { renderProvisionIndex } from "./render/provision-index.ts";
+import { renderStale } from "./render/stale.ts";
 
 const USAGE = [
   "usage:",
@@ -34,6 +44,7 @@ const USAGE = [
   "  acs-ir markers apply [--corpus <dir>] [--overlay <file>] [--build <dir>]",
   "  acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]",
   "  acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]",
+  "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--provisions <dir>] [--out <file>]",
   "  acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]",
 ].join("\n");
 
@@ -54,6 +65,8 @@ export function main(argv: string[]): number {
       return extract(rest);
     case "render":
       return render(rest);
+    case "lint":
+      return lint(rest);
     case "ids":
       if (rest[0] === "next") return idsNext(rest.slice(1));
       break;
@@ -133,6 +146,32 @@ function render(rest: string[]): number {
     return 1;
   }
   return deliver("render", out, renderProvisionIndex(catalog, manifest.corpus), check);
+}
+
+function lint(rest: string[]): number {
+  const corpus = loadCorpus(flagValue(rest, "--corpus"));
+  const buildRoot = flagValue(rest, "--build") ?? defaultBuildDir();
+  const markedDir = join(buildRoot, "marked");
+  const out = flagValue(rest, "--out") ?? join(buildRoot, "stale.json");
+  if (!existsSync(markedDir)) {
+    console.error(`acs-ir lint: ${markedDir} does not exist; run \`acs-ir markers apply\` first.`);
+    return 1;
+  }
+  const extraction = extractProvisions(markedDir, corpus.files, { version: corpus.version, commit: corpus.commit });
+  const records = loadRecords(flagValue(rest, "--provisions") ?? defaultProvisionsDir());
+  const catalog = loadCatalog(extraction.manifest, records.records);
+  const problems = [...extraction.problems, ...records.problems, ...catalog.problems];
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`lint: ${p}`);
+    console.error(`acs-ir lint: ${problems.length} problem(s); staleness not computed.`);
+    return 1;
+  }
+  const report = checkStaleness(catalog, collectTestCitations());
+  process.stdout.write(renderStale(report));
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, JSON.stringify({ corpus: extraction.manifest.corpus, ...report }, null, 2) + "\n");
+  console.error(`acs-ir lint: wrote ${out}; ${report.stale.length} provision(s) need review.`);
+  return report.stale.length === 0 ? 0 : 1;
 }
 
 function idsNext(rest: string[]): number {
