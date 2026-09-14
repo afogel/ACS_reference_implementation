@@ -17,3 +17,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 1f8ef3c0ba2919aade2f74de6e6cbfe8ab767bf9e2c7594012b958ca679d38b4
 note: "Finding for upstream: defer-details.json requires reason, resolution_method and resolution_timeout_ms but not timeout_decision, which this sentence says DEFER MUST include (with default deny). A verifier must treat an absent timeout_decision as deny rather than as a schema failure until the schema and the prose agree."
+predicate:
+  subject: [Seq]
+  witness: [Field]
+  rules:
+    - "violation(Seq, Field) :- decision(Seq, \"defer\"), defer_required(Field), not defer_field(Seq, Field)."

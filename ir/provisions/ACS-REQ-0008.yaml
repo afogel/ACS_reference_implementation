@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: c086c0aaa3a3880caaf86945bd188b30041048b16ddd0ce1d8f1b6dd58f3c759
 note: "Keyword-free nested list item. Observable only from the Guardian's own decision log (agents.md decision logging) or from metadata.evaluator, never from the request wire."
+predicate:
+  subject: [Seq]
+  witness: [AgentOrder, DeterministicOrder]
+  rules:
+    - "violation(Seq, AgentOrder, DeterministicOrder) :- evaluator_ran(Seq, \"agent\", AgentOrder), evaluator_ran(Seq, \"deterministic\", DeterministicOrder), AgentOrder < DeterministicOrder."

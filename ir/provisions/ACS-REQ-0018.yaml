@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 1f18a43a936e2276a6c4464abf3618f6018b1ee59ef19fc020746bcc31e30cce
 note: "Vocabulary gap found in V2: the spec's 'verifier' is whichever party checks a signature, so this binds the Observed Agent equally. The actor field holds one value; recorded as guardian with this note until the field can say 'either party'."
+predicate:
+  subject: [Seq]
+  witness: [Response]
+  rules:
+    - "violation(Seq, Response) :- signature_status(Seq, \"invalid\"), response_to(Seq, Response), not error_code(Response, -32004)."

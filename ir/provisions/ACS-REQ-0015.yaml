@@ -14,3 +14,10 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 98e8b785e760e7d512198e02964d5de8050d3f6116211e9ceaab2f509f51013c
 note: "Keyword-free. Negotiation: no common acs_version between ClientHello and the Guardian yields -32001."
+predicate:
+  subject: [Seq]
+  witness: [Session]
+  rules:
+    - "violation(Seq, Session) :- handshake(Seq, Session), not common_version(Session), not refused(Seq)."
+    - "common_version(Session) :- client_version(Session, Version), guardian_version(Version)."
+    - "refused(Seq) :- response_to(Seq, R), error_code(R, -32001)."

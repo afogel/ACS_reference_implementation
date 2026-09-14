@@ -14,3 +14,9 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: 2ad1827a2b1a11303f67079117c9b130c3da38706d6a3cca9a9e44da1ea72e4b
 note: "Keyword-free (the capital R in Required is prose, not RFC 2119). The V8 demo sentence."
+predicate:
+  subject: [Seq]
+  witness: [Session, Method]
+  rules:
+    - "violation(Seq, Session, Method) :- hook(Seq, Session, Method), not handshake_before(Session, Seq)."
+    - "handshake_before(Session, Seq) :- handshake(H, Session), hook(Seq, Session, _), H < Seq."

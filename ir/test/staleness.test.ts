@@ -33,6 +33,7 @@ const record = (id: string, reviewed_against: string, extra: Partial<ProvisionRe
   superseded_by: [],
   reviewed_against,
   note: null,
+  predicate: null,
   ...extra,
 });
 

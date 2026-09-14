@@ -14,3 +14,8 @@ since: "0.1.0"
 superseded_by: []
 reviewed_against: ab2d4412fd1c3055192367c756b5d1467b8656c49069c20379a7040343e36811
 note: "SHOULD-level."
+predicate:
+  subject: [Session]
+  witness: [Seq]
+  rules:
+    - "violation(Session, Seq) :- chain_mismatch_observed(Session, Seq), not audit_event(Session, Seq, \"chain_mismatch\")."

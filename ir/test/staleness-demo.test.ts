@@ -2,8 +2,8 @@
  * The V3 demo, as a test: change one word inside the Intent immutability
  * callout, re-extract, and the lint names the Invariant, the §8.4
  * Requirement that depends on it, and that Requirement's own dependent --
- * none of which contain the edited word -- while the census keyword count
- * is unchanged. Run against the marked corpus, which is what the extractor
+ * none of which contain the edited word -- with the fixtures that cite
+ * them, while the census keyword count is unchanged. Run against the marked corpus, which is what the extractor
  * reads once markers live upstream; with the overlay still in place, the
  * same edit also needs its quote updated, and the answer is the same.
  */
@@ -47,7 +47,9 @@ describe("V3 demo -- a one-word edit to a concept page", () => {
       ["ACS-REQ-0011", ["dependency_stale"], ["ACS-REQ-0012"]],
       ["ACS-REQ-0012", ["dependency_stale"], []],
     ]);
-    expect(report.stale.every((s) => s.tests.length === 0)).toBe(true);
+    // The fixtures under ir/test/conformance/ cite the two Requirements, not the Invariant (V5).
+    expect(report.stale.map((s) => s.tests.length > 0)).toEqual([false, true, true]);
+    expect(report.stale[1]?.tests).toContain("fixtures/violating/expected.tsv");
     // No RFC 2119 keyword moved.
     expect(keywordScan("concepts/intent.md", edited).occurrences.length).toBe(keywordScan("concepts/intent.md", original).occurrences.length);
   });

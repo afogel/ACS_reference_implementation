@@ -8,7 +8,19 @@
  *   acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]
  *   acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>]
  *                        [--schemas <dir>] [--conformance <dir>] [--sources <file>]
+ *   acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]
+ *   acs-ir verify        --facts <dir> [--build <dir>]
+ *   acs-ir differential  [--fixtures <dir>] [--build <dir>] [--dist <dir>] [--souffle <path>]
  *   acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]
+ *
+ * `compile` turns every predicate into the published Soufflé program
+ * (`ir/dist/rules.dl`), the evaluator's rule set (`ir/.build/rules.json`)
+ * and the declared invariant list (`ir/.build/invariants.tla`); a type
+ * error, an unsafe rule, an unstratifiable predicate, or a Requirement
+ * with neither a predicate nor an inexpressible reason exits 1.
+ * `verify --facts` runs the in-process evaluator over a directory of
+ * `.facts` and prints the violations. `differential` runs both engines
+ * over every fixture and exits 1 on any divergence (R3.8).
  *
  * `lint` is spec-lint (E9): it re-extracts from the marked corpus, joins the
  * catalog, and judges the tree against a baseline (the committed generated
@@ -44,6 +56,14 @@ import { renderImpactComment } from "./render/impact.ts";
 import { renderLint } from "./render/lint.ts";
 import { defaultSchemaDir } from "./lint/schema-refs.ts";
 import { loadBaseline, specLint } from "./lint/spec-lint.ts";
+import { compileProgram, type RuleProgram } from "./compile/compile.ts";
+import { emitSouffleProgram } from "./compile/emit-souffle.ts";
+import { emitTlaInvariants } from "./compile/emit-tla.ts";
+import { defaultVocabularyPath, loadVocabulary } from "./compile/vocabulary.ts";
+import { differentialCheck, findSouffle } from "./verify/differential.ts";
+import { evaluate, unified } from "./verify/evaluate.ts";
+import { readFacts } from "./verify/facts.ts";
+import { renderCompile, renderDifferential } from "./render/compile.ts";
 
 const USAGE = [
   "usage:",
@@ -52,6 +72,9 @@ const USAGE = [
   "  acs-ir extract       [--check] [--corpus <dir>] [--build <dir>] [--out <file>]",
   "  acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]",
   "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>]",
+  "  acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]",
+  "  acs-ir verify        --facts <dir> [--build <dir>]",
+  "  acs-ir differential  [--fixtures <dir>] [--build <dir>] [--dist <dir>] [--souffle <path>]",
   "  acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]",
 ].join("\n");
 
@@ -74,6 +97,12 @@ export function main(argv: string[]): number {
       return render(rest);
     case "lint":
       return lint(rest);
+    case "compile":
+      return compile(rest);
+    case "verify":
+      return verify(rest);
+    case "differential":
+      return differential(rest);
     case "ids":
       if (rest[0] === "next") return idsNext(rest.slice(1));
       break;
@@ -152,7 +181,7 @@ function render(rest: string[]): number {
     console.error(`acs-ir render: ${problems.length} problem(s); nothing written.`);
     return 1;
   }
-  return deliver("render", out, renderProvisionIndex(catalog, manifest.corpus), check);
+  return deliver("render", out, renderProvisionIndex(catalog, manifest.corpus, collectTestCitations(flagValue(rest, "--conformance") ?? defaultConformanceDir())), check);
 }
 
 function lint(rest: string[]): number {
@@ -182,6 +211,78 @@ function lint(rest: string[]): number {
   console.error(
     `acs-ir lint: ${report.findings.length} failure(s), ${report.stale.length} provision(s) need review; wrote ${join(buildRoot, "impact.md")}.`,
   );
+  return report.ok ? 0 : 1;
+}
+
+function defaultDistDir(): string {
+  return resolve(import.meta.dir, "..", "dist");
+}
+
+function compile(rest: string[]): number {
+  const check = rest.includes("--check");
+  const manifestFile = flagValue(rest, "--manifest") ?? defaultManifestPath();
+  const provisionsDir = flagValue(rest, "--provisions") ?? defaultProvisionsDir();
+  const distDir = flagValue(rest, "--dist") ?? defaultDistDir();
+  const buildRoot = flagValue(rest, "--build") ?? defaultBuildDir();
+  if (!existsSync(manifestFile)) {
+    console.error(`acs-ir compile: ${manifestFile} does not exist; run \`acs-ir extract\` first.`);
+    return 1;
+  }
+  const manifest = JSON.parse(readFileSync(manifestFile, "utf8")) as Manifest;
+  const records = loadRecords(provisionsDir);
+  const catalog = loadCatalog(manifest, records.records);
+  const problems = [...records.problems, ...catalog.problems];
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`catalog: ${p}`);
+    console.error(`acs-ir compile: ${problems.length} problem(s); nothing compiled.`);
+    return 1;
+  }
+  const vocabulary = loadVocabulary(flagValue(rest, "--vocabulary") ?? defaultVocabularyPath());
+  const program = compileProgram(vocabulary, catalog.entries, manifest.corpus);
+  process.stdout.write(renderCompile(program));
+  if (program.problems.length > 0) {
+    console.error(`acs-ir compile: ${program.problems.length} predicate(s) failed to compile; nothing written.`);
+    return 1;
+  }
+  mkdirSync(buildRoot, { recursive: true });
+  writeFileSync(join(buildRoot, "rules.json"), JSON.stringify(program, null, 2) + "\n");
+  writeFileSync(join(buildRoot, "invariants.tla"), emitTlaInvariants(catalog.entries, manifest.corpus));
+  return deliver("compile", join(distDir, "rules.dl"), emitSouffleProgram(program), check);
+}
+
+function loadProgram(buildRoot: string): RuleProgram | null {
+  const path = join(buildRoot, "rules.json");
+  if (!existsSync(path)) {
+    console.error(`${path} does not exist; run \`acs-ir compile\` first.`);
+    return null;
+  }
+  return JSON.parse(readFileSync(path, "utf8")) as RuleProgram;
+}
+
+function verify(rest: string[]): number {
+  const factsDir = flagValue(rest, "--facts");
+  if (!factsDir) {
+    console.error(USAGE);
+    return 2;
+  }
+  const program = loadProgram(flagValue(rest, "--build") ?? defaultBuildDir());
+  if (!program) return 1;
+  const violations = evaluate(program, readFacts(factsDir, program.relations));
+  process.stdout.write(violations.length ? violations.map(unified).join("\n") + "\n" : "");
+  console.error(`acs-ir verify: ${violations.length} violation(s) over ${factsDir}.`);
+  return 0;
+}
+
+function differential(rest: string[]): number {
+  const buildRoot = flagValue(rest, "--build") ?? defaultBuildDir();
+  const program = loadProgram(buildRoot);
+  if (!program) return 1;
+  const dl = readFileSync(join(flagValue(rest, "--dist") ?? defaultDistDir(), "rules.dl"), "utf8");
+  const fixtures = flagValue(rest, "--fixtures") ?? resolve(import.meta.dir, "..", "test", "conformance", "fixtures");
+  const souffle = flagValue(rest, "--souffle") ?? findSouffle();
+  const report = differentialCheck(program, dl, fixtures, souffle);
+  process.stdout.write(renderDifferential(report));
+  writeFileSync(join(buildRoot, "differential.json"), JSON.stringify(report, null, 2) + "\n");
   return report.ok ? 0 : 1;
 }
 
