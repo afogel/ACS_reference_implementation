@@ -44,7 +44,7 @@ When the spec changes under a provision, `lint` lists it and everything downstre
 | `ids/counter.yaml`, `ids/tombstones.yaml` | authored via `acs-ir ids next` | Monotonic ID allocation and retired IDs. |
 | `manifest/provisions.json` | generated | The mechanical half of every provision: id, type, source, line, block type, section slug, level, text, text hash. Written only by `acs-ir extract`. |
 | `provisions/<ID>.yaml` | authored | The semantic half: actor, profile, activation, modality, evidence class, schema refs, dependencies, restatement, status. One record per provision, joined to the manifest by ID. |
-| `dist/provision-index.md` | generated | The human-readable catalog (P2). |
+| `dist/provision-index.md` | generated | The human-readable catalog. |
 | `vocabulary/relations.yaml` | authored | The fact vocabulary: every relation a predicate may name, typed, with its source (wire, external, guardian-state, deployment, static). |
 | `dist/markers.patch`, `dist/markers-poc.patch` | generated | The overlay as unified diffs against the spec repository: the bulk marker PR's payload and the five-provision proof of concept. Both apply to the pinned checkout; the test suite proves it. |
 | `dist/rules.dl` | generated | The published Soufflé program: runnable by an auditor with stock Soufflé 2.5 and a directory of `.facts`. |
