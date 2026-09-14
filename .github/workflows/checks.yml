@@ -98,6 +98,14 @@ jobs:
       - name: Verify the published Soufflé program matches the predicates
         if: ${{ !cancelled() }}
         run: bun run ir compile --check
+      - name: Run the conformance report over the generated clean trace
+        # The clean envelope log must pass every compiled provision; a
+        # violation here is a regression in the normalizer, the external
+        # facts, or a predicate, not in the fixture.
+        if: ${{ !cancelled() }}
+        run: |
+          bun run ir/test/fixtures/trace/generate.ts .build-trace clean
+          bun run ir verify .build-trace/trace.jsonl --guardian .build-trace/guardian --deployment .build-trace/deployment --hmac-key .build-trace/hmac-key.hex --quiet > /dev/null
 
   # N62: the differential oracle (R3.8, X4). Soufflé is a CI-only dependency,
   # installed from the official ubuntu-24.04 .deb and never a local

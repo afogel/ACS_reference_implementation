@@ -9,6 +9,7 @@
  *   acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>]
  *                        [--schemas <dir>] [--conformance <dir>] [--sources <file>]
  *   acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]
+ *   acs-ir verify        <trace.jsonl> [--guardian <dir>] [--deployment <dir>] [--hmac-key <hex|file>] [--out <file>] [--json <file>]
  *   acs-ir verify        --facts <dir> [--build <dir>]
  *   acs-ir differential  [--fixtures <dir>] [--build <dir>] [--dist <dir>] [--souffle <path>]
  *   acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]
@@ -64,6 +65,12 @@ import { differentialCheck, findSouffle } from "./verify/differential.ts";
 import { evaluate, unified } from "./verify/evaluate.ts";
 import { readFacts } from "./verify/facts.ts";
 import { renderCompile, renderDifferential } from "./render/compile.ts";
+import { renderConformanceReport } from "./render/report.ts";
+import { checkStaleness } from "./catalog/staleness.ts";
+import { computeExternalFacts } from "./verify/external-facts.ts";
+import { normalizeTrace, readTrace } from "./verify/normalize-trace.ts";
+import { loadSchemas } from "./verify/schemas.ts";
+import { judge } from "./verify/verdicts.ts";
 
 const USAGE = [
   "usage:",
@@ -73,6 +80,7 @@ const USAGE = [
   "  acs-ir render        [--check] [--manifest <file>] [--provisions <dir>] [--out <file>]",
   "  acs-ir lint          [--corpus <dir>] [--build <dir>] [--baseline <dir>] [--provisions <dir>] [--ids <dir>] [--schemas <dir>] [--conformance <dir>] [--sources <file>]",
   "  acs-ir compile       [--check] [--manifest <file>] [--provisions <dir>] [--vocabulary <file>] [--dist <dir>] [--build <dir>]",
+  "  acs-ir verify        <trace.jsonl> [--guardian <dir>] [--deployment <dir>] [--hmac-key <hex|file>] [--out <file>] [--json <file>]",
   "  acs-ir verify        --facts <dir> [--build <dir>]",
   "  acs-ir differential  [--fixtures <dir>] [--build <dir>] [--dist <dir>] [--souffle <path>]",
   "  acs-ir ids next <REQ|DEF|INV|EXC> [--ids <dir>]",
@@ -261,16 +269,63 @@ function loadProgram(buildRoot: string): RuleProgram | null {
 
 function verify(rest: string[]): number {
   const factsDir = flagValue(rest, "--facts");
-  if (!factsDir) {
+  const buildRoot = flagValue(rest, "--build") ?? defaultBuildDir();
+  const program = loadProgram(buildRoot);
+  if (!program) return 1;
+  if (factsDir) {
+    const violations = evaluate(program, readFacts(factsDir, program.relations));
+    process.stdout.write(violations.length ? violations.map(unified).join("\n") + "\n" : "");
+    console.error(`acs-ir verify: ${violations.length} violation(s) over ${factsDir}.`);
+    return 0;
+  }
+  const trace = rest.find((a) => !a.startsWith("--") && !flagValues(rest).has(a));
+  if (!trace) {
     console.error(USAGE);
     return 2;
   }
-  const program = loadProgram(flagValue(rest, "--build") ?? defaultBuildDir());
-  if (!program) return 1;
-  const violations = evaluate(program, readFacts(factsDir, program.relations));
-  process.stdout.write(violations.length ? violations.map(unified).join("\n") + "\n" : "");
-  console.error(`acs-ir verify: ${violations.length} violation(s) over ${factsDir}.`);
-  return 0;
+  // N40: the whole pipeline.
+  const manifest = JSON.parse(readFileSync(defaultManifestPath(), "utf8")) as Manifest;
+  const records = loadRecords(flagValue(rest, "--provisions") ?? defaultProvisionsDir());
+  const catalog = loadCatalog(manifest, records.records);
+  const normalized = normalizeTrace(readTrace(trace));
+  const schemas = loadSchemas(flagValue(rest, "--schemas") ?? defaultSchemaDir());
+  const external = computeExternalFacts(normalized.lines, program.relations, schemas, {
+    hmacKey: readKey(flagValue(rest, "--hmac-key")),
+    guardianDir: flagValue(rest, "--guardian") ?? null,
+    deploymentDir: flagValue(rest, "--deployment") ?? null,
+  });
+  const facts = new Map(normalized.facts);
+  for (const rel of program.relations) if (rel.source === "static") facts.set(rel.name, rel.facts.map((t) => [...t]));
+  for (const [relation, tuples] of external.facts) facts.set(relation, [...(facts.get(relation) ?? []), ...tuples]);
+  const violations = evaluate(program, facts);
+  const negotiated = [...new Set(normalized.sessions.flatMap((s) => s.profiles))];
+  const stale = new Set(checkStaleness(catalog).stale.map((s) => s.id));
+  const verdicts = judge(program, catalog, violations, facts, negotiated.length ? negotiated : ["acs-core"], external.available, stale);
+  const input = { corpus: program.corpus, trace, sessions: normalized.sessions, negotiated: negotiated.length ? negotiated : ["acs-core"], available: [...external.available].sort(), verdicts };
+  const report = renderConformanceReport(input);
+  process.stdout.write(report);
+  mkdirSync(buildRoot, { recursive: true });
+  const out = flagValue(rest, "--out") ?? join(buildRoot, "conformance-report.md");
+  writeFileSync(out, report);
+  writeFileSync(flagValue(rest, "--json") ?? join(buildRoot, "conformance-report.json"), JSON.stringify(input, null, 2) + "\n");
+  const failed = verdicts.filter((v) => v.verdict === "fail").length;
+  console.error(`acs-ir verify: ${failed} provision(s) violated; wrote ${out}.`);
+  return failed === 0 ? 0 : 1;
+}
+
+/** The values consumed by flags, so a positional argument is never one of them. */
+function flagValues(argv: string[]): Set<string> {
+  const values = new Set<string>();
+  argv.forEach((a, i) => {
+    if (a.startsWith("--") && !["--check", "--quiet"].includes(a) && argv[i + 1] !== undefined) values.add(argv[i + 1] as string);
+  });
+  return values;
+}
+
+function readKey(spec: string | undefined): Buffer | null {
+  if (!spec) return null;
+  if (existsSync(spec)) return Buffer.from(readFileSync(spec, "utf8").trim(), "hex");
+  return Buffer.from(spec, "hex");
 }
 
 function differential(rest: string[]): number {
