@@ -1,0 +1,16 @@
+id: ACS-REQ-0034
+title: "Audience-specific text is composed client-side"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 303ff2eb016226514e35b3ac95c23204aa65aa2bc96959050fa70e4aec1687b4
+note: null

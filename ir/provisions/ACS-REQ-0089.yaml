@@ -1,0 +1,18 @@
+id: ACS-REQ-0089
+title: "Resource identifiers use URI form"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 270693d654109183385501ecb3b833cea6a80defa126b368d8d9512f147b7e34
+note: null
+predicate:
+  inexpressible: "no relation identifies which payload fields are resource identifiers; the hook schemas do not mark them"

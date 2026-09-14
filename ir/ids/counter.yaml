@@ -1,5 +1,5 @@
 # Monotonic ID allocation (S6). Bumped by `acs-ir ids next <type>`; never edited down.
-REQ: 24
+REQ: 152
 DEF: 2
-INV: 1
+INV: 4
 EXC: 1

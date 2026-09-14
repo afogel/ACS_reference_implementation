@@ -1,0 +1,18 @@
+id: ACS-REQ-0036
+title: "policy_version is populated when replay matters"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "replay or ledger-backed policy state matters to the deployment"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 918909651df970c1a604665fd92d33e0ebc14dae91930b35b4f00e2813b304b3
+note: null
+predicate:
+  inexpressible: "whether replay or ledger-backed policy state matters is a deployment judgment no relation records"

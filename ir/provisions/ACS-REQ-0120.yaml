@@ -1,0 +1,22 @@
+id: ACS-REQ-0120
+title: "A skill load correlates to an approved registration"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: a8721161dcf6b5d4436b44ce3830a8e5f6ec369d6d20ee2a6bc36633b1b22f71
+note: "Registrations are correlated within the session; a Guardian persists the pair across sessions, which the verifier cannot see."
+predicate:
+  subject: [LoadSeq]
+  witness: [Session, SkillId, Digest]
+  rules:
+    - "violation(LoadSeq, Session, SkillId, Digest) :- skill_load(LoadSeq, Session, SkillId, Digest), not approved(Session, SkillId, Digest)."
+    - "approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, R), decision(R, \"allow\")."

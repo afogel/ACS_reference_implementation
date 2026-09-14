@@ -1,0 +1,17 @@
+id: ACS-REQ-0146
+title: "Spans carry source_id and lineage_depth when populated"
+actor: framework
+reported_against: framework
+profile: [acs-trace]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 0670a5350f657d00b7a1c818cb85a78d098d0d3cb6473ce6d54c0120fdddf7e1
+predicate: null
+note: "Non-testable: no span relations in the vocabulary."

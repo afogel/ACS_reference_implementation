@@ -1,0 +1,21 @@
+id: ACS-REQ-0084
+title: "Requests outside the skew window are rejected"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 5bce9413e6570baacd5d2b2d720da41d64a8e56517123fb9eae0ce1da242ba40
+note: "Binds the MUST and the RECOMMENDED default (300000 ms), which the verifier applies when a ServerHello names no window. The window is judged against the Guardian's recorded_at."
+predicate:
+  subject: [Seq]
+  witness: [Response]
+  rules:
+    - "violation(Seq, Response) :- timestamp_out_of_window(Seq), response_to(Seq, Response), not error_code(Response, -32006)."

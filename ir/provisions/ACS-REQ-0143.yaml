@@ -1,0 +1,16 @@
+id: ACS-REQ-0143
+title: "A Guardian may request a serialization at handshake"
+actor: guardian
+reported_against: guardian
+profile: [acs-inspect]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 7e75dc82bee934ca98127aadc8a3b32bf521f1cebf8b28254be0ce5e8ed0d993
+note: null

@@ -200,3 +200,145 @@ relations:
     source: static
     columns: [{ name: field, type: symbol }]
     facts: [[chain_hash], [provenance_summary], [intent]]
+  # --- V7 additions: what the other 128 provisions needed ---
+  - name: client_provenance_producer
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: mode, type: symbol }]
+    doc: "ClientHello's `provenance_producer`: deterministic or none."
+  - name: modification_field
+    source: wire
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+    doc: "A key present in a MODIFY response's `modifications`."
+  - name: intent_parser_origin
+    source: wire
+    columns: [{ name: seq, type: number }, { name: origin, type: symbol }]
+    doc: "`intent.parser_provenance.origin` on a sessionStart or agentTrigger payload."
+  - name: intent_scope_mode
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: mode, type: symbol }]
+  - name: defer_timeout_decision
+    source: wire
+    columns: [{ name: seq, type: number }, { name: value, type: symbol }]
+  - name: reason_code
+    source: wire
+    columns: [{ name: seq, type: number }, { name: code, type: symbol }]
+    doc: "An entry of a response's `reason_codes`."
+  - name: signature_algorithm
+    source: wire
+    columns: [{ name: seq, type: number }, { name: algorithm, type: symbol }]
+    doc: "The `algorithm` of the envelope's signature, when one is present."
+  - name: skew_window
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: ms, type: number }]
+    doc: "ServerHello's `skew_window_ms`."
+  - name: request_nonce
+    source: wire
+    columns: [{ name: seq, type: number }, { name: nonce, type: symbol }]
+  - name: error_data
+    source: wire
+    columns: [{ name: seq, type: number }]
+    doc: "An error response carried a `data` object."
+  - name: error_data_field
+    source: wire
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+  - name: compaction_entry
+    source: wire
+    columns: [{ name: seq, type: number }, { name: step_id, type: symbol }]
+    doc: "A step_id in a postCompact payload's `entries_compacted`."
+  - name: compaction_summary_provenance
+    source: wire
+    columns: [{ name: seq, type: number }, { name: pid, type: symbol }]
+    doc: "The `provenance_id` of a postCompact payload's summary provenance."
+  - name: skill_register
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: skill_id, type: symbol }, { name: digest, type: symbol }]
+    doc: "A skillRegister request: the skill and its definition digest value."
+  - name: skill_load
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: skill_id, type: symbol }, { name: digest, type: symbol }]
+  - name: agbom_component
+    source: wire
+    columns: [{ name: seq, type: number }, { name: session, type: symbol }, { name: type, type: symbol }, { name: id, type: symbol }]
+    doc: "A component of an agbom/snapshot or agbom/changed payload."
+  - name: agbom_component_field
+    source: wire
+    columns: [{ name: seq, type: number }, { name: id, type: symbol }, { name: field, type: symbol }]
+  - name: signature_algorithm_supported
+    source: wire
+    columns: [{ name: session, type: symbol }, { name: algorithm, type: symbol }]
+    doc: "An entry of ServerHello's `signature_algorithms_supported`."
+  - name: modification_targets_overlap
+    source: external
+    columns: [{ name: seq, type: number }, { name: redaction_path, type: symbol }, { name: override_path, type: symbol }]
+    doc: "A redaction path and a parameter-override target that are equal or ancestor/descendant (§6.3); JSON Pointer comparison is ordinary code."
+  - name: timestamp_out_of_window
+    source: external
+    columns: [{ name: seq, type: number }]
+    doc: "The request's `timestamp` is more than the negotiated skew window (default 300000 ms) from the time the Guardian recorded it."
+  - name: context_entry_field
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: entry_id, type: symbol }, { name: field, type: symbol }]
+    doc: "A field present and non-null on an exported ContextEntry."
+  - name: context_entry_step
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: entry_id, type: symbol }, { name: step_type, type: symbol }]
+  - name: decision_log_field
+    source: guardian-state
+    columns: [{ name: seq, type: number }, { name: field, type: symbol }]
+    doc: "A field the Guardian's decision log recorded for the decision at seq: reasoning, model_identifier, confidence."
+  - name: intent_derivation_recorded
+    source: guardian-state
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: derivation, type: symbol }]
+    doc: "The audit chain's record of how a spawned subagent's Intent.parsed relates to the parent's."
+  - name: policy_requires_provenance
+    source: deployment
+    columns: [{ name: session, type: symbol }]
+    doc: "The Guardian's policy requires provenance for this session (ServerHello's `policy_requires_provenance`, which a refused session never carries)."
+  - name: strict_mode_forbidden
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: capability, type: symbol }]
+    doc: "A capability the deployment policy forbids under scope_mode: strict."
+  - name: client_ask_capable
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: capable, type: symbol }]
+    doc: "yes or no: whether the Guardian determined the client can resolve ASK (§9.2, an out-of-band determination)."
+  - name: agent_step_outcome
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: outcome, type: symbol }]
+    doc: "The Observed Agent's own record of what it did with a step: applied, proceeded, or blocked."
+  - name: agent_audit_event
+    source: deployment
+    columns: [{ name: session, type: symbol }, { name: seq, type: number }, { name: kind, type: symbol }]
+    doc: "An entry in the deployment's own audit log (§4.1, §6.4), keyed to the step it concerns."
+  - name: strict_provenance_schema
+    source: static
+    columns: [{ name: schema, type: symbol }]
+    doc: "The six strict hook schemas ACS-Provenance validates against."
+    facts:
+      - [hooks/agent-response.acs-provenance.json]
+      - [hooks/knowledge-retrieval.acs-provenance.json]
+      - [hooks/memory-context-retrieval.acs-provenance.json]
+      - [hooks/memory-store.acs-provenance.json]
+      - [hooks/tool-call-request.acs-provenance.json]
+      - [hooks/tool-call-result.acs-provenance.json]
+      - [hooks/user-message.acs-provenance.json]
+  - name: registered_algorithm
+    source: static
+    columns: [{ name: algorithm, type: symbol }]
+    doc: "The §10.1 registry."
+    facts: [[HMAC-SHA256], [ECDSA-P256], [RSA-PSS-SHA256], [ML-DSA-65], [ML-DSA-44], [ML-DSA-87], [SLH-DSA-128s], [SLH-DSA-128f], [ML-DSA-65+ECDSA-P256], [ML-DSA-65+RSA-PSS-SHA256]]
+  - name: entry_should_field
+    source: static
+    columns: [{ name: field, type: symbol }]
+    doc: "§8.1's SHOULD fields on a ContextEntry."
+    facts: [[request_hash], [timestamp], [provenance_summary]]
+  - name: audit_entry_field
+    source: static
+    columns: [{ name: field, type: symbol }]
+    doc: "The fields ACS-Audit deployments SHOULD also populate."
+    facts: [[timestamp], [provenance_summary]]
+  - name: decision_log_required
+    source: static
+    columns: [{ name: field, type: symbol }]
+    doc: "What a decision log entry carries unconditionally (confidence is 'when available')."
+    facts: [[reasoning], [model_identifier]]

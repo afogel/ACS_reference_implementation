@@ -1,0 +1,16 @@
+id: ACS-REQ-0069
+title: "A published chain head inconsistent with the chain is an integrity event"
+actor: verifier
+reported_against: verifier
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 2a916723ff9a011935d1cdab1648f2b2f6728fc34c3be157f7ca712d38ea02ec
+note: null

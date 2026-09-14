@@ -65,14 +65,19 @@ describe("the pinned corpus (spec/acs) -- reference numbers", () => {
     });
   });
 
-  it("binds the V2 specimens' 23 occurrences, excludes the eleven in informative or editorial sources, and leaves 174 unbound", () => {
-    expect(census?.totals).toMatchObject({ bound: 23, excluded: 11, unbound: 174 });
+  it("binds 163 occurrences, excludes 45 (eleven by source status, 34 by authored exclusion), and leaves none unbound (V7)", () => {
+    expect(census?.totals).toMatchObject({ bound: 163, excluded: 45, unbound: 0 });
     const bound = (census?.occurrences ?? []).filter((o) => o.binding.kind === "bound");
-    expect(new Set(bound.map((o) => (o.binding as { provision_id: string }).provision_id)).size).toBe(18);
-    const excluded = (census?.occurrences ?? []).filter((o) => o.binding.kind === "excluded").map((o) => o.source);
-    expect(new Set(excluded)).toEqual(
+    expect(new Set(bound.map((o) => (o.binding as { provision_id: string }).provision_id)).size).toBe(143);
+    const excluded = (census?.occurrences ?? []).filter((o) => o.binding.kind === "excluded");
+    const bySource = excluded.filter((o) => (o.binding as { reason: string }).reason.endsWith("_source")).map((o) => o.source);
+    expect(new Set(bySource)).toEqual(
       new Set(["acs.md", "concepts/README.md", "identity/overview.md", "identity/standards.md", "topics/ACS_in_action_example.md"]),
     );
+    expect(bySource).toHaveLength(11);
+    const authored = excluded.filter((o) => !(o.binding as { reason: string }).reason.endsWith("_source"));
+    expect(authored).toHaveLength(34);
+    expect(new Set(authored.map((o) => (o.binding as { reason: string }).reason))).toEqual(new Set(["restatement_of", "roadmap", "rationale"]));
   });
 
   it("finds the ten (normative) callouts across six concept pages", () => {
@@ -119,7 +124,7 @@ describe("the V2 catalog -- twenty-eight provisions, both halves present", () =>
   it("joins every marked provision to an authored record, with no problems either way", () => {
     expect(records.problems).toEqual([]);
     expect(catalog.problems).toEqual([]);
-    expect(catalog.entries).toHaveLength(28);
+    expect(catalog.entries).toHaveLength(155);
   });
 
   it("spans all five node types and the four block types", () => {

@@ -1,0 +1,21 @@
+id: ACS-REQ-0086
+title: "Duplicate request_id within a session is rejected"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 07a0d586fb4c0e54ed1e6a176a83bec6c1d4585691377c0d6e34e9b0517223cc
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Session, RequestId]
+  rules:
+    - "violation(Seq, Session, RequestId) :- request(Earlier, Session, _, RequestId, _), request(Seq, Session, _, RequestId, _), Earlier < Seq, response_to(Seq, R), not error_code(R, -32005)."

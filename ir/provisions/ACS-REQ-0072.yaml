@@ -1,0 +1,21 @@
+id: ACS-REQ-0072
+title: "Approvers do not return ask"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 596e6efbbc420f63af13044a19ef29b106e02d16c08d3544e96c9d63144d6bb8
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Session, Approver]
+  rules:
+    - "violation(Seq, Session, Approver) :- ask_resolved(Seq, Session, Approver), decision(Seq, \"ask\")."

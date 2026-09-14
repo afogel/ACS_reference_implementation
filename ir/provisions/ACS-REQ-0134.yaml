@@ -1,0 +1,22 @@
+id: ACS-REQ-0134
+title: "ACS-Inspect emits agbom/snapshot before content-bearing hooks"
+actor: framework
+reported_against: framework
+profile: [acs-inspect]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 3440c71e59da8bdbf3c16918e118dec06bbdebd85ce0c2cb3fc8311f152c0209
+note: "The stem and its first item. The second item is ACS-REQ-0135."
+predicate:
+  subject: [Seq]
+  witness: [Session, Method]
+  rules:
+    - "violation(Seq, Session, Method) :- hook(Seq, Session, Method), content_bearing_method(Method), not snapshot_before(Session, Seq)."
+    - "snapshot_before(Session, Seq) :- request(Snapshot, Session, \"agbom/snapshot\", _, _), hook(Seq, Session, _), Snapshot < Seq."

@@ -23,7 +23,7 @@ describe("runCensus -- the fixture corpus end to end", () => {
   });
 
   it("puts every occurrence in exactly one of bound, excluded, unbound", () => {
-    expect(census?.totals).toMatchObject({ occurrences: 16, bound: 7, excluded: 2, unbound: 7, masked: 2 });
+    expect(census?.totals).toMatchObject({ occurrences: 16, bound: 7, excluded: 3, unbound: 6, masked: 2 });
     const bound = rows.filter((r) => r.binding.kind === "bound").map((r) => `${r.line}:${r.keyword}=${(r.binding as { provision_id: string }).provision_id}`);
     expect(bound).toEqual([
       "5:MUST NOT=ACS-INV-0001",
@@ -37,7 +37,10 @@ describe("runCensus -- the fixture corpus end to end", () => {
     expect(rows.filter((r) => r.binding.kind === "excluded").map((r) => [r.source, (r.binding as { reason: string }).reason])).toEqual([
       ["concepts/README.md", "editorial_source"],
       ["notes.md", "informative_source"],
+      ["spec/rules.md", "restatement_of"],
     ]);
+    const restated = rows.find((r) => r.source === "spec/rules.md" && r.binding.kind === "excluded")?.binding as { reason: string; of?: string };
+    expect(restated.of).toBe("ACS-REQ-0001");
   });
 
   it("reports per-source counts with the node-type columns present and zero", () => {
@@ -45,7 +48,8 @@ describe("runCensus -- the fixture corpus end to end", () => {
     expect(rules).toMatchObject({
       occurrences: 13,
       bound: 6,
-      unbound: 7,
+      excluded: 1,
+      unbound: 6,
       by_block_type: { heading: 1, paragraph: 5, list_item: 3, table_cell: 3, blockquote: 1 },
       by_node_type: { requirement: 0, definition: 0, invariant: 0, exclusion: 0 },
       normative_tags: 4,

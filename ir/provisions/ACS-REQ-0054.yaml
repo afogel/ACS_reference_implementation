@@ -1,0 +1,16 @@
+id: ACS-REQ-0054
+title: "The framework attaches trust deterministically"
+actor: framework
+reported_against: framework
+profile: [acs-provenance]
+activation: "the deployment populates the OPTIONAL trust field"
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 1ba6384f846aed003c4da68fc55f7e3196ae3df2ec74477dcb1cc502cddb912e
+note: null

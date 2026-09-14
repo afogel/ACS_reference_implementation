@@ -1,0 +1,16 @@
+id: ACS-INV-0004
+title: "The rungs do not collapse"
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: invariant
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 90a25d2d84ce10d00cc28bdeb3dadb426dbc1ed6825c34faeac993474866deea
+note: null

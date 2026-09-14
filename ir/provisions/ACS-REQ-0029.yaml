@@ -1,0 +1,18 @@
+id: ACS-REQ-0029
+title: "Unknown fields are ignored"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 9b230819cc76f014dccee6460312246662b94eab392b60ebecc806ba6931596f
+note: "Binds both parties; recorded as guardian, the same actor gap as ACS-REQ-0018."
+predicate:
+  inexpressible: "no relation records whether an envelope carried a field outside its schema nor how the receiver treated it; a rejection on an unknown field looks like any other error"

@@ -1,0 +1,16 @@
+id: ACS-REQ-0125
+title: "MCP tool calls may collapse into the generic hooks"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: db09f6fa48cfe359d38cda34d36023f5ec74a0a1acff373def858926bd56698d
+note: null

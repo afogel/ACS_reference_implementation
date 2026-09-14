@@ -56,6 +56,48 @@
       "text_hash": "d13d31e336aa8a7401273ed6819dfff59e909b7313119268c702c9698f0c0d12"
     },
     {
+      "id": "ACS-INV-0002",
+      "type": "Invariant",
+      "source_file": "concepts/intent.md",
+      "line": 21,
+      "block_type": "blockquote",
+      "section_slug": "extending-intent",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "**The only conformant path to widen Intent (normative).** The sole mechanism for extending `Intent.parsed` within a session is an Approver's `intent_extension` returned via the ASK flow. Extensions are subject to the session's `scope_mode`; under `scope_mode: strict` a Guardian MUST NOT honor an extension that adds capabilities the deployment policy forbids in strict mode.",
+      "text_hash": "38f1e7bab7ddc4991dac306ceefd6c85f68a1a94b3400aef61c216b3c53796c4"
+    },
+    {
+      "id": "ACS-INV-0003",
+      "type": "Invariant",
+      "source_file": "concepts/identity.md",
+      "line": 13,
+      "block_type": "paragraph",
+      "section_slug": "principals-and-descriptors",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "Three identities are distinct and MUST NOT be conflated:\n\n- **Observed Agent identity**: which agent is under governance.\n- **Guardian identity**: which policy authority is deciding.\n- **Policy-author identity**: who authored the policy that produced a decision.",
+      "text_hash": "6d14bc4d588b32f1bb388394fa5416157b781e63e9bc574215d3f504db6f2f34"
+    },
+    {
+      "id": "ACS-INV-0004",
+      "type": "Invariant",
+      "source_file": "concepts/trust.md",
+      "line": 25,
+      "block_type": "blockquote",
+      "section_slug": "invariants",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "**The rungs do not collapse (normative).** A Guardian MUST NOT treat an asserted fact as attested. The basis of a fact is part of the fact; relying on a fact above its actual basis is an error.",
+      "text_hash": "90a25d2d84ce10d00cc28bdeb3dadb426dbc1ed6825c34faeac993474866deea"
+    },
+    {
       "id": "ACS-REQ-0001",
       "type": "Requirement",
       "source_file": "spec/instrument/specification.md",
@@ -381,6 +423,1753 @@
       ],
       "text": "Approver authentication is REQUIRED. Guardian MUST verify approver identity against policy.",
       "text_hash": "2afe3fa652ea6bdd12008d2e6e67e7846ee730644c38f771baab9de0fc39b2b2"
+    },
+    {
+      "id": "ACS-REQ-0025",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 12,
+      "block_type": "list_item",
+      "section_slug": "1-design-principles",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "**The agent MUST NOT have knowledge of hooks.**",
+      "text_hash": "3957f333d277a12b6103e5834fd1f07c01110c6ff0e2e2bd3d1013b4588f5548"
+    },
+    {
+      "id": "ACS-REQ-0026",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 183,
+      "block_type": "paragraph",
+      "section_slug": "71-optional-trust-enum",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "The wire format reserves an OPTIONAL `trust` enum (`trusted`, `untrusted`, `unknown`) so vendor Guardian implementations can carry channel classification in the envelope rather than derive it in policy.",
+      "text_hash": "fc2d8aedb1321162b8048e86051e789b91ade26458a7e4a5f8f96a5d654e21e7"
+    },
+    {
+      "id": "ACS-REQ-0027",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 61,
+      "block_type": "paragraph",
+      "section_slug": "acs-provenance",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD use the default channel-to-trust mapping ([§7.2](./instrument/specification.md#72-default-channel-to-trust-mapping)) so cross-deployment audits remain portable",
+      "text_hash": "c60df09f1e3846f1a1992d7426925a46d50855c66d48fd3cf00e5f42871c3162"
+    },
+    {
+      "id": "ACS-REQ-0028",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 59,
+      "block_type": "paragraph",
+      "section_slug": "3-wire-format",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Guardians SHOULD accept array-shaped requests and return an array of correlated responses",
+      "text_hash": "930840a8ade5c5b0a709e8b220d517d41ffcfbe462b0d011cf27b61736056926"
+    },
+    {
+      "id": "ACS-REQ-0029",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 71,
+      "block_type": "paragraph",
+      "section_slug": "4-capability-negotiation-handshake",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Unknown fields MUST be ignored.",
+      "text_hash": "9b230819cc76f014dccee6460312246662b94eab392b60ebecc806ba6931596f"
+    },
+    {
+      "id": "ACS-REQ-0030",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 71,
+      "block_type": "paragraph",
+      "section_slug": "4-capability-negotiation-handshake",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "If the client declares `provenance_producer: \"none\"` and the Guardian's `policy_requires_provenance` is true, the Guardian MUST refuse the session at handshake time with `PROVENANCE_REQUIRED` (`-32002`, §17.1) rather than silently degrading enforcement.",
+      "text_hash": "1a1bb4354c71c1bbf6fdc784377ef2d54bf510a8e50b5af4827d3be9ecd78134"
+    },
+    {
+      "id": "ACS-REQ-0031",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 77,
+      "block_type": "paragraph",
+      "section_slug": "41-handshake-failure-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A session started unguarded MUST be recorded in the deployment's own audit log",
+      "text_hash": "d4c58251de2421c9b3710e2046db6573641a3fa893ea52af2ac63f9782140062"
+    },
+    {
+      "id": "ACS-REQ-0032",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 77,
+      "block_type": "paragraph",
+      "section_slug": "41-handshake-failure-normative",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD be surfaced on Trace events when the deployment claims ACS-Trace",
+      "text_hash": "98cda73c20d6c3202895df45d0734c8ed6a9c47dc8136d27f3b58a13a9d11b25"
+    },
+    {
+      "id": "ACS-REQ-0033",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 77,
+      "block_type": "paragraph",
+      "section_slug": "41-handshake-failure-normative",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "The Observed Agent SHOULD retry the handshake for subsequent sessions.",
+      "text_hash": "2cce955a42abd79f1e80311ec13fcbb6ce1c0a165cfb351fb6e783c75d5647d8"
+    },
+    {
+      "id": "ACS-REQ-0034",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 130,
+      "block_type": "table_cell",
+      "section_slug": "61-decision-result-fields",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "deployments wanting different text per audience SHOULD compose them client-side from `reasoning` + `policy_data` + `reason_codes`",
+      "text_hash": "303ff2eb016226514e35b3ac95c23204aa65aa2bc96959050fa70e4aec1687b4"
+    },
+    {
+      "id": "ACS-REQ-0035",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 131,
+      "block_type": "table_cell",
+      "section_slug": "61-decision-result-fields",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "`policy_version` is OPTIONAL and deployment-defined",
+      "text_hash": "064bbfeb73fbe4ab3d7db5e8f7a8e9065423d5d9681527635392b130c91dcf72"
+    },
+    {
+      "id": "ACS-REQ-0036",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 131,
+      "block_type": "table_cell",
+      "section_slug": "61-decision-result-fields",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD be populated when replay or ledger-backed policy state matters",
+      "text_hash": "918909651df970c1a604665fd92d33e0ebc14dae91930b35b4f00e2813b304b3"
+    },
+    {
+      "id": "ACS-REQ-0037",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 131,
+      "block_type": "table_cell",
+      "section_slug": "61-decision-result-fields",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A single decision MAY cite multiple entries when several paradigms reject the same action",
+      "text_hash": "9ce46540098e758edb430e0f473f6f32f41d19c818c74064220aecc621dc9e32"
+    },
+    {
+      "id": "ACS-REQ-0038",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 132,
+      "block_type": "table_cell",
+      "section_slug": "61-decision-result-fields",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "UIs and meta-policies SHOULD switch on these rather than parsing reasoning text or rule IDs.",
+      "text_hash": "805dc58c32a93b6e8aeefbed3f83fb3de638d72116b79320e65d51a854c6e82e"
+    },
+    {
+      "id": "ACS-REQ-0039",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 146,
+      "block_type": "list_item",
+      "section_slug": "63-modify-composition-normative",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "a MODIFY that carries `modified_content` MUST NOT also carry `redactions` or `parameter_overrides`",
+      "text_hash": "30ebd035ffdfc5f87f1473f269374ed3a561593d706a5dda9147674da587cfb3"
+    },
+    {
+      "id": "ACS-REQ-0040",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 147,
+      "block_type": "list_item",
+      "section_slug": "63-modify-composition-normative",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "`redactions` and `parameter_overrides` MAY appear together",
+      "text_hash": "6203ed391766099d0883b31708546853a8069764056ecf258cbbcc6aeaa61a2c"
+    },
+    {
+      "id": "ACS-REQ-0041",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 147,
+      "block_type": "list_item",
+      "section_slug": "63-modify-composition-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "but their targets MUST be disjoint: no `redactions` path may address the same field as a `parameter_overrides` key, nor an ancestor or descendant of it.",
+      "text_hash": "7ce33e1a588b31b78aa95dfcad11f9a358c7202723d5e31e8c8d5bfb03fb9492"
+    },
+    {
+      "id": "ACS-REQ-0043",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 149,
+      "block_type": "paragraph",
+      "section_slug": "63-modify-composition-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "An Observed Agent that receives one cannot determine the Guardian's intent and MUST fail closed, treating the decision as `DENY`",
+      "text_hash": "646cf8618b1f60ee29abc401bce9f385615a50ea675d8139439ed99d1375bd71"
+    },
+    {
+      "id": "ACS-REQ-0044",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 149,
+      "block_type": "paragraph",
+      "section_slug": "63-modify-composition-normative",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "and SHOULD record an audit event.",
+      "text_hash": "c08ff72f1d4b139baa313fad155156f953c59222a05055f9a82671e924524af0"
+    },
+    {
+      "id": "ACS-REQ-0045",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 157,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "the Observed Agent MUST wait for the Guardian's decision, up to the negotiated timeout (`timeout_config`, §4)",
+      "text_hash": "d845664065decdde6ca30073625dac0dd96c01c7e7c964d679a7ec6cd13a5dff"
+    },
+    {
+      "id": "ACS-REQ-0046",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 157,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "and MUST apply it: `ALLOW` proceeds, `DENY` blocks the action, `MODIFY` proceeds with the modified payload (§6.3), `ASK` pauses for approval, `DEFER` suspends pending resolution.",
+      "text_hash": "ac3cdce41840ebe184a29c52118a73412ecb7a427464faf5a6df1e2055e18686"
+    },
+    {
+      "id": "ACS-REQ-0047",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 159,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A deployment MAY set `on_decision_failure: deny` (fail-closed).",
+      "text_hash": "9e2ddc2e6d290ec5e37dcb5ff2561726ca2b267749f847289fa0beabcd404472"
+    },
+    {
+      "id": "ACS-REQ-0048",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 159,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MAY",
+      "keywords": [
+        "MAY",
+        "MAY"
+      ],
+      "text": "an error from the §17.1 registry carries a recovery action the agent MAY attempt within the remaining budget, and an unambiguous failure (a refused connection) MAY resolve immediately rather than waiting out the clock.",
+      "text_hash": "9d4b0dc6e3c1443f45a00f538a2f180117f54ccb42fbc88332849d161b40773c"
+    },
+    {
+      "id": "ACS-REQ-0050",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 161,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Every step that proceeds without a decision MUST be recorded as an audit event",
+      "text_hash": "3a4c8fe649568d25dc0dc6ea42af1b68f857ef42db20de237903f8b074d04b31"
+    },
+    {
+      "id": "ACS-REQ-0051",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 161,
+      "block_type": "paragraph",
+      "section_slug": "64-honoring-decisions-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "When a decision does arrive within the timeout, the agent MUST honor it regardless of the posture.",
+      "text_hash": "4d42af653d6d9acaf3ea14cb3d1eae956939424c18dc53ed2a5409f6688f9369"
+    },
+    {
+      "id": "ACS-REQ-0052",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 169,
+      "block_type": "list_item",
+      "section_slug": "7-provenance",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Under **`deterministic`**, the producer MUST attach a Provenance object to **every** data-bearing field in every hook payload it emits.",
+      "text_hash": "335f50c078e3f0feb57ecf5f78566ab261cc45078165f8efc75fe55b93eedc77"
+    },
+    {
+      "id": "ACS-REQ-0053",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 172,
+      "block_type": "paragraph",
+      "section_slug": "7-provenance",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "When a Provenance object is emitted, all of its own required fields MUST be populated.",
+      "text_hash": "70f11405491cfca37e24e351256a5852b1de5040502a7fe5935a7198358aa1af"
+    },
+    {
+      "id": "ACS-REQ-0054",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 187,
+      "block_type": "list_item",
+      "section_slug": "71-optional-trust-enum",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "The framework, not the LLM, MUST attach the label, deterministically, based on which channel data crossed.",
+      "text_hash": "1ba6384f846aed003c4da68fc55f7e3196ae3df2ec74477dcb1cc502cddb912e"
+    },
+    {
+      "id": "ACS-REQ-0055",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 189,
+      "block_type": "list_item",
+      "section_slug": "71-optional-trust-enum",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Receivers (especially across A2A or multi-Guardian boundaries) MUST treat the field as a hint and re-derive trust against local policy keyed off `origin` + `source_id` rather than honor a remote-asserted label at face value.",
+      "text_hash": "cd5af29f53bef9eccff3dbe32c658484b6c2cae63e0b7d762689a10d147cbfb3"
+    },
+    {
+      "id": "ACS-REQ-0056",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 193,
+      "block_type": "paragraph",
+      "section_slug": "72-default-channel-to-trust-mapping",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Deployments MAY override in policy",
+      "text_hash": "b2fcfcd327b9be64f0922321002102432ecf9161fe5181089b1ad1c56244ea39"
+    },
+    {
+      "id": "ACS-REQ-0057",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 193,
+      "block_type": "paragraph",
+      "section_slug": "72-default-channel-to-trust-mapping",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "but SHOULD record overrides in audit metadata.",
+      "text_hash": "2321adbd91b4bd6cbcb297ff0fa036317eb7aa408626aa73ffed4fd51469b74e"
+    },
+    {
+      "id": "ACS-REQ-0058",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 209,
+      "block_type": "paragraph",
+      "section_slug": "8-sessioncontext-and-intent",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "The Observed Agent MAY also send `session_id` and a `chain_hash` for cross-checking.",
+      "text_hash": "ff368d786ee2cde785c21fbb164c72ec5baef77d2e7b6860131cccf811fe25b7"
+    },
+    {
+      "id": "ACS-REQ-0059",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 211,
+      "block_type": "paragraph",
+      "section_slug": "8-sessioncontext-and-intent",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "deployments that do not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first content-bearing hook",
+      "text_hash": "02813e67c9775c31246a599d51a4c307a99411aef70216be513a212806232799"
+    },
+    {
+      "id": "ACS-REQ-0060",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 222,
+      "block_type": "list_item",
+      "section_slug": "81-contextentry",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "- **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so",
+      "text_hash": "008c8a8c2a5e8dd60eb0633070a934273cd56414ec6d718c68bc2b3659e51ec0"
+    },
+    {
+      "id": "ACS-REQ-0061",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 222,
+      "block_type": "list_item",
+      "section_slug": "81-contextentry",
+      "level": null,
+      "keywords": [],
+      "text": "`previous_hash` (required for every entry except the first)",
+      "text_hash": "850d13a22d5260a814bf0e4911d61ad5bb709aae03f30326a0b37d029c2bdcf1"
+    },
+    {
+      "id": "ACS-REQ-0062",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 222,
+      "block_type": "list_item",
+      "section_slug": "81-contextentry",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "deployments claiming the **ACS-Audit** profile MUST populate `request_hash`",
+      "text_hash": "e8311dbcf186503a820662464793f8a029d54ab65d12e443f0c7d23716274949"
+    },
+    {
+      "id": "ACS-REQ-0063",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 75,
+      "block_type": "paragraph",
+      "section_slug": "acs-audit",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "ACS-Audit deployments SHOULD also populate `timestamp` and `provenance_summary` on every ContextEntry.",
+      "text_hash": "a07b3a3994a744fbae300ba2cb44d4ec3a2fe30d48197fd942938358121a79dd"
+    },
+    {
+      "id": "ACS-REQ-0064",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 238,
+      "block_type": "paragraph",
+      "section_slug": "83-provenancesummary",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "All fields are OPTIONAL — Guardians populate only what their policies consume.",
+      "text_hash": "f52a23c60bc319bf2d3200bba22bc480c47fd04a2c3f23c70869755170ca84b2"
+    },
+    {
+      "id": "ACS-REQ-0065",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 242,
+      "block_type": "paragraph",
+      "section_slug": "84-intent",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "Intent is OPTIONAL and is defined in [Concepts › Intent](../../concepts/intent.md) (normative).",
+      "text_hash": "f33cafc1c510f9bc991a6bfd22ba498fc1cf16a596611007577fea0e24c8be45"
+    },
+    {
+      "id": "ACS-REQ-0066",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 242,
+      "block_type": "paragraph",
+      "section_slug": "84-intent",
+      "level": "REQUIRED",
+      "keywords": [
+        "REQUIRED"
+      ],
+      "text": "`parser_provenance` (REQUIRED if `parsed` present",
+      "text_hash": "dc5386ddfe749536616326e8b18fbcc0b961dbc4a8103ae12478e8a8d5087285"
+    },
+    {
+      "id": "ACS-REQ-0067",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 242,
+      "block_type": "paragraph",
+      "section_slug": "84-intent",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "`origin` MUST be `user_input`",
+      "text_hash": "206c69b42c1e8d37a79c9378351ee5f2701c77645466a2925a465e9699ca6d79"
+    },
+    {
+      "id": "ACS-REQ-0068",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 256,
+      "block_type": "paragraph",
+      "section_slug": "86-chain-head-publication-normative",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian that receives an Observed Agent's `chain_hash` (cross-check) that disagrees with its own computed head MAY DENY with `reason_codes: [\"chain_mismatch\"]`, or return the `CHAIN_MISMATCH` error (`-32007`, §17.1) when it cannot proceed at all.",
+      "text_hash": "b8b81605569712d6f6f9ad60c5c5277b304b6aba0ad32fe2bb2b24aa14943b7e"
+    },
+    {
+      "id": "ACS-REQ-0069",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 256,
+      "block_type": "paragraph",
+      "section_slug": "86-chain-head-publication-normative",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "An Observed Agent or external auditor that finds a published `chain_hash` inconsistent with the recomputed chain SHOULD treat it as an integrity event, not a transient error.",
+      "text_hash": "2a916723ff9a011935d1cdab1648f2b2f6728fc34c3be157f7ca712d38ea02ec"
+    },
+    {
+      "id": "ACS-REQ-0070",
+      "type": "Requirement",
+      "source_file": "concepts/agents.md",
+      "line": 19,
+      "block_type": "paragraph",
+      "section_slug": "approver",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "An Approver MAY be human, agent, or service.",
+      "text_hash": "f330b880a32c08c59dfeea0bec767ef45959d58f4def9388a8cd26990b5612be"
+    },
+    {
+      "id": "ACS-REQ-0071",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 262,
+      "block_type": "paragraph",
+      "section_slug": "9-approver-model",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "ASK approvers MAY be human, agent, or service.",
+      "text_hash": "caaab40fca50efb8196df26bb684175af0aad817deced6227f1a5e261625165e"
+    },
+    {
+      "id": "ACS-REQ-0072",
+      "type": "Requirement",
+      "source_file": "concepts/agents.md",
+      "line": 23,
+      "block_type": "paragraph",
+      "section_slug": "approver",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "In v0.1 this is single-hop: Approvers MUST NOT themselves return `ask`.",
+      "text_hash": "596e6efbbc420f63af13044a19ef29b106e02d16c08d3544e96c9d63144d6bb8"
+    },
+    {
+      "id": "ACS-REQ-0073",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 264,
+      "block_type": "paragraph",
+      "section_slug": "9-approver-model",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "Single-hop only in v0.1. Approvers MUST NOT return ASK.",
+      "text_hash": "bb97ff1a9d0f0ac9dd9e126a909a665ab8722489701bd7795117a7854ddafbd1"
+    },
+    {
+      "id": "ACS-REQ-0074",
+      "type": "Requirement",
+      "source_file": "concepts/agents.md",
+      "line": 23,
+      "block_type": "paragraph",
+      "section_slug": "approver",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "The Approver's grant MAY extend `Intent.parsed` through an `intent_extension` (see [Intent](./intent.md)).",
+      "text_hash": "a322d44f25342d110093ea5b0833236ca42bfc390d21a175ebb5e5864febbd9b"
+    },
+    {
+      "id": "ACS-REQ-0075",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 268,
+      "block_type": "paragraph",
+      "section_slug": "91-intent-extension-via-ask-normative",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "the approver's grant MAY include an `intent_extension` field",
+      "text_hash": "aec341dd89c9a627a065d2766db7ef3ac2b928e2485ad499a7eb983740463f5b"
+    },
+    {
+      "id": "ACS-REQ-0076",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 270,
+      "block_type": "paragraph",
+      "section_slug": "91-intent-extension-via-ask-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "On `scope: session`, the Guardian MUST:\n\n1. Append the capabilities to `Intent.parsed`.\n2. Write a ContextEntry with `step_type: \"intent_extension\"` recording the approver identity, the granted capabilities, and the originating ASK's `step_id`.\n3. Carry the extension's `provenance` forward distinct from the original `parser_provenance` so audits can distinguish parser-derived capabilities from approver-extended ones.",
+      "text_hash": "809cc111ec9e525960ac48dbf5a30a24313a25c748770ffe6e5fb453b9d538c6"
+    },
+    {
+      "id": "ACS-REQ-0077",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 276,
+      "block_type": "paragraph",
+      "section_slug": "91-intent-extension-via-ask-normative",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "a Guardian operating under `scope_mode: strict` MUST NOT honor extensions that would add capabilities the deployment policy forbids in strict mode.",
+      "text_hash": "0033f90eda4b7afb556c0139cc78bac01562b1ca8ce709afbe6cefd7747566a4"
+    },
+    {
+      "id": "ACS-REQ-0078",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 282,
+      "block_type": "paragraph",
+      "section_slug": "92-approver-incapable-clients-normative",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "When the Guardian determines that the client cannot resolve `ASK`, the Guardian MUST NOT return `ASK`.",
+      "text_hash": "6e4db93c668f03a1ebcd1ddb1cc87e1e417f8f1dea88e74e729c1b7b36daae63"
+    },
+    {
+      "id": "ACS-REQ-0079",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 282,
+      "block_type": "paragraph",
+      "section_slug": "92-approver-incapable-clients-normative",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "The Guardian MUST instead substitute one of:\n\n1. `DEFER` with `timeout_decision: \"deny\"`: when the underlying issue might resolve through retry, an out-of-band escalation, or a later state change. The deferred verdict still counts toward cascading-deferral limits (§6).\n2. `DENY` with `reason_codes: [\"approver_unavailable\"]` and `reasoning` that names the missing capability: when no recovery path exists.",
+      "text_hash": "4d14901e605c82f04ce1b67cf9693947b24f4ccf1c5ed9e16a5499f6690836a0"
+    },
+    {
+      "id": "ACS-REQ-0080",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 287,
+      "block_type": "paragraph",
+      "section_slug": "92-approver-incapable-clients-normative",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "deployments SHOULD prefer `DEFER` when the request is potentially recoverable through a different surface, and `DENY` when the action is unconditionally outside the client's reachable authority.",
+      "text_hash": "0a70be5bf9c1810f81df61525ade522351a6f16467948128164ff66aeecb8821"
+    },
+    {
+      "id": "ACS-REQ-0081",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 293,
+      "block_type": "paragraph",
+      "section_slug": "10-cryptographic-signatures",
+      "level": "REQUIRED",
+      "keywords": [
+        "REQUIRED"
+      ],
+      "text": "A signature over the §10 canonical input is REQUIRED in ACS-Core.",
+      "text_hash": "4b280ca6e17aac7491296c788f851ce53ceae469b60ab643575e3b55e73f11a2"
+    },
+    {
+      "id": "ACS-REQ-0082",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 303,
+      "block_type": "table_cell",
+      "section_slug": "101-algorithm-registry",
+      "level": "RECOMMENDED",
+      "keywords": [
+        "RECOMMENDED",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL",
+        "OPTIONAL"
+      ],
+      "text": "`HMAC-SHA256` | Symmetric MAC | RECOMMENDED. Shared-secret integrity; simplest deployment path. Sufficient for same-host and trusted-network topologies where the threat is accidental tampering or replay. |\n| `ECDSA-P256` | Classical asymmetric | OPTIONAL. Strongest current ecosystem support across Java, Node, .NET, HSMs, and major cloud KMS providers. |\n| `RSA-PSS-SHA256` | Classical asymmetric | OPTIONAL. Legacy interop; deployments with existing RSA PKI. |\n| `ML-DSA-65` | PQC, lattice (FIPS 204) | OPTIONAL. ~128-bit post-quantum security; ~3.3 KB signatures. Recommended for deployments shipping PQC libraries today. |\n| `ML-DSA-44` | PQC, lattice | OPTIONAL. Low-bandwidth profile. |\n| `ML-DSA-87` | PQC, lattice | OPTIONAL. High-security profile. |\n| `SLH-DSA-128s` | PQC, hash (FIPS 205) | OPTIONAL. Algorithmic diversity vs. ML-DSA's lattice assumption. Caution: ~7.8 KB signatures, signing takes hundreds of milliseconds, unsuitable for hot-path Guardian responses without careful latency budgeting. |\n| `SLH-DSA-128f` | PQC, hash | OPTIONAL. Faster signing; larger signatures. |\n| `ML-DSA-65+ECDSA-P256` | Hybrid | OPTIONAL. Transitional composite for PQC forward-resistance with classical co-signature. |\n| `ML-DSA-65+RSA-PSS-SHA256` | Hybrid | OPTIONAL. Transitional composite.",
+      "text_hash": "b6d956aea71c926a65cbb8b98776419b399eaab92e4f39934b5110aad809805d"
+    },
+    {
+      "id": "ACS-REQ-0083",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 318,
+      "block_type": "paragraph",
+      "section_slug": "102-hybrid-signature-value-encoding",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Verifiers MUST verify both component signatures over the canonical input defined in §10; failure of either component is a signature failure (`SIGNATURE_INVALID`, §17.1).",
+      "text_hash": "5108e7f73d496bc47f7e538ae01c471148ea2f55e2d73f0d1254db368878174c"
+    },
+    {
+      "id": "ACS-REQ-0084",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 322,
+      "block_type": "paragraph",
+      "section_slug": "103-replay-protection",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "RECOMMENDED"
+      ],
+      "text": "Guardians MUST reject requests whose `timestamp` is more than the negotiated skew window (`skew_window_ms` in ServerHello, §4; RECOMMENDED default 300000) in the past or future, returning `TIMESTAMP_OUT_OF_WINDOW` (`-32006`, §17.1)",
+      "text_hash": "5bce9413e6570baacd5d2b2d720da41d64a8e56517123fb9eae0ce1da242ba40"
+    },
+    {
+      "id": "ACS-REQ-0086",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 322,
+      "block_type": "paragraph",
+      "section_slug": "103-replay-protection",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "MUST reject duplicate `request_id` values within the session with `REPLAY_DETECTED` (`-32005`, §17.1)",
+      "text_hash": "07a0d586fb4c0e54ed1e6a176a83bec6c1d4585691377c0d6e34e9b0517223cc"
+    },
+    {
+      "id": "ACS-REQ-0087",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 322,
+      "block_type": "paragraph",
+      "section_slug": "103-replay-protection",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD reject duplicate `nonce` values within a sliding window the deployment configures (also `REPLAY_DETECTED`)",
+      "text_hash": "7517d30bb810b2b48f83d6dc92a26678c60b5955ead880d23a8667669ef8b975"
+    },
+    {
+      "id": "ACS-REQ-0088",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 326,
+      "block_type": "paragraph",
+      "section_slug": "11-platform-os-independence",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "ACS MUST be deployable across IDE, SaaS, on-prem on Linux/Windows/macOS/mobile/browser.",
+      "text_hash": "12ab230162bb5a8930cf959bb21f0b7f5fc70eadd3b4df2ca8211491cd80fa2c"
+    },
+    {
+      "id": "ACS-REQ-0089",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 328,
+      "block_type": "list_item",
+      "section_slug": "11-platform-os-independence",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Resource identifiers MUST use URI form (`file:///C:/...`, `posix:///etc/...`, `https://...`).",
+      "text_hash": "270693d654109183385501ecb3b833cea6a80defa126b368d8d9512f147b7e34"
+    },
+    {
+      "id": "ACS-REQ-0090",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 352,
+      "block_type": "list_item",
+      "section_slug": "122-agent-layer",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "MUST"
+      ],
+      "text": "Prompt MUST treat untrusted data as data, not instructions. Untrusted fields MUST be wrapped/quoted.",
+      "text_hash": "21410cd29f07fa6c54d8e239abafe9daff29bfe0ca7f3488204d199c87b9e2b1"
+    },
+    {
+      "id": "ACS-REQ-0091",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 353,
+      "block_type": "list_item",
+      "section_slug": "122-agent-layer",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "MUST NOT have access to deterministic-layer policy code.",
+      "text_hash": "aef6edc5e8efe1b84b510a55519056ab9a835b7ab0968cc3e3d6938da89949db"
+    },
+    {
+      "id": "ACS-REQ-0092",
+      "type": "Requirement",
+      "source_file": "concepts/agents.md",
+      "line": 15,
+      "block_type": "blockquote",
+      "section_slug": "guardian-agent",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "**Decision logging (normative).** A Guardian MUST log every decision with its reasoning, the evaluator's model identifier, and confidence when available.",
+      "text_hash": "8bc76b31ea9b3931f1d6fb0e5cc786955b8e138aa62d5f96d5c7c56a7752b504"
+    },
+    {
+      "id": "ACS-REQ-0093",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 354,
+      "block_type": "list_item",
+      "section_slug": "122-agent-layer",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Decisions MUST be logged with reasoning, model identifier, confidence (when available).",
+      "text_hash": "c1a64dee4730dea1ba647a59571bf4014a636244504a885f43d9e76392633db5"
+    },
+    {
+      "id": "ACS-REQ-0094",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 357,
+      "block_type": "paragraph",
+      "section_slug": "122-agent-layer",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "OPTIONAL for v0.1.0. Deterministic-only deployments are fully conformant.",
+      "text_hash": "95107eae27f5986a2486852a2a00e0153c95edca30825417af846a92af349f34"
+    },
+    {
+      "id": "ACS-REQ-0095",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 371,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Guardians MUST always return `decision: \"allow\"` for `system/ping` regardless of policy, signature, or session state.",
+      "text_hash": "661fbd40d3c01012144d48d208290bde33a560ceb069b64671bfa4e9f810a863"
+    },
+    {
+      "id": "ACS-REQ-0096",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 372,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "`system/ping` MUST NOT be written into SessionContext as a ContextEntry; it does not participate in the chain hash.",
+      "text_hash": "28e65d616669b0e35a80ee6328790524efc18c253f721cdc2d54b316b2e1f27b"
+    },
+    {
+      "id": "ACS-REQ-0097",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 373,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "`system/ping` MUST NOT require a signature even if the session otherwise requires signatures, so that liveness probing remains possible during signature-rotation or key-resolution failures.",
+      "text_hash": "fe2e39e5c97682b962ceac2602c3ac183c4297f4b44a88c1989f7afbad98b96d"
+    },
+    {
+      "id": "ACS-REQ-0098",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 374,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Deployments SHOULD monitor hook-path decision failures (§6.4) directly rather than infer enforcement health from ping alone.",
+      "text_hash": "646597cda451200716b56a44d6cf0bb544f5121f2b89ad18597c3f24fd7417dd"
+    },
+    {
+      "id": "ACS-REQ-0099",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 375,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Connection failure or response timeout for `system/ping` is a transport-level signal that the Observed Agent MAY use to renegotiate transport, re-handshake, or fail over",
+      "text_hash": "88f15dbbea0e5a0eed910d80ffa1c192e91a978f8fa82eaca3a949a49ad264bf"
+    },
+    {
+      "id": "ACS-REQ-0100",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 375,
+      "block_type": "list_item",
+      "section_slug": "13-liveness-system-methods",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "it MUST NOT be interpreted as an enforcement event.",
+      "text_hash": "ec73112602cc90c47db8c28c46f433e66d95528ba7abc7855a43e2e0a21cbcb4"
+    },
+    {
+      "id": "ACS-REQ-0101",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 420,
+      "block_type": "paragraph",
+      "section_slug": "171-acs-error-code-registry",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "An error response MAY carry a `data` object",
+      "text_hash": "4a37e8b58adb6397e603f5a30135490f7f9fdd9723cabbb26ab174888459d30e"
+    },
+    {
+      "id": "ACS-REQ-0102",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 420,
+      "block_type": "paragraph",
+      "section_slug": "171-acs-error-code-registry",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "when present it SHOULD include a machine-readable `reason` and a human-readable `message`, plus the per-code fields noted below.",
+      "text_hash": "08fc6084dacd378c10054640b06334f0edf001c8d8e10b36f5d82bc6d5f8ff3a"
+    },
+    {
+      "id": "ACS-REQ-0103",
+      "type": "Requirement",
+      "source_file": "spec/instrument/specification.md",
+      "line": 433,
+      "block_type": "paragraph",
+      "section_slug": "171-acs-error-code-registry",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "`system/ping` MUST NOT return an ACS-specific error, so liveness probing survives signature-rotation and key-resolution failures (§13).",
+      "text_hash": "597265257e0d81c656e38adcc96dd7708321ccb9666b25fea0170d1ad5b99af2"
+    },
+    {
+      "id": "ACS-REQ-0104",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 74,
+      "block_type": "paragraph",
+      "section_slug": "sessionstart",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY refuse a session whose identity, policy mode, or platform fails policy checks; this is the cleanest place to refuse before content enters.",
+      "text_hash": "7d06ec2f7f8978a55b2bc711111904a3feff517d2e9227a3526bda54fdf79c23"
+    },
+    {
+      "id": "ACS-REQ-0105",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 88,
+      "block_type": "paragraph",
+      "section_slug": "agenttrigger",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardian MAY rewrite the trigger payload (e.g. redact PII) before activation.",
+      "text_hash": "56cdac1aac6c8ba896540aee864194a9fdf76aa73e0c32d9bc0581c3c63a9f28"
+    },
+    {
+      "id": "ACS-REQ-0106",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 102,
+      "block_type": "paragraph",
+      "section_slug": "turnstart",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "a Guardian MAY deny to block the turn from starting",
+      "text_hash": "cb4a6c5a55e10bd817afeb11f4826bc2a1d2cfdf17d2c90b138dbdd5819e0770"
+    },
+    {
+      "id": "ACS-REQ-0107",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 114,
+      "block_type": "paragraph",
+      "section_slug": "usermessage",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardian MAY redact content before delivery to the agent.",
+      "text_hash": "472d22d8d80b8579cfbb13f82c6e854f769894d5c812b69703a6e3a35f4fcf4e"
+    },
+    {
+      "id": "ACS-REQ-0108",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 138,
+      "block_type": "paragraph",
+      "section_slug": "knowledgeretrieval",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardian MAY redact retrieved content before injection into the agent context.",
+      "text_hash": "53c10f4701c3a8bdffbcab874feb7d9c1eaf5bda240bb484eabdcce396429208"
+    },
+    {
+      "id": "ACS-REQ-0109",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 172,
+      "block_type": "paragraph",
+      "section_slug": "toolcallrequest",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Frameworks MUST fire `toolCallRequest` for every action that escapes the agent's reasoning context, regardless of whether the framework's tool registry models it as a tool.",
+      "text_hash": "51de7945faac4534937678cc5646996ee1f1cac52867d4002692b60401462caa"
+    },
+    {
+      "id": "ACS-REQ-0110",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 200,
+      "block_type": "paragraph",
+      "section_slug": "precompact",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardian MAY return DENY to block compaction (e.g. because deployment policy disallows compacting after `untrusted` data has entered until a trusted re-grounding occurs).",
+      "text_hash": "849e3a92b4e3748b0948b155fcf4bde4fdb9766faaefbae633206576e52b58ce"
+    },
+    {
+      "id": "ACS-REQ-0111",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 210,
+      "block_type": "paragraph",
+      "section_slug": "postcompact",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "MUST"
+      ],
+      "text": "resulting `summary` content with `provenance` whose `origin` MUST be `agent_generated` and whose `derived_from` MUST equal the union of `provenance_id`s of every entry in `entries_compacted`.",
+      "text_hash": "d79fbb903a7882d1a5d197e95c1cf0b33e72557e93cec937c7b21b73d0edd237"
+    },
+    {
+      "id": "ACS-REQ-0112",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 212,
+      "block_type": "paragraph",
+      "section_slug": "postcompact",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY return MODIFY (rewrite the summary, e.g. to redact a region the policy can't compact)",
+      "text_hash": "bdbce7a114309cbbcc7e1071ab73b42c75e3ce8f68354172367cb7941d8e1c20"
+    },
+    {
+      "id": "ACS-REQ-0113",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 212,
+      "block_type": "paragraph",
+      "section_slug": "postcompact",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "but MAY NOT return DENY.",
+      "text_hash": "415ba8b6ff4cd5707206d14137ebe793a760eeaec5c2bdfedd58a55030d43f37"
+    },
+    {
+      "id": "ACS-REQ-0114",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 212,
+      "block_type": "paragraph",
+      "section_slug": "postcompact",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "The audit chain MUST record the post-compact state regardless.",
+      "text_hash": "38b5f512e0ddedf80793678151d585615432619f68cbbb9297ee6df3dfa8c383"
+    },
+    {
+      "id": "ACS-REQ-0116",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 252,
+      "block_type": "paragraph",
+      "section_slug": "skillregister",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY deny registration",
+      "text_hash": "4f444e38e0ef4fd52dcd0dbabe387056833ba7185ad2e6bb1596d353204c34e8"
+    },
+    {
+      "id": "ACS-REQ-0117",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 252,
+      "block_type": "paragraph",
+      "section_slug": "skillregister",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT"
+      ],
+      "text": "a denied skill MUST NOT become eligible to load",
+      "text_hash": "0a1b0a62f27146e723a04d6777e408b50095b837ec60a1e4aace810473d3201b"
+    },
+    {
+      "id": "ACS-REQ-0118",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 252,
+      "block_type": "paragraph",
+      "section_slug": "skillregister",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "A Guardian SHOULD compare `declared_capabilities` against the union of capabilities the composed tools expose",
+      "text_hash": "3bca90127d17079c4cb5450efd2bf2986f7371f17f08c9161cd8a1664e91eb6b"
+    },
+    {
+      "id": "ACS-REQ-0119",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 252,
+      "block_type": "paragraph",
+      "section_slug": "skillregister",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "MAY deny over-broad declarations.",
+      "text_hash": "bc27f422c346eda4b0b301b514e3aae4f57e177d5378203e66ece42efb4c15d4"
+    },
+    {
+      "id": "ACS-REQ-0120",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 262,
+      "block_type": "paragraph",
+      "section_slug": "skillload",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A load MUST be correlatable to a prior approved `skillRegister` for the same `(skill_id, digest)`",
+      "text_hash": "a8721161dcf6b5d4436b44ce3830a8e5f6ec369d6d20ee2a6bc36633b1b22f71"
+    },
+    {
+      "id": "ACS-REQ-0121",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 262,
+      "block_type": "paragraph",
+      "section_slug": "skillload",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "one the Guardian cannot tie to an approved registration, or whose digest differs from the approved one, is unverifiable and SHOULD be denied.",
+      "text_hash": "242488e96202aa405403c745014ec69f9cb7b70276b54a71b0a7124f42465ade"
+    },
+    {
+      "id": "ACS-REQ-0122",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 268,
+      "block_type": "paragraph",
+      "section_slug": "skillload",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD deny when `load_path` shows a skill loading another outside its declared `composed_skills`",
+      "text_hash": "71c7ed9438a27a853e41504171b5bf94d43dec09f628fe237c8385fc21f691d4"
+    },
+    {
+      "id": "ACS-REQ-0123",
+      "type": "Requirement",
+      "source_file": "spec/instrument/hooks.md",
+      "line": 262,
+      "block_type": "paragraph",
+      "section_slug": "skillload",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "The framework MAY send a `digest_verified` hint",
+      "text_hash": "1d04053a843a09ccf862698e73f106d8bdc30df05c98ee0ff026af0430544151"
+    },
+    {
+      "id": "ACS-REQ-0124",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 21,
+      "block_type": "paragraph",
+      "section_slug": "wire-methods",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Guardians MAY return `deny` to refuse a session whose component graph contains a banned component, or to block a hot-swap.",
+      "text_hash": "24d227c8494db764af4293f934b349bae41f6a4571b978a6eb78247a8933282e"
+    },
+    {
+      "id": "ACS-REQ-0125",
+      "type": "Requirement",
+      "source_file": "spec/instrument/extend_mcp.md",
+      "line": 12,
+      "block_type": "paragraph",
+      "section_slug": "mcp-support",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Deployments MAY collapse MCP `tools/call` traffic into the generic `steps/toolCallRequest` / `steps/toolCallResult` hooks when tool-level policy is sufficient.",
+      "text_hash": "db09f6fa48cfe359d38cda34d36023f5ec74a0a1acff373def858926bd56698d"
+    },
+    {
+      "id": "ACS-REQ-0126",
+      "type": "Requirement",
+      "source_file": "spec/instrument/extend_mcp.md",
+      "line": 12,
+      "block_type": "paragraph",
+      "section_slug": "mcp-support",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Deployments SHOULD use `protocols/MCP/*` when policy needs MCP-level distinctions that generic tool hooks would erase",
+      "text_hash": "55d4831e632cbe5b9e8a6896c60968b09746418152418174ce6c1fa93f8d8654"
+    },
+    {
+      "id": "ACS-REQ-0127",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 11,
+      "block_type": "paragraph",
+      "section_slug": "profile-declaration",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY refuse a session if the client does not declare a profile the Guardian's policy requires",
+      "text_hash": "541d58f2f8bc591ac7d7e2b7ec5a8fdf2446d7157420d32daea69d544b6ad9ac"
+    },
+    {
+      "id": "ACS-REQ-0128",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 15,
+      "block_type": "paragraph",
+      "section_slug": "acs-core-mandatory-baseline",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A v0.1.0-conformant deployment MUST implement ACS-Core.",
+      "text_hash": "7424e248ba41eb208acf5658183c513dfa17269e20ae27fb2f21a19d30d8f794"
+    },
+    {
+      "id": "ACS-REQ-0129",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 19,
+      "block_type": "list_item",
+      "section_slug": "acs-core-mandatory-baseline",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "are normatively defined and SHOULD be implemented when the harness can observe the corresponding event",
+      "text_hash": "41c701804f0816bc9051d4a72a67aa9d09a49bedb057119748f79db0cffad1f8"
+    },
+    {
+      "id": "ACS-REQ-0130",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 19,
+      "block_type": "list_item",
+      "section_slug": "acs-core-mandatory-baseline",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "A deployment whose AgBOM includes `skill` components SHOULD emit the skill lifecycle hooks, so a Guardian is not blind to a composition surface the inventory already exposes.",
+      "text_hash": "2acab647888655334a56f4a8d208a1dfdf969a7f05dbd017a9515e7b93fbfb11"
+    },
+    {
+      "id": "ACS-REQ-0131",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 36,
+      "block_type": "paragraph",
+      "section_slug": "acs-trace",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A deployment claiming ACS-Trace MUST:\n\n1. Emit at least one of {OTel, OCSF} for every supported ACS step, with the required attributes populated.\n2. Record decisions as Trace events.\n3. Carry provenance facts forward onto Trace events.",
+      "text_hash": "3d2dff0ace857e75e0a9f6923469305814a3e0155569623fc4ef79810ed13676"
+    },
+    {
+      "id": "ACS-REQ-0132",
+      "type": "Requirement",
+      "source_file": "spec/trace/events.md",
+      "line": 72,
+      "block_type": "paragraph",
+      "section_slug": "acs-trace-conformance-bar",
+      "level": "MUST NOT",
+      "keywords": [
+        "MUST NOT",
+        "MUST NOT"
+      ],
+      "text": "Trace events MUST NOT block enforcement — failure of the Trace sink MUST NOT change the disposition returned to the Observed Agent.",
+      "text_hash": "cf2b26045d5a0787b4867b050a32246e4d061da2d41e39f56c63cd1aacbc21e5"
+    },
+    {
+      "id": "ACS-REQ-0133",
+      "type": "Requirement",
+      "source_file": "spec/trace/events.md",
+      "line": 72,
+      "block_type": "paragraph",
+      "section_slug": "acs-trace-conformance-bar",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Deployments that do not claim ACS-Trace SHOULD still emit Trace events where feasible",
+      "text_hash": "a97096ade935917c189061b167180cbe9e74ceedaabc2757cf7603566fa3f216"
+    },
+    {
+      "id": "ACS-REQ-0134",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 46,
+      "block_type": "paragraph",
+      "section_slug": "acs-inspect",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A deployment claiming ACS-Inspect MUST:\n\n1. Emit `agbom/snapshot` once per session before content-bearing hooks fire.",
+      "text_hash": "3440c71e59da8bdbf3c16918e118dec06bbdebd85ce0c2cb3fc8311f152c0209"
+    },
+    {
+      "id": "ACS-REQ-0135",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 49,
+      "block_type": "list_item",
+      "section_slug": "acs-inspect",
+      "level": null,
+      "keywords": [],
+      "text": "Have the Guardian serialize the canonical AgBOM into at least one of {CycloneDX 1.6, SPDX 3.0, SWID} on request.",
+      "text_hash": "209ec7826a83a7e40cefd6fa86e7c8d5091ff6e346aa6bd74b7286b446e9c962"
+    },
+    {
+      "id": "ACS-REQ-0136",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 63,
+      "block_type": "paragraph",
+      "section_slug": "acs-inspect-conformance-bar",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "A deployment claiming **ACS-Inspect-Dynamic** additionally MUST:",
+      "text_hash": "9403b8b8fd9500da215cfb5d5362455e37017df69d8e4b58ba34bbd0323edcae"
+    },
+    {
+      "id": "ACS-REQ-0137",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 67,
+      "block_type": "paragraph",
+      "section_slug": "acs-crypto",
+      "level": "MUST",
+      "keywords": [
+        "MUST",
+        "RECOMMENDED"
+      ],
+      "text": "A deployment claiming ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary)",
+      "text_hash": "cc783b3ba6912db65310d7ccdf62363b19107fab80d6b25a4ce12fce3ae4d3e3"
+    },
+    {
+      "id": "ACS-REQ-0138",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 67,
+      "block_type": "paragraph",
+      "section_slug": "acs-crypto",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "and SHOULD support `SLH-DSA-128s` as an algorithmic-diversity backup.",
+      "text_hash": "062726c535ed12b53b8b2d78e4479d2e13a2e7ada6be9941ef66bee778e39446"
+    },
+    {
+      "id": "ACS-REQ-0139",
+      "type": "Requirement",
+      "source_file": "spec/conformance.md",
+      "line": 67,
+      "block_type": "paragraph",
+      "section_slug": "acs-crypto",
+      "level": "OPTIONAL",
+      "keywords": [
+        "OPTIONAL"
+      ],
+      "text": "Hybrid composites (`ML-DSA-65+ECDSA-P256`, `ML-DSA-65+RSA-PSS-SHA256`) are OPTIONAL for transitional deployments.",
+      "text_hash": "10bff837ec5397caaad20977e270149e4f209b0a4e22d65d3892ee8858ec6af4"
+    },
+    {
+      "id": "ACS-REQ-0140",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 10,
+      "block_type": "paragraph",
+      "section_slug": "inspect-agbom",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "When Guardian policy depends on component inventory (e.g. banning a model or tool at the boundary), the deployment MUST implement ACS-Inspect.",
+      "text_hash": "c9feed61920af578d0ff4a602132204d99311af18e1870716fb7ecdcd4da09a6"
+    },
+    {
+      "id": "ACS-REQ-0141",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 42,
+      "block_type": "paragraph",
+      "section_slug": "canonical-schema",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Every component SHOULD carry `registration_provenance` (who declared it — framework / configuration / runtime discovery) so AgBOM mutations are traceable in the same lineage system as data flow.",
+      "text_hash": "c6cadbe68b7421b237b029600525f5ad6cc8eec4777e4c21688c03a32108b3d5"
+    },
+    {
+      "id": "ACS-REQ-0142",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 42,
+      "block_type": "paragraph",
+      "section_slug": "canonical-schema",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "Deployments claiming **ACS-Provenance** MUST populate `registration_provenance` on every component.",
+      "text_hash": "ce96d3240472b030bc7324eb35e86189d8d68809faac80b50b82d218be4ee8db"
+    },
+    {
+      "id": "ACS-REQ-0143",
+      "type": "Requirement",
+      "source_file": "spec/inspect/README.md",
+      "line": 54,
+      "block_type": "paragraph",
+      "section_slug": "output-format-mappings",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY request a specific serialization in the handshake's AgBOM negotiation (`agbom_serializations_supported` in ServerHello)",
+      "text_hash": "7e75dc82bee934ca98127aadc8a3b32bf521f1cebf8b28254be0ce5e8ed0d993"
+    },
+    {
+      "id": "ACS-REQ-0144",
+      "type": "Requirement",
+      "source_file": "spec/inspect/extend_cyclonedx.md",
+      "line": 74,
+      "block_type": "list_item",
+      "section_slug": "notes",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "deployments MAY emit a CycloneDX VEX-style diff or simply emit a fresh full serialization",
+      "text_hash": "54bda27f5991a3fbff5ac8697e1eb3d43214cac830362e7974d75e4cebb583e5"
+    },
+    {
+      "id": "ACS-REQ-0145",
+      "type": "Requirement",
+      "source_file": "spec/trace/events.md",
+      "line": 33,
+      "block_type": "paragraph",
+      "section_slug": "opentelemetry-semantic-conventions",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "the resulting span MUST carry `acs.provenance.origin` as an attribute",
+      "text_hash": "6fb1cf6e4b10bae64b548a66214ee02817910a779aa9b7eb80943e433050d313"
+    },
+    {
+      "id": "ACS-REQ-0146",
+      "type": "Requirement",
+      "source_file": "spec/trace/events.md",
+      "line": 33,
+      "block_type": "paragraph",
+      "section_slug": "opentelemetry-semantic-conventions",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth` when populated",
+      "text_hash": "0670a5350f657d00b7a1c818cb85a78d098d0d3cb6473ce6d54c0120fdddf7e1"
+    },
+    {
+      "id": "ACS-REQ-0147",
+      "type": "Requirement",
+      "source_file": "spec/trace/events.md",
+      "line": 33,
+      "block_type": "paragraph",
+      "section_slug": "opentelemetry-semantic-conventions",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "Provenance lineage edges MAY be linked via OTel span links keyed by `provenance_id`.",
+      "text_hash": "7b1bb47704f2103cfc2422c194cb1bf9cf258632abcedda94116eea680744a5a"
+    },
+    {
+      "id": "ACS-REQ-0148",
+      "type": "Requirement",
+      "source_file": "spec/trace/extend_opentelemetry.md",
+      "line": 26,
+      "block_type": "paragraph",
+      "section_slug": "sensitive-data",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "Implementations SHOULD apply the deployment's redaction or hashing policy at attribute-emit time rather than relying on backend-side scrubbing.",
+      "text_hash": "cbd4d4e6910341a3b7c900220d452162ae1a07ccdedefa0e37c523c213e2fc93"
+    },
+    {
+      "id": "ACS-REQ-0149",
+      "type": "Requirement",
+      "source_file": "spec/trace/extend_opentelemetry.md",
+      "line": 30,
+      "block_type": "paragraph",
+      "section_slug": "transport",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "The Guardian's handshake `trace_emission` field MAY advertise an OTLP collector endpoint",
+      "text_hash": "114502b26f93b73e9e214f537b326c3767e1a0545193991f55e204bb70c96bdf"
+    },
+    {
+      "id": "ACS-REQ-0150",
+      "type": "Requirement",
+      "source_file": "spec/trace/extend_opentelemetry.md",
+      "line": 30,
+      "block_type": "paragraph",
+      "section_slug": "transport",
+      "level": "SHOULD",
+      "keywords": [
+        "SHOULD"
+      ],
+      "text": "when set, the Observed Agent SHOULD route ACS-shaped trace traffic there in addition to (or instead of) its default collector.",
+      "text_hash": "94c2e68548dc7fff3729a2028dd9df1bf1b616fd5237f2cfbe9327cc5f35525d"
+    },
+    {
+      "id": "ACS-REQ-0151",
+      "type": "Requirement",
+      "source_file": "concepts/session-lifecycle.md",
+      "line": 23,
+      "block_type": "blockquote",
+      "section_slug": "subagent",
+      "level": "MUST",
+      "keywords": [
+        "MUST"
+      ],
+      "text": "When a subagent is spawned, the audit chain MUST record how the subagent's `Intent.parsed` relates to the parent's: inherited in full, a strict subset, derived from a parent directive, or fresh.",
+      "text_hash": "2172d6bd199812e55a030be40a10063106682e9cc7914e508554485aefc3ce35"
+    },
+    {
+      "id": "ACS-REQ-0152",
+      "type": "Requirement",
+      "source_file": "concepts/session-lifecycle.md",
+      "line": 23,
+      "block_type": "blockquote",
+      "section_slug": "subagent",
+      "level": "MAY",
+      "keywords": [
+        "MAY"
+      ],
+      "text": "A Guardian MAY deny a spawn whose derivation would grant capabilities the parent's [Intent](./intent.md) does not authorize.",
+      "text_hash": "c469c7c5a70a67809671fa8c9d897239915521c88bf052a39e0c13f5bb96d05f"
     }
   ]
 }

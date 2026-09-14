@@ -1,0 +1,24 @@
+id: ACS-REQ-0060
+title: "ContextEntry SHOULD carry request_hash, timestamp and provenance_summary"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs:
+  - file: context-entry.json
+    pointer: /properties/request_hash
+    pinned: 808bb97004a3c882d5385c65c3ec2e4cb4198eea1d7fa75a9424407f22f19677
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 008c8a8c2a5e8dd60eb0633070a934273cd56414ec6d718c68bc2b3659e51ec0
+note: "Carries two keywords: the SHOULD, and the ACS-Audit MUST on request_hash, which is ACS-REQ-0062's own sentence inside this one; the span is the list item."
+predicate:
+  subject: [Session, EntryId]
+  witness: [Field]
+  rules:
+    - "violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), entry_should_field(Field), not context_entry_field(Session, EntryId, Field)."

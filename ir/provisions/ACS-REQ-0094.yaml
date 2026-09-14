@@ -1,0 +1,16 @@
+id: ACS-REQ-0094
+title: "The agent layer is optional"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 95107eae27f5986a2486852a2a00e0153c95edca30825417af846a92af349f34
+note: null

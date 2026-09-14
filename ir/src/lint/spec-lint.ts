@@ -31,6 +31,7 @@ import { loadCatalog, loadRecords } from "../catalog/catalog.ts";
 import { checkStaleness, type StaleEntry, type StalenessReport, type TestCitations } from "../catalog/staleness.ts";
 import { provisionCensus, type ProvisionCensus } from "../census/provision-census.ts";
 import { parseSourceDeclarations, sourceCensus } from "../census/source-census.ts";
+import { parseExclusions, resolveExclusions } from "../census/exclusions.ts";
 import type { Corpus } from "../corpus.ts";
 import { extractProvisions, type Manifest } from "../extract/extract.ts";
 import { checkAllocated, ID_PATTERN, readCounter, readTombstones } from "../ids.ts";
@@ -81,6 +82,8 @@ export interface LintInputs {
   corpus: Corpus;
   markedDir: string;
   sourcesFile: string;
+  /** Authored census exclusions; absent means none. */
+  exclusionsFile?: string | null;
   provisionsDir: string;
   idsDir: string;
   schemaDir: string;
@@ -133,7 +136,14 @@ export function specLint(inputs: LintInputs): LintReport {
   const declared = parseSourceDeclarations(readFileSync(inputs.sourcesFile, "utf8"));
   const sources = sourceCensus(declared, corpus.files);
   for (const p of sources.problems) at("catalog", null, `sources.yaml: ${p}`);
-  const census = provisionCensus(corpus, declared, (file) => texts.get(file) ?? "", spans);
+  let exclusions: ReturnType<typeof resolveExclusions>["exclusions"] = [];
+  if (inputs.exclusionsFile && existsSync(inputs.exclusionsFile)) {
+    const resolved = resolveExclusions(parseExclusions(readFileSync(inputs.exclusionsFile, "utf8")), (file) => texts.get(file) ?? null);
+    for (const p of resolved.problems) at("catalog", null, `exclusions.yaml: ${p}`);
+    exclusions = resolved.exclusions;
+  }
+  const census = provisionCensus(corpus, declared, (file) => texts.get(file) ?? "", spans, exclusions);
+  for (const p of census.exclusion_problems) at("catalog", null, `exclusions.yaml: ${p}`);
 
   // 3. Records and the join (N15), then IDs (N24) against the allocation files.
   const records = loadRecords(inputs.provisionsDir);

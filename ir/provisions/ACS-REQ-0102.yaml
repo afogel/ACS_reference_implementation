@@ -1,0 +1,22 @@
+id: ACS-REQ-0102
+title: "Error data carries reason and message"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the error response carries a data object (ACS-REQ-0101)"
+modality_kind: conditional-on-exercise
+evidence_class: wire
+schema_refs: []
+depends_on: [ACS-REQ-0101]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 08fc6084dacd378c10054640b06334f0edf001c8d8e10b36f5d82bc6d5f8ff3a
+note: "The per-code fields are not checked."
+predicate:
+  subject: [Seq]
+  witness: [Field]
+  rules:
+    - "violation(Seq, Field) :- error_data(Seq), Field = \"reason\", not error_data_field(Seq, \"reason\")."
+    - "violation(Seq, Field) :- error_data(Seq), Field = \"message\", not error_data_field(Seq, \"message\")."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0055
+title: "Receivers re-derive trust locally"
+actor: guardian
+reported_against: guardian
+profile: [acs-provenance]
+activation: "the deployment populates the OPTIONAL trust field"
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: cd5af29f53bef9eccff3dbe32c658484b6c2cae63e0b7d762689a10d147cbfb3
+note: null

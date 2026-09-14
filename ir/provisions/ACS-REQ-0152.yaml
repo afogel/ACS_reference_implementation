@@ -1,0 +1,16 @@
+id: ACS-REQ-0152
+title: "A Guardian may deny a spawn that widens Intent"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: c469c7c5a70a67809671fa8c9d897239915521c88bf052a39e0c13f5bb96d05f
+note: null

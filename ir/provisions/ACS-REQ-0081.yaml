@@ -1,0 +1,21 @@
+id: ACS-REQ-0081
+title: "Every envelope carries a signature"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 4b280ca6e17aac7491296c788f851ce53ceae469b60ab643575e3b55e73f11a2
+note: "system/ping is exempt by §13. The handshake is exempted here because the per-session key is derived with the session_id it establishes; whether it is signed is a question for upstream."
+predicate:
+  subject: [Seq]
+  witness: [Method]
+  rules:
+    - "violation(Seq, Method) :- envelope(Seq, _, _, Method, _), signature_status(Seq, \"absent\"), Method != \"system/ping\", Method != \"handshake/hello\"."

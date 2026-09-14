@@ -1,0 +1,21 @@
+id: ACS-REQ-0031
+title: "An unguarded session start is audited by the deployment"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: "the handshake failed and the startup posture was proceed"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: d4c58251de2421c9b3710e2046db6573641a3fa893ea52af2ac63f9782140062
+note: "A handshake with no response and no audit event."
+predicate:
+  subject: [Session]
+  witness: [Seq]
+  rules:
+    - "violation(Session, Seq) :- handshake(Seq, Session), not response_to(Seq, _), not agent_audit_event(Session, Seq, \"unguarded_start\")."

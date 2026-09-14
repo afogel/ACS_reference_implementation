@@ -1,0 +1,16 @@
+id: ACS-REQ-0088
+title: "ACS is deployable across platforms"
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 12ab230162bb5a8930cf959bb21f0b7f5fc70eadd3b4df2ca8211491cd80fa2c
+note: "A design constraint on the specification itself."

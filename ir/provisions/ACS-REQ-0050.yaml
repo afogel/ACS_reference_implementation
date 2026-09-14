@@ -1,0 +1,22 @@
+id: ACS-REQ-0050
+title: "Every fail-open proceed is an audit event"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 3a4c8fe649568d25dc0dc6ea42af1b68f857ef42db20de237903f8b074d04b31
+note: null
+predicate:
+  subject: [Session]
+  witness: [Seq]
+  rules:
+    - "violation(Session, Seq) :- hook(Seq, Session, _), agent_step_outcome(Session, Seq, \"proceeded\"), not decided(Seq), not agent_audit_event(Session, Seq, \"fail_open_proceed\")."
+    - "decided(Seq) :- response_to(Seq, R), decision(R, _)."

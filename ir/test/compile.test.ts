@@ -103,11 +103,11 @@ describe("the real catalog compiles", () => {
   const catalog = loadCatalog(manifest, loadRecords().records);
   const program = compileProgram(vocabulary, catalog.entries, manifest.corpus);
 
-  it("with no problems: 21 compiled, one alias, one permission, one non-testable, four with no predicate", () => {
+  it("with no problems: 69 compiled, 3 aliases, 39 permissions, 25 non-testable, 12 inexpressible, 7 with no predicate (V7)", () => {
     expect(program.problems).toEqual([]);
     const counts: Record<string, number> = {};
     for (const p of program.provisions) counts[p.status] = (counts[p.status] ?? 0) + 1;
-    expect(counts).toEqual({ compiled: 21, alias: 1, permission: 1, "non-testable": 1, "no-predicate": 4 });
+    expect(counts).toEqual({ compiled: 69, alias: 3, permission: 39, "non-testable": 25, inexpressible: 12, "no-predicate": 7 });
   });
 
   it("declares the external-fact boundary per provision (E7.1)", () => {

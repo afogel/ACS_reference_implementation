@@ -1,0 +1,16 @@
+id: ACS-REQ-0147
+title: "Lineage edges may be OTel span links"
+actor: framework
+reported_against: framework
+profile: [acs-trace]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 7b1bb47704f2103cfc2422c194cb1bf9cf258632abcedda94116eea680744a5a
+note: null

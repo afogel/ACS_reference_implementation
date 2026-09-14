@@ -1,0 +1,16 @@
+id: ACS-REQ-0108
+title: "A Guardian may redact retrieved content"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 53c10f4701c3a8bdffbcab874feb7d9c1eaf5bda240bb484eabdcce396429208
+note: null

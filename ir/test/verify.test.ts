@@ -29,7 +29,7 @@ function run(kind: "clean" | "violating", options: { key?: boolean; guardian?: b
   const dir = mkdtempSync(join(tmpdir(), `acs-ir-${kind}-`));
   const trace = writeFixture(dir, kind);
   const normalized = normalizeTrace(readTrace(trace));
-  const external = computeExternalFacts(normalized.lines, program.relations, schemas, {
+  const external = computeExternalFacts(normalized, program.relations, schemas, {
     hmacKey: options.key === false ? null : TEST_HMAC_KEY,
     guardianDir: options.guardian === false ? null : join(dir, "guardian"),
     deploymentDir: options.deployment === false ? null : join(dir, "deployment"),
@@ -58,26 +58,41 @@ describe("acs-ir verify -- the clean trace", () => {
 
   it("violates nothing, and reports the rest by kind rather than dropping it", () => {
     expect(byVerdict(r.verdicts, "fail")).toEqual([]);
-    expect(byVerdict(r.verdicts, "pass")).toHaveLength(21);
-    expect(byVerdict(r.verdicts, "not-exercised")).toEqual(["ACS-REQ-0022"]);
-    expect(byVerdict(r.verdicts, "permission")).toEqual(["ACS-REQ-0021"]);
-    expect(byVerdict(r.verdicts, "non-testable")).toEqual(["ACS-REQ-0019"]);
+    // V7 sizes: 63 + 2 + 33 + 17 + 10 + 1 + 4 + 2 + 23 not-activated = 155, every provision with one verdict.
+    expect(byVerdict(r.verdicts, "pass")).toHaveLength(63);
+    expect(byVerdict(r.verdicts, "not-exercised")).toEqual(["ACS-REQ-0022", "ACS-REQ-0102"]);
+    expect(byVerdict(r.verdicts, "permission")).toHaveLength(33);
+    expect(byVerdict(r.verdicts, "permission")).toContain("ACS-REQ-0021");
+    expect(byVerdict(r.verdicts, "non-testable")).toHaveLength(17);
+    expect(byVerdict(r.verdicts, "non-testable")).toContain("ACS-REQ-0019");
+    expect(byVerdict(r.verdicts, "inexpressible")).toHaveLength(10);
     expect(byVerdict(r.verdicts, "exclusion")).toEqual(["ACS-EXC-0001"]);
-    expect(byVerdict(r.verdicts, "invariant")).toEqual(["ACS-INV-0001"]);
+    expect(byVerdict(r.verdicts, "invariant")).toEqual(["ACS-INV-0001", "ACS-INV-0002", "ACS-INV-0003", "ACS-INV-0004"]);
     expect(byVerdict(r.verdicts, "definition")).toEqual(["ACS-DEF-0001", "ACS-DEF-0002"]);
+    // The clean session negotiates acs-core and acs-provenance; ACS-Audit, ACS-Inspect and ACS-Crypto provisions are not activated (R4.3).
+    expect(byVerdict(r.verdicts, "not-activated")).toHaveLength(23);
+    expect(byVerdict(r.verdicts, "not-activated")).toContain("ACS-REQ-0134");
+    expect(byVerdict(r.verdicts, "unevaluated")).toEqual([]);
+    expect(r.verdicts).toHaveLength(155);
   });
 
   it("marks what it was not given the facts for as unevaluated, never as a pass", () => {
     const blind = run("clean", { key: false, guardian: false, deployment: false });
     const unevaluated = blind.verdicts.filter((v) => v.verdict === "unevaluated");
-    expect(unevaluated.map((v) => v.id)).toEqual(["ACS-REQ-0002", "ACS-REQ-0006", "ACS-REQ-0008", "ACS-REQ-0011", "ACS-REQ-0012", "ACS-REQ-0013", "ACS-REQ-0015", "ACS-REQ-0017", "ACS-REQ-0018", "ACS-REQ-0020", "ACS-REQ-0022", "ACS-REQ-0023", "ACS-REQ-0024"]);
+    const v2 = ["ACS-REQ-0002", "ACS-REQ-0006", "ACS-REQ-0008", "ACS-REQ-0011", "ACS-REQ-0012", "ACS-REQ-0013", "ACS-REQ-0015", "ACS-REQ-0017", "ACS-REQ-0018", "ACS-REQ-0020", "ACS-REQ-0022", "ACS-REQ-0023", "ACS-REQ-0024"];
+    expect(unevaluated.map((v) => v.id).slice(0, v2.length)).toEqual(v2);
+    expect(unevaluated).toHaveLength(34);
+    for (const v of unevaluated) expect(v.missing.length).toBeGreaterThan(0);
     expect(unevaluated.find((v) => v.id === "ACS-REQ-0017")?.missing).toEqual(["signature_covers"]);
     expect(byVerdict(blind.verdicts, "fail")).toEqual([]);
   });
 
   it("scopes to the negotiated profiles: an acs-core-only session is never judged against ACS-Provenance", () => {
     const core = run("clean", { negotiated: ["acs-core"] });
-    expect(byVerdict(core.verdicts, "not-activated")).toEqual(["ACS-REQ-0009", "ACS-REQ-0010", "ACS-REQ-0014", "ACS-REQ-0019"]);
+    const notActivated = byVerdict(core.verdicts, "not-activated");
+    expect(notActivated.slice(0, 4)).toEqual(["ACS-REQ-0009", "ACS-REQ-0010", "ACS-REQ-0014", "ACS-REQ-0019"]);
+    expect(notActivated).toHaveLength(36);
+    expect(notActivated).toContain("ACS-REQ-0027");
     expect(scopeByProfile("all", ["acs-core"])).toBe(true);
     expect(scopeByProfile(["acs-crypto"], ["acs-core"])).toBe(false);
   });
@@ -117,8 +132,8 @@ describe("acs-ir verify -- the violating trace", () => {
     for (const h of ["## Summary (U11)", "## Obligations per claimed profile (U16)", "## Verdicts (U15)", "## Evidence (U17)", "## Non-testable roster (U18)", "## Exclusion roster (U34)", "## Not evaluated", "## Permissions"]) {
       expect(report).toContain(h);
     }
-    expect(report).toContain("fail 9, pass 12,");
-    expect(report).toContain("| acs-core | 19 |");
+    expect(report).toContain("fail 9, pass 54,");
+    expect(report).toContain("| acs-core | 58 | 50 | 8 | 0 |");
     expect(report).toContain("- ACS-EXC-0001 Multi-tenant isolation is unspecified in v0.1: ACS deliberately requires nothing here (R4.8)");
   });
 });

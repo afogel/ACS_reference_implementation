@@ -1,0 +1,21 @@
+id: ACS-REQ-0062
+title: "ACS-Audit deployments populate request_hash"
+actor: guardian
+reported_against: guardian
+profile: [acs-audit]
+activation: null
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: e8311dbcf186503a820662464793f8a029d54ab65d12e443f0c7d23716274949
+note: null
+predicate:
+  subject: [Session, EntryId]
+  witness: [Field]
+  rules:
+    - "violation(Session, EntryId, Field) :- context_entry(Session, EntryId, _, _), Field = \"request_hash\", not context_entry_field(Session, EntryId, \"request_hash\")."

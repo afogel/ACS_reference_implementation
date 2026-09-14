@@ -1,0 +1,21 @@
+id: ACS-REQ-0082
+title: "The signature algorithm registry"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: b6d956aea71c926a65cbb8b98776419b399eaab92e4f39934b5110aad809805d
+note: "One provision spanning the §10.1 table body, binding its eleven status keywords. The obligation it yields: an envelope's algorithm is a registered one."
+predicate:
+  subject: [Seq]
+  witness: [Algorithm]
+  rules:
+    - "violation(Seq, Algorithm) :- signature_algorithm(Seq, Algorithm), not registered_algorithm(Algorithm)."

@@ -1,0 +1,22 @@
+id: ACS-REQ-0117
+title: "A denied skill cannot load"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 0a1b0a62f27146e723a04d6777e408b50095b837ec60a1e4aace810473d3201b
+note: null
+predicate:
+  subject: [LoadSeq]
+  witness: [Session, SkillId]
+  rules:
+    - "violation(LoadSeq, Session, SkillId) :- skill_register(RegSeq, Session, SkillId, _), response_to(RegSeq, RR), decision(RR, \"deny\"), skill_load(LoadSeq, Session, SkillId, _), RegSeq < LoadSeq, response_to(LoadSeq, LR), decision(LR, \"allow\"), not approved_since(Session, SkillId, RegSeq)."
+    - "approved_since(Session, SkillId, RegSeq) :- skill_register(RegSeq, Session, SkillId, _), skill_register(Later, Session, SkillId, _), Later > RegSeq, response_to(Later, R), decision(R, \"allow\")."

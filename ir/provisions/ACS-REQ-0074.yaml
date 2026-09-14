@@ -1,0 +1,16 @@
+id: ACS-REQ-0074
+title: "An Approver's grant may extend Intent"
+actor: approver
+reported_against: approver
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: [ACS-INV-0001]
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: a322d44f25342d110093ea5b0833236ca42bfc390d21a175ebb5e5864febbd9b
+note: null

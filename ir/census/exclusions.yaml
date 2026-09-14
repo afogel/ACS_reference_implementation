@@ -1,0 +1,142 @@
+# Authored census exclusions (E8.2). Each quote contains exactly one RFC 2119
+# keyword occurrence that is not a provision of its own, with the reason. The
+# census fails on a quote that no longer resolves or covers more than one occurrence.
+exclusions:
+  - source: spec/instrument/specification.md
+    quote: "Provenance fields, when emitted, MUST be populated outside the LLM's output path."
+    reason: restatement_of
+    of: ACS-REQ-0019
+  - source: spec/instrument/specification.md
+    quote: "The wire format reserves an OPTIONAL `trust` enum for vendor implementations that elect to carry the classification in the envelope"
+    reason: restatement_of
+    of: ACS-REQ-0026
+  - source: spec/instrument/specification.md
+    quote: "A Guardian whose policy requires provenance MUST refuse such a session at handshake time (§4) rather than accept provenance-free payloads."
+    reason: restatement_of
+    of: ACS-REQ-0030
+  - source: spec/instrument/specification.md
+    quote: "Guardians whose policies require Provenance MUST refuse the session at handshake time rather than silently degrading enforcement"
+    reason: restatement_of
+    of: ACS-REQ-0030
+  - source: spec/instrument/specification.md
+    quote: "a single decision MAY cite all of them"
+    reason: restatement_of
+    of: ACS-REQ-0037
+  - source: spec/instrument/specification.md
+    quote: "A Guardian MUST NOT emit a `modifications` object that violates either rule."
+    reason: restatement_of
+    of: ACS-REQ-0041
+    note: "Either rule: ACS-REQ-0039 and ACS-REQ-0041 are the rules; this sentence names the Guardian as their subject."
+  - source: spec/instrument/specification.md
+    quote: "The base hook payload schemas therefore mark `provenance` OPTIONAL"
+    reason: rationale
+    note: "Describes the schema split that ACS-REQ-0052 and the permissive base schemas implement."
+  - source: spec/instrument/specification.md
+    quote: "a future version is expected to promote PQC to RECOMMENDED once ecosystem support matures"
+    reason: roadmap
+  - source: spec/instrument/specification.md
+    quote: "A future ACS version is expected to promote `ML-DSA-65` to RECOMMENDED and eventually deprecate classical-only algorithms"
+    reason: roadmap
+  - source: spec/instrument/specification.md
+    quote: "PQC as RECOMMENDED default"
+    reason: roadmap
+    note: "§16 roadmap table."
+  - source: spec/instrument/hooks.md
+    quote: "A deployment that does not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first content-bearing hook"
+    reason: restatement_of
+    of: ACS-REQ-0059
+  - source: spec/instrument/hooks.md
+    quote: "A Guardian SHOULD deny a load it cannot correlate to an approved `skillRegister` for the same `(skill_id, digest)`"
+    reason: restatement_of
+    of: ACS-REQ-0121
+  - source: spec/instrument/hooks.md
+    quote: "SHOULD deny when the loaded artifact's digest does not match the one vetted at `skillRegister`"
+    reason: restatement_of
+    of: ACS-REQ-0121
+  - source: spec/instrument/hooks.md
+    quote: "Guardian MAY DENY to refuse a session whose component graph contains a banned model, tool, or peer."
+    reason: restatement_of
+    of: ACS-REQ-0124
+  - source: spec/instrument/hooks.md
+    quote: "Guardian MAY DENY to block a hot-swap; otherwise audited."
+    reason: restatement_of
+    of: ACS-REQ-0124
+  - source: spec/instrument/hooks.md
+    quote: "Deployments that only need transport-agnostic tool governance MAY collapse MCP tool calls into `steps/toolCallRequest`"
+    reason: restatement_of
+    of: ACS-REQ-0125
+  - source: spec/conformance.md
+    quote: "a Guardian whose policy needs provenance MAY refuse a client that does not declare `acs-provenance`"
+    reason: restatement_of
+    of: ACS-REQ-0127
+    note: "X3's parenthetical restatement."
+  - source: spec/conformance.md
+    quote: "Guardians MUST reject replays per [§10.3](./instrument/specification.md#103-replay-protection)."
+    reason: restatement_of
+    of: ACS-REQ-0086
+  - source: spec/conformance.md
+    quote: "the Observed Agent MUST wait for the Guardian's decision up to the negotiated timeout and apply it"
+    reason: restatement_of
+    of: ACS-REQ-0045
+    note: "Also ACS-REQ-0046."
+  - source: spec/conformance.md
+    quote: "(`request_hash` remains SHOULD)"
+    reason: restatement_of
+    of: ACS-REQ-0060
+  - source: spec/conformance.md
+    quote: "where `provenance` is OPTIONAL"
+    reason: rationale
+    note: "Describes the base-schema split that ACS-REQ-0052 implements."
+  - source: spec/trace/events.md
+    quote: "A deployment claiming **ACS-Trace** MUST:"
+    reason: restatement_of
+    of: ACS-REQ-0131
+  - source: spec/conformance.md
+    quote: "Trace events MUST NOT block enforcement."
+    reason: restatement_of
+    of: ACS-REQ-0132
+  - source: spec/trace/extend_opentelemetry.md
+    quote: "Trace events MUST NOT block enforcement. If the Trace sink is unreachable"
+    reason: restatement_of
+    of: ACS-REQ-0132
+  - source: spec/trace/extend_opentelemetry.md
+    quote: "the Guardian's disposition MUST still be returned to the Observed Agent"
+    reason: restatement_of
+    of: ACS-REQ-0132
+  - source: spec/inspect/README.md
+    quote: "A deployment claiming **ACS-Inspect** MUST:"
+    reason: restatement_of
+    of: ACS-REQ-0134
+  - source: spec/conformance.md
+    quote: "MUST attach a Provenance object to every data-bearing field in every hook payload it emits, populating `provenance_id`, `origin`, and (when applicable) `derived_from`"
+    reason: restatement_of
+    of: ACS-REQ-0052
+  - source: spec/conformance.md
+    quote: "The wire-format `trust` enum is OPTIONAL in v0.1"
+    reason: restatement_of
+    of: ACS-REQ-0026
+  - source: spec/conformance.md
+    quote: "MUST enforce the monotonicity rule on `agent_generated` trust"
+    reason: restatement_of
+    of: ACS-REQ-0010
+  - source: spec/conformance.md
+    quote: "A deployment claiming ACS-Audit MUST populate `request_hash` (lowercase-hex SHA-256 of JCS-canonicalized request params) on every ContextEntry"
+    reason: restatement_of
+    of: ACS-REQ-0062
+  - source: spec/trace/extend_opentelemetry.md
+    quote: "the resulting span MUST carry `acs.provenance.origin`"
+    reason: restatement_of
+    of: ACS-REQ-0145
+    note: "Two occurrences in one clause; covered by two entries."
+  - source: spec/trace/extend_opentelemetry.md
+    quote: "SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth`"
+    reason: restatement_of
+    of: ACS-REQ-0146
+  - source: spec/trace/extend_opentelemetry.md
+    quote: "MAY be expressed as OTel span links keyed by `provenance_id`"
+    reason: restatement_of
+    of: ACS-REQ-0147
+  - source: spec/instrument/hooks.md
+    quote: "Guardian MAY DENY — refuse the subagent spawn, e.g. because the `intent_derivation` would grant capabilities the parent's `Intent.parsed` does not authorize."
+    reason: restatement_of
+    of: ACS-REQ-0152

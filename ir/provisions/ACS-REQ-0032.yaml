@@ -1,0 +1,17 @@
+id: ACS-REQ-0032
+title: "An unguarded session start surfaces on Trace events"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-trace]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 98cda73c20d6c3202895df45d0734c8ed6a9c47dc8136d27f3b58a13a9d11b25
+predicate: null
+note: "Non-testable: no Trace-event relations in the vocabulary; Trace emission is out of the envelope log."

@@ -1,0 +1,24 @@
+id: ACS-REQ-0053
+title: "An emitted Provenance object is complete"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: schema
+schema_refs:
+  - file: provenance.json
+    pointer: /required
+    pinned: 033ea2da060afb879bc96d9ebbae6ff7259c8a34839b9640d4c21c307b06e9be
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 70f11405491cfca37e24e351256a5852b1de5040502a7fe5935a7198358aa1af
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Path]
+  rules:
+    - "violation(Seq, Path) :- schema_violation(Seq, \"provenance.json\", Path)."

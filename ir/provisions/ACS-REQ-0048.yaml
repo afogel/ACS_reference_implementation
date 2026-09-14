@@ -1,0 +1,16 @@
+id: ACS-REQ-0048
+title: "The agent may attempt recovery within the timeout budget"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 9d4b0dc6e3c1443f45a00f538a2f180117f54ccb42fbc88332849d161b40773c
+note: null

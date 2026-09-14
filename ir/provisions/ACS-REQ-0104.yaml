@@ -1,0 +1,16 @@
+id: ACS-REQ-0104
+title: "A Guardian may refuse a session at sessionStart"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 7d06ec2f7f8978a55b2bc711111904a3feff517d2e9227a3526bda54fdf79c23
+note: null

@@ -1,0 +1,16 @@
+id: ACS-REQ-0123
+title: "The framework may send a digest_verified hint"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 1d04053a843a09ccf862698e73f106d8bdc30df05c98ee0ff026af0430544151
+note: null

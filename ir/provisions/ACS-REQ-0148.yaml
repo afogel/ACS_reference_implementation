@@ -1,0 +1,16 @@
+id: ACS-REQ-0148
+title: "Redaction is applied at attribute-emit time"
+actor: framework
+reported_against: framework
+profile: [acs-trace]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: cbd4d4e6910341a3b7c900220d452162ae1a07ccdedefa0e37c523c213e2fc93
+note: null

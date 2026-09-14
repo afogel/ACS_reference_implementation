@@ -1,0 +1,16 @@
+id: ACS-REQ-0047
+title: "A deployment may choose fail-closed"
+actor: deployment
+reported_against: deployment
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 9e2ddc2e6d290ec5e37dcb5ff2561726ca2b267749f847289fa0beabcd404472
+note: null

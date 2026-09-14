@@ -1,0 +1,16 @@
+id: ACS-INV-0002
+title: "The only conformant path to widen Intent"
+actor: none
+reported_against: none
+profile: all
+activation: null
+modality_kind: invariant
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 38f1e7bab7ddc4991dac306ceefd6c85f68a1a94b3400aef61c216b3c53796c4
+note: "X5 typed this callout an Invariant; its strict-mode sentence is a Guardian obligation the pillar restates as ACS-REQ-0077."

@@ -68,7 +68,7 @@ export function generate(kind: "clean" | "violating"): { trace: Line[]; entries:
   const entries: { session_id: string; seq: number; entry: Json }[] = [];
   let previous: string | null = null;
   const entry = (seq: number, step_type: string, tamper = false): string => {
-    const e: Json = { entry_id: `e${seq}`, step_id: `s${seq}`, step_type, previous_hash: previous };
+    const e: Json = { entry_id: `e${seq}`, step_id: `s${seq}`, step_type, previous_hash: previous, timestamp: `2026-01-01T00:00:${String(seq).padStart(2, "0")}Z`, request_hash: "0".repeat(64), provenance_summary: { entry_count: 1 } };
     e.entry_hash = chainEntryHash(e);
     previous = e.entry_hash as string;
     const recorded = tamper ? { ...e, step_type: "tampered" } : e;
@@ -131,11 +131,24 @@ export function generate(kind: "clean" | "violating"): { trace: Line[]; entries:
     "archive_preserved.facts": "",
     "approver_verified.facts": "",
     "ask_resolved.facts": "",
+    "decision_log_field.facts": trace
+      .filter((l) => l.direction === "response" && (l.envelope.result as Json)?.decision)
+      .map((l) => `${l.seq}\treasoning\n${l.seq}\tmodel_identifier\n`)
+      .join(""),
+    "intent_derivation_recorded.facts": "",
   };
   const deploymentFacts: Record<string, string> = {
     "session_batching.facts": `${SESSION}\tsupported\n`,
     "defer_bound.facts": `${SESSION}\t3\n`,
     "guardian_version.facts": `${VERSION}\n`,
+    "policy_requires_provenance.facts": "",
+    "strict_mode_forbidden.facts": "",
+    "client_ask_capable.facts": `${SESSION}\tyes\n`,
+    "agent_step_outcome.facts": trace
+      .filter((l) => l.direction === "request" && l.method?.startsWith("steps/"))
+      .map((l) => `${SESSION}\t${l.seq}\tapplied\n`)
+      .join(""),
+    "agent_audit_event.facts": "",
   };
   return { trace, entries, guardianFacts, deploymentFacts };
 }

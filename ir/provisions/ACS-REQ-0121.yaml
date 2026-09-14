@@ -1,0 +1,22 @@
+id: ACS-REQ-0121
+title: "An uncorrelatable load is denied"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 242488e96202aa405403c745014ec69f9cb7b70276b54a71b0a7124f42465ade
+note: null
+predicate:
+  subject: [LoadSeq]
+  witness: [Session, SkillId]
+  rules:
+    - "violation(LoadSeq, Session, SkillId) :- skill_load(LoadSeq, Session, SkillId, Digest), not approved(Session, SkillId, Digest), response_to(LoadSeq, R), decision(R, \"allow\")."
+    - "approved(Session, SkillId, Digest) :- skill_register(RegSeq, Session, SkillId, Digest), response_to(RegSeq, RR), decision(RR, \"allow\")."

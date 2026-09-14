@@ -8,9 +8,10 @@
  * reviewer can read the diff, and a stale copy is a diff nobody read.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadCorpus, readSource, type Corpus } from "../corpus.ts";
 import { defaultMarkersDir, parseOverlay, resolveOverlay } from "../markers/overlay.ts";
+import { parseExclusions, resolveExclusions, type ResolvedExclusion } from "./exclusions.ts";
 import { toYaml, type YamlValue } from "../yaml.ts";
 import { provisionCensus, type ProvisionCensus } from "./provision-census.ts";
 import { parseSourceDeclarations, sourceCensus, type SourceCensus } from "./source-census.ts";
@@ -28,7 +29,7 @@ export function defaultCensusDir(): string {
   return resolve(import.meta.dir, "..", "..", "census");
 }
 
-export function runCensus(options: { corpusRoot?: string; sourcesFile?: string; overlayFile?: string | null } = {}): CensusRun {
+export function runCensus(options: { corpusRoot?: string; sourcesFile?: string; overlayFile?: string | null; exclusionsFile?: string | null } = {}): CensusRun {
   const corpus = loadCorpus(options.corpusRoot);
   const sourcesFile = options.sourcesFile ?? join(defaultCensusDir(), "sources.yaml");
   const declared = parseSourceDeclarations(readFileSync(sourcesFile, "utf8"));
@@ -46,9 +47,22 @@ export function runCensus(options: { corpusRoot?: string; sourcesFile?: string; 
     sources.problems.push(...resolution.problems.map((p) => `overlay: ${p}`));
     spans = resolution.spans;
   }
+  // Exclusions live beside the source declaration they refine, so a test
+  // corpus with its own sources.yaml never picks up the real catalog's.
+  const exclusionsFile = options.exclusionsFile === undefined ? join(dirname(sourcesFile), "exclusions.yaml") : options.exclusionsFile;
+  let exclusions: ResolvedExclusion[] = [];
+  if (exclusionsFile !== null && existsSync(exclusionsFile)) {
+    const resolved = resolveExclusions(parseExclusions(readFileSync(exclusionsFile, "utf8")), (file) =>
+      corpus.files.includes(file) ? readSource(corpus, file) : null,
+    );
+    sources.problems.push(...resolved.problems);
+    exclusions = resolved.exclusions;
+  }
   if (sources.problems.length > 0) return { corpus, sources, provisions: null, yaml: null };
 
-  const provisions = provisionCensus(corpus, declared, (file) => readSource(corpus, file), spans);
+  const provisions = provisionCensus(corpus, declared, (file) => readSource(corpus, file), spans, exclusions);
+  sources.problems.push(...provisions.exclusion_problems);
+  if (provisions.exclusion_problems.length > 0) return { corpus, sources, provisions: null, yaml: null };
   return { corpus, sources, provisions, yaml: renderYaml(provisions) };
 }
 

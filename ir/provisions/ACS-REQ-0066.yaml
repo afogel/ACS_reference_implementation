@@ -1,0 +1,26 @@
+id: ACS-REQ-0066
+title: "parser_provenance is required when parsed is present"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: "an Intent with parsed capabilities is established"
+modality_kind: obligation
+evidence_class: schema
+schema_refs:
+  - file: hooks/session-start.json
+    pointer: /properties/intent
+    pinned: 21f139b7cdaef464d18c005ddd6d8ddb0518d81e7f343df4b3b1ba6d430d23ee
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: dc5386ddfe749536616326e8b18fbcc0b961dbc4a8103ae12478e8a8d5087285
+note: "The hook schemas carry the conditional as if/then; a failure surfaces at path /intent."
+predicate:
+  subject: [Seq]
+  witness: [Schema]
+  rules:
+    - "violation(Seq, Schema) :- schema_violation(Seq, Schema, \"/intent\"), intent_schema(Schema)."
+    - "intent_schema(\"hooks/session-start.json\") :- schema_violation(_, \"hooks/session-start.json\", _)."
+    - "intent_schema(\"hooks/agent-trigger.json\") :- schema_violation(_, \"hooks/agent-trigger.json\", _)."

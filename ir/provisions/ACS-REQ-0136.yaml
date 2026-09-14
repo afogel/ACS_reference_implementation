@@ -1,0 +1,18 @@
+id: ACS-REQ-0136
+title: "ACS-Inspect-Dynamic emits agbom/changed on every mutation"
+actor: framework
+reported_against: framework
+profile: [acs-inspect-dynamic]
+activation: null
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 9403b8b8fd9500da215cfb5d5362455e37017df69d8e4b58ba34bbd0323edcae
+note: null
+predicate:
+  inexpressible: "component mutations that did not produce agbom/changed are, by definition, not in the log"

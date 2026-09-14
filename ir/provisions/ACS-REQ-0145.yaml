@@ -1,0 +1,17 @@
+id: ACS-REQ-0145
+title: "Spans carry acs.provenance.origin"
+actor: framework
+reported_against: framework
+profile: [acs-trace]
+activation: null
+modality_kind: obligation
+evidence_class: non-testable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 6fb1cf6e4b10bae64b548a66214ee02817910a779aa9b7eb80943e433050d313
+predicate: null
+note: "Non-testable: no span relations in the vocabulary."

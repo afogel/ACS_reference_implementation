@@ -30,9 +30,9 @@ totals:
     thematic_break: 0
   blocks_with_keywords: 134
   masked: 0
-  bound: 23
-  excluded: 11
-  unbound: 174
+  bound: 163
+  excluded: 45
+  unbound: 0
 sources:
   - path: README.md
     status: informative
@@ -134,9 +134,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 2
+    bound: 6
     excluded: 0
-    unbound: 4
+    unbound: 0
     normative_tags: 2
     footer_entries: 4
   - path: concepts/capability.md
@@ -176,9 +176,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 1
     excluded: 0
-    unbound: 1
+    unbound: 0
     normative_tags: 1
     footer_entries: 4
   - path: concepts/intent.md
@@ -197,9 +197,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 1
+    bound: 2
     excluded: 0
-    unbound: 1
+    unbound: 0
     normative_tags: 2
     footer_entries: 4
   - path: concepts/provenance.md
@@ -239,9 +239,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 2
     excluded: 0
-    unbound: 2
+    unbound: 0
     normative_tags: 1
     footer_entries: 4
   - path: concepts/skill.md
@@ -281,9 +281,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 1
     excluded: 0
-    unbound: 1
+    unbound: 0
     normative_tags: 2
     footer_entries: 4
   - path: identity/overview.md
@@ -344,9 +344,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
-    excluded: 0
-    unbound: 22
+    bound: 12
+    excluded: 10
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/inspect/README.md
@@ -365,9 +365,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
-    excluded: 0
-    unbound: 7
+    bound: 6
+    excluded: 1
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/inspect/extend_cyclonedx.md
@@ -386,9 +386,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 1
     excluded: 0
-    unbound: 1
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/inspect/extend_spdx.md
@@ -638,9 +638,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
+    bound: 2
     excluded: 0
-    unbound: 2
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/instrument/hooks.md
@@ -659,9 +659,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
-    excluded: 0
-    unbound: 27
+    bound: 20
+    excluded: 7
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/instrument/specification.md
@@ -680,9 +680,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 20
-    excluded: 0
-    unbound: 91
+    bound: 101
+    excluded: 10
+    unbound: 0
     normative_tags: 10
     footer_entries: 0
   - path: spec/trace/OCSF/implementation_examples.md
@@ -743,9 +743,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
-    excluded: 0
-    unbound: 7
+    bound: 6
+    excluded: 1
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: spec/trace/extend_ocsf.md
@@ -785,9 +785,9 @@ sources:
       definition: 0
       invariant: 0
       exclusion: 0
-    bound: 0
-    excluded: 0
-    unbound: 8
+    bound: 3
+    excluded: 5
+    unbound: 0
     normative_tags: 0
     footer_entries: 0
   - path: topics/ACS_in_action_example.md
@@ -1402,7 +1402,8 @@ occurrences:
     block: 8
     context: "> **Decision logging (normative).** A Guardian MUST log every decision with its reasoning, the evaluator's model identifier…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0092
   - source: concepts/agents.md
     line: 19
     column: 124
@@ -1412,7 +1413,8 @@ occurrences:
     block: 10
     context: …outside standing policy and an `ask` disposition is raised. An Approver MAY be human, agent, or service. It receives an ACS-shaped request and retu…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0070
   - source: concepts/agents.md
     line: 21
     column: 71
@@ -1444,7 +1446,8 @@ occurrences:
     block: 12
     context: The Approver's grant MAY extend `Intent.parsed` through an `intent_extension` (see [Intent](./in…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0074
   - source: concepts/agents.md
     line: 23
     column: 146
@@ -1454,7 +1457,8 @@ occurrences:
     block: 12
     context: "…ion` (see [Intent](./intent.md)). In v0.1 this is single-hop: Approvers MUST NOT themselves return `ask`."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0072
   - source: concepts/identity.md
     line: 13
     column: 35
@@ -1464,7 +1468,8 @@ occurrences:
     block: 7
     context: "Three identities are distinct and MUST NOT be conflated:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-INV-0003
   - source: concepts/intent.md
     line: 13
     column: 87
@@ -1485,7 +1490,8 @@ occurrences:
     block: 11
     context: "…ct to the session's `scope_mode`; under `scope_mode: strict` a Guardian MUST NOT honor an extension that adds capabilities the deployment policy forbids…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-INV-0002
   - source: concepts/session-lifecycle.md
     line: 23
     column: 95
@@ -1495,7 +1501,8 @@ occurrences:
     block: 12
     context: "…is auditable (normative).** When a subagent is spawned, the audit chain MUST record how the subagent's `Intent.parsed` relates to the parent's: inhe…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0151
   - source: concepts/session-lifecycle.md
     line: 23
     column: 257
@@ -1505,7 +1512,8 @@ occurrences:
     block: 12
     context: …a strict subset, derived from a parent directive, or fresh. A Guardian MAY deny a spawn whose derivation would grant capabilities the parent's [In…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0152
   - source: concepts/trust.md
     line: 25
     column: 57
@@ -1515,7 +1523,8 @@ occurrences:
     block: 13
     context: "> **The rungs do not collapse (normative).** A Guardian MUST NOT treat an asserted fact as attested. The basis of a fact is part of the…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-INV-0004
   - source: identity/overview.md
     line: 124
     column: 1672
@@ -1580,7 +1589,8 @@ occurrences:
     block: 6
     context: A Guardian MAY refuse a session if the client does not declare a profile the Guardian'…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0127
   - source: spec/conformance.md
     line: 11
     column: 152
@@ -1590,7 +1600,9 @@ occurrences:
     block: 6
     context: …ardian's policy requires (e.g. a Guardian whose policy needs provenance MAY refuse a client that does not declare `acs-provenance`).
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0127
   - source: spec/conformance.md
     line: 15
     column: 32
@@ -1600,7 +1612,8 @@ occurrences:
     block: 8
     context: "A v0.1.0-conformant deployment MUST implement ACS-Core. ACS-Core comprises:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0128
   - source: spec/conformance.md
     line: 19
     column: 387
@@ -1610,7 +1623,8 @@ occurrences:
     block: 11
     context: …`skillRegister`/`skillLoad`/`skillUnload`) are normatively defined and SHOULD be implemented when the harness can observe the corresponding event; th…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0129
   - source: spec/conformance.md
     line: 19
     column: 566
@@ -1620,7 +1634,8 @@ occurrences:
     block: 11
     context: …via the handshake. A deployment whose AgBOM includes `skill` components SHOULD emit the skill lifecycle hooks, so a Guardian is not blind to a composi…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0130
   - source: spec/conformance.md
     line: 22
     column: 91
@@ -1630,7 +1645,9 @@ occurrences:
     block: 14
     context: …ion** — `request_id` (UUID) and `timestamp` on every request; Guardians MUST reject replays per [§10.3](./instrument/specification.md#103-replay-pro…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0086
   - source: spec/conformance.md
     line: 24
     column: 45
@@ -1640,7 +1657,9 @@ occurrences:
     block: 16
     context: "- **Decision honoring**: the Observed Agent MUST wait for the Guardian's decision up to the negotiated timeout and apply…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0045
   - source: spec/conformance.md
     line: 28
     column: 186
@@ -1650,7 +1669,9 @@ occurrences:
     block: 19
     context: …m signatures, or `request_hash` on ContextEntry (`request_hash` remains SHOULD). It DOES require the baseline signature (§10) and decision honoring (§…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0060
   - source: spec/conformance.md
     line: 28
     column: 362
@@ -1660,7 +1681,8 @@ occurrences:
     block: 19
     context: …validate hook payloads against the base schemas, where `provenance` is OPTIONAL; field-level Provenance is added by the ACS-Provenance profile.
     binding:
-      kind: unbound
+      kind: excluded
+      reason: rationale
   - source: spec/conformance.md
     line: 36
     column: 112
@@ -1670,7 +1692,8 @@ occurrences:
     block: 23
     context: "…per [Trace Events](./trace/events.md). A deployment claiming ACS-Trace MUST:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0131
   - source: spec/conformance.md
     line: 42
     column: 97
@@ -1680,7 +1703,9 @@ occurrences:
     block: 27
     context: …that need cross-vendor observability or SIEM integration. Trace events MUST NOT block enforcement.
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0132
   - source: spec/conformance.md
     line: 46
     column: 100
@@ -1690,7 +1715,8 @@ occurrences:
     block: 29
     context: "…n per [Inspect](./inspect/README.md). A deployment claiming ACS-Inspect MUST:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0134
   - source: spec/conformance.md
     line: 59
     column: 195
@@ -1700,7 +1726,9 @@ occurrences:
     block: 36
     context: "…t claiming ACS-Provenance runs `provenance_producer: deterministic` and MUST attach a Provenance object to every data-bearing field in every hook pa…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0052
   - source: spec/conformance.md
     line: 61
     column: 33
@@ -1710,7 +1738,9 @@ occurrences:
     block: 37
     context: The wire-format `trust` enum is OPTIONAL in v0.1; the v0.1 expected practice is for Guardians to derive trust fr…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0026
   - source: spec/conformance.md
     line: 61
     column: 265
@@ -1720,7 +1750,9 @@ occurrences:
     block: 37
     context: …dor Guardian implementations that elect to populate `trust` on the wire MUST enforce the monotonicity rule on `agent_generated` trust and SHOULD use…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0010
   - source: spec/conformance.md
     line: 61
     column: 331
@@ -1730,7 +1762,8 @@ occurrences:
     block: 37
     context: …wire MUST enforce the monotonicity rule on `agent_generated` trust and SHOULD use the default channel-to-trust mapping ([§7.2](./instrument/specifica…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0027
   - source: spec/conformance.md
     line: 67
     column: 119
@@ -1740,7 +1773,8 @@ occurrences:
     block: 40
     context: …e baseline's replay-protection fields. A deployment claiming ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary) and SHOULD support `…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0137
   - source: spec/conformance.md
     line: 67
     column: 154
@@ -1750,7 +1784,8 @@ occurrences:
     block: 40
     context: …ds. A deployment claiming ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary) and SHOULD support `SLH-DSA-128s` as an algorithmic-diversity…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0137
   - source: spec/conformance.md
     line: 67
     column: 179
@@ -1760,7 +1795,8 @@ occurrences:
     block: 40
     context: …ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary) and SHOULD support `SLH-DSA-128s` as an algorithmic-diversity backup. Hybrid compo…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0138
   - source: spec/conformance.md
     line: 67
     column: 320
@@ -1770,7 +1806,8 @@ occurrences:
     block: 40
     context: …rid composites (`ML-DSA-65+ECDSA-P256`, `ML-DSA-65+RSA-PSS-SHA256`) are OPTIONAL for transitional deployments.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0139
   - source: spec/conformance.md
     line: 75
     column: 89
@@ -1780,7 +1817,9 @@ occurrences:
     block: 44
     context: …audit chain beyond ACS-Core's baseline. A deployment claiming ACS-Audit MUST populate `request_hash` (lowercase-hex SHA-256 of JCS-canonicalized req…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0062
   - source: spec/conformance.md
     line: 75
     column: 294
@@ -1790,7 +1829,8 @@ occurrences:
     block: 44
     context: …mmits to request content, not just step metadata. ACS-Audit deployments SHOULD also populate `timestamp` and `provenance_summary` on every ContextEntr…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0063
   - source: spec/inspect/README.md
     line: 10
     column: 223
@@ -1800,7 +1840,8 @@ occurrences:
     block: 5
     context: …nventory (e.g. banning a model or tool at the boundary), the deployment MUST implement ACS-Inspect.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0140
   - source: spec/inspect/README.md
     line: 21
     column: 223
@@ -1810,7 +1851,8 @@ occurrences:
     block: 17
     context: …evant history of the session. Decisions are normally `allow`; Guardians MAY return `deny` to refuse a session whose component graph contains a bann…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0124
   - source: spec/inspect/README.md
     line: 42
     column: 17
@@ -1820,7 +1862,8 @@ occurrences:
     block: 49
     context: Every component SHOULD carry `registration_provenance` (who declared it — framework / configur…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0141
   - source: spec/inspect/README.md
     line: 42
     column: 236
@@ -1830,7 +1873,8 @@ occurrences:
     block: 49
     context: …me lineage system as data flow. Deployments claiming **ACS-Provenance** MUST populate `registration_provenance` on every component.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0142
   - source: spec/inspect/README.md
     line: 54
     column: 12
@@ -1840,7 +1884,8 @@ occurrences:
     block: 64
     context: A Guardian MAY request a specific serialization in the handshake's AgBOM negotiation (…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0143
   - source: spec/inspect/README.md
     line: 58
     column: 39
@@ -1850,7 +1895,9 @@ occurrences:
     block: 66
     context: "A deployment claiming **ACS-Inspect** MUST:"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0134
   - source: spec/inspect/README.md
     line: 63
     column: 60
@@ -1860,7 +1907,8 @@ occurrences:
     block: 69
     context: "A deployment claiming **ACS-Inspect-Dynamic** additionally MUST:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0136
   - source: spec/inspect/extend_cyclonedx.md
     line: 74
     column: 36
@@ -1870,7 +1918,8 @@ occurrences:
     block: 34
     context: "- For `agbom/changed`, deployments MAY emit a CycloneDX VEX-style diff or simply emit a fresh full serializati…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0144
   - source: spec/instrument/extend_mcp.md
     line: 12
     column: 13
@@ -1880,7 +1929,8 @@ occurrences:
     block: 7
     context: Deployments MAY collapse MCP `tools/call` traffic into the generic `steps/toolCallReque…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0125
   - source: spec/instrument/extend_mcp.md
     line: 12
     column: 173
@@ -1890,7 +1940,8 @@ occurrences:
     block: 7
     context: …toolCallResult` hooks when tool-level policy is sufficient. Deployments SHOULD use `protocols/MCP/*` when policy needs MCP-level distinctions that gen…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0126
   - source: spec/instrument/hooks.md
     line: 74
     column: 40
@@ -1900,7 +1951,8 @@ occurrences:
     block: 111
     context: "**Decision:** ALLOW / DENY. A Guardian MAY refuse a session whose identity, policy mode, or platform fails policy…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0104
   - source: spec/instrument/hooks.md
     line: 76
     column: 48
@@ -1910,7 +1962,9 @@ occurrences:
     block: 112
     context: A deployment that does not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first cont…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0059
   - source: spec/instrument/hooks.md
     line: 88
     column: 47
@@ -1920,7 +1974,8 @@ occurrences:
     block: 118
     context: "**Decision:** ALLOW / DENY / MODIFY. Guardian MAY rewrite the trigger payload (e.g. redact PII) before activation."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0105
   - source: spec/instrument/hooks.md
     line: 102
     column: 46
@@ -1930,7 +1985,8 @@ occurrences:
     block: 125
     context: "**Decision:** Decision-eligible — a Guardian MAY deny to block the turn from starting — but most deployments will return…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0106
   - source: spec/instrument/hooks.md
     line: 114
     column: 47
@@ -1940,7 +1996,8 @@ occurrences:
     block: 131
     context: "**Decision:** ALLOW / DENY / MODIFY. Guardian MAY redact content before delivery to the agent."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0107
   - source: spec/instrument/hooks.md
     line: 138
     column: 47
@@ -1950,7 +2007,8 @@ occurrences:
     block: 143
     context: "**Decision:** ALLOW / DENY / MODIFY. Guardian MAY redact retrieved content before injection into the agent context."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0108
   - source: spec/instrument/hooks.md
     line: 172
     column: 12
@@ -1960,7 +2018,8 @@ occurrences:
     block: 160
     context: Frameworks MUST fire `toolCallRequest` for every action that escapes the agent's reason…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0109
   - source: spec/instrument/hooks.md
     line: 200
     column: 43
@@ -1970,7 +2029,8 @@ occurrences:
     block: 174
     context: "**Decision:** Decision-eligible. Guardian MAY return DENY to block compaction (e.g. because deployment policy disallo…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0110
   - source: spec/instrument/hooks.md
     line: 210
     column: 75
@@ -1980,7 +2040,8 @@ occurrences:
     block: 179
     context: …Payload:** resulting `summary` content with `provenance` whose `origin` MUST be `agent_generated` and whose `derived_from` MUST equal the union of `…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0111
   - source: spec/instrument/hooks.md
     line: 210
     column: 126
@@ -1990,7 +2051,8 @@ occurrences:
     block: 179
     context: …ance` whose `origin` MUST be `agent_generated` and whose `derived_from` MUST equal the union of `provenance_id`s of every entry in `entries_compacte…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0111
   - source: spec/instrument/hooks.md
     line: 212
     column: 83
@@ -2000,7 +2062,8 @@ occurrences:
     block: 180
     context: …:** Not decision-eligible — compaction has already occurred. A Guardian MAY return MODIFY (rewrite the summary, e.g. to redact a region the policy…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0112
   - source: spec/instrument/hooks.md
     line: 212
     column: 178
@@ -2010,7 +2073,8 @@ occurrences:
     block: 180
     context: …ite the summary, e.g. to redact a region the policy can't compact), but MAY NOT return DENY. The audit chain MUST record the post-compact state reg…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0113
   - source: spec/instrument/hooks.md
     line: 212
     column: 215
@@ -2020,7 +2084,8 @@ occurrences:
     block: 180
     context: …ion the policy can't compact), but MAY NOT return DENY. The audit chain MUST record the post-compact state regardless.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0114
   - source: spec/instrument/hooks.md
     line: 226
     column: 43
@@ -2030,7 +2095,9 @@ occurrences:
     block: 187
     context: "**Decision:** Decision-eligible. Guardian MAY DENY — refuse the subagent spawn, e.g. because the `intent_derivation`…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0152
   - source: spec/instrument/hooks.md
     line: 252
     column: 40
@@ -2040,7 +2107,8 @@ occurrences:
     block: 200
     context: "**Decision:** ALLOW / DENY. A Guardian MAY deny registration; a denied skill MUST NOT become eligible to load. A G…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0116
   - source: spec/instrument/hooks.md
     line: 252
     column: 78
@@ -2050,7 +2118,8 @@ occurrences:
     block: 200
     context: …ision:** ALLOW / DENY. A Guardian MAY deny registration; a denied skill MUST NOT become eligible to load. A Guardian SHOULD compare `declared_capabiliti…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0117
   - source: spec/instrument/hooks.md
     line: 252
     column: 123
@@ -2060,7 +2129,8 @@ occurrences:
     block: 200
     context: …gistration; a denied skill MUST NOT become eligible to load. A Guardian SHOULD compare `declared_capabilities` against the union of capabilities the c…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0118
   - source: spec/instrument/hooks.md
     line: 252
     column: 226
@@ -2070,7 +2140,8 @@ occurrences:
     block: 200
     context: …lities` against the union of capabilities the composed tools expose and MAY deny over-broad declarations.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0119
   - source: spec/instrument/hooks.md
     line: 262
     column: 136
@@ -2080,7 +2151,8 @@ occurrences:
     block: 205
     context: …o the Guardian binds the activation to an approved registration. A load MUST be correlatable to a prior approved `skillRegister` for the same `(skil…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0120
   - source: spec/instrument/hooks.md
     line: 262
     column: 352
@@ -2090,7 +2162,8 @@ occurrences:
     block: 205
     context: "…ion, or whose digest differs from the approved one, is unverifiable and SHOULD be denied. Without this binding the gate is bypassable: a framework cou…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0121
   - source: spec/instrument/hooks.md
     line: 262
     column: 541
@@ -2100,7 +2173,8 @@ occurrences:
     block: 205
     context: …t was never registered, or whose registration was denied. The framework MAY send a `digest_verified` hint, but a Guardian verifies the binding itse…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0123
   - source: spec/instrument/hooks.md
     line: 268
     column: 40
@@ -2110,7 +2184,9 @@ occurrences:
     block: 208
     context: "**Decision:** ALLOW / DENY. A Guardian SHOULD deny a load it cannot correlate to an approved `skillRegister` for the…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0121
   - source: spec/instrument/hooks.md
     line: 268
     column: 145
@@ -2120,7 +2196,8 @@ occurrences:
     block: 208
     context: …elate to an approved `skillRegister` for the same `(skill_id, digest)`, SHOULD deny when `load_path` shows a skill loading another outside its declare…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0122
   - source: spec/instrument/hooks.md
     line: 268
     column: 248
@@ -2130,7 +2207,9 @@ occurrences:
     block: 208
     context: …ows a skill loading another outside its declared `composed_skills`, and SHOULD deny when the loaded artifact's digest does not match the one vetted at…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0121
   - source: spec/instrument/hooks.md
     line: 312
     column: 40
@@ -2140,7 +2219,9 @@ occurrences:
     block: 230
     context: "**Decision:** Normally ALLOW. Guardian MAY DENY to refuse a session whose component graph contains a banned model,…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0124
   - source: spec/instrument/hooks.md
     line: 324
     column: 38
@@ -2150,7 +2231,9 @@ occurrences:
     block: 236
     context: "**Decision:** ALLOW / DENY. Guardian MAY DENY to block a hot-swap; otherwise audited."
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0124
   - source: spec/instrument/hooks.md
     line: 342
     column: 423
@@ -2160,7 +2243,9 @@ occurrences:
     block: 245
     context: …s on top. Deployments that only need transport-agnostic tool governance MAY collapse MCP tool calls into `steps/toolCallRequest`; deployments that…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0125
   - source: spec/instrument/specification.md
     line: 12
     column: 16
@@ -2170,7 +2255,8 @@ occurrences:
     block: 7
     context: 2. **The agent MUST NOT have knowledge of hooks.** Provenance fields, when emitted, MUST be pop…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0025
   - source: spec/instrument/specification.md
     line: 12
     column: 85
@@ -2180,7 +2266,9 @@ occurrences:
     block: 7
     context: …nt MUST NOT have knowledge of hooks.** Provenance fields, when emitted, MUST be populated outside the LLM's output path.
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0019
   - source: spec/instrument/specification.md
     line: 13
     column: 365
@@ -2190,7 +2278,9 @@ occurrences:
     block: 8
     context: …origin` + `source_id` against local policy. The wire format reserves an OPTIONAL `trust` enum for vendor implementations that elect to carry the classif…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0026
   - source: spec/instrument/specification.md
     line: 59
     column: 117
@@ -2200,7 +2290,8 @@ occurrences:
     block: 36
     context: …d in v0.1.0. Batching is permitted as standard JSON-RPC 2.0 — Guardians SHOULD accept array-shaped requests and return an array of correlated response…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0028
   - source: spec/instrument/specification.md
     line: 59
     column: 475
@@ -2221,7 +2312,8 @@ occurrences:
     block: 42
     context: "…terminates with `UNSUPPORTED_VERSION` (`-32001`, §17.1). Unknown fields MUST be ignored. If the client declares `provenance_producer: \"none\"` and th…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0029
   - source: spec/instrument/specification.md
     line: 71
     column: 230
@@ -2231,7 +2323,8 @@ occurrences:
     block: 42
     context: …` and the Guardian's `policy_requires_provenance` is true, the Guardian MUST refuse the session at handshake time with `PROVENANCE_REQUIRED` (`-3200…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0030
   - source: spec/instrument/specification.md
     line: 77
     column: 204
@@ -2241,7 +2334,8 @@ occurrences:
     block: 45
     context: …osture applies only when no answer arrives. A session started unguarded MUST be recorded in the deployment's own audit log — there is no Guardian to…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0031
   - source: spec/instrument/specification.md
     line: 77
     column: 305
@@ -2251,7 +2345,8 @@ occurrences:
     block: 45
     context: …yment's own audit log — there is no Guardian to receive the event — and SHOULD be surfaced on Trace events when the deployment claims ACS-Trace. The O…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0032
   - source: spec/instrument/specification.md
     line: 77
     column: 397
@@ -2261,7 +2356,8 @@ occurrences:
     block: 45
     context: …n Trace events when the deployment claims ACS-Trace. The Observed Agent SHOULD retry the handshake for subsequent sessions. Whether a Guardian can att…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0033
   - source: spec/instrument/specification.md
     line: 113
     column: 41
@@ -2304,7 +2400,8 @@ occurrences:
     block: 141
     context: …t-internal consumption; deployments wanting different text per audience SHOULD compose them client-side from `reasoning` + `policy_data` + `reason_cod…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0034
   - source: spec/instrument/specification.md
     line: 131
     column: 134
@@ -2314,7 +2411,8 @@ occurrences:
     block: 144
     context: …sion, policy_name, rule_id}`, the rules that fired. `policy_version` is OPTIONAL and deployment-defined, but SHOULD be populated when replay or ledger-b…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0035
   - source: spec/instrument/specification.md
     line: 131
     column: 171
@@ -2324,7 +2422,8 @@ occurrences:
     block: 144
     context: …es that fired. `policy_version` is OPTIONAL and deployment-defined, but SHOULD be populated when replay or ledger-backed policy state matters. A singl…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0036
   - source: spec/instrument/specification.md
     line: 131
     column: 260
@@ -2334,7 +2433,8 @@ occurrences:
     block: 144
     context: …ed when replay or ledger-backed policy state matters. A single decision MAY cite multiple entries when several paradigms reject the same action; au…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0037
   - source: spec/instrument/specification.md
     line: 132
     column: 122
@@ -2344,7 +2444,8 @@ occurrences:
     block: 147
     context: …categorization strings. Free vocabulary in v0.1. UIs and meta-policies SHOULD switch on these rather than parsing reasoning text or rule IDs.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0038
   - source: spec/instrument/specification.md
     line: 140
     column: 689
@@ -2354,7 +2455,9 @@ occurrences:
     block: 161
     context: "….g., IBAC outer + FIDES inner across an A2A boundary) a single decision MAY cite all of them: `policy_references` with one entry per paradigm, `rea…"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0037
   - source: spec/instrument/specification.md
     line: 146
     column: 136
@@ -2364,7 +2467,8 @@ occurrences:
     block: 164
     context: "…tire payload. It is exclusive: a MODIFY that carries `modified_content` MUST NOT also carry `redactions` or `parameter_overrides`, because path-addresse…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0039
   - source: spec/instrument/specification.md
     line: 147
     column: 64
@@ -2374,7 +2478,8 @@ occurrences:
     block: 165
     context: "- **Structured edits.** `redactions` and `parameter_overrides` MAY appear together, but their targets MUST be disjoint: no `redactions` pa…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0040
   - source: spec/instrument/specification.md
     line: 147
     column: 103
@@ -2384,7 +2489,8 @@ occurrences:
     block: 165
     context: "…tions` and `parameter_overrides` MAY appear together, but their targets MUST be disjoint: no `redactions` path may address the same field as a `para…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0041
   - source: spec/instrument/specification.md
     line: 149
     column: 12
@@ -2394,7 +2500,9 @@ occurrences:
     block: 166
     context: A Guardian MUST NOT emit a `modifications` object that violates either rule. An Observed Ag…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0041
   - source: spec/instrument/specification.md
     line: 149
     column: 157
@@ -2404,7 +2512,8 @@ occurrences:
     block: 166
     context: …rved Agent that receives one cannot determine the Guardian's intent and MUST fail closed, treating the decision as `DENY`, and SHOULD record an audi…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0043
   - source: spec/instrument/specification.md
     line: 149
     column: 212
@@ -2414,7 +2523,8 @@ occurrences:
     block: 166
     context: …ian's intent and MUST fail closed, treating the decision as `DENY`, and SHOULD record an audit event.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0044
   - source: spec/instrument/specification.md
     line: 157
     column: 138
@@ -2424,7 +2534,8 @@ occurrences:
     block: 170
     context: …e verdict and applies it. For every step it submits, the Observed Agent MUST wait for the Guardian's decision, up to the negotiated timeout (`timeou…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0045
   - source: spec/instrument/specification.md
     line: 157
     column: 234
@@ -2434,7 +2545,8 @@ occurrences:
     block: 170
     context: "…an's decision, up to the negotiated timeout (`timeout_config`, §4), and MUST apply it: `ALLOW` proceeds, `DENY` blocks the action, `MODIFY` proceeds…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0046
   - source: spec/instrument/specification.md
     line: 159
     column: 538
@@ -2444,7 +2556,8 @@ occurrences:
     block: 171
     context: "…rroring, or unreachable Guardian does not halt production. A deployment MAY set `on_decision_failure: deny` (fail-closed). The negotiated timeout b…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0047
   - source: spec/instrument/specification.md
     line: 159
     column: 708
@@ -2454,7 +2567,8 @@ occurrences:
     block: 171
     context: "…e: an error from the §17.1 registry carries a recovery action the agent MAY attempt within the remaining budget, and an unambiguous failure (a refu…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0048
   - source: spec/instrument/specification.md
     line: 159
     column: 799
@@ -2464,7 +2578,8 @@ occurrences:
     block: 171
     context: …the remaining budget, and an unambiguous failure (a refused connection) MAY resolve immediately rather than waiting out the clock.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0048
   - source: spec/instrument/specification.md
     line: 161
     column: 45
@@ -2474,7 +2589,8 @@ occurrences:
     block: 172
     context: Every step that proceeds without a decision MUST be recorded as an audit event, so the bypass is visible rather than sil…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0050
   - source: spec/instrument/specification.md
     line: 161
     column: 184
@@ -2484,7 +2600,8 @@ occurrences:
     block: 172
     context: …than silent. When a decision does arrive within the timeout, the agent MUST honor it regardless of the posture. Fail-open trades enforcement for av…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0051
   - source: spec/instrument/specification.md
     line: 169
     column: 43
@@ -2494,7 +2611,8 @@ occurrences:
     block: 176
     context: "- Under **`deterministic`**, the producer MUST attach a Provenance object to **every** data-bearing field in every hoo…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0052
   - source: spec/instrument/specification.md
     line: 170
     column: 107
@@ -2504,7 +2622,9 @@ occurrences:
     block: 177
     context: …mits no Provenance objects. A Guardian whose policy requires provenance MUST refuse such a session at handshake time (§4) rather than accept provena…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0030
   - source: spec/instrument/specification.md
     line: 172
     column: 59
@@ -2514,7 +2634,8 @@ occurrences:
     block: 178
     context: The base hook payload schemas therefore mark `provenance` OPTIONAL so that ACS-Core (pure IBAC and other paradigms that need no informatio…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: rationale
   - source: spec/instrument/specification.md
     line: 172
     column: 416
@@ -2524,7 +2645,8 @@ occurrences:
     block: 178
     context: "…et. When a Provenance object is emitted, all of its own required fields MUST be populated. Schema: [`provenance.json`](https://github.com/afogel/ACS…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0053
   - source: spec/instrument/specification.md
     line: 183
     column: 29
@@ -2534,7 +2656,8 @@ occurrences:
     block: 200
     context: The wire format reserves an OPTIONAL `trust` enum (`trusted`, `untrusted`, `unknown`) so vendor Guardian imp…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0026
   - source: spec/instrument/specification.md
     line: 187
     column: 31
@@ -2544,7 +2667,8 @@ occurrences:
     block: 202
     context: "- The framework, not the LLM, MUST attach the label, deterministically, based on which channel data crosse…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0054
   - source: spec/instrument/specification.md
     line: 188
     column: 58
@@ -2565,7 +2689,8 @@ occurrences:
     block: 204
     context: "- Receivers (especially across A2A or multi-Guardian boundaries) MUST treat the field as a hint and re-derive trust against local policy keye…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0055
   - source: spec/instrument/specification.md
     line: 193
     column: 129
@@ -2575,7 +2700,8 @@ occurrences:
     block: 206
     context: …y vendor implementations that populate `trust` on the wire. Deployments MAY override in policy but SHOULD record overrides in audit metadata.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0056
   - source: spec/instrument/specification.md
     line: 193
     column: 156
@@ -2585,7 +2711,8 @@ occurrences:
     block: 206
     context: …at populate `trust` on the wire. Deployments MAY override in policy but SHOULD record overrides in audit metadata.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0057
   - source: spec/instrument/specification.md
     line: 205
     column: 12
@@ -2617,7 +2744,9 @@ occurrences:
     block: 223
     context: …no Provenance objects, and Guardians whose policies require Provenance MUST refuse the session at handshake time rather than silently degrading enf…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0030
   - source: spec/instrument/specification.md
     line: 209
     column: 282
@@ -2627,7 +2756,8 @@ occurrences:
     block: 225
     context: …lly observable rather than purely Guardian-internal. The Observed Agent MAY also send `session_id` and a `chain_hash` for cross-checking.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0058
   - source: spec/instrument/specification.md
     line: 211
     column: 220
@@ -2637,7 +2767,8 @@ occurrences:
     block: 226
     context: …produced by `sessionStart`; deployments that do not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first cont…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0059
   - source: spec/instrument/specification.md
     line: 222
     column: 5
@@ -2647,7 +2778,8 @@ occurrences:
     block: 232
     context: "- **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized reque…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0060
   - source: spec/instrument/specification.md
     line: 222
     column: 231
@@ -2657,7 +2789,8 @@ occurrences:
     block: 232
     context: …t to request content, so deployments claiming the **ACS-Audit** profile MUST populate `request_hash`), `timestamp`, `provenance_summary`, `previous_…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0062
   - source: spec/instrument/specification.md
     line: 234
     column: 22
@@ -2678,7 +2811,8 @@ occurrences:
     block: 241
     context: …nd at the session level (cumulative across the session). All fields are OPTIONAL — Guardians populate only what their policies consume. Available v0.1 f…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0064
   - source: spec/instrument/specification.md
     line: 242
     column: 11
@@ -2688,7 +2822,8 @@ occurrences:
     block: 243
     context: Intent is OPTIONAL and is defined in [Concepts › Intent](../../concepts/intent.md) (normat…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0065
   - source: spec/instrument/specification.md
     line: 242
     column: 166
@@ -2698,7 +2833,8 @@ occurrences:
     block: 243
     context: "…). Wire fields: `raw`, `parsed` (capability list), `parser_provenance` (REQUIRED if `parsed` present; `origin` MUST be `user_input`), `scope_mode`."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0066
   - source: spec/instrument/specification.md
     line: 242
     column: 205
@@ -2708,7 +2844,8 @@ occurrences:
     block: 243
     context: …lity list), `parser_provenance` (REQUIRED if `parsed` present; `origin` MUST be `user_input`), `scope_mode`.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0067
   - source: spec/instrument/specification.md
     line: 244
     column: 331
@@ -2806,7 +2943,8 @@ occurrences:
     block: 250
     context: "…'s `chain_hash` (cross-check) that disagrees with its own computed head MAY DENY with `reason_codes: [\"chain_mismatch\"]`, or return the `CHAIN_MISM…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0068
   - source: spec/instrument/specification.md
     line: 256
     column: 451
@@ -2816,7 +2954,8 @@ occurrences:
     block: 250
     context: …t finds a published `chain_hash` inconsistent with the recomputed chain SHOULD treat it as an integrity event, not a transient error.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0069
   - source: spec/instrument/specification.md
     line: 262
     column: 15
@@ -2826,7 +2965,8 @@ occurrences:
     block: 253
     context: ASK approvers MAY be human, agent, or service. `ask_details.approver = { type, id, endpoi…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0071
   - source: spec/instrument/specification.md
     line: 262
     column: 204
@@ -2858,7 +2998,8 @@ occurrences:
     block: 254
     context: Single-hop only in v0.1. Approvers MUST NOT return ASK. Quorum and recursive ASK deferred to v0.2.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0073
   - source: spec/instrument/specification.md
     line: 268
     column: 95
@@ -2868,7 +3009,8 @@ occurrences:
     block: 256
     context: …ASK because a request is outside `Intent.parsed`, the approver's grant MAY include an `intent_extension` field (see [`ask-details.json`](https://g…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0075
   - source: spec/instrument/specification.md
     line: 270
     column: 35
@@ -2878,7 +3020,8 @@ occurrences:
     block: 257
     context: "On `scope: session`, the Guardian MUST:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0076
   - source: spec/instrument/specification.md
     line: 276
     column: 110
@@ -2888,7 +3031,8 @@ occurrences:
     block: 261
     context: "…session's `scope_mode`: a Guardian operating under `scope_mode: strict` MUST NOT honor extensions that would add capabilities the deployment policy forb…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0077
   - source: spec/instrument/specification.md
     line: 282
     column: 81
@@ -2898,7 +3042,8 @@ occurrences:
     block: 264
     context: "…Guardian determines that the client cannot resolve `ASK`, the Guardian MUST NOT return `ASK`. The Guardian MUST instead substitute one of:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0078
   - source: spec/instrument/specification.md
     line: 282
     column: 117
@@ -2908,7 +3053,8 @@ occurrences:
     block: 264
     context: "…cannot resolve `ASK`, the Guardian MUST NOT return `ASK`. The Guardian MUST instead substitute one of:"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0079
   - source: spec/instrument/specification.md
     line: 287
     column: 42
@@ -2918,7 +3064,8 @@ occurrences:
     block: 267
     context: "The choice is policy-driven: deployments SHOULD prefer `DEFER` when the request is potentially recoverable through a di…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0080
   - source: spec/instrument/specification.md
     line: 293
     column: 45
@@ -2928,7 +3075,8 @@ occurrences:
     block: 270
     context: A signature over the §10 canonical input is REQUIRED in ACS-Core. The signature envelope is `{ algorithm, value, key_id }`,…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0081
   - source: spec/instrument/specification.md
     line: 295
     column: 470
@@ -2960,7 +3108,8 @@ occurrences:
     block: 273
     context: …egistered and available; a future version is expected to promote PQC to RECOMMENDED once ecosystem support matures.
     binding:
-      kind: unbound
+      kind: excluded
+      reason: roadmap
   - source: spec/instrument/specification.md
     line: 303
     column: 35
@@ -2970,7 +3119,8 @@ occurrences:
     block: 279
     context: RECOMMENDED. Shared-secret integrity; simplest deployment path. Sufficient for same…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 304
     column: 41
@@ -2980,7 +3130,8 @@ occurrences:
     block: 282
     context: OPTIONAL. Strongest current ecosystem support across Java, Node, .NET, HSMs, and…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 305
     column: 45
@@ -2990,7 +3141,8 @@ occurrences:
     block: 285
     context: OPTIONAL. Legacy interop; deployments with existing RSA PKI.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 306
     column: 43
@@ -3000,7 +3152,8 @@ occurrences:
     block: 288
     context: OPTIONAL. ~128-bit post-quantum security; ~3.3 KB signatures. Recommended for de…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 307
     column: 32
@@ -3010,7 +3163,8 @@ occurrences:
     block: 291
     context: OPTIONAL. Low-bandwidth profile.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 308
     column: 32
@@ -3020,7 +3174,8 @@ occurrences:
     block: 294
     context: OPTIONAL. High-security profile.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 309
     column: 43
@@ -3030,7 +3185,8 @@ occurrences:
     block: 297
     context: "OPTIONAL. Algorithmic diversity vs. ML-DSA's lattice assumption. Caution: ~7.8 K…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 310
     column: 32
@@ -3040,7 +3196,8 @@ occurrences:
     block: 300
     context: OPTIONAL. Faster signing; larger signatures.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 311
     column: 37
@@ -3050,7 +3207,8 @@ occurrences:
     block: 303
     context: OPTIONAL. Transitional composite for PQC forward-resistance with classical co-si…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 312
     column: 41
@@ -3060,7 +3218,8 @@ occurrences:
     block: 306
     context: OPTIONAL. Transitional composite.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0082
   - source: spec/instrument/specification.md
     line: 314
     column: 126
@@ -3070,7 +3229,8 @@ occurrences:
     block: 307
     context: …PQC-primary. A future ACS version is expected to promote `ML-DSA-65` to RECOMMENDED and eventually deprecate classical-only algorithms, but the timeline de…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: roadmap
   - source: spec/instrument/specification.md
     line: 318
     column: 284
@@ -3080,7 +3240,8 @@ occurrences:
     block: 309
     context: …nteger and the whole blob is base64-encoded for wire transit. Verifiers MUST verify both component signatures over the canonical input defined in §1…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0083
   - source: spec/instrument/specification.md
     line: 322
     column: 92
@@ -3090,7 +3251,8 @@ occurrences:
     block: 311
     context: …, `timestamp` (ISO 8601), and optional `nonce` (16–64 bytes). Guardians MUST reject requests whose `timestamp` is more than the negotiated skew wind…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0084
   - source: spec/instrument/specification.md
     line: 322
     column: 209
@@ -3100,7 +3262,8 @@ occurrences:
     block: 311
     context: …e than the negotiated skew window (`skew_window_ms` in ServerHello, §4; RECOMMENDED default 300000) in the past or future, returning `TIMESTAMP_OUT_OF_WIND…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0084
   - source: spec/instrument/specification.md
     line: 322
     column: 315
@@ -3110,7 +3273,8 @@ occurrences:
     block: 311
     context: …past or future, returning `TIMESTAMP_OUT_OF_WINDOW` (`-32006`, §17.1), MUST reject duplicate `request_id` values within the session with `REPLAY_DE…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0086
   - source: spec/instrument/specification.md
     line: 322
     column: 422
@@ -3120,7 +3284,8 @@ occurrences:
     block: 311
     context: …values within the session with `REPLAY_DETECTED` (`-32005`, §17.1), and SHOULD reject duplicate `nonce` values within a sliding window the deployment…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0087
   - source: spec/instrument/specification.md
     line: 326
     column: 5
@@ -3130,7 +3295,8 @@ occurrences:
     block: 313
     context: ACS MUST be deployable across IDE, SaaS, on-prem on Linux/Windows/macOS/mobile/b…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0088
   - source: spec/instrument/specification.md
     line: 328
     column: 24
@@ -3140,7 +3306,8 @@ occurrences:
     block: 314
     context: "- Resource identifiers MUST use URI form (`file:///C:/...`, `posix:///etc/...`, `https://...`)."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0089
   - source: spec/instrument/specification.md
     line: 352
     column: 10
@@ -3150,7 +3317,8 @@ occurrences:
     block: 331
     context: "- Prompt MUST treat untrusted data as data, not instructions. Untrusted fields MUST b…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0090
   - source: spec/instrument/specification.md
     line: 352
     column: 80
@@ -3160,7 +3328,8 @@ occurrences:
     block: 331
     context: …t MUST treat untrusted data as data, not instructions. Untrusted fields MUST be wrapped/quoted.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0090
   - source: spec/instrument/specification.md
     line: 353
     column: 3
@@ -3170,7 +3339,8 @@ occurrences:
     block: 332
     context: "- MUST NOT have access to deterministic-layer policy code."
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0091
   - source: spec/instrument/specification.md
     line: 354
     column: 13
@@ -3180,7 +3350,8 @@ occurrences:
     block: 333
     context: "- Decisions MUST be logged with reasoning, model identifier, confidence (when available)…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0093
   - source: spec/instrument/specification.md
     line: 357
     column: 1
@@ -3190,7 +3361,8 @@ occurrences:
     block: 335
     context: OPTIONAL for v0.1.0. Deterministic-only deployments are fully conformant.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0094
   - source: spec/instrument/specification.md
     line: 371
     column: 13
@@ -3200,7 +3372,8 @@ occurrences:
     block: 342
     context: "- Guardians MUST always return `decision: \"allow\"` for `system/ping` regardless of polic…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0095
   - source: spec/instrument/specification.md
     line: 372
     column: 17
@@ -3210,7 +3383,8 @@ occurrences:
     block: 343
     context: "- `system/ping` MUST NOT be written into SessionContext as a ContextEntry; it does not participa…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0096
   - source: spec/instrument/specification.md
     line: 373
     column: 17
@@ -3220,7 +3394,8 @@ occurrences:
     block: 344
     context: "- `system/ping` MUST NOT require a signature even if the session otherwise requires signatures,…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0097
   - source: spec/instrument/specification.md
     line: 374
     column: 247
@@ -3230,7 +3405,8 @@ occurrences:
     block: 345
     context: …uring a key-resolution outage (`SIGNATURE_INVALID`, §17.1). Deployments SHOULD monitor hook-path decision failures (§6.4) directly rather than infer e…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0098
   - source: spec/instrument/specification.md
     line: 375
     column: 112
@@ -3240,7 +3416,8 @@ occurrences:
     block: 346
     context: …t for `system/ping` is a transport-level signal that the Observed Agent MAY use to renegotiate transport, re-handshake, or fail over; it MUST NOT b…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0099
   - source: spec/instrument/specification.md
     line: 375
     column: 177
@@ -3250,7 +3427,8 @@ occurrences:
     block: 346
     context: …Agent MAY use to renegotiate transport, re-handshake, or fail over; it MUST NOT be interpreted as an enforcement event.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0100
   - source: spec/instrument/specification.md
     line: 394
     column: 10
@@ -3260,7 +3438,8 @@ occurrences:
     block: 378
     context: PQC as RECOMMENDED default
     binding:
-      kind: unbound
+      kind: excluded
+      reason: roadmap
   - source: spec/instrument/specification.md
     line: 420
     column: 120
@@ -3270,7 +3449,8 @@ occurrences:
     block: 421
     context: …an SDK can branch on the code without parsing prose. An error response MAY carry a `data` object; when present it SHOULD include a machine-readabl…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0101
   - source: spec/instrument/specification.md
     line: 420
     column: 163
@@ -3280,7 +3460,8 @@ occurrences:
     block: 421
     context: …ing prose. An error response MAY carry a `data` object; when present it SHOULD include a machine-readable `reason` and a human-readable `message`, plu…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0102
   - source: spec/instrument/specification.md
     line: 433
     column: 15
@@ -3290,7 +3471,8 @@ occurrences:
     block: 458
     context: "`system/ping` MUST NOT return an ACS-specific error, so liveness probing survives signature-ro…"
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0103
   - source: spec/trace/events.md
     line: 33
     column: 67
@@ -3300,7 +3482,8 @@ occurrences:
     block: 61
     context: When Provenance is attached to a hook payload, the resulting span MUST carry `acs.provenance.origin` as an attribute, and SHOULD carry `acs.pr…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0145
   - source: spec/trace/events.md
     line: 33
     column: 123
@@ -3310,7 +3493,8 @@ occurrences:
     block: 61
     context: …resulting span MUST carry `acs.provenance.origin` as an attribute, and SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth` whe…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0146
   - source: spec/trace/events.md
     line: 33
     column: 455
@@ -3320,7 +3504,8 @@ occurrences:
     block: 61
     context: …../instrument/specification.md#7-provenance)). Provenance lineage edges MAY be linked via OTel span links keyed by `provenance_id`.
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0147
   - source: spec/trace/events.md
     line: 66
     column: 37
@@ -3330,7 +3515,9 @@ occurrences:
     block: 112
     context: "A deployment claiming **ACS-Trace** MUST:"
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0131
   - source: spec/trace/events.md
     line: 72
     column: 14
@@ -3340,7 +3527,8 @@ occurrences:
     block: 116
     context: Trace events MUST NOT block enforcement — failure of the Trace sink MUST NOT change the dispo…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0132
   - source: spec/trace/events.md
     line: 72
     column: 69
@@ -3350,7 +3538,8 @@ occurrences:
     block: 116
     context: Trace events MUST NOT block enforcement — failure of the Trace sink MUST NOT change the disposition returned to the Observed Agent. Deployments that…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0132
   - source: spec/trace/events.md
     line: 72
     column: 173
@@ -3360,7 +3549,8 @@ occurrences:
     block: 116
     context: …returned to the Observed Agent. Deployments that do not claim ACS-Trace SHOULD still emit Trace events where feasible; the vocabulary is normative reg…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0133
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 60
@@ -3370,7 +3560,9 @@ occurrences:
     block: 12
     context: When a hook payload carries Provenance, the resulting span MUST carry `acs.provenance.origin` and SHOULD carry `acs.provenance.source_i…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0145
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 99
@@ -3380,7 +3572,9 @@ occurrences:
     block: 12
     context: …s Provenance, the resulting span MUST carry `acs.provenance.origin` and SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth`. Th…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0146
   - source: spec/trace/extend_opentelemetry.md
     line: 20
     column: 279
@@ -3390,7 +3584,9 @@ occurrences:
     block: 12
     context: …by a Guardian decision (the response envelope's `cited_provenance_ids`) MAY be expressed as OTel span links keyed by `provenance_id`, letting tools…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0147
   - source: spec/trace/extend_opentelemetry.md
     line: 26
     column: 93
@@ -3400,7 +3596,8 @@ occurrences:
     block: 15
     context: …user prompts, tool arguments, and retrieved knowledge. Implementations SHOULD apply the deployment's redaction or hashing policy at attribute-emit ti…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0148
   - source: spec/trace/extend_opentelemetry.md
     line: 30
     column: 156
@@ -3410,7 +3607,8 @@ occurrences:
     block: 17
     context: …P to existing backends. The Guardian's handshake `trace_emission` field MAY advertise an OTLP collector endpoint; when set, the Observed Agent SHOU…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0149
   - source: spec/trace/extend_opentelemetry.md
     line: 30
     column: 227
@@ -3420,7 +3618,8 @@ occurrences:
     block: 17
     context: …MAY advertise an OTLP collector endpoint; when set, the Observed Agent SHOULD route ACS-shaped trace traffic there in addition to (or instead of) its…
     binding:
-      kind: unbound
+      kind: bound
+      provision_id: ACS-REQ-0150
   - source: spec/trace/extend_opentelemetry.md
     line: 34
     column: 14
@@ -3430,7 +3629,9 @@ occurrences:
     block: 19
     context: Trace events MUST NOT block enforcement. If the Trace sink is unreachable or returns an error…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0132
   - source: spec/trace/extend_opentelemetry.md
     line: 34
     column: 123
@@ -3440,7 +3641,9 @@ occurrences:
     block: 19
     context: …ace sink is unreachable or returns an error, the Guardian's disposition MUST still be returned to the Observed Agent. The agent's hot path is enforc…
     binding:
-      kind: unbound
+      kind: excluded
+      reason: restatement_of
+      of: ACS-REQ-0132
   - source: topics/ACS_in_action_example.md
     line: 46
     column: 61
@@ -3463,3 +3666,4 @@ occurrences:
     binding:
       kind: excluded
       reason: informative_source
+exclusion_problems: []

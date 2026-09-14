@@ -2,7 +2,7 @@
 
 # ACS provision index
 
-ACS 0.1.2 at `6fce2a0`. 28 provisions.
+ACS 0.1.2 at `6fce2a0`. 155 provisions.
 
 ## Index
 
@@ -12,6 +12,9 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 | [ACS-DEF-0002](#acs-def-0002) | Definition | — | none | all | not-applicable | definition | active | concepts/provenance.md:19 | Lineage spans derivation |
 | [ACS-EXC-0001](#acs-exc-0001) | Exclusion | — | none | all | not-applicable | exclusion | active | spec/instrument/specification.md:380 | Multi-tenant isolation is unspecified in v0.1 |
 | [ACS-INV-0001](#acs-inv-0001) | Invariant | MUST NOT | none | all | guardian-state | invariant | active | concepts/intent.md:13 | Intent immutability |
+| [ACS-INV-0002](#acs-inv-0002) | Invariant | MUST NOT | none | all | guardian-state | invariant | active | concepts/intent.md:21 | The only conformant path to widen Intent |
+| [ACS-INV-0003](#acs-inv-0003) | Invariant | MUST NOT | none | all | not-applicable | invariant | active | concepts/identity.md:13 | Three identities are distinct |
+| [ACS-INV-0004](#acs-inv-0004) | Invariant | MUST NOT | none | all | guardian-state | invariant | active | concepts/trust.md:25 | The rungs do not collapse |
 | [ACS-REQ-0001](#acs-req-0001) | Requirement | — | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:56 | Response shape is a discriminated union |
 | [ACS-REQ-0002](#acs-req-0002) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:59 | Non-batching Guardian rejects array input with -32600 |
 | [ACS-REQ-0003](#acs-req-0003) | Requirement | RECOMMENDED | guardian | acs-core | schema | obligation | active | spec/instrument/specification.md:113 | Required fields per disposition |
@@ -36,6 +39,130 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 | [ACS-REQ-0022](#acs-req-0022) | Requirement | MUST | guardian | acs-core | guardian-state | conditional-on-exercise | active | spec/instrument/specification.md:248 | Archival preserves chain_hash, provenance_summary and intent |
 | [ACS-REQ-0023](#acs-req-0023) | Requirement | REQUIRED | guardian | acs-core | guardian-state | obligation | active | concepts/agents.md:21 | Approver authentication and identity verification |
 | [ACS-REQ-0024](#acs-req-0024) | Requirement | REQUIRED | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:262 | Approver authentication and identity verification (pillar copy) |
+| [ACS-REQ-0025](#acs-req-0025) | Requirement | MUST NOT | framework | all | non-testable | obligation | active | spec/instrument/specification.md:12 | The agent has no knowledge of hooks |
+| [ACS-REQ-0026](#acs-req-0026) | Requirement | OPTIONAL | deployment | acs-provenance | not-applicable | permission | active | spec/instrument/specification.md:183 | The trust enum is optional on the wire |
+| [ACS-REQ-0027](#acs-req-0027) | Requirement | SHOULD | guardian | acs-provenance | wire | obligation | active | spec/conformance.md:61 | Populated trust follows the default channel mapping |
+| [ACS-REQ-0028](#acs-req-0028) | Requirement | SHOULD | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:59 | Guardians accept batched requests |
+| [ACS-REQ-0029](#acs-req-0029) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:71 | Unknown fields are ignored |
+| [ACS-REQ-0030](#acs-req-0030) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:71 | A provenance-requiring Guardian refuses a none producer at handshake |
+| [ACS-REQ-0031](#acs-req-0031) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:77 | An unguarded session start is audited by the deployment |
+| [ACS-REQ-0032](#acs-req-0032) | Requirement | SHOULD | observed-agent | acs-trace | non-testable | obligation | active | spec/instrument/specification.md:77 | An unguarded session start surfaces on Trace events |
+| [ACS-REQ-0033](#acs-req-0033) | Requirement | SHOULD | observed-agent | acs-core | wire | obligation | active | spec/instrument/specification.md:77 | The Observed Agent retries the handshake for later sessions |
+| [ACS-REQ-0034](#acs-req-0034) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:130 | Audience-specific text is composed client-side |
+| [ACS-REQ-0035](#acs-req-0035) | Requirement | OPTIONAL | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:131 | policy_version is optional |
+| [ACS-REQ-0036](#acs-req-0036) | Requirement | SHOULD | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:131 | policy_version is populated when replay matters |
+| [ACS-REQ-0037](#acs-req-0037) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:131 | A decision may cite several policy references |
+| [ACS-REQ-0038](#acs-req-0038) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:132 | Consumers switch on reason codes, not prose |
+| [ACS-REQ-0039](#acs-req-0039) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:146 | modified_content excludes structured edits |
+| [ACS-REQ-0040](#acs-req-0040) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:147 | Redactions and overrides may coexist |
+| [ACS-REQ-0041](#acs-req-0041) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:147 | Redaction and override targets are disjoint |
+| [ACS-REQ-0043](#acs-req-0043) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:149 | A malformed modifications object fails closed as DENY |
+| [ACS-REQ-0044](#acs-req-0044) | Requirement | SHOULD | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:149 | A malformed modifications object is audited |
+| [ACS-REQ-0045](#acs-req-0045) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:157 | The Observed Agent waits for the decision |
+| [ACS-REQ-0046](#acs-req-0046) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:157 | The Observed Agent applies the decision |
+| [ACS-REQ-0047](#acs-req-0047) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:159 | A deployment may choose fail-closed |
+| [ACS-REQ-0048](#acs-req-0048) | Requirement | MAY | observed-agent | acs-core | not-applicable | permission | active | spec/instrument/specification.md:159 | The agent may attempt recovery within the timeout budget |
+| [ACS-REQ-0050](#acs-req-0050) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:161 | Every fail-open proceed is an audit event |
+| [ACS-REQ-0051](#acs-req-0051) | Requirement | MUST | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:161 | A decision that arrives in time is honored regardless of posture |
+| [ACS-REQ-0052](#acs-req-0052) | Requirement | MUST | framework | acs-provenance | schema | obligation | active | spec/instrument/specification.md:169 | A deterministic producer attaches provenance to every data-bearing field |
+| [ACS-REQ-0053](#acs-req-0053) | Requirement | MUST | framework | acs-core | schema | obligation | active | spec/instrument/specification.md:172 | An emitted Provenance object is complete |
+| [ACS-REQ-0054](#acs-req-0054) | Requirement | MUST | framework | acs-provenance | non-testable | obligation | active | spec/instrument/specification.md:187 | The framework attaches trust deterministically |
+| [ACS-REQ-0055](#acs-req-0055) | Requirement | MUST | guardian | acs-provenance | non-testable | obligation | active | spec/instrument/specification.md:189 | Receivers re-derive trust locally |
+| [ACS-REQ-0056](#acs-req-0056) | Requirement | MAY | deployment | acs-provenance | not-applicable | permission | active | spec/instrument/specification.md:193 | Deployments may override the channel-to-trust mapping |
+| [ACS-REQ-0057](#acs-req-0057) | Requirement | SHOULD | deployment | acs-provenance | guardian-state | conditional-on-exercise | active | spec/instrument/specification.md:193 | Mapping overrides are recorded in audit metadata |
+| [ACS-REQ-0058](#acs-req-0058) | Requirement | MAY | observed-agent | acs-core | not-applicable | permission | active | spec/instrument/specification.md:209 | The Observed Agent may cross-check the chain head |
+| [ACS-REQ-0059](#acs-req-0059) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:211 | The chain may initialize implicitly without sessionStart |
+| [ACS-REQ-0060](#acs-req-0060) | Requirement | SHOULD | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:222 | ContextEntry SHOULD carry request_hash, timestamp and provenance_summary |
+| [ACS-REQ-0061](#acs-req-0061) | Requirement | — | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:222 | previous_hash is present on every entry but the first |
+| [ACS-REQ-0062](#acs-req-0062) | Requirement | MUST | guardian | acs-audit | guardian-state | obligation | active | spec/instrument/specification.md:222 | ACS-Audit deployments populate request_hash |
+| [ACS-REQ-0063](#acs-req-0063) | Requirement | SHOULD | guardian | acs-audit | guardian-state | obligation | active | spec/conformance.md:75 | ACS-Audit entries carry timestamp and provenance_summary |
+| [ACS-REQ-0064](#acs-req-0064) | Requirement | OPTIONAL | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:238 | ProvenanceSummary fields are all optional |
+| [ACS-REQ-0065](#acs-req-0065) | Requirement | OPTIONAL | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:242 | Intent is optional |
+| [ACS-REQ-0066](#acs-req-0066) | Requirement | REQUIRED | framework | acs-core | schema | obligation | active | spec/instrument/specification.md:242 | parser_provenance is required when parsed is present |
+| [ACS-REQ-0067](#acs-req-0067) | Requirement | MUST | framework | acs-core | wire | obligation | active | spec/instrument/specification.md:242 | parser_provenance origin is user_input |
+| [ACS-REQ-0068](#acs-req-0068) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:256 | A Guardian may DENY or error on a chain mismatch |
+| [ACS-REQ-0069](#acs-req-0069) | Requirement | SHOULD | verifier | acs-core | non-testable | obligation | active | spec/instrument/specification.md:256 | A published chain head inconsistent with the chain is an integrity event |
+| [ACS-REQ-0070](#acs-req-0070) | Requirement | MAY | approver | acs-core | not-applicable | permission | active | concepts/agents.md:19 | An Approver may be human, agent, or service |
+| [ACS-REQ-0071](#acs-req-0071) | Requirement | MAY | approver | acs-core | not-applicable | permission | active | spec/instrument/specification.md:262 | An Approver may be human, agent, or service (pillar copy) |
+| [ACS-REQ-0072](#acs-req-0072) | Requirement | MUST NOT | approver | acs-core | guardian-state | obligation | active | concepts/agents.md:23 | Approvers do not return ask |
+| [ACS-REQ-0073](#acs-req-0073) | Requirement | MUST NOT | approver | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:264 | Approvers do not return ASK (pillar copy) |
+| [ACS-REQ-0074](#acs-req-0074) | Requirement | MAY | approver | acs-core | not-applicable | permission | active | concepts/agents.md:23 | An Approver's grant may extend Intent |
+| [ACS-REQ-0075](#acs-req-0075) | Requirement | MAY | approver | acs-core | not-applicable | permission | active | spec/instrument/specification.md:268 | An Approver's grant may extend Intent (pillar copy) |
+| [ACS-REQ-0076](#acs-req-0076) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:270 | A session-scope extension is appended, recorded, and carried with its own provenance |
+| [ACS-REQ-0077](#acs-req-0077) | Requirement | MUST NOT | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:276 | Strict-mode extensions cannot add forbidden capabilities |
+| [ACS-REQ-0078](#acs-req-0078) | Requirement | MUST NOT | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:282 | No ASK to an approver-incapable client |
+| [ACS-REQ-0079](#acs-req-0079) | Requirement | MUST | guardian | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:282 | ASK is substituted with a fail-closed DEFER or a DENY |
+| [ACS-REQ-0080](#acs-req-0080) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:287 | Substitution prefers DEFER when recoverable |
+| [ACS-REQ-0081](#acs-req-0081) | Requirement | REQUIRED | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:293 | Every envelope carries a signature |
+| [ACS-REQ-0082](#acs-req-0082) | Requirement | RECOMMENDED | deployment | acs-core | wire | obligation | active | spec/instrument/specification.md:303 | The signature algorithm registry |
+| [ACS-REQ-0083](#acs-req-0083) | Requirement | MUST | guardian | acs-crypto | wire | obligation | active | spec/instrument/specification.md:318 | Hybrid signatures verify both components |
+| [ACS-REQ-0084](#acs-req-0084) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:322 | Requests outside the skew window are rejected |
+| [ACS-REQ-0086](#acs-req-0086) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:322 | Duplicate request_id within a session is rejected |
+| [ACS-REQ-0087](#acs-req-0087) | Requirement | SHOULD | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:322 | Duplicate nonces are rejected within a window |
+| [ACS-REQ-0088](#acs-req-0088) | Requirement | MUST | none | all | non-testable | obligation | active | spec/instrument/specification.md:326 | ACS is deployable across platforms |
+| [ACS-REQ-0089](#acs-req-0089) | Requirement | MUST | framework | acs-core | wire | obligation | active | spec/instrument/specification.md:328 | Resource identifiers use URI form |
+| [ACS-REQ-0090](#acs-req-0090) | Requirement | MUST | guardian | acs-core | non-testable | obligation | active | spec/instrument/specification.md:352 | Prompts treat untrusted data as data |
+| [ACS-REQ-0091](#acs-req-0091) | Requirement | MUST NOT | guardian | acs-core | non-testable | obligation | active | spec/instrument/specification.md:353 | The agent layer has no access to policy code |
+| [ACS-REQ-0092](#acs-req-0092) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | concepts/agents.md:15 | Decisions are logged with reasoning, model identifier, and confidence |
+| [ACS-REQ-0093](#acs-req-0093) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:354 | Decisions are logged (pillar copy) |
+| [ACS-REQ-0094](#acs-req-0094) | Requirement | OPTIONAL | deployment | acs-core | not-applicable | permission | active | spec/instrument/specification.md:357 | The agent layer is optional |
+| [ACS-REQ-0095](#acs-req-0095) | Requirement | MUST | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:371 | system/ping is always allowed |
+| [ACS-REQ-0096](#acs-req-0096) | Requirement | MUST NOT | guardian | acs-core | guardian-state | obligation | active | spec/instrument/specification.md:372 | system/ping is not a ContextEntry |
+| [ACS-REQ-0097](#acs-req-0097) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:373 | system/ping needs no signature |
+| [ACS-REQ-0098](#acs-req-0098) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/specification.md:374 | Enforcement health is monitored directly |
+| [ACS-REQ-0099](#acs-req-0099) | Requirement | MAY | observed-agent | acs-core | not-applicable | permission | active | spec/instrument/specification.md:375 | A ping failure may trigger transport recovery |
+| [ACS-REQ-0100](#acs-req-0100) | Requirement | MUST NOT | observed-agent | acs-core | deployment-config | obligation | active | spec/instrument/specification.md:375 | A ping failure is not an enforcement event |
+| [ACS-REQ-0101](#acs-req-0101) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/specification.md:420 | An error response may carry data |
+| [ACS-REQ-0102](#acs-req-0102) | Requirement | SHOULD | guardian | acs-core | wire | conditional-on-exercise | active | spec/instrument/specification.md:420 | Error data carries reason and message |
+| [ACS-REQ-0103](#acs-req-0103) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/specification.md:433 | system/ping never returns an ACS error |
+| [ACS-REQ-0104](#acs-req-0104) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:74 | A Guardian may refuse a session at sessionStart |
+| [ACS-REQ-0105](#acs-req-0105) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:88 | A Guardian may rewrite the trigger payload |
+| [ACS-REQ-0106](#acs-req-0106) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:102 | A Guardian may deny a turn from starting |
+| [ACS-REQ-0107](#acs-req-0107) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:114 | A Guardian may redact a user message |
+| [ACS-REQ-0108](#acs-req-0108) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:138 | A Guardian may redact retrieved content |
+| [ACS-REQ-0109](#acs-req-0109) | Requirement | MUST | framework | acs-core | deployment-config | obligation | active | spec/instrument/hooks.md:172 | Every outward action fires toolCallRequest |
+| [ACS-REQ-0110](#acs-req-0110) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:200 | A Guardian may deny compaction |
+| [ACS-REQ-0111](#acs-req-0111) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/instrument/hooks.md:210 | A compaction summary carries the union of its inputs' lineage |
+| [ACS-REQ-0112](#acs-req-0112) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:212 | A Guardian may rewrite a compaction summary |
+| [ACS-REQ-0113](#acs-req-0113) | Requirement | MAY | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:212 | A Guardian does not deny postCompact |
+| [ACS-REQ-0114](#acs-req-0114) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | spec/instrument/hooks.md:212 | The audit chain records the post-compact state |
+| [ACS-REQ-0116](#acs-req-0116) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:252 | A Guardian may deny a skill registration |
+| [ACS-REQ-0117](#acs-req-0117) | Requirement | MUST NOT | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:252 | A denied skill cannot load |
+| [ACS-REQ-0118](#acs-req-0118) | Requirement | SHOULD | guardian | acs-core | non-testable | obligation | active | spec/instrument/hooks.md:252 | Declared capabilities are compared with composed tools |
+| [ACS-REQ-0119](#acs-req-0119) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:252 | A Guardian may deny over-broad declarations |
+| [ACS-REQ-0120](#acs-req-0120) | Requirement | MUST | framework | acs-core | wire | obligation | active | spec/instrument/hooks.md:262 | A skill load correlates to an approved registration |
+| [ACS-REQ-0121](#acs-req-0121) | Requirement | SHOULD | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:262 | An uncorrelatable load is denied |
+| [ACS-REQ-0122](#acs-req-0122) | Requirement | SHOULD | guardian | acs-core | wire | obligation | active | spec/instrument/hooks.md:268 | A load outside declared composition is denied |
+| [ACS-REQ-0123](#acs-req-0123) | Requirement | MAY | framework | acs-core | not-applicable | permission | active | spec/instrument/hooks.md:262 | The framework may send a digest_verified hint |
+| [ACS-REQ-0124](#acs-req-0124) | Requirement | MAY | guardian | acs-inspect | not-applicable | permission | active | spec/inspect/README.md:21 | A Guardian may deny a session over its component graph |
+| [ACS-REQ-0125](#acs-req-0125) | Requirement | MAY | deployment | acs-core | not-applicable | permission | active | spec/instrument/extend_mcp.md:12 | MCP tool calls may collapse into the generic hooks |
+| [ACS-REQ-0126](#acs-req-0126) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/instrument/extend_mcp.md:12 | Wrapped MCP is used when policy needs MCP-level distinctions |
+| [ACS-REQ-0127](#acs-req-0127) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | spec/conformance.md:11 | A Guardian may refuse a session lacking a required profile |
+| [ACS-REQ-0128](#acs-req-0128) | Requirement | MUST | deployment | acs-core | not-applicable | obligation | active | spec/conformance.md:15 | A conformant deployment implements ACS-Core |
+| [ACS-REQ-0129](#acs-req-0129) | Requirement | SHOULD | framework | acs-core | non-testable | obligation | active | spec/conformance.md:19 | Additional hooks are implemented when observable |
+| [ACS-REQ-0130](#acs-req-0130) | Requirement | SHOULD | framework | acs-inspect | wire | obligation | active | spec/conformance.md:19 | Skill components imply skill lifecycle hooks |
+| [ACS-REQ-0131](#acs-req-0131) | Requirement | MUST | deployment | acs-trace | non-testable | obligation | active | spec/conformance.md:36 | ACS-Trace emits, records, and carries provenance onto Trace events |
+| [ACS-REQ-0132](#acs-req-0132) | Requirement | MUST NOT | guardian | acs-trace | non-testable | obligation | active | spec/trace/events.md:72 | Trace emission never blocks enforcement |
+| [ACS-REQ-0133](#acs-req-0133) | Requirement | SHOULD | deployment | acs-core | non-testable | obligation | active | spec/trace/events.md:72 | Trace events are emitted where feasible even without ACS-Trace |
+| [ACS-REQ-0134](#acs-req-0134) | Requirement | MUST | framework | acs-inspect | wire | obligation | active | spec/conformance.md:46 | ACS-Inspect emits agbom/snapshot before content-bearing hooks |
+| [ACS-REQ-0135](#acs-req-0135) | Requirement | — | guardian | acs-inspect | non-testable | obligation | active | spec/conformance.md:49 | ACS-Inspect serializes the AgBOM on request |
+| [ACS-REQ-0136](#acs-req-0136) | Requirement | MUST | framework | acs-inspect-dynamic | wire | obligation | active | spec/inspect/README.md:63 | ACS-Inspect-Dynamic emits agbom/changed on every mutation |
+| [ACS-REQ-0137](#acs-req-0137) | Requirement | MUST | guardian | acs-crypto | wire | obligation | active | spec/conformance.md:67 | ACS-Crypto supports ML-DSA-65 |
+| [ACS-REQ-0138](#acs-req-0138) | Requirement | SHOULD | guardian | acs-crypto | wire | obligation | active | spec/conformance.md:67 | ACS-Crypto supports SLH-DSA-128s |
+| [ACS-REQ-0139](#acs-req-0139) | Requirement | OPTIONAL | deployment | acs-crypto | not-applicable | permission | active | spec/conformance.md:67 | Hybrid composites are optional |
+| [ACS-REQ-0140](#acs-req-0140) | Requirement | MUST | deployment | acs-core | non-testable | obligation | active | spec/inspect/README.md:10 | Inventory-dependent policy requires ACS-Inspect |
+| [ACS-REQ-0141](#acs-req-0141) | Requirement | SHOULD | framework | acs-inspect | wire | obligation | active | spec/inspect/README.md:42 | Components carry registration_provenance |
+| [ACS-REQ-0142](#acs-req-0142) | Requirement | MUST | framework | acs-provenance | wire | obligation | active | spec/inspect/README.md:42 | ACS-Provenance components carry registration_provenance |
+| [ACS-REQ-0143](#acs-req-0143) | Requirement | MAY | guardian | acs-inspect | not-applicable | permission | active | spec/inspect/README.md:54 | A Guardian may request a serialization at handshake |
+| [ACS-REQ-0144](#acs-req-0144) | Requirement | MAY | deployment | acs-inspect | not-applicable | permission | active | spec/inspect/extend_cyclonedx.md:74 | agbom/changed may serialize as a VEX diff or a full document |
+| [ACS-REQ-0145](#acs-req-0145) | Requirement | MUST | framework | acs-trace | non-testable | obligation | active | spec/trace/events.md:33 | Spans carry acs.provenance.origin |
+| [ACS-REQ-0146](#acs-req-0146) | Requirement | SHOULD | framework | acs-trace | non-testable | obligation | active | spec/trace/events.md:33 | Spans carry source_id and lineage_depth when populated |
+| [ACS-REQ-0147](#acs-req-0147) | Requirement | MAY | framework | acs-trace | not-applicable | permission | active | spec/trace/events.md:33 | Lineage edges may be OTel span links |
+| [ACS-REQ-0148](#acs-req-0148) | Requirement | SHOULD | framework | acs-trace | non-testable | obligation | active | spec/trace/extend_opentelemetry.md:26 | Redaction is applied at attribute-emit time |
+| [ACS-REQ-0149](#acs-req-0149) | Requirement | MAY | guardian | acs-trace | not-applicable | permission | active | spec/trace/extend_opentelemetry.md:30 | trace_emission may advertise a collector endpoint |
+| [ACS-REQ-0150](#acs-req-0150) | Requirement | SHOULD | observed-agent | acs-trace | non-testable | conditional-on-exercise | active | spec/trace/extend_opentelemetry.md:30 | Trace traffic routes to the advertised collector |
+| [ACS-REQ-0151](#acs-req-0151) | Requirement | MUST | guardian | acs-core | guardian-state | obligation | active | concepts/session-lifecycle.md:23 | The audit chain records a subagent's Intent derivation |
+| [ACS-REQ-0152](#acs-req-0152) | Requirement | MAY | guardian | acs-core | not-applicable | permission | active | concepts/session-lifecycle.md:23 | A Guardian may deny a spawn that widens Intent |
 
 ## Provisions
 
@@ -86,6 +213,44 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 - Modality: invariant; evidence: guardian-state
 - Status: active, since 0.1.0; reviewed against `d13d31e336aa`
 - Note: The cross-cutting invariant ACS-REQ-0011 enforces. Text differs from the pillar's enforcement sentence on purpose: this constrains the data, §8.4 obliges the framework.
+
+### ACS-INV-0002
+
+**The only conformant path to widen Intent.** Invariant, MUST NOT. `concepts/intent.md:21` (blockquote, §`extending-intent`). Anchor: `#acs-inv-0002`.
+
+> **The only conformant path to widen Intent (normative).** The sole mechanism for extending `Intent.parsed` within a session is an Approver's `intent_extension` returned via the ASK flow. Extensions are subject to the session's `scope_mode`; under `scope_mode: strict` a Guardian MUST NOT honor an extension that adds capabilities the deployment policy forbids in strict mode.
+
+- Actor: none; reported against: none
+- Profile: all
+- Modality: invariant; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `38f1e7bab7dd`
+- Note: X5 typed this callout an Invariant; its strict-mode sentence is a Guardian obligation the pillar restates as ACS-REQ-0077.
+
+### ACS-INV-0003
+
+**Three identities are distinct.** Invariant, MUST NOT. `concepts/identity.md:13` (paragraph, §`principals-and-descriptors`). Anchor: `#acs-inv-0003`.
+
+> Three identities are distinct and MUST NOT be conflated:
+> 
+> - **Observed Agent identity**: which agent is under governance.
+> - **Guardian identity**: which policy authority is deciding.
+> - **Policy-author identity**: who authored the policy that produced a decision.
+
+- Actor: none; reported against: none
+- Profile: all
+- Modality: invariant; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `6d14bc4d588b`
+
+### ACS-INV-0004
+
+**The rungs do not collapse.** Invariant, MUST NOT. `concepts/trust.md:25` (blockquote, §`invariants`). Anchor: `#acs-inv-0004`.
+
+> **The rungs do not collapse (normative).** A Guardian MUST NOT treat an asserted fact as attested. The basis of a fact is part of the fact; relying on a fact above its actual basis is an error.
+
+- Actor: none; reported against: none
+- Profile: all
+- Modality: invariant; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `90a25d2d84ce`
 
 ### ACS-REQ-0001
 
@@ -400,9 +565,1451 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 - Status: active, since 0.1.0; reviewed against `2afe3fa652ea`
 - Note: The pillar's inline restatement of ACS-REQ-0023; on the migration worklist (R6.6) until §9 references the concept page instead.
 
+### ACS-REQ-0025
+
+**The agent has no knowledge of hooks.** Requirement, MUST NOT. `spec/instrument/specification.md:12` (list_item, §`1-design-principles`). Anchor: `#acs-req-0025`.
+
+> **The agent MUST NOT have knowledge of hooks.**
+
+- Actor: framework; reported against: framework
+- Profile: all
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `3957f333d277`
+- Note: §1.2 design principle; environmental, listed on the non-testable roster.
+
+### ACS-REQ-0026
+
+**The trust enum is optional on the wire.** Requirement, OPTIONAL. `spec/instrument/specification.md:183` (paragraph, §`71-optional-trust-enum`). Anchor: `#acs-req-0026`.
+
+> The wire format reserves an OPTIONAL `trust` enum (`trusted`, `untrusted`, `unknown`) so vendor Guardian implementations can carry channel classification in the envelope rather than derive it in policy.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-provenance
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `fc2d8aedb132`
+- Note: Populating it activates ACS-REQ-0010 and ACS-REQ-0054.
+
+### ACS-REQ-0027
+
+**Populated trust follows the default channel mapping.** Requirement, SHOULD. `spec/conformance.md:61` (paragraph, §`acs-provenance`). Anchor: `#acs-req-0027`.
+
+> SHOULD use the default channel-to-trust mapping ([§7.2](./instrument/specification.md#72-default-channel-to-trust-mapping)) so cross-deployment audits remain portable
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `c60df09f1e38`
+- Note: agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see.
+
+### ACS-REQ-0028
+
+**Guardians accept batched requests.** Requirement, SHOULD. `spec/instrument/specification.md:59` (paragraph, §`3-wire-format`). Anchor: `#acs-req-0028`.
+
+> Guardians SHOULD accept array-shaped requests and return an array of correlated responses
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `930840a8ade5`
+- Note: SHOULD-level; the observable breach is a batch answered with -32600.
+
+### ACS-REQ-0029
+
+**Unknown fields are ignored.** Requirement, MUST. `spec/instrument/specification.md:71` (paragraph, §`4-capability-negotiation-handshake`). Anchor: `#acs-req-0029`.
+
+> Unknown fields MUST be ignored.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `9b230819cc76`
+- Note: Binds both parties; recorded as guardian, the same actor gap as ACS-REQ-0018.
+
+### ACS-REQ-0030
+
+**A provenance-requiring Guardian refuses a none producer at handshake.** Requirement, MUST. `spec/instrument/specification.md:71` (paragraph, §`4-capability-negotiation-handshake`). Anchor: `#acs-req-0030`.
+
+> If the client declares `provenance_producer: "none"` and the Guardian's `policy_requires_provenance` is true, the Guardian MUST refuse the session at handshake time with `PROVENANCE_REQUIRED` (`-32002`, §17.1) rather than silently degrading enforcement.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `1a1bb4354c71`
+
+### ACS-REQ-0031
+
+**An unguarded session start is audited by the deployment.** Requirement, MUST. `spec/instrument/specification.md:77` (paragraph, §`41-handshake-failure-normative`). Anchor: `#acs-req-0031`.
+
+> A session started unguarded MUST be recorded in the deployment's own audit log
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core; activation: the handshake failed and the startup posture was proceed
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `d4c58251de24`
+- Note: A handshake with no response and no audit event.
+
+### ACS-REQ-0032
+
+**An unguarded session start surfaces on Trace events.** Requirement, SHOULD. `spec/instrument/specification.md:77` (paragraph, §`41-handshake-failure-normative`). Anchor: `#acs-req-0032`.
+
+> SHOULD be surfaced on Trace events when the deployment claims ACS-Trace
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `98cda73c20d6`
+- Note: Non-testable: no Trace-event relations in the vocabulary; Trace emission is out of the envelope log.
+
+### ACS-REQ-0033
+
+**The Observed Agent retries the handshake for later sessions.** Requirement, SHOULD. `spec/instrument/specification.md:77` (paragraph, §`41-handshake-failure-normative`). Anchor: `#acs-req-0033`.
+
+> The Observed Agent SHOULD retry the handshake for subsequent sessions.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `2cce955a42ab`
+
+### ACS-REQ-0034
+
+**Audience-specific text is composed client-side.** Requirement, SHOULD. `spec/instrument/specification.md:130` (table_cell, §`61-decision-result-fields`). Anchor: `#acs-req-0034`.
+
+> deployments wanting different text per audience SHOULD compose them client-side from `reasoning` + `policy_data` + `reason_codes`
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `303ff2eb0162`
+
+### ACS-REQ-0035
+
+**policy_version is optional.** Requirement, OPTIONAL. `spec/instrument/specification.md:131` (table_cell, §`61-decision-result-fields`). Anchor: `#acs-req-0035`.
+
+> `policy_version` is OPTIONAL and deployment-defined
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `064bbfeb73fb`
+
+### ACS-REQ-0036
+
+**policy_version is populated when replay matters.** Requirement, SHOULD. `spec/instrument/specification.md:131` (table_cell, §`61-decision-result-fields`). Anchor: `#acs-req-0036`.
+
+> SHOULD be populated when replay or ledger-backed policy state matters
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: replay or ledger-backed policy state matters to the deployment
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `918909651df9`
+
+### ACS-REQ-0037
+
+**A decision may cite several policy references.** Requirement, MAY. `spec/instrument/specification.md:131` (table_cell, §`61-decision-result-fields`). Anchor: `#acs-req-0037`.
+
+> A single decision MAY cite multiple entries when several paradigms reject the same action
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `9ce46540098e`
+
+### ACS-REQ-0038
+
+**Consumers switch on reason codes, not prose.** Requirement, SHOULD. `spec/instrument/specification.md:132` (table_cell, §`61-decision-result-fields`). Anchor: `#acs-req-0038`.
+
+> UIs and meta-policies SHOULD switch on these rather than parsing reasoning text or rule IDs.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `805dc58c32a9`
+
+### ACS-REQ-0039
+
+**modified_content excludes structured edits.** Requirement, MUST NOT. `spec/instrument/specification.md:146` (list_item, §`63-modify-composition-normative`). Anchor: `#acs-req-0039`.
+
+> a MODIFY that carries `modified_content` MUST NOT also carry `redactions` or `parameter_overrides`
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Schema: `modifications.json#/properties/modified_content`
+- Status: active, since 0.1.0; reviewed against `30ebd035ffdf`
+
+### ACS-REQ-0040
+
+**Redactions and overrides may coexist.** Requirement, MAY. `spec/instrument/specification.md:147` (list_item, §`63-modify-composition-normative`). Anchor: `#acs-req-0040`.
+
+> `redactions` and `parameter_overrides` MAY appear together
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `6203ed391766`
+
+### ACS-REQ-0041
+
+**Redaction and override targets are disjoint.** Requirement, MUST. `spec/instrument/specification.md:147` (list_item, §`63-modify-composition-normative`). Anchor: `#acs-req-0041`.
+
+> but their targets MUST be disjoint: no `redactions` path may address the same field as a `parameter_overrides` key, nor an ancestor or descendant of it.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Schema: `modifications.json#/properties/redactions`
+- Status: active, since 0.1.0; reviewed against `7ce33e1a588b`
+- Note: JSON Pointer ancestry is ordinary code (E7.1): modification_targets_overlap is computed by the verifier.
+
+### ACS-REQ-0043
+
+**A malformed modifications object fails closed as DENY.** Requirement, MUST. `spec/instrument/specification.md:149` (paragraph, §`63-modify-composition-normative`). Anchor: `#acs-req-0043`.
+
+> An Observed Agent that receives one cannot determine the Guardian's intent and MUST fail closed, treating the decision as `DENY`
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `646cf8618b1f`
+- Note: applied means the agent proceeded with the MODIFY; blocked is the conformant outcome.
+
+### ACS-REQ-0044
+
+**A malformed modifications object is audited.** Requirement, SHOULD. `spec/instrument/specification.md:149` (paragraph, §`63-modify-composition-normative`). Anchor: `#acs-req-0044`.
+
+> and SHOULD record an audit event.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core; activation: a malformed modifications object arrived
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `c08ff72f1d4b`
+
+### ACS-REQ-0045
+
+**The Observed Agent waits for the decision.** Requirement, MUST. `spec/instrument/specification.md:157` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0045`.
+
+> the Observed Agent MUST wait for the Guardian's decision, up to the negotiated timeout (`timeout_config`, §4)
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `d845664065de`
+
+### ACS-REQ-0046
+
+**The Observed Agent applies the decision.** Requirement, MUST. `spec/instrument/specification.md:157` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0046`.
+
+> and MUST apply it: `ALLOW` proceeds, `DENY` blocks the action, `MODIFY` proceeds with the modified payload (§6.3), `ASK` pauses for approval, `DEFER` suspends pending resolution.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `ac3cdce41840`
+- Note: Observable half: a non-ALLOW decision the agent recorded as proceeded. Applying MODIFY correctly is not checked.
+
+### ACS-REQ-0047
+
+**A deployment may choose fail-closed.** Requirement, MAY. `spec/instrument/specification.md:159` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0047`.
+
+> A deployment MAY set `on_decision_failure: deny` (fail-closed).
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `9e2ddc2e6d29`
+
+### ACS-REQ-0048
+
+**The agent may attempt recovery within the timeout budget.** Requirement, MAY. `spec/instrument/specification.md:159` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0048`.
+
+> an error from the §17.1 registry carries a recovery action the agent MAY attempt within the remaining budget, and an unambiguous failure (a refused connection) MAY resolve immediately rather than waiting out the clock.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `9d4b0dc6e3c1`
+
+### ACS-REQ-0050
+
+**Every fail-open proceed is an audit event.** Requirement, MUST. `spec/instrument/specification.md:161` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0050`.
+
+> Every step that proceeds without a decision MUST be recorded as an audit event
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `3a4c8fe64956`
+
+### ACS-REQ-0051
+
+**A decision that arrives in time is honored regardless of posture.** Requirement, MUST. `spec/instrument/specification.md:161` (paragraph, §`64-honoring-decisions-normative`). Anchor: `#acs-req-0051`.
+
+> When a decision does arrive within the timeout, the agent MUST honor it regardless of the posture.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `4d42af653d6d`
+- Note: Observable half: a DENY that arrived and was recorded as proceeded.
+
+### ACS-REQ-0052
+
+**A deterministic producer attaches provenance to every data-bearing field.** Requirement, MUST. `spec/instrument/specification.md:169` (list_item, §`7-provenance`). Anchor: `#acs-req-0052`.
+
+> Under **`deterministic`**, the producer MUST attach a Provenance object to **every** data-bearing field in every hook payload it emits.
+
+- Actor: framework; reported against: framework
+- Profile: acs-provenance; activation: provenance_producer: deterministic
+- Modality: obligation; evidence: schema
+- Status: active, since 0.1.0; reviewed against `335f50c078e3`
+- Note: The verifier validates hook payloads against the strict *.acs-provenance.json variants when the session negotiated acs-provenance.
+
+### ACS-REQ-0053
+
+**An emitted Provenance object is complete.** Requirement, MUST. `spec/instrument/specification.md:172` (paragraph, §`7-provenance`). Anchor: `#acs-req-0053`.
+
+> When a Provenance object is emitted, all of its own required fields MUST be populated.
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: obligation; evidence: schema
+- Schema: `provenance.json#/required`
+- Status: active, since 0.1.0; reviewed against `70f11405491c`
+
+### ACS-REQ-0054
+
+**The framework attaches trust deterministically.** Requirement, MUST. `spec/instrument/specification.md:187` (list_item, §`71-optional-trust-enum`). Anchor: `#acs-req-0054`.
+
+> The framework, not the LLM, MUST attach the label, deterministically, based on which channel data crossed.
+
+- Actor: framework; reported against: framework
+- Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `1ba6384f846a`
+
+### ACS-REQ-0055
+
+**Receivers re-derive trust locally.** Requirement, MUST. `spec/instrument/specification.md:189` (list_item, §`71-optional-trust-enum`). Anchor: `#acs-req-0055`.
+
+> Receivers (especially across A2A or multi-Guardian boundaries) MUST treat the field as a hint and re-derive trust against local policy keyed off `origin` + `source_id` rather than honor a remote-asserted label at face value.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-provenance; activation: the deployment populates the OPTIONAL trust field
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `cd5af29f53be`
+
+### ACS-REQ-0056
+
+**Deployments may override the channel-to-trust mapping.** Requirement, MAY. `spec/instrument/specification.md:193` (paragraph, §`72-default-channel-to-trust-mapping`). Anchor: `#acs-req-0056`.
+
+> Deployments MAY override in policy
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-provenance
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `b2fcfcd327b9`
+
+### ACS-REQ-0057
+
+**Mapping overrides are recorded in audit metadata.** Requirement, SHOULD. `spec/instrument/specification.md:193` (paragraph, §`72-default-channel-to-trust-mapping`). Anchor: `#acs-req-0057`.
+
+> but SHOULD record overrides in audit metadata.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-provenance; activation: the deployment overrides the default channel-to-trust mapping (ACS-REQ-0056)
+- Modality: conditional-on-exercise; evidence: guardian-state
+- Depends on: [ACS-REQ-0056](#acs-req-0056)
+- Status: active, since 0.1.0; reviewed against `2321adbd91b4`
+
+### ACS-REQ-0058
+
+**The Observed Agent may cross-check the chain head.** Requirement, MAY. `spec/instrument/specification.md:209` (paragraph, §`8-sessioncontext-and-intent`). Anchor: `#acs-req-0058`.
+
+> The Observed Agent MAY also send `session_id` and a `chain_hash` for cross-checking.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `ff368d786ee2`
+
+### ACS-REQ-0059
+
+**The chain may initialize implicitly without sessionStart.** Requirement, MAY. `spec/instrument/specification.md:211` (paragraph, §`8-sessioncontext-and-intent`). Anchor: `#acs-req-0059`.
+
+> deployments that do not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first content-bearing hook
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `02813e67c977`
+
+### ACS-REQ-0060
+
+**ContextEntry SHOULD carry request_hash, timestamp and provenance_summary.** Requirement, SHOULD. `spec/instrument/specification.md:222` (list_item, §`81-contextentry`). Anchor: `#acs-req-0060`.
+
+> - **SHOULD:** `request_hash` (lowercase-hex SHA-256 of the JCS-canonicalized request envelope params; without this the chain commits only to step metadata, not to request content, so
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Schema: `context-entry.json#/properties/request_hash`
+- Status: active, since 0.1.0; reviewed against `008c8a8c2a5e`
+- Note: Carries two keywords: the SHOULD, and the ACS-Audit MUST on request_hash, which is ACS-REQ-0062's own sentence inside this one; the span is the list item.
+
+### ACS-REQ-0061
+
+**previous_hash is present on every entry but the first.** Requirement. `spec/instrument/specification.md:222` (list_item, §`81-contextentry`). Anchor: `#acs-req-0061`.
+
+> `previous_hash` (required for every entry except the first)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `850d13a22d52`
+- Note: Keyword-free; the parenthetical requirement.
+
+### ACS-REQ-0062
+
+**ACS-Audit deployments populate request_hash.** Requirement, MUST. `spec/instrument/specification.md:222` (list_item, §`81-contextentry`). Anchor: `#acs-req-0062`.
+
+> deployments claiming the **ACS-Audit** profile MUST populate `request_hash`
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-audit
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `e8311dbcf186`
+
+### ACS-REQ-0063
+
+**ACS-Audit entries carry timestamp and provenance_summary.** Requirement, SHOULD. `spec/conformance.md:75` (paragraph, §`acs-audit`). Anchor: `#acs-req-0063`.
+
+> ACS-Audit deployments SHOULD also populate `timestamp` and `provenance_summary` on every ContextEntry.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-audit
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `a07b3a3994a7`
+
+### ACS-REQ-0064
+
+**ProvenanceSummary fields are all optional.** Requirement, OPTIONAL. `spec/instrument/specification.md:238` (paragraph, §`83-provenancesummary`). Anchor: `#acs-req-0064`.
+
+> All fields are OPTIONAL — Guardians populate only what their policies consume.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Schema: `provenance-summary.json#/properties`
+- Status: active, since 0.1.0; reviewed against `f52a23c60bc3`
+
+### ACS-REQ-0065
+
+**Intent is optional.** Requirement, OPTIONAL. `spec/instrument/specification.md:242` (paragraph, §`84-intent`). Anchor: `#acs-req-0065`.
+
+> Intent is OPTIONAL and is defined in [Concepts › Intent](../../concepts/intent.md) (normative).
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Depends on: [ACS-INV-0001](#acs-inv-0001)
+- Status: active, since 0.1.0; reviewed against `f33cafc1c510`
+
+### ACS-REQ-0066
+
+**parser_provenance is required when parsed is present.** Requirement, REQUIRED. `spec/instrument/specification.md:242` (paragraph, §`84-intent`). Anchor: `#acs-req-0066`.
+
+> `parser_provenance` (REQUIRED if `parsed` present
+
+- Actor: framework; reported against: framework
+- Profile: acs-core; activation: an Intent with parsed capabilities is established
+- Modality: obligation; evidence: schema
+- Schema: `hooks/session-start.json#/properties/intent`
+- Status: active, since 0.1.0; reviewed against `dc5386ddfe74`
+- Note: The hook schemas carry the conditional as if/then; a failure surfaces at path /intent.
+
+### ACS-REQ-0067
+
+**parser_provenance origin is user_input.** Requirement, MUST. `spec/instrument/specification.md:242` (paragraph, §`84-intent`). Anchor: `#acs-req-0067`.
+
+> `origin` MUST be `user_input`
+
+- Actor: framework; reported against: framework
+- Profile: acs-core; activation: an Intent with parsed capabilities is established
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `206c69b42c1e`
+
+### ACS-REQ-0068
+
+**A Guardian may DENY or error on a chain mismatch.** Requirement, MAY. `spec/instrument/specification.md:256` (paragraph, §`86-chain-head-publication-normative`). Anchor: `#acs-req-0068`.
+
+> A Guardian that receives an Observed Agent's `chain_hash` (cross-check) that disagrees with its own computed head MAY DENY with `reason_codes: ["chain_mismatch"]`, or return the `CHAIN_MISMATCH` error (`-32007`, §17.1) when it cannot proceed at all.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `b8b816055697`
+
+### ACS-REQ-0069
+
+**A published chain head inconsistent with the chain is an integrity event.** Requirement, SHOULD. `spec/instrument/specification.md:256` (paragraph, §`86-chain-head-publication-normative`). Anchor: `#acs-req-0069`.
+
+> An Observed Agent or external auditor that finds a published `chain_hash` inconsistent with the recomputed chain SHOULD treat it as an integrity event, not a transient error.
+
+- Actor: verifier; reported against: verifier
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `2a916723ff9a`
+
+### ACS-REQ-0070
+
+**An Approver may be human, agent, or service.** Requirement, MAY. `concepts/agents.md:19` (paragraph, §`approver`). Anchor: `#acs-req-0070`.
+
+> An Approver MAY be human, agent, or service.
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Schema: `ask-details.json#/properties/approver/properties/type`
+- Status: active, since 0.1.0; reviewed against `f330b880a32c`
+
+### ACS-REQ-0071
+
+**An Approver may be human, agent, or service (pillar copy).** Requirement, MAY. `spec/instrument/specification.md:262` (paragraph, §`9-approver-model`). Anchor: `#acs-req-0071`.
+
+> ASK approvers MAY be human, agent, or service.
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Restates: [ACS-REQ-0070](#acs-req-0070)
+- Status: active, since 0.1.0; reviewed against `caaab40fca50`
+
+### ACS-REQ-0072
+
+**Approvers do not return ask.** Requirement, MUST NOT. `concepts/agents.md:23` (paragraph, §`approver`). Anchor: `#acs-req-0072`.
+
+> In v0.1 this is single-hop: Approvers MUST NOT themselves return `ask`.
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `596e6efbbc42`
+
+### ACS-REQ-0073
+
+**Approvers do not return ASK (pillar copy).** Requirement, MUST NOT. `spec/instrument/specification.md:264` (paragraph, §`9-approver-model`). Anchor: `#acs-req-0073`.
+
+> Single-hop only in v0.1. Approvers MUST NOT return ASK.
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Restates: [ACS-REQ-0072](#acs-req-0072)
+- Status: active, since 0.1.0; reviewed against `bb97ff1a9d0f`
+
+### ACS-REQ-0074
+
+**An Approver's grant may extend Intent.** Requirement, MAY. `concepts/agents.md:23` (paragraph, §`approver`). Anchor: `#acs-req-0074`.
+
+> The Approver's grant MAY extend `Intent.parsed` through an `intent_extension` (see [Intent](./intent.md)).
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Depends on: [ACS-INV-0001](#acs-inv-0001)
+- Status: active, since 0.1.0; reviewed against `a322d44f2534`
+
+### ACS-REQ-0075
+
+**An Approver's grant may extend Intent (pillar copy).** Requirement, MAY. `spec/instrument/specification.md:268` (paragraph, §`91-intent-extension-via-ask-normative`). Anchor: `#acs-req-0075`.
+
+> the approver's grant MAY include an `intent_extension` field
+
+- Actor: approver; reported against: approver
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Restates: [ACS-REQ-0074](#acs-req-0074)
+- Status: active, since 0.1.0; reviewed against `aec341dd89c9`
+
+### ACS-REQ-0076
+
+**A session-scope extension is appended, recorded, and carried with its own provenance.** Requirement, MUST. `spec/instrument/specification.md:270` (paragraph, §`91-intent-extension-via-ask-normative`). Anchor: `#acs-req-0076`.
+
+> On `scope: session`, the Guardian MUST:
+> 
+> 1. Append the capabilities to `Intent.parsed`.
+> 2. Write a ContextEntry with `step_type: "intent_extension"` recording the approver identity, the granted capabilities, and the originating ASK's `step_id`.
+> 3. Carry the extension's `provenance` forward distinct from the original `parser_provenance` so audits can distinguish parser-derived capabilities from approver-extended ones.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: an Approver granted an intent_extension with scope: session
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `809cc111ec9e`
+- Note: Checks item 2 (the intent_extension ContextEntry). Item 1 is ACS-REQ-0011's territory; item 3, the extension's separate provenance, is not observable in any relation and is a partial coverage flagged here.
+
+### ACS-REQ-0077
+
+**Strict-mode extensions cannot add forbidden capabilities.** Requirement, MUST NOT. `spec/instrument/specification.md:276` (paragraph, §`91-intent-extension-via-ask-normative`). Anchor: `#acs-req-0077`.
+
+> a Guardian operating under `scope_mode: strict` MUST NOT honor extensions that would add capabilities the deployment policy forbids in strict mode.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: scope_mode: strict
+- Modality: obligation; evidence: deployment-config
+- Restates: [ACS-INV-0002](#acs-inv-0002)
+- Status: active, since 0.1.0; reviewed against `0033f90eda4b`
+
+### ACS-REQ-0078
+
+**No ASK to an approver-incapable client.** Requirement, MUST NOT. `spec/instrument/specification.md:282` (paragraph, §`92-approver-incapable-clients-normative`). Anchor: `#acs-req-0078`.
+
+> When the Guardian determines that the client cannot resolve `ASK`, the Guardian MUST NOT return `ASK`.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the Guardian determined the client cannot resolve ASK
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `6e4db93c668f`
+
+### ACS-REQ-0079
+
+**ASK is substituted with a fail-closed DEFER or a DENY.** Requirement, MUST. `spec/instrument/specification.md:282` (paragraph, §`92-approver-incapable-clients-normative`). Anchor: `#acs-req-0079`.
+
+> The Guardian MUST instead substitute one of:
+> 
+> 1. `DEFER` with `timeout_decision: "deny"`: when the underlying issue might resolve through retry, an out-of-band escalation, or a later state change. The deferred verdict still counts toward cascading-deferral limits (§6).
+> 2. `DENY` with `reason_codes: ["approver_unavailable"]` and `reasoning` that names the missing capability: when no recovery path exists.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the Guardian determined the client cannot resolve ASK
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `4d14901e605c`
+- Note: Observable half: a DEFER to an approver-incapable client whose timeout_decision is not deny. Which decisions would have been ASK is not observable.
+
+### ACS-REQ-0080
+
+**Substitution prefers DEFER when recoverable.** Requirement, SHOULD. `spec/instrument/specification.md:287` (paragraph, §`92-approver-incapable-clients-normative`). Anchor: `#acs-req-0080`.
+
+> deployments SHOULD prefer `DEFER` when the request is potentially recoverable through a different surface, and `DENY` when the action is unconditionally outside the client's reachable authority.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `0a70be5bf9c1`
+
+### ACS-REQ-0081
+
+**Every envelope carries a signature.** Requirement, REQUIRED. `spec/instrument/specification.md:293` (paragraph, §`10-cryptographic-signatures`). Anchor: `#acs-req-0081`.
+
+> A signature over the §10 canonical input is REQUIRED in ACS-Core.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `4b280ca6e17a`
+- Note: system/ping is exempt by §13. The handshake is exempted here because the per-session key is derived with the session_id it establishes; whether it is signed is a question for upstream.
+
+### ACS-REQ-0082
+
+**The signature algorithm registry.** Requirement, RECOMMENDED. `spec/instrument/specification.md:303` (table_cell, §`101-algorithm-registry`). Anchor: `#acs-req-0082`.
+
+> `HMAC-SHA256` | Symmetric MAC | RECOMMENDED. Shared-secret integrity; simplest deployment path. Sufficient for same-host and trusted-network topologies where the threat is accidental tampering or replay. |
+> | `ECDSA-P256` | Classical asymmetric | OPTIONAL. Strongest current ecosystem support across Java, Node, .NET, HSMs, and major cloud KMS providers. |
+> | `RSA-PSS-SHA256` | Classical asymmetric | OPTIONAL. Legacy interop; deployments with existing RSA PKI. |
+> | `ML-DSA-65` | PQC, lattice (FIPS 204) | OPTIONAL. ~128-bit post-quantum security; ~3.3 KB signatures. Recommended for deployments shipping PQC libraries today. |
+> | `ML-DSA-44` | PQC, lattice | OPTIONAL. Low-bandwidth profile. |
+> | `ML-DSA-87` | PQC, lattice | OPTIONAL. High-security profile. |
+> | `SLH-DSA-128s` | PQC, hash (FIPS 205) | OPTIONAL. Algorithmic diversity vs. ML-DSA's lattice assumption. Caution: ~7.8 KB signatures, signing takes hundreds of milliseconds, unsuitable for hot-path Guardian responses without careful latency budgeting. |
+> | `SLH-DSA-128f` | PQC, hash | OPTIONAL. Faster signing; larger signatures. |
+> | `ML-DSA-65+ECDSA-P256` | Hybrid | OPTIONAL. Transitional composite for PQC forward-resistance with classical co-signature. |
+> | `ML-DSA-65+RSA-PSS-SHA256` | Hybrid | OPTIONAL. Transitional composite.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `b6d956aea71c`
+- Note: One provision spanning the §10.1 table body, binding its eleven status keywords. The obligation it yields: an envelope's algorithm is a registered one.
+
+### ACS-REQ-0083
+
+**Hybrid signatures verify both components.** Requirement, MUST. `spec/instrument/specification.md:318` (paragraph, §`102-hybrid-signature-value-encoding`). Anchor: `#acs-req-0083`.
+
+> Verifiers MUST verify both component signatures over the canonical input defined in §10; failure of either component is a signature failure (`SIGNATURE_INVALID`, §17.1).
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-crypto
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `5108e7f73d49`
+
+### ACS-REQ-0084
+
+**Requests outside the skew window are rejected.** Requirement, MUST. `spec/instrument/specification.md:322` (paragraph, §`103-replay-protection`). Anchor: `#acs-req-0084`.
+
+> Guardians MUST reject requests whose `timestamp` is more than the negotiated skew window (`skew_window_ms` in ServerHello, §4; RECOMMENDED default 300000) in the past or future, returning `TIMESTAMP_OUT_OF_WINDOW` (`-32006`, §17.1)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `5bce9413e657`
+- Note: Binds the MUST and the RECOMMENDED default (300000 ms), which the verifier applies when a ServerHello names no window. The window is judged against the Guardian's recorded_at.
+
+### ACS-REQ-0086
+
+**Duplicate request_id within a session is rejected.** Requirement, MUST. `spec/instrument/specification.md:322` (paragraph, §`103-replay-protection`). Anchor: `#acs-req-0086`.
+
+> MUST reject duplicate `request_id` values within the session with `REPLAY_DETECTED` (`-32005`, §17.1)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `07a0d586fb4c`
+
+### ACS-REQ-0087
+
+**Duplicate nonces are rejected within a window.** Requirement, SHOULD. `spec/instrument/specification.md:322` (paragraph, §`103-replay-protection`). Anchor: `#acs-req-0087`.
+
+> SHOULD reject duplicate `nonce` values within a sliding window the deployment configures (also `REPLAY_DETECTED`)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `7517d30bb810`
+- Note: The sliding window is deployment-configured and not modelled; every repeat in the log is reported.
+
+### ACS-REQ-0088
+
+**ACS is deployable across platforms.** Requirement, MUST. `spec/instrument/specification.md:326` (paragraph, §`11-platform-os-independence`). Anchor: `#acs-req-0088`.
+
+> ACS MUST be deployable across IDE, SaaS, on-prem on Linux/Windows/macOS/mobile/browser.
+
+- Actor: none; reported against: none
+- Profile: all
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `12ab230162bb`
+- Note: A design constraint on the specification itself.
+
+### ACS-REQ-0089
+
+**Resource identifiers use URI form.** Requirement, MUST. `spec/instrument/specification.md:328` (list_item, §`11-platform-os-independence`). Anchor: `#acs-req-0089`.
+
+> Resource identifiers MUST use URI form (`file:///C:/...`, `posix:///etc/...`, `https://...`).
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `270693d65410`
+
+### ACS-REQ-0090
+
+**Prompts treat untrusted data as data.** Requirement, MUST. `spec/instrument/specification.md:352` (list_item, §`122-agent-layer`). Anchor: `#acs-req-0090`.
+
+> Prompt MUST treat untrusted data as data, not instructions. Untrusted fields MUST be wrapped/quoted.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the deployment runs an agent evaluation layer
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `21410cd29f07`
+
+### ACS-REQ-0091
+
+**The agent layer has no access to policy code.** Requirement, MUST NOT. `spec/instrument/specification.md:353` (list_item, §`122-agent-layer`). Anchor: `#acs-req-0091`.
+
+> MUST NOT have access to deterministic-layer policy code.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the deployment runs an agent evaluation layer
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `aef6edc5e8ef`
+
+### ACS-REQ-0092
+
+**Decisions are logged with reasoning, model identifier, and confidence.** Requirement, MUST. `concepts/agents.md:15` (blockquote, §`guardian-agent`). Anchor: `#acs-req-0092`.
+
+> **Decision logging (normative).** A Guardian MUST log every decision with its reasoning, the evaluator's model identifier, and confidence when available.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `8bc76b31ea9b`
+- Note: X5: a Guardian obligation at concepts altitude. Confidence is checked only when available, so only reasoning and model_identifier are required.
+
+### ACS-REQ-0093
+
+**Decisions are logged (pillar copy).** Requirement, MUST. `spec/instrument/specification.md:354` (list_item, §`122-agent-layer`). Anchor: `#acs-req-0093`.
+
+> Decisions MUST be logged with reasoning, model identifier, confidence (when available).
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the deployment runs an agent evaluation layer
+- Modality: obligation; evidence: guardian-state
+- Restates: [ACS-REQ-0092](#acs-req-0092)
+- Status: active, since 0.1.0; reviewed against `c1a64dee4730`
+
+### ACS-REQ-0094
+
+**The agent layer is optional.** Requirement, OPTIONAL. `spec/instrument/specification.md:357` (paragraph, §`122-agent-layer`). Anchor: `#acs-req-0094`.
+
+> OPTIONAL for v0.1.0. Deterministic-only deployments are fully conformant.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `95107eae27f5`
+
+### ACS-REQ-0095
+
+**system/ping is always allowed.** Requirement, MUST. `spec/instrument/specification.md:371` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0095`.
+
+> Guardians MUST always return `decision: "allow"` for `system/ping` regardless of policy, signature, or session state.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `661fbd40d3c0`
+
+### ACS-REQ-0096
+
+**system/ping is not a ContextEntry.** Requirement, MUST NOT. `spec/instrument/specification.md:372` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0096`.
+
+> `system/ping` MUST NOT be written into SessionContext as a ContextEntry; it does not participate in the chain hash.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `28e65d616669`
+
+### ACS-REQ-0097
+
+**system/ping needs no signature.** Requirement, MUST NOT. `spec/instrument/specification.md:373` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0097`.
+
+> `system/ping` MUST NOT require a signature even if the session otherwise requires signatures, so that liveness probing remains possible during signature-rotation or key-resolution failures.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `fe2e39e5c976`
+
+### ACS-REQ-0098
+
+**Enforcement health is monitored directly.** Requirement, SHOULD. `spec/instrument/specification.md:374` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0098`.
+
+> Deployments SHOULD monitor hook-path decision failures (§6.4) directly rather than infer enforcement health from ping alone.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `646597cda451`
+
+### ACS-REQ-0099
+
+**A ping failure may trigger transport recovery.** Requirement, MAY. `spec/instrument/specification.md:375` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0099`.
+
+> Connection failure or response timeout for `system/ping` is a transport-level signal that the Observed Agent MAY use to renegotiate transport, re-handshake, or fail over
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `88f15dbbea0e`
+
+### ACS-REQ-0100
+
+**A ping failure is not an enforcement event.** Requirement, MUST NOT. `spec/instrument/specification.md:375` (list_item, §`13-liveness-system-methods`). Anchor: `#acs-req-0100`.
+
+> it MUST NOT be interpreted as an enforcement event.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `ec73112602cc`
+- Note: A ping that produced an enforcement audit event is the observable breach.
+
+### ACS-REQ-0101
+
+**An error response may carry data.** Requirement, MAY. `spec/instrument/specification.md:420` (paragraph, §`171-acs-error-code-registry`). Anchor: `#acs-req-0101`.
+
+> An error response MAY carry a `data` object
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `4a37e8b58adb`
+
+### ACS-REQ-0102
+
+**Error data carries reason and message.** Requirement, SHOULD. `spec/instrument/specification.md:420` (paragraph, §`171-acs-error-code-registry`). Anchor: `#acs-req-0102`.
+
+> when present it SHOULD include a machine-readable `reason` and a human-readable `message`, plus the per-code fields noted below.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core; activation: the error response carries a data object (ACS-REQ-0101)
+- Modality: conditional-on-exercise; evidence: wire
+- Depends on: [ACS-REQ-0101](#acs-req-0101)
+- Status: active, since 0.1.0; reviewed against `08fc6084dacd`
+- Note: The per-code fields are not checked.
+
+### ACS-REQ-0103
+
+**system/ping never returns an ACS error.** Requirement, MUST NOT. `spec/instrument/specification.md:433` (paragraph, §`171-acs-error-code-registry`). Anchor: `#acs-req-0103`.
+
+> `system/ping` MUST NOT return an ACS-specific error, so liveness probing survives signature-rotation and key-resolution failures (§13).
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `597265257e0d`
+
+### ACS-REQ-0104
+
+**A Guardian may refuse a session at sessionStart.** Requirement, MAY. `spec/instrument/hooks.md:74` (paragraph, §`sessionstart`). Anchor: `#acs-req-0104`.
+
+> A Guardian MAY refuse a session whose identity, policy mode, or platform fails policy checks; this is the cleanest place to refuse before content enters.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `7d06ec2f7f89`
+
+### ACS-REQ-0105
+
+**A Guardian may rewrite the trigger payload.** Requirement, MAY. `spec/instrument/hooks.md:88` (paragraph, §`agenttrigger`). Anchor: `#acs-req-0105`.
+
+> Guardian MAY rewrite the trigger payload (e.g. redact PII) before activation.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `56cdac1aac6c`
+
+### ACS-REQ-0106
+
+**A Guardian may deny a turn from starting.** Requirement, MAY. `spec/instrument/hooks.md:102` (paragraph, §`turnstart`). Anchor: `#acs-req-0106`.
+
+> a Guardian MAY deny to block the turn from starting
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `cb4a6c5a55e1`
+
+### ACS-REQ-0107
+
+**A Guardian may redact a user message.** Requirement, MAY. `spec/instrument/hooks.md:114` (paragraph, §`usermessage`). Anchor: `#acs-req-0107`.
+
+> Guardian MAY redact content before delivery to the agent.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `472d22d8d80b`
+
+### ACS-REQ-0108
+
+**A Guardian may redact retrieved content.** Requirement, MAY. `spec/instrument/hooks.md:138` (paragraph, §`knowledgeretrieval`). Anchor: `#acs-req-0108`.
+
+> Guardian MAY redact retrieved content before injection into the agent context.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `53c10f4701c3`
+
+### ACS-REQ-0109
+
+**Every outward action fires toolCallRequest.** Requirement, MUST. `spec/instrument/hooks.md:172` (paragraph, §`toolcallrequest`). Anchor: `#acs-req-0109`.
+
+> Frameworks MUST fire `toolCallRequest` for every action that escapes the agent's reasoning context, regardless of whether the framework's tool registry models it as a tool.
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: obligation; evidence: deployment-config
+- Status: active, since 0.1.0; reviewed against `51de7945faac`
+
+### ACS-REQ-0110
+
+**A Guardian may deny compaction.** Requirement, MAY. `spec/instrument/hooks.md:200` (paragraph, §`precompact`). Anchor: `#acs-req-0110`.
+
+> Guardian MAY return DENY to block compaction (e.g. because deployment policy disallows compacting after `untrusted` data has entered until a trusted re-grounding occurs).
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `849e3a92b4e3`
+
+### ACS-REQ-0111
+
+**A compaction summary carries the union of its inputs' lineage.** Requirement, MUST. `spec/instrument/hooks.md:210` (paragraph, §`postcompact`). Anchor: `#acs-req-0111`.
+
+> resulting `summary` content with `provenance` whose `origin` MUST be `agent_generated` and whose `derived_from` MUST equal the union of `provenance_id`s of every entry in `entries_compacted`.
+
+- Actor: framework; reported against: framework
+- Profile: acs-provenance
+- Modality: obligation; evidence: wire
+- Depends on: [ACS-DEF-0002](#acs-def-0002)
+- Status: active, since 0.1.0; reviewed against `d79fbb903a78`
+- Note: entries_compacted lists step_ids; the check treats each as the provenance_id the entry contributed, which is how the hook schema describes the union. Extra derived_from entries are not reported.
+
+### ACS-REQ-0112
+
+**A Guardian may rewrite a compaction summary.** Requirement, MAY. `spec/instrument/hooks.md:212` (paragraph, §`postcompact`). Anchor: `#acs-req-0112`.
+
+> A Guardian MAY return MODIFY (rewrite the summary, e.g. to redact a region the policy can't compact)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `bdbce7a11430`
+
+### ACS-REQ-0113
+
+**A Guardian does not deny postCompact.** Requirement, MAY. `spec/instrument/hooks.md:212` (paragraph, §`postcompact`). Anchor: `#acs-req-0113`.
+
+> but MAY NOT return DENY.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `415ba8b6ff4c`
+- Note: Finding for upstream: MAY NOT is not an RFC 2119 term; read here as the prohibition the sentence means.
+
+### ACS-REQ-0114
+
+**The audit chain records the post-compact state.** Requirement, MUST. `spec/instrument/hooks.md:212` (paragraph, §`postcompact`). Anchor: `#acs-req-0114`.
+
+> The audit chain MUST record the post-compact state regardless.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `38b5f512e0dd`
+
+### ACS-REQ-0116
+
+**A Guardian may deny a skill registration.** Requirement, MAY. `spec/instrument/hooks.md:252` (paragraph, §`skillregister`). Anchor: `#acs-req-0116`.
+
+> A Guardian MAY deny registration
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `4f444e38e0ef`
+
+### ACS-REQ-0117
+
+**A denied skill cannot load.** Requirement, MUST NOT. `spec/instrument/hooks.md:252` (paragraph, §`skillregister`). Anchor: `#acs-req-0117`.
+
+> a denied skill MUST NOT become eligible to load
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `0a1b0a62f271`
+
+### ACS-REQ-0118
+
+**Declared capabilities are compared with composed tools.** Requirement, SHOULD. `spec/instrument/hooks.md:252` (paragraph, §`skillregister`). Anchor: `#acs-req-0118`.
+
+> A Guardian SHOULD compare `declared_capabilities` against the union of capabilities the composed tools expose
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `3bca90127d17`
+
+### ACS-REQ-0119
+
+**A Guardian may deny over-broad declarations.** Requirement, MAY. `spec/instrument/hooks.md:252` (paragraph, §`skillregister`). Anchor: `#acs-req-0119`.
+
+> MAY deny over-broad declarations.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `bc27f422c346`
+
+### ACS-REQ-0120
+
+**A skill load correlates to an approved registration.** Requirement, MUST. `spec/instrument/hooks.md:262` (paragraph, §`skillload`). Anchor: `#acs-req-0120`.
+
+> A load MUST be correlatable to a prior approved `skillRegister` for the same `(skill_id, digest)`
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `a8721161dcf6`
+- Note: Registrations are correlated within the session; a Guardian persists the pair across sessions, which the verifier cannot see.
+
+### ACS-REQ-0121
+
+**An uncorrelatable load is denied.** Requirement, SHOULD. `spec/instrument/hooks.md:262` (paragraph, §`skillload`). Anchor: `#acs-req-0121`.
+
+> one the Guardian cannot tie to an approved registration, or whose digest differs from the approved one, is unverifiable and SHOULD be denied.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `242488e96202`
+
+### ACS-REQ-0122
+
+**A load outside declared composition is denied.** Requirement, SHOULD. `spec/instrument/hooks.md:268` (paragraph, §`skillload`). Anchor: `#acs-req-0122`.
+
+> SHOULD deny when `load_path` shows a skill loading another outside its declared `composed_skills`
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `71c7ed9438a2`
+
+### ACS-REQ-0123
+
+**The framework may send a digest_verified hint.** Requirement, MAY. `spec/instrument/hooks.md:262` (paragraph, §`skillload`). Anchor: `#acs-req-0123`.
+
+> The framework MAY send a `digest_verified` hint
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `1d04053a843a`
+
+### ACS-REQ-0124
+
+**A Guardian may deny a session over its component graph.** Requirement, MAY. `spec/inspect/README.md:21` (paragraph, §`wire-methods`). Anchor: `#acs-req-0124`.
+
+> Guardians MAY return `deny` to refuse a session whose component graph contains a banned component, or to block a hot-swap.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-inspect
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `24d227c8494d`
+
+### ACS-REQ-0125
+
+**MCP tool calls may collapse into the generic hooks.** Requirement, MAY. `spec/instrument/extend_mcp.md:12` (paragraph, §`mcp-support`). Anchor: `#acs-req-0125`.
+
+> Deployments MAY collapse MCP `tools/call` traffic into the generic `steps/toolCallRequest` / `steps/toolCallResult` hooks when tool-level policy is sufficient.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `db09f6fa48cf`
+
+### ACS-REQ-0126
+
+**Wrapped MCP is used when policy needs MCP-level distinctions.** Requirement, SHOULD. `spec/instrument/extend_mcp.md:12` (paragraph, §`mcp-support`). Anchor: `#acs-req-0126`.
+
+> Deployments SHOULD use `protocols/MCP/*` when policy needs MCP-level distinctions that generic tool hooks would erase
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `55d4831e632c`
+
+### ACS-REQ-0127
+
+**A Guardian may refuse a session lacking a required profile.** Requirement, MAY. `spec/conformance.md:11` (paragraph, §`profile-declaration`). Anchor: `#acs-req-0127`.
+
+> A Guardian MAY refuse a session if the client does not declare a profile the Guardian's policy requires
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `541d58f2f8bc`
+
+### ACS-REQ-0128
+
+**A conformant deployment implements ACS-Core.** Requirement, MUST. `spec/conformance.md:15` (paragraph, §`acs-core-mandatory-baseline`). Anchor: `#acs-req-0128`.
+
+> A v0.1.0-conformant deployment MUST implement ACS-Core.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `7424e248ba41`
+
+### ACS-REQ-0129
+
+**Additional hooks are implemented when observable.** Requirement, SHOULD. `spec/conformance.md:19` (list_item, §`acs-core-mandatory-baseline`). Anchor: `#acs-req-0129`.
+
+> are normatively defined and SHOULD be implemented when the harness can observe the corresponding event
+
+- Actor: framework; reported against: framework
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `41c701804f08`
+
+### ACS-REQ-0130
+
+**Skill components imply skill lifecycle hooks.** Requirement, SHOULD. `spec/conformance.md:19` (list_item, §`acs-core-mandatory-baseline`). Anchor: `#acs-req-0130`.
+
+> A deployment whose AgBOM includes `skill` components SHOULD emit the skill lifecycle hooks, so a Guardian is not blind to a composition surface the inventory already exposes.
+
+- Actor: framework; reported against: framework
+- Profile: acs-inspect
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `2acab6478886`
+
+### ACS-REQ-0131
+
+**ACS-Trace emits, records, and carries provenance onto Trace events.** Requirement, MUST. `spec/conformance.md:36` (paragraph, §`acs-trace`). Anchor: `#acs-req-0131`.
+
+> A deployment claiming ACS-Trace MUST:
+> 
+> 1. Emit at least one of {OTel, OCSF} for every supported ACS step, with the required attributes populated.
+> 2. Record decisions as Trace events.
+> 3. Carry provenance facts forward onto Trace events.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `3d2dff0ace85`
+- Note: Non-testable: no Trace-event relations in the vocabulary; Trace emission is out of the envelope log.
+
+### ACS-REQ-0132
+
+**Trace emission never blocks enforcement.** Requirement, MUST NOT. `spec/trace/events.md:72` (paragraph, §`acs-trace-conformance-bar`). Anchor: `#acs-req-0132`.
+
+> Trace events MUST NOT block enforcement — failure of the Trace sink MUST NOT change the disposition returned to the Observed Agent.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `cf2b26045d5a`
+- Note: Non-testable: a Trace sink failure is not observable in the envelope log; the disposition it must not change is.
+
+### ACS-REQ-0133
+
+**Trace events are emitted where feasible even without ACS-Trace.** Requirement, SHOULD. `spec/trace/events.md:72` (paragraph, §`acs-trace-conformance-bar`). Anchor: `#acs-req-0133`.
+
+> Deployments that do not claim ACS-Trace SHOULD still emit Trace events where feasible
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `a97096ade935`
+
+### ACS-REQ-0134
+
+**ACS-Inspect emits agbom/snapshot before content-bearing hooks.** Requirement, MUST. `spec/conformance.md:46` (paragraph, §`acs-inspect`). Anchor: `#acs-req-0134`.
+
+> A deployment claiming ACS-Inspect MUST:
+> 
+> 1. Emit `agbom/snapshot` once per session before content-bearing hooks fire.
+
+- Actor: framework; reported against: framework
+- Profile: acs-inspect
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `3440c71e59da`
+- Note: The stem and its first item. The second item is ACS-REQ-0135.
+
+### ACS-REQ-0135
+
+**ACS-Inspect serializes the AgBOM on request.** Requirement. `spec/conformance.md:49` (list_item, §`acs-inspect`). Anchor: `#acs-req-0135`.
+
+> Have the Guardian serialize the canonical AgBOM into at least one of {CycloneDX 1.6, SPDX 3.0, SWID} on request.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-inspect
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `209ec7826a83`
+- Note: Keyword-free list item under ACS-REQ-0134's stem Non-testable: serialization requests are Guardian-side and not on the wire in v0.1.
+
+### ACS-REQ-0136
+
+**ACS-Inspect-Dynamic emits agbom/changed on every mutation.** Requirement, MUST. `spec/inspect/README.md:63` (paragraph, §`acs-inspect-conformance-bar`). Anchor: `#acs-req-0136`.
+
+> A deployment claiming **ACS-Inspect-Dynamic** additionally MUST:
+
+- Actor: framework; reported against: framework
+- Profile: acs-inspect-dynamic
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `9403b8b8fd95`
+
+### ACS-REQ-0137
+
+**ACS-Crypto supports ML-DSA-65.** Requirement, MUST. `spec/conformance.md:67` (paragraph, §`acs-crypto`). Anchor: `#acs-req-0137`.
+
+> A deployment claiming ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-crypto
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `cc783b3ba691`
+- Note: Binds the MUST and the parenthetical RECOMMENDED. Judged from ServerHello's signature_algorithms_supported; profile scoping activates it only for acs-crypto sessions.
+
+### ACS-REQ-0138
+
+**ACS-Crypto supports SLH-DSA-128s.** Requirement, SHOULD. `spec/conformance.md:67` (paragraph, §`acs-crypto`). Anchor: `#acs-req-0138`.
+
+> and SHOULD support `SLH-DSA-128s` as an algorithmic-diversity backup.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-crypto
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `062726c535ed`
+
+### ACS-REQ-0139
+
+**Hybrid composites are optional.** Requirement, OPTIONAL. `spec/conformance.md:67` (paragraph, §`acs-crypto`). Anchor: `#acs-req-0139`.
+
+> Hybrid composites (`ML-DSA-65+ECDSA-P256`, `ML-DSA-65+RSA-PSS-SHA256`) are OPTIONAL for transitional deployments.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-crypto
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `10bff837ec53`
+
+### ACS-REQ-0140
+
+**Inventory-dependent policy requires ACS-Inspect.** Requirement, MUST. `spec/inspect/README.md:10` (paragraph, §`inspect-agbom`). Anchor: `#acs-req-0140`.
+
+> When Guardian policy depends on component inventory (e.g. banning a model or tool at the boundary), the deployment MUST implement ACS-Inspect.
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-core
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `c9feed61920a`
+
+### ACS-REQ-0141
+
+**Components carry registration_provenance.** Requirement, SHOULD. `spec/inspect/README.md:42` (paragraph, §`canonical-schema`). Anchor: `#acs-req-0141`.
+
+> Every component SHOULD carry `registration_provenance` (who declared it — framework / configuration / runtime discovery) so AgBOM mutations are traceable in the same lineage system as data flow.
+
+- Actor: framework; reported against: framework
+- Profile: acs-inspect
+- Modality: obligation; evidence: wire
+- Schema: `agbom/component.json#/properties/registration_provenance`
+- Status: active, since 0.1.0; reviewed against `c6cadbe68b74`
+
+### ACS-REQ-0142
+
+**ACS-Provenance components carry registration_provenance.** Requirement, MUST. `spec/inspect/README.md:42` (paragraph, §`canonical-schema`). Anchor: `#acs-req-0142`.
+
+> Deployments claiming **ACS-Provenance** MUST populate `registration_provenance` on every component.
+
+- Actor: framework; reported against: framework
+- Profile: acs-provenance
+- Modality: obligation; evidence: wire
+- Status: active, since 0.1.0; reviewed against `ce96d3240472`
+
+### ACS-REQ-0143
+
+**A Guardian may request a serialization at handshake.** Requirement, MAY. `spec/inspect/README.md:54` (paragraph, §`output-format-mappings`). Anchor: `#acs-req-0143`.
+
+> A Guardian MAY request a specific serialization in the handshake's AgBOM negotiation (`agbom_serializations_supported` in ServerHello)
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-inspect
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `7e75dc82bee9`
+
+### ACS-REQ-0144
+
+**agbom/changed may serialize as a VEX diff or a full document.** Requirement, MAY. `spec/inspect/extend_cyclonedx.md:74` (list_item, §`notes`). Anchor: `#acs-req-0144`.
+
+> deployments MAY emit a CycloneDX VEX-style diff or simply emit a fresh full serialization
+
+- Actor: deployment; reported against: deployment
+- Profile: acs-inspect
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `54bda27f5991`
+
+### ACS-REQ-0145
+
+**Spans carry acs.provenance.origin.** Requirement, MUST. `spec/trace/events.md:33` (paragraph, §`opentelemetry-semantic-conventions`). Anchor: `#acs-req-0145`.
+
+> the resulting span MUST carry `acs.provenance.origin` as an attribute
+
+- Actor: framework; reported against: framework
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `6fb1cf6e4b10`
+- Note: Non-testable: no span relations in the vocabulary.
+
+### ACS-REQ-0146
+
+**Spans carry source_id and lineage_depth when populated.** Requirement, SHOULD. `spec/trace/events.md:33` (paragraph, §`opentelemetry-semantic-conventions`). Anchor: `#acs-req-0146`.
+
+> SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth` when populated
+
+- Actor: framework; reported against: framework
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `0670a5350f65`
+- Note: Non-testable: no span relations in the vocabulary.
+
+### ACS-REQ-0147
+
+**Lineage edges may be OTel span links.** Requirement, MAY. `spec/trace/events.md:33` (paragraph, §`opentelemetry-semantic-conventions`). Anchor: `#acs-req-0147`.
+
+> Provenance lineage edges MAY be linked via OTel span links keyed by `provenance_id`.
+
+- Actor: framework; reported against: framework
+- Profile: acs-trace
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `7b1bb47704f2`
+
+### ACS-REQ-0148
+
+**Redaction is applied at attribute-emit time.** Requirement, SHOULD. `spec/trace/extend_opentelemetry.md:26` (paragraph, §`sensitive-data`). Anchor: `#acs-req-0148`.
+
+> Implementations SHOULD apply the deployment's redaction or hashing policy at attribute-emit time rather than relying on backend-side scrubbing.
+
+- Actor: framework; reported against: framework
+- Profile: acs-trace
+- Modality: obligation; evidence: non-testable
+- Status: active, since 0.1.0; reviewed against `cbd4d4e69103`
+
+### ACS-REQ-0149
+
+**trace_emission may advertise a collector endpoint.** Requirement, MAY. `spec/trace/extend_opentelemetry.md:30` (paragraph, §`transport`). Anchor: `#acs-req-0149`.
+
+> The Guardian's handshake `trace_emission` field MAY advertise an OTLP collector endpoint
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-trace
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `114502b26f93`
+
+### ACS-REQ-0150
+
+**Trace traffic routes to the advertised collector.** Requirement, SHOULD. `spec/trace/extend_opentelemetry.md:30` (paragraph, §`transport`). Anchor: `#acs-req-0150`.
+
+> when set, the Observed Agent SHOULD route ACS-shaped trace traffic there in addition to (or instead of) its default collector.
+
+- Actor: observed-agent; reported against: observed-agent
+- Profile: acs-trace; activation: the ServerHello advertised a collector endpoint (ACS-REQ-0149)
+- Modality: conditional-on-exercise; evidence: non-testable
+- Depends on: [ACS-REQ-0149](#acs-req-0149)
+- Status: active, since 0.1.0; reviewed against `94c2e68548dc`
+- Note: Non-testable: trace routing is out of the envelope log.
+
+### ACS-REQ-0151
+
+**The audit chain records a subagent's Intent derivation.** Requirement, MUST. `concepts/session-lifecycle.md:23` (blockquote, §`subagent`). Anchor: `#acs-req-0151`.
+
+> When a subagent is spawned, the audit chain MUST record how the subagent's `Intent.parsed` relates to the parent's: inherited in full, a strict subset, derived from a parent directive, or fresh.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: obligation; evidence: guardian-state
+- Status: active, since 0.1.0; reviewed against `2172d6bd1998`
+- Note: X5: a Guardian obligation at concepts altitude, inside the Intent-derivation callout.
+
+### ACS-REQ-0152
+
+**A Guardian may deny a spawn that widens Intent.** Requirement, MAY. `concepts/session-lifecycle.md:23` (blockquote, §`subagent`). Anchor: `#acs-req-0152`.
+
+> A Guardian MAY deny a spawn whose derivation would grant capabilities the parent's [Intent](./intent.md) does not authorize.
+
+- Actor: guardian; reported against: guardian
+- Profile: acs-core
+- Modality: permission; evidence: not-applicable
+- Status: active, since 0.1.0; reviewed against `c469c7c5a70a`
+
 ## Test coverage
 
-21 of 28 provisions are cited by a conformance test or fixture under `ir/test/conformance/` (R6.3).
+27 of 155 provisions are cited by a conformance test or fixture under `ir/test/conformance/` (R6.3).
 
 | ID | Conformance tests |
 |---|---|
@@ -410,6 +2017,9 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 | ACS-DEF-0002 | none |
 | ACS-EXC-0001 | none |
 | ACS-INV-0001 | none |
+| ACS-INV-0002 | none |
+| ACS-INV-0003 | none |
+| ACS-INV-0004 | none |
 | ACS-REQ-0001 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
 | ACS-REQ-0002 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
 | ACS-REQ-0003 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
@@ -434,3 +2044,127 @@ ACS 0.1.2 at `6fce2a0`. 28 provisions.
 | ACS-REQ-0022 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
 | ACS-REQ-0023 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
 | ACS-REQ-0024 | none |
+| ACS-REQ-0025 | none |
+| ACS-REQ-0026 | none |
+| ACS-REQ-0027 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0028 | none |
+| ACS-REQ-0029 | none |
+| ACS-REQ-0030 | none |
+| ACS-REQ-0031 | none |
+| ACS-REQ-0032 | none |
+| ACS-REQ-0033 | none |
+| ACS-REQ-0034 | none |
+| ACS-REQ-0035 | none |
+| ACS-REQ-0036 | none |
+| ACS-REQ-0037 | none |
+| ACS-REQ-0038 | none |
+| ACS-REQ-0039 | none |
+| ACS-REQ-0040 | none |
+| ACS-REQ-0041 | none |
+| ACS-REQ-0043 | none |
+| ACS-REQ-0044 | none |
+| ACS-REQ-0045 | none |
+| ACS-REQ-0046 | none |
+| ACS-REQ-0047 | none |
+| ACS-REQ-0048 | none |
+| ACS-REQ-0050 | none |
+| ACS-REQ-0051 | none |
+| ACS-REQ-0052 | none |
+| ACS-REQ-0053 | none |
+| ACS-REQ-0054 | none |
+| ACS-REQ-0055 | none |
+| ACS-REQ-0056 | none |
+| ACS-REQ-0057 | none |
+| ACS-REQ-0058 | none |
+| ACS-REQ-0059 | none |
+| ACS-REQ-0060 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0061 | none |
+| ACS-REQ-0062 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0063 | none |
+| ACS-REQ-0064 | none |
+| ACS-REQ-0065 | none |
+| ACS-REQ-0066 | none |
+| ACS-REQ-0067 | none |
+| ACS-REQ-0068 | none |
+| ACS-REQ-0069 | none |
+| ACS-REQ-0070 | none |
+| ACS-REQ-0071 | none |
+| ACS-REQ-0072 | none |
+| ACS-REQ-0073 | none |
+| ACS-REQ-0074 | none |
+| ACS-REQ-0075 | none |
+| ACS-REQ-0076 | none |
+| ACS-REQ-0077 | none |
+| ACS-REQ-0078 | none |
+| ACS-REQ-0079 | none |
+| ACS-REQ-0080 | none |
+| ACS-REQ-0081 | none |
+| ACS-REQ-0082 | none |
+| ACS-REQ-0083 | none |
+| ACS-REQ-0084 | none |
+| ACS-REQ-0086 | none |
+| ACS-REQ-0087 | none |
+| ACS-REQ-0088 | none |
+| ACS-REQ-0089 | none |
+| ACS-REQ-0090 | none |
+| ACS-REQ-0091 | none |
+| ACS-REQ-0092 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0093 | none |
+| ACS-REQ-0094 | none |
+| ACS-REQ-0095 | none |
+| ACS-REQ-0096 | none |
+| ACS-REQ-0097 | none |
+| ACS-REQ-0098 | none |
+| ACS-REQ-0099 | none |
+| ACS-REQ-0100 | none |
+| ACS-REQ-0101 | none |
+| ACS-REQ-0102 | none |
+| ACS-REQ-0103 | none |
+| ACS-REQ-0104 | none |
+| ACS-REQ-0105 | none |
+| ACS-REQ-0106 | none |
+| ACS-REQ-0107 | none |
+| ACS-REQ-0108 | none |
+| ACS-REQ-0109 | none |
+| ACS-REQ-0110 | none |
+| ACS-REQ-0111 | none |
+| ACS-REQ-0112 | none |
+| ACS-REQ-0113 | none |
+| ACS-REQ-0114 | none |
+| ACS-REQ-0116 | none |
+| ACS-REQ-0117 | none |
+| ACS-REQ-0118 | none |
+| ACS-REQ-0119 | none |
+| ACS-REQ-0120 | none |
+| ACS-REQ-0121 | none |
+| ACS-REQ-0122 | none |
+| ACS-REQ-0123 | none |
+| ACS-REQ-0124 | none |
+| ACS-REQ-0125 | none |
+| ACS-REQ-0126 | none |
+| ACS-REQ-0127 | none |
+| ACS-REQ-0128 | none |
+| ACS-REQ-0129 | none |
+| ACS-REQ-0130 | none |
+| ACS-REQ-0131 | none |
+| ACS-REQ-0132 | none |
+| ACS-REQ-0133 | none |
+| ACS-REQ-0134 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0135 | none |
+| ACS-REQ-0136 | none |
+| ACS-REQ-0137 | none |
+| ACS-REQ-0138 | fixtures/violating/README.md, fixtures/violating/expected.tsv |
+| ACS-REQ-0139 | none |
+| ACS-REQ-0140 | none |
+| ACS-REQ-0141 | none |
+| ACS-REQ-0142 | none |
+| ACS-REQ-0143 | none |
+| ACS-REQ-0144 | none |
+| ACS-REQ-0145 | none |
+| ACS-REQ-0146 | none |
+| ACS-REQ-0147 | none |
+| ACS-REQ-0148 | none |
+| ACS-REQ-0149 | none |
+| ACS-REQ-0150 | none |
+| ACS-REQ-0151 | none |
+| ACS-REQ-0152 | none |

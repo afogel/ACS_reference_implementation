@@ -1,0 +1,18 @@
+id: ACS-REQ-0093
+title: "Decisions are logged (pillar copy)"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "the deployment runs an agent evaluation layer"
+modality_kind: obligation
+evidence_class: guardian-state
+schema_refs: []
+depends_on: []
+restates: ACS-REQ-0092
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: c1a64dee4730dea1ba647a59571bf4014a636244504a885f43d9e76392633db5
+note: null
+predicate:
+  alias_of: ACS-REQ-0092

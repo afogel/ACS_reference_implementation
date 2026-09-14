@@ -1,0 +1,21 @@
+id: ACS-REQ-0067
+title: "parser_provenance origin is user_input"
+actor: framework
+reported_against: framework
+profile: [acs-core]
+activation: "an Intent with parsed capabilities is established"
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 206c69b42c1e8d37a79c9378351ee5f2701c77645466a2925a465e9699ca6d79
+note: null
+predicate:
+  subject: [Seq]
+  witness: [Origin]
+  rules:
+    - "violation(Seq, Origin) :- intent_parser_origin(Seq, Origin), Origin != \"user_input\"."

@@ -1,0 +1,16 @@
+id: ACS-REQ-0058
+title: "The Observed Agent may cross-check the chain head"
+actor: observed-agent
+reported_against: observed-agent
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: ff368d786ee2cde785c21fbb164c72ec5baef77d2e7b6860131cccf811fe25b7
+note: null

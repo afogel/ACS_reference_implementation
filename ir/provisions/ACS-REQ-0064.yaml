@@ -1,0 +1,19 @@
+id: ACS-REQ-0064
+title: "ProvenanceSummary fields are all optional"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs:
+  - file: provenance-summary.json
+    pointer: /properties
+    pinned: 17a2fe900fd26ca0df34905c6616f096a497ea37a2d1f95846c362ce2491e637
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: f52a23c60bc319bf2d3200bba22bc480c47fd04a2c3f23c70869755170ca84b2
+note: null

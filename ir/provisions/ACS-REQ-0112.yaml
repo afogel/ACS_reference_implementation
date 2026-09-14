@@ -1,0 +1,16 @@
+id: ACS-REQ-0112
+title: "A Guardian may rewrite a compaction summary"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: null
+modality_kind: permission
+evidence_class: not-applicable
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: bdbce7a114309cbbcc7e1071ab73b42c75e3ce8f68354172367cb7941d8e1c20
+note: null

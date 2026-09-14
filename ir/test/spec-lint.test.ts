@@ -35,6 +35,7 @@ function inputs(markedDir: string, overrides: Partial<LintInputs> = {}): LintInp
     corpus,
     markedDir,
     sourcesFile: join(defaultCensusDir(), "sources.yaml"),
+    exclusionsFile: join(defaultCensusDir(), "exclusions.yaml"),
     provisionsDir: defaultProvisionsDir(),
     idsDir: defaultIdsDir(),
     schemaDir: defaultSchemaDir(),
@@ -58,10 +59,10 @@ describe("specLint -- the tree as committed", () => {
 
   it("with an empty baseline reports every provision as added without a test, and no removal", () => {
     const report = specLint(inputs(freshMarked(), { baseline: { manifest: { generated_by: "t", corpus: { version: null, commit: null }, provisions: [] }, census: null } }));
-    expect(report.added_without_test).toHaveLength(28);
+    expect(report.added_without_test).toHaveLength(155);
     expect(report.removed_without_tombstone).toEqual([]);
-    // With no baseline census every unbound occurrence is new: 174 of them.
-    expect(report.unmarked).toHaveLength(174);
+    // With no baseline census every unbound occurrence would be new; since V7 there are none.
+    expect(report.unmarked).toHaveLength(0);
   });
 });
 
@@ -94,7 +95,7 @@ describe("specLint -- the V4 demo: an unmarked MUST added, a marked provision de
     ]);
   });
 
-  it("does not mistake the 174 already-unbound occurrences for new ones", () => {
+  it("reports only the new occurrence, not the 45 excluded ones", () => {
     expect(report.unmarked).toHaveLength(1);
   });
 
@@ -163,10 +164,10 @@ describe("specLint -- the other rules", () => {
 
   it("fails on an unmarked corpus file and on a broken pair (N22)", () => {
     const marked = freshMarked();
-    const page = join(marked, "concepts/trust.md");
+    const page = join(marked, "concepts/capability.md");
     writeFileSync(page, readFileSync(page, "utf8") + '\n<a id="acs-req-0099"></a>dangling\n');
     const report = specLint(inputs(marked));
-    expect(report.findings.map((f) => [f.rule, f.where, f.message])).toEqual([["marker-pairing", "concepts/trust.md:56", "ACS-REQ-0099 has no terminator"]]);
+    expect(report.findings.map((f) => [f.rule, f.where, f.message])).toEqual([["marker-pairing", "concepts/capability.md:31", "ACS-REQ-0099 has no terminator"]]);
   });
 });
 

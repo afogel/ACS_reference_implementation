@@ -1,0 +1,27 @@
+id: ACS-REQ-0027
+title: "Populated trust follows the default channel mapping"
+actor: guardian
+reported_against: guardian
+profile: [acs-provenance]
+activation: "the deployment populates the OPTIONAL trust field"
+modality_kind: obligation
+evidence_class: wire
+schema_refs: []
+depends_on: []
+restates: null
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: c60df09f1e3846f1a1992d7426925a46d50855c66d48fd3cf00e5f42871c3162
+note: "agent_generated is excluded: its default is the lineage minimum, ACS-REQ-0010. Overrides (ACS-REQ-0056) would need audit metadata this rule cannot see."
+predicate:
+  subject: [Seq, Pid]
+  witness: [Origin, Level]
+  rules:
+    - "violation(Seq, Pid, Origin, Level) :- trust(Seq, Pid, Level), provenance(Seq, _, Pid, Origin), default_trust(Origin, Expected), Level != Expected."
+    - "default_trust(\"user_input\", \"trusted\") :- trust(_, _, _)."
+    - "default_trust(\"system\", \"trusted\") :- trust(_, _, _)."
+    - "default_trust(\"tool_output\", \"untrusted\") :- trust(_, _, _)."
+    - "default_trust(\"retrieved\", \"untrusted\") :- trust(_, _, _)."
+    - "default_trust(\"a2a_inbound\", \"untrusted\") :- trust(_, _, _)."
+    - "default_trust(\"external\", \"untrusted\") :- trust(_, _, _)."

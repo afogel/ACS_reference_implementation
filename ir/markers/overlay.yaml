@@ -123,3 +123,522 @@ markers:
   - id: ACS-INV-0001
     source: concepts/intent.md
     quote: "**Intent immutability (normative).** Once an Intent is established, `Intent.parsed` MUST NOT be modified by the runtime LLM, by tool outputs, or by any data crossing an untrusted channel. It may grow only through approver action via the ASK flow."
+  # ---- V7: the remaining occurrences in normative sources ----
+  # The agent has no knowledge of hooks
+  - id: ACS-REQ-0025
+    source: spec/instrument/specification.md
+    quote: "**The agent MUST NOT have knowledge of hooks.**"
+  # The trust enum is optional on the wire
+  - id: ACS-REQ-0026
+    source: spec/instrument/specification.md
+    quote: "The wire format reserves an OPTIONAL `trust` enum (`trusted`, `untrusted`, `unknown`) so vendor Guardian implementations can carry channel classification in the envelope rather than derive it in policy."
+  # Guardians accept batched requests
+  - id: ACS-REQ-0028
+    source: spec/instrument/specification.md
+    quote: "Guardians SHOULD accept array-shaped requests and return an array of correlated responses"
+  # Unknown fields are ignored
+  - id: ACS-REQ-0029
+    source: spec/instrument/specification.md
+    quote: "Unknown fields MUST be ignored."
+  # A provenance-requiring Guardian refuses a none producer at handshake
+  - id: ACS-REQ-0030
+    source: spec/instrument/specification.md
+    quote: "If the client declares `provenance_producer: \"none\"` and the Guardian's `policy_requires_provenance` is true, the Guardian MUST refuse the session at handshake time with `PROVENANCE_REQUIRED` (`-32002`, §17.1) rather than silently degrading enforcement."
+  # An unguarded session start is audited by the deployment
+  - id: ACS-REQ-0031
+    source: spec/instrument/specification.md
+    quote: "A session started unguarded MUST be recorded in the deployment's own audit log"
+  # An unguarded session start surfaces on Trace events
+  - id: ACS-REQ-0032
+    source: spec/instrument/specification.md
+    quote: "SHOULD be surfaced on Trace events when the deployment claims ACS-Trace"
+  # The Observed Agent retries the handshake for later sessions
+  - id: ACS-REQ-0033
+    source: spec/instrument/specification.md
+    quote: "The Observed Agent SHOULD retry the handshake for subsequent sessions."
+  # Audience-specific text is composed client-side
+  - id: ACS-REQ-0034
+    source: spec/instrument/specification.md
+    quote: "deployments wanting different text per audience SHOULD compose them client-side from `reasoning` + `policy_data` + `reason_codes`"
+  # policy_version is optional
+  - id: ACS-REQ-0035
+    source: spec/instrument/specification.md
+    quote: "`policy_version` is OPTIONAL and deployment-defined"
+  # policy_version is populated when replay matters
+  - id: ACS-REQ-0036
+    source: spec/instrument/specification.md
+    quote: "SHOULD be populated when replay or ledger-backed policy state matters"
+  # A decision may cite several policy references
+  - id: ACS-REQ-0037
+    source: spec/instrument/specification.md
+    quote: "A single decision MAY cite multiple entries when several paradigms reject the same action"
+  # Consumers switch on reason codes, not prose
+  - id: ACS-REQ-0038
+    source: spec/instrument/specification.md
+    quote: "UIs and meta-policies SHOULD switch on these rather than parsing reasoning text or rule IDs."
+  # modified_content excludes structured edits
+  - id: ACS-REQ-0039
+    source: spec/instrument/specification.md
+    quote: "a MODIFY that carries `modified_content` MUST NOT also carry `redactions` or `parameter_overrides`"
+  # Redactions and overrides may coexist
+  - id: ACS-REQ-0040
+    source: spec/instrument/specification.md
+    quote: "`redactions` and `parameter_overrides` MAY appear together"
+  # Redaction and override targets are disjoint
+  - id: ACS-REQ-0041
+    source: spec/instrument/specification.md
+    quote: "but their targets MUST be disjoint: no `redactions` path may address the same field as a `parameter_overrides` key, nor an ancestor or descendant of it."
+  # A malformed modifications object fails closed as DENY
+  - id: ACS-REQ-0043
+    source: spec/instrument/specification.md
+    quote: "An Observed Agent that receives one cannot determine the Guardian's intent and MUST fail closed, treating the decision as `DENY`"
+  # A malformed modifications object is audited
+  - id: ACS-REQ-0044
+    source: spec/instrument/specification.md
+    quote: "and SHOULD record an audit event."
+  # The Observed Agent waits for the decision
+  - id: ACS-REQ-0045
+    source: spec/instrument/specification.md
+    quote: "the Observed Agent MUST wait for the Guardian's decision, up to the negotiated timeout (`timeout_config`, §4)"
+  # The Observed Agent applies the decision
+  - id: ACS-REQ-0046
+    source: spec/instrument/specification.md
+    quote: "and MUST apply it: `ALLOW` proceeds, `DENY` blocks the action, `MODIFY` proceeds with the modified payload (§6.3), `ASK` pauses for approval, `DEFER` suspends pending resolution."
+  # A deployment may choose fail-closed
+  - id: ACS-REQ-0047
+    source: spec/instrument/specification.md
+    quote: "A deployment MAY set `on_decision_failure: deny` (fail-closed)."
+  # The agent may attempt recovery within the timeout budget
+  - id: ACS-REQ-0048
+    source: spec/instrument/specification.md
+    start: "an error from the §17.1 registry carries a recovery action the agent MAY attempt within the remaining budget"
+    end: "MAY resolve immediately rather than waiting out the clock."
+  # Every fail-open proceed is an audit event
+  - id: ACS-REQ-0050
+    source: spec/instrument/specification.md
+    quote: "Every step that proceeds without a decision MUST be recorded as an audit event"
+  # A decision that arrives in time is honored regardless of posture
+  - id: ACS-REQ-0051
+    source: spec/instrument/specification.md
+    quote: "When a decision does arrive within the timeout, the agent MUST honor it regardless of the posture."
+  # A deterministic producer attaches provenance to every data-bearing field
+  - id: ACS-REQ-0052
+    source: spec/instrument/specification.md
+    quote: "Under **`deterministic`**, the producer MUST attach a Provenance object to **every** data-bearing field in every hook payload it emits."
+  # An emitted Provenance object is complete
+  - id: ACS-REQ-0053
+    source: spec/instrument/specification.md
+    quote: "When a Provenance object is emitted, all of its own required fields MUST be populated."
+  # The framework attaches trust deterministically
+  - id: ACS-REQ-0054
+    source: spec/instrument/specification.md
+    quote: "The framework, not the LLM, MUST attach the label, deterministically, based on which channel data crossed."
+  # Receivers re-derive trust locally
+  - id: ACS-REQ-0055
+    source: spec/instrument/specification.md
+    quote: "Receivers (especially across A2A or multi-Guardian boundaries) MUST treat the field as a hint and re-derive trust against local policy keyed off `origin` + `source_id` rather than honor a remote-asserted label at face value."
+  # Deployments may override the channel-to-trust mapping
+  - id: ACS-REQ-0056
+    source: spec/instrument/specification.md
+    quote: "Deployments MAY override in policy"
+  # Mapping overrides are recorded in audit metadata
+  - id: ACS-REQ-0057
+    source: spec/instrument/specification.md
+    quote: "but SHOULD record overrides in audit metadata."
+  # The Observed Agent may cross-check the chain head
+  - id: ACS-REQ-0058
+    source: spec/instrument/specification.md
+    quote: "The Observed Agent MAY also send `session_id` and a `chain_hash` for cross-checking."
+  # The chain may initialize implicitly without sessionStart
+  - id: ACS-REQ-0059
+    source: spec/instrument/specification.md
+    quote: "deployments that do not emit `sessionStart` MAY allow the Guardian to implicitly initialize the chain at the first content-bearing hook"
+  # ContextEntry SHOULD carry request_hash, timestamp and provenance_summary
+  - id: ACS-REQ-0060
+    source: spec/instrument/specification.md
+    start: "- **SHOULD:** `request_hash`"
+    end: "commits only to step metadata, not to request content, so"
+  # previous_hash is present on every entry but the first
+  - id: ACS-REQ-0061
+    source: spec/instrument/specification.md
+    quote: "`previous_hash` (required for every entry except the first)"
+  # ACS-Audit deployments populate request_hash
+  - id: ACS-REQ-0062
+    source: spec/instrument/specification.md
+    quote: "deployments claiming the **ACS-Audit** profile MUST populate `request_hash`"
+  # ProvenanceSummary fields are all optional
+  - id: ACS-REQ-0064
+    source: spec/instrument/specification.md
+    quote: "All fields are OPTIONAL — Guardians populate only what their policies consume."
+  # Intent is optional
+  - id: ACS-REQ-0065
+    source: spec/instrument/specification.md
+    quote: "Intent is OPTIONAL and is defined in [Concepts › Intent](../../concepts/intent.md) (normative)."
+  # parser_provenance is required when parsed is present
+  - id: ACS-REQ-0066
+    source: spec/instrument/specification.md
+    quote: "`parser_provenance` (REQUIRED if `parsed` present"
+  # parser_provenance origin is user_input
+  - id: ACS-REQ-0067
+    source: spec/instrument/specification.md
+    quote: "`origin` MUST be `user_input`"
+  # A Guardian may DENY or error on a chain mismatch
+  - id: ACS-REQ-0068
+    source: spec/instrument/specification.md
+    quote: "A Guardian that receives an Observed Agent's `chain_hash` (cross-check) that disagrees with its own computed head MAY DENY with `reason_codes: [\"chain_mismatch\"]`, or return the `CHAIN_MISMATCH` error (`-32007`, §17.1) when it cannot proceed at all."
+  # A published chain head inconsistent with the chain is an integrity event
+  - id: ACS-REQ-0069
+    source: spec/instrument/specification.md
+    quote: "An Observed Agent or external auditor that finds a published `chain_hash` inconsistent with the recomputed chain SHOULD treat it as an integrity event, not a transient error."
+  # An Approver may be human, agent, or service
+  - id: ACS-REQ-0070
+    source: concepts/agents.md
+    quote: "An Approver MAY be human, agent, or service."
+  # An Approver may be human, agent, or service (pillar copy)
+  - id: ACS-REQ-0071
+    source: spec/instrument/specification.md
+    quote: "ASK approvers MAY be human, agent, or service."
+  # Approvers do not return ask
+  - id: ACS-REQ-0072
+    source: concepts/agents.md
+    quote: "In v0.1 this is single-hop: Approvers MUST NOT themselves return `ask`."
+  # Approvers do not return ASK (pillar copy)
+  - id: ACS-REQ-0073
+    source: spec/instrument/specification.md
+    quote: "Single-hop only in v0.1. Approvers MUST NOT return ASK."
+  # An Approver's grant may extend Intent
+  - id: ACS-REQ-0074
+    source: concepts/agents.md
+    quote: "The Approver's grant MAY extend `Intent.parsed` through an `intent_extension` (see [Intent](./intent.md))."
+  # An Approver's grant may extend Intent (pillar copy)
+  - id: ACS-REQ-0075
+    source: spec/instrument/specification.md
+    quote: "the approver's grant MAY include an `intent_extension` field"
+  # A session-scope extension is appended, recorded, and carried with its own provenance
+  - id: ACS-REQ-0076
+    source: spec/instrument/specification.md
+    start: "On `scope: session`, the Guardian MUST:"
+    end: "so audits can distinguish parser-derived capabilities from approver-extended ones."
+  # The only conformant path to widen Intent
+  - id: ACS-INV-0002
+    source: concepts/intent.md
+    quote: "**The only conformant path to widen Intent (normative).** The sole mechanism for extending `Intent.parsed` within a session is an Approver's `intent_extension` returned via the ASK flow. Extensions are subject to the session's `scope_mode`; under `scope_mode: strict` a Guardian MUST NOT honor an extension that adds capabilities the deployment policy forbids in strict mode."
+  # Strict-mode extensions cannot add forbidden capabilities
+  - id: ACS-REQ-0077
+    source: spec/instrument/specification.md
+    quote: "a Guardian operating under `scope_mode: strict` MUST NOT honor extensions that would add capabilities the deployment policy forbids in strict mode."
+  # No ASK to an approver-incapable client
+  - id: ACS-REQ-0078
+    source: spec/instrument/specification.md
+    quote: "When the Guardian determines that the client cannot resolve `ASK`, the Guardian MUST NOT return `ASK`."
+  # ASK is substituted with a fail-closed DEFER or a DENY
+  - id: ACS-REQ-0079
+    source: spec/instrument/specification.md
+    start: "The Guardian MUST instead substitute one of:"
+    end: "`reasoning` that names the missing capability: when no recovery path exists."
+  # Substitution prefers DEFER when recoverable
+  - id: ACS-REQ-0080
+    source: spec/instrument/specification.md
+    quote: "deployments SHOULD prefer `DEFER` when the request is potentially recoverable through a different surface, and `DENY` when the action is unconditionally outside the client's reachable authority."
+  # Every envelope carries a signature
+  - id: ACS-REQ-0081
+    source: spec/instrument/specification.md
+    quote: "A signature over the §10 canonical input is REQUIRED in ACS-Core."
+  # The signature algorithm registry
+  - id: ACS-REQ-0082
+    source: spec/instrument/specification.md
+    start: "`HMAC-SHA256` | Symmetric MAC | RECOMMENDED."
+    end: "OPTIONAL. Transitional composite."
+  # Hybrid signatures verify both components
+  - id: ACS-REQ-0083
+    source: spec/instrument/specification.md
+    quote: "Verifiers MUST verify both component signatures over the canonical input defined in §10; failure of either component is a signature failure (`SIGNATURE_INVALID`, §17.1)."
+  # Requests outside the skew window are rejected
+  - id: ACS-REQ-0084
+    source: spec/instrument/specification.md
+    quote: "Guardians MUST reject requests whose `timestamp` is more than the negotiated skew window (`skew_window_ms` in ServerHello, §4; RECOMMENDED default 300000) in the past or future, returning `TIMESTAMP_OUT_OF_WINDOW` (`-32006`, §17.1)"
+  # Duplicate request_id within a session is rejected
+  - id: ACS-REQ-0086
+    source: spec/instrument/specification.md
+    quote: "MUST reject duplicate `request_id` values within the session with `REPLAY_DETECTED` (`-32005`, §17.1)"
+  # Duplicate nonces are rejected within a window
+  - id: ACS-REQ-0087
+    source: spec/instrument/specification.md
+    quote: "SHOULD reject duplicate `nonce` values within a sliding window the deployment configures (also `REPLAY_DETECTED`)"
+  # ACS is deployable across platforms
+  - id: ACS-REQ-0088
+    source: spec/instrument/specification.md
+    quote: "ACS MUST be deployable across IDE, SaaS, on-prem on Linux/Windows/macOS/mobile/browser."
+  # Resource identifiers use URI form
+  - id: ACS-REQ-0089
+    source: spec/instrument/specification.md
+    quote: "Resource identifiers MUST use URI form (`file:///C:/...`, `posix:///etc/...`, `https://...`)."
+  # Prompts treat untrusted data as data
+  - id: ACS-REQ-0090
+    source: spec/instrument/specification.md
+    quote: "Prompt MUST treat untrusted data as data, not instructions. Untrusted fields MUST be wrapped/quoted."
+  # The agent layer has no access to policy code
+  - id: ACS-REQ-0091
+    source: spec/instrument/specification.md
+    quote: "MUST NOT have access to deterministic-layer policy code."
+  # Decisions are logged with reasoning, model identifier, and confidence
+  - id: ACS-REQ-0092
+    source: concepts/agents.md
+    quote: "**Decision logging (normative).** A Guardian MUST log every decision with its reasoning, the evaluator's model identifier, and confidence when available."
+  # Decisions are logged (pillar copy)
+  - id: ACS-REQ-0093
+    source: spec/instrument/specification.md
+    quote: "Decisions MUST be logged with reasoning, model identifier, confidence (when available)."
+  # The agent layer is optional
+  - id: ACS-REQ-0094
+    source: spec/instrument/specification.md
+    quote: "OPTIONAL for v0.1.0. Deterministic-only deployments are fully conformant."
+  # system/ping is always allowed
+  - id: ACS-REQ-0095
+    source: spec/instrument/specification.md
+    quote: "Guardians MUST always return `decision: \"allow\"` for `system/ping` regardless of policy, signature, or session state."
+  # system/ping is not a ContextEntry
+  - id: ACS-REQ-0096
+    source: spec/instrument/specification.md
+    quote: "`system/ping` MUST NOT be written into SessionContext as a ContextEntry; it does not participate in the chain hash."
+  # system/ping needs no signature
+  - id: ACS-REQ-0097
+    source: spec/instrument/specification.md
+    quote: "`system/ping` MUST NOT require a signature even if the session otherwise requires signatures, so that liveness probing remains possible during signature-rotation or key-resolution failures."
+  # Enforcement health is monitored directly
+  - id: ACS-REQ-0098
+    source: spec/instrument/specification.md
+    quote: "Deployments SHOULD monitor hook-path decision failures (§6.4) directly rather than infer enforcement health from ping alone."
+  # A ping failure may trigger transport recovery
+  - id: ACS-REQ-0099
+    source: spec/instrument/specification.md
+    quote: "Connection failure or response timeout for `system/ping` is a transport-level signal that the Observed Agent MAY use to renegotiate transport, re-handshake, or fail over"
+  # A ping failure is not an enforcement event
+  - id: ACS-REQ-0100
+    source: spec/instrument/specification.md
+    quote: "it MUST NOT be interpreted as an enforcement event."
+  # An error response may carry data
+  - id: ACS-REQ-0101
+    source: spec/instrument/specification.md
+    quote: "An error response MAY carry a `data` object"
+  # Error data carries reason and message
+  - id: ACS-REQ-0102
+    source: spec/instrument/specification.md
+    quote: "when present it SHOULD include a machine-readable `reason` and a human-readable `message`, plus the per-code fields noted below."
+  # system/ping never returns an ACS error
+  - id: ACS-REQ-0103
+    source: spec/instrument/specification.md
+    quote: "`system/ping` MUST NOT return an ACS-specific error, so liveness probing survives signature-rotation and key-resolution failures (§13)."
+  # A Guardian may refuse a session at sessionStart
+  - id: ACS-REQ-0104
+    source: spec/instrument/hooks.md
+    quote: "A Guardian MAY refuse a session whose identity, policy mode, or platform fails policy checks; this is the cleanest place to refuse before content enters."
+  # A Guardian may rewrite the trigger payload
+  - id: ACS-REQ-0105
+    source: spec/instrument/hooks.md
+    quote: "Guardian MAY rewrite the trigger payload (e.g. redact PII) before activation."
+  # A Guardian may deny a turn from starting
+  - id: ACS-REQ-0106
+    source: spec/instrument/hooks.md
+    quote: "a Guardian MAY deny to block the turn from starting"
+  # A Guardian may redact a user message
+  - id: ACS-REQ-0107
+    source: spec/instrument/hooks.md
+    quote: "Guardian MAY redact content before delivery to the agent."
+  # A Guardian may redact retrieved content
+  - id: ACS-REQ-0108
+    source: spec/instrument/hooks.md
+    quote: "Guardian MAY redact retrieved content before injection into the agent context."
+  # Every outward action fires toolCallRequest
+  - id: ACS-REQ-0109
+    source: spec/instrument/hooks.md
+    quote: "Frameworks MUST fire `toolCallRequest` for every action that escapes the agent's reasoning context, regardless of whether the framework's tool registry models it as a tool."
+  # A Guardian may deny compaction
+  - id: ACS-REQ-0110
+    source: spec/instrument/hooks.md
+    quote: "Guardian MAY return DENY to block compaction (e.g. because deployment policy disallows compacting after `untrusted` data has entered until a trusted re-grounding occurs)."
+  # A compaction summary carries the union of its inputs' lineage
+  - id: ACS-REQ-0111
+    source: spec/instrument/hooks.md
+    quote: "resulting `summary` content with `provenance` whose `origin` MUST be `agent_generated` and whose `derived_from` MUST equal the union of `provenance_id`s of every entry in `entries_compacted`."
+  # A Guardian may rewrite a compaction summary
+  - id: ACS-REQ-0112
+    source: spec/instrument/hooks.md
+    quote: "A Guardian MAY return MODIFY (rewrite the summary, e.g. to redact a region the policy can't compact)"
+  # A Guardian does not deny postCompact
+  - id: ACS-REQ-0113
+    source: spec/instrument/hooks.md
+    quote: "but MAY NOT return DENY."
+  # The audit chain records the post-compact state
+  - id: ACS-REQ-0114
+    source: spec/instrument/hooks.md
+    quote: "The audit chain MUST record the post-compact state regardless."
+  # A Guardian may deny a skill registration
+  - id: ACS-REQ-0116
+    source: spec/instrument/hooks.md
+    quote: "A Guardian MAY deny registration"
+  # A denied skill cannot load
+  - id: ACS-REQ-0117
+    source: spec/instrument/hooks.md
+    quote: "a denied skill MUST NOT become eligible to load"
+  # Declared capabilities are compared with composed tools
+  - id: ACS-REQ-0118
+    source: spec/instrument/hooks.md
+    quote: "A Guardian SHOULD compare `declared_capabilities` against the union of capabilities the composed tools expose"
+  # A Guardian may deny over-broad declarations
+  - id: ACS-REQ-0119
+    source: spec/instrument/hooks.md
+    quote: "MAY deny over-broad declarations."
+  # A skill load correlates to an approved registration
+  - id: ACS-REQ-0120
+    source: spec/instrument/hooks.md
+    quote: "A load MUST be correlatable to a prior approved `skillRegister` for the same `(skill_id, digest)`"
+  # An uncorrelatable load is denied
+  - id: ACS-REQ-0121
+    source: spec/instrument/hooks.md
+    quote: "one the Guardian cannot tie to an approved registration, or whose digest differs from the approved one, is unverifiable and SHOULD be denied."
+  # A load outside declared composition is denied
+  - id: ACS-REQ-0122
+    source: spec/instrument/hooks.md
+    quote: "SHOULD deny when `load_path` shows a skill loading another outside its declared `composed_skills`"
+  # The framework may send a digest_verified hint
+  - id: ACS-REQ-0123
+    source: spec/instrument/hooks.md
+    quote: "The framework MAY send a `digest_verified` hint"
+  # A Guardian may deny a session over its component graph
+  - id: ACS-REQ-0124
+    source: spec/inspect/README.md
+    quote: "Guardians MAY return `deny` to refuse a session whose component graph contains a banned component, or to block a hot-swap."
+  # MCP tool calls may collapse into the generic hooks
+  - id: ACS-REQ-0125
+    source: spec/instrument/extend_mcp.md
+    quote: "Deployments MAY collapse MCP `tools/call` traffic into the generic `steps/toolCallRequest` / `steps/toolCallResult` hooks when tool-level policy is sufficient."
+  # Wrapped MCP is used when policy needs MCP-level distinctions
+  - id: ACS-REQ-0126
+    source: spec/instrument/extend_mcp.md
+    start: "Deployments SHOULD use `protocols/MCP/*` when policy needs MCP-level distinctions that generic tool hooks would erase"
+    end: "Deployments SHOULD use `protocols/MCP/*` when policy needs MCP-level distinctions that generic tool hooks would erase"
+  # A Guardian may refuse a session lacking a required profile
+  - id: ACS-REQ-0127
+    source: spec/conformance.md
+    quote: "A Guardian MAY refuse a session if the client does not declare a profile the Guardian's policy requires"
+  # A conformant deployment implements ACS-Core
+  - id: ACS-REQ-0128
+    source: spec/conformance.md
+    quote: "A v0.1.0-conformant deployment MUST implement ACS-Core."
+  # Additional hooks are implemented when observable
+  - id: ACS-REQ-0129
+    source: spec/conformance.md
+    quote: "are normatively defined and SHOULD be implemented when the harness can observe the corresponding event"
+  # Skill components imply skill lifecycle hooks
+  - id: ACS-REQ-0130
+    source: spec/conformance.md
+    quote: "A deployment whose AgBOM includes `skill` components SHOULD emit the skill lifecycle hooks, so a Guardian is not blind to a composition surface the inventory already exposes."
+  # ACS-Trace emits, records, and carries provenance onto Trace events
+  - id: ACS-REQ-0131
+    source: spec/conformance.md
+    start: "A deployment claiming ACS-Trace MUST:"
+    end: "Carry provenance facts forward onto Trace events."
+  # Trace emission never blocks enforcement
+  - id: ACS-REQ-0132
+    source: spec/trace/events.md
+    quote: "Trace events MUST NOT block enforcement — failure of the Trace sink MUST NOT change the disposition returned to the Observed Agent."
+  # Trace events are emitted where feasible even without ACS-Trace
+  - id: ACS-REQ-0133
+    source: spec/trace/events.md
+    quote: "Deployments that do not claim ACS-Trace SHOULD still emit Trace events where feasible"
+  # ACS-Inspect emits agbom/snapshot before content-bearing hooks
+  - id: ACS-REQ-0134
+    source: spec/conformance.md
+    start: "A deployment claiming ACS-Inspect MUST:"
+    end: "Emit `agbom/snapshot` once per session before content-bearing hooks fire."
+  # ACS-Inspect serializes the AgBOM on request
+  - id: ACS-REQ-0135
+    source: spec/conformance.md
+    quote: "Have the Guardian serialize the canonical AgBOM into at least one of {CycloneDX 1.6, SPDX 3.0, SWID} on request."
+  # ACS-Inspect-Dynamic emits agbom/changed on every mutation
+  - id: ACS-REQ-0136
+    source: spec/inspect/README.md
+    start: "A deployment claiming **ACS-Inspect-Dynamic** additionally MUST:"
+    end: "A deployment claiming **ACS-Inspect-Dynamic** additionally MUST:"
+  # Populated trust follows the default channel mapping
+  - id: ACS-REQ-0027
+    source: spec/conformance.md
+    quote: "SHOULD use the default channel-to-trust mapping ([§7.2](./instrument/specification.md#72-default-channel-to-trust-mapping)) so cross-deployment audits remain portable"
+  # ACS-Crypto supports ML-DSA-65
+  - id: ACS-REQ-0137
+    source: spec/conformance.md
+    quote: "A deployment claiming ACS-Crypto MUST support at least `ML-DSA-65` (RECOMMENDED primary)"
+  # ACS-Crypto supports SLH-DSA-128s
+  - id: ACS-REQ-0138
+    source: spec/conformance.md
+    quote: "and SHOULD support `SLH-DSA-128s` as an algorithmic-diversity backup."
+  # Hybrid composites are optional
+  - id: ACS-REQ-0139
+    source: spec/conformance.md
+    quote: "Hybrid composites (`ML-DSA-65+ECDSA-P256`, `ML-DSA-65+RSA-PSS-SHA256`) are OPTIONAL for transitional deployments."
+  # ACS-Audit entries carry timestamp and provenance_summary
+  - id: ACS-REQ-0063
+    source: spec/conformance.md
+    quote: "ACS-Audit deployments SHOULD also populate `timestamp` and `provenance_summary` on every ContextEntry."
+  # Inventory-dependent policy requires ACS-Inspect
+  - id: ACS-REQ-0140
+    source: spec/inspect/README.md
+    quote: "When Guardian policy depends on component inventory (e.g. banning a model or tool at the boundary), the deployment MUST implement ACS-Inspect."
+  # Components carry registration_provenance
+  - id: ACS-REQ-0141
+    source: spec/inspect/README.md
+    quote: "Every component SHOULD carry `registration_provenance` (who declared it — framework / configuration / runtime discovery) so AgBOM mutations are traceable in the same lineage system as data flow."
+  # ACS-Provenance components carry registration_provenance
+  - id: ACS-REQ-0142
+    source: spec/inspect/README.md
+    quote: "Deployments claiming **ACS-Provenance** MUST populate `registration_provenance` on every component."
+  # A Guardian may request a serialization at handshake
+  - id: ACS-REQ-0143
+    source: spec/inspect/README.md
+    quote: "A Guardian MAY request a specific serialization in the handshake's AgBOM negotiation (`agbom_serializations_supported` in ServerHello)"
+  # agbom/changed may serialize as a VEX diff or a full document
+  - id: ACS-REQ-0144
+    source: spec/inspect/extend_cyclonedx.md
+    quote: "deployments MAY emit a CycloneDX VEX-style diff or simply emit a fresh full serialization"
+  # Spans carry acs.provenance.origin
+  - id: ACS-REQ-0145
+    source: spec/trace/events.md
+    quote: "the resulting span MUST carry `acs.provenance.origin` as an attribute"
+  # Spans carry source_id and lineage_depth when populated
+  - id: ACS-REQ-0146
+    source: spec/trace/events.md
+    quote: "SHOULD carry `acs.provenance.source_id` and `acs.provenance.lineage_depth` when populated"
+  # Lineage edges may be OTel span links
+  - id: ACS-REQ-0147
+    source: spec/trace/events.md
+    quote: "Provenance lineage edges MAY be linked via OTel span links keyed by `provenance_id`."
+  # Redaction is applied at attribute-emit time
+  - id: ACS-REQ-0148
+    source: spec/trace/extend_opentelemetry.md
+    quote: "Implementations SHOULD apply the deployment's redaction or hashing policy at attribute-emit time rather than relying on backend-side scrubbing."
+  # trace_emission may advertise a collector endpoint
+  - id: ACS-REQ-0149
+    source: spec/trace/extend_opentelemetry.md
+    quote: "The Guardian's handshake `trace_emission` field MAY advertise an OTLP collector endpoint"
+  # Trace traffic routes to the advertised collector
+  - id: ACS-REQ-0150
+    source: spec/trace/extend_opentelemetry.md
+    quote: "when set, the Observed Agent SHOULD route ACS-shaped trace traffic there in addition to (or instead of) its default collector."
+  # Three identities are distinct
+  - id: ACS-INV-0003
+    source: concepts/identity.md
+    start: "Three identities are distinct and MUST NOT be conflated:"
+    end: "who authored the policy that produced a decision."
+  # The audit chain records a subagent's Intent derivation
+  - id: ACS-REQ-0151
+    source: concepts/session-lifecycle.md
+    quote: "When a subagent is spawned, the audit chain MUST record how the subagent's `Intent.parsed` relates to the parent's: inherited in full, a strict subset, derived from a parent directive, or fresh."
+  # A Guardian may deny a spawn that widens Intent
+  - id: ACS-REQ-0152
+    source: concepts/session-lifecycle.md
+    quote: "A Guardian MAY deny a spawn whose derivation would grant capabilities the parent's [Intent](./intent.md) does not authorize."
+  # The rungs do not collapse
+  - id: ACS-INV-0004
+    source: concepts/trust.md
+    quote: "**The rungs do not collapse (normative).** A Guardian MUST NOT treat an asserted fact as attested. The basis of a fact is part of the fact; relying on a fact above its actual basis is an error."

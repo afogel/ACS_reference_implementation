@@ -22,12 +22,13 @@ import { keywordScan, RFC2119_KEYWORDS, type Keyword, type Occurrence } from "./
 import { seedDependsOn, type FooterEdge } from "./seed-depends-on.ts";
 import type { SourceDeclaration, SourceStatus } from "./source-census.ts";
 import type { ResolvedSpan } from "../markers/overlay.ts";
+import type { ResolvedExclusion } from "./exclusions.ts";
 
-export type ExclusionReason = "informative_source" | "editorial_source";
+export type ExclusionReason = "informative_source" | "editorial_source" | "restatement_of" | "mention" | "roadmap" | "rationale";
 
 export type Binding =
   | { kind: "unbound" }
-  | { kind: "excluded"; reason: ExclusionReason }
+  | { kind: "excluded"; reason: ExclusionReason; of?: string }
   | { kind: "bound"; provision_id: string };
 
 export interface OccurrenceRow extends Occurrence {
@@ -80,6 +81,8 @@ export interface ProvisionCensus {
   dependency_edges: FooterEdge[];
   dependency_audit: DependencyAudit;
   occurrences: OccurrenceRow[];
+  /** Exclusion entries that did not cover exactly one occurrence: an authoring error the census refuses to hide. */
+  exclusion_problems: string[];
 }
 
 const BLOCK_TYPES: BlockType[] = ["paragraph", "list_item", "table_cell", "blockquote", "heading", "code_fence", "thematic_break"];
@@ -89,10 +92,14 @@ export function provisionCensus(
   declared: SourceDeclaration[],
   read: (file: string) => string,
   spans: ResolvedSpan[] = [],
+  exclusions: ResolvedExclusion[] = [],
 ): ProvisionCensus {
   const byPath = new Map(declared.map((d) => [d.path, d]));
   const spansBySource = new Map<string, ResolvedSpan[]>();
   for (const span of spans) spansBySource.set(span.source, [...(spansBySource.get(span.source) ?? []), span]);
+  const exclusionsBySource = new Map<string, ResolvedExclusion[]>();
+  for (const x of exclusions) exclusionsBySource.set(x.source, [...(exclusionsBySource.get(x.source) ?? []), x]);
+  const covered = new Map<ResolvedExclusion, number>();
   const exists = (doc: string): boolean => corpus.files.includes(doc);
 
   const sources: PerSourceCensus[] = [];
@@ -132,7 +139,7 @@ export function provisionCensus(
       footer_entries: footer.edges.length,
     };
     for (const occurrence of scan.occurrences) {
-      const binding = bindingFor(declaration, occurrence.offset, spansBySource.get(file) ?? []);
+      const binding = bindingFor(declaration, occurrence.offset, spansBySource.get(file) ?? [], exclusionsBySource.get(file) ?? [], covered);
       perSource.by_block_type[occurrence.block_type]++;
       if (binding.kind === "excluded") perSource.excluded++;
       else if (binding.kind === "bound") perSource.bound++;
@@ -169,6 +176,10 @@ export function provisionCensus(
     ),
   };
 
+  const exclusion_problems = exclusions
+    .filter((x) => (covered.get(x) ?? 0) !== 1)
+    .map((x) => `exclusion in ${x.source} covers ${covered.get(x) ?? 0} keyword occurrence(s), not one: ${JSON.stringify(x.quote.slice(0, 60))}`);
+
   return {
     corpus: { version: corpus.version, commit: corpus.commit, documents: corpus.files.length },
     totals,
@@ -177,12 +188,24 @@ export function provisionCensus(
     dependency_edges: edges,
     dependency_audit,
     occurrences: rows,
+    exclusion_problems,
   };
 }
 
-function bindingFor(declaration: SourceDeclaration, offset: number, spans: ResolvedSpan[]): Binding {
+function bindingFor(
+  declaration: SourceDeclaration,
+  offset: number,
+  spans: ResolvedSpan[],
+  exclusions: ResolvedExclusion[],
+  covered: Map<ResolvedExclusion, number>,
+): Binding {
   const span = spans.find((s) => s.start <= offset && offset < s.end);
   if (span) return { kind: "bound", provision_id: span.id };
+  const exclusion = exclusions.find((x) => x.start <= offset && offset < x.end);
+  if (exclusion) {
+    covered.set(exclusion, (covered.get(exclusion) ?? 0) + 1);
+    return exclusion.of ? { kind: "excluded", reason: exclusion.reason, of: exclusion.of } : { kind: "excluded", reason: exclusion.reason };
+  }
   if (declaration.status === "informative") return { kind: "excluded", reason: "informative_source" };
   if (declaration.status === "editorial") return { kind: "excluded", reason: "editorial_source" };
   return { kind: "unbound" };

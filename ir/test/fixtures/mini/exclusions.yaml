@@ -1,0 +1,8 @@
+# Authored exclusions for the mini corpus (E8.2). One restatement, so the
+# census test covers the excluded-with-reason path end to end.
+exclusions:
+  - source: spec/rules.md
+    quote: "The framework MUST enforce it."
+    reason: restatement_of
+    of: ACS-REQ-0001
+    note: "Restates the handshake-first rule for the enforcement sentence."

@@ -1,0 +1,21 @@
+id: ACS-REQ-0077
+title: "Strict-mode extensions cannot add forbidden capabilities"
+actor: guardian
+reported_against: guardian
+profile: [acs-core]
+activation: "scope_mode: strict"
+modality_kind: obligation
+evidence_class: deployment-config
+schema_refs: []
+depends_on: []
+restates: ACS-INV-0002
+status: active
+since: "0.1.0"
+superseded_by: []
+reviewed_against: 0033f90eda4b7afb556c0139cc78bac01562b1ca8ce709afbe6cefd7747566a4
+note: null
+predicate:
+  subject: [Session, Seq]
+  witness: [Capability]
+  rules:
+    - "violation(Session, Seq, Capability) :- intent_scope_mode(Session, \"strict\"), intent_extension(Session, Seq, Capability), strict_mode_forbidden(Session, Capability)."
