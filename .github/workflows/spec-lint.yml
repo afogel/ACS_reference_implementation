@@ -46,11 +46,13 @@ jobs:
       - name: Materialize the base branch's manifest and census as the baseline
         # Absent on the base branch (the first IR PR) means an empty
         # baseline: every provision is "added" and nothing can be "removed".
+        # A file `git show` cannot find is left absent, never created empty:
+        # an empty file would parse as broken JSON rather than as no baseline.
         run: |
           mkdir -p .baseline/manifest .baseline/census
           if [ -n "${{ github.base_ref }}" ]; then
-            git show "origin/${{ github.base_ref }}:ir/manifest/provisions.json" > .baseline/manifest/provisions.json 2>/dev/null || true
-            git show "origin/${{ github.base_ref }}:ir/census/provisions.yaml" > .baseline/census/provisions.yaml 2>/dev/null || true
+            git show "origin/${{ github.base_ref }}:ir/manifest/provisions.json" > .baseline/manifest/provisions.json 2>/dev/null || rm -f .baseline/manifest/provisions.json
+            git show "origin/${{ github.base_ref }}:ir/census/provisions.yaml" > .baseline/census/provisions.yaml 2>/dev/null || rm -f .baseline/census/provisions.yaml
           else
             cp ir/manifest/provisions.json .baseline/manifest/ 2>/dev/null || true
             cp ir/census/provisions.yaml .baseline/census/ 2>/dev/null || true

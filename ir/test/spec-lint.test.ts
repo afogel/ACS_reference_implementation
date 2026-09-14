@@ -45,6 +45,18 @@ function inputs(markedDir: string, overrides: Partial<LintInputs> = {}): LintInp
   };
 }
 
+describe("loadBaseline -- what counts as no baseline", () => {
+  it("treats a missing file and an empty file alike, so a base branch without the IR yields an empty baseline", () => {
+    const dir = mkdtempSync(join(tmpdir(), "acs-ir-baseline-"));
+    expect(loadBaseline(dir)).toEqual({ manifest: null, census: null });
+    mkdirSync(join(dir, "manifest"), { recursive: true });
+    mkdirSync(join(dir, "census"), { recursive: true });
+    writeFileSync(join(dir, "manifest", "provisions.json"), "");
+    writeFileSync(join(dir, "census", "provisions.yaml"), "\n");
+    expect(loadBaseline(dir)).toEqual({ manifest: null, census: null });
+  });
+});
+
 describe("specLint -- the tree as committed", () => {
   it("passes clean against its own baseline", () => {
     const report = specLint(inputs(freshMarked()));

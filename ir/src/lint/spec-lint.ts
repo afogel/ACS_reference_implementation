@@ -93,13 +93,14 @@ export interface LintInputs {
   baseline: Baseline;
 }
 
-/** The committed generated files under `dir` (`manifest/provisions.json`, `census/provisions.yaml`), each absent-tolerant. */
+/** The committed generated files under `dir` (`manifest/provisions.json`, `census/provisions.yaml`); a missing or empty file is no baseline. */
 export function loadBaseline(dir: string): Baseline {
   const manifestPath = join(dir, "manifest", "provisions.json");
   const censusPath = join(dir, "census", "provisions.yaml");
+  const present = (path: string): boolean => existsSync(path) && readFileSync(path, "utf8").trim() !== "";
   return {
-    manifest: existsSync(manifestPath) ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest) : null,
-    census: existsSync(censusPath) ? (Bun.YAML.parse(readFileSync(censusPath, "utf8")) as ProvisionCensus) : null,
+    manifest: present(manifestPath) ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest) : null,
+    census: present(censusPath) ? (Bun.YAML.parse(readFileSync(censusPath, "utf8")) as ProvisionCensus) : null,
   };
 }
 
