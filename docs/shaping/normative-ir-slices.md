@@ -149,6 +149,8 @@ That is R2.6 demonstrated in one command: **a definition or invariant change inv
 | N18 | P1 | `ir/catalog` | `checkRestatement()` — concept page canonical (R2.9); emits the worklist | call | → U32 | → N16 |
 | S12 | P1 | store | `ir/.build/stale.json` | — | — | → U10 |
 
+🟡 **Shipped** ([`ir/slices/v3/`](../../ir/slices/v3/README.md)). The demo runs as a test: one word changed in the Intent immutability callout, and `acs-ir lint` names `ACS-INV-0001`, then `ACS-REQ-0011` (depends on it), then `ACS-REQ-0012` (depends on that), with no keyword moved. `restates` is walked as a dependency edge with the fixed R2.9 direction, so a changed concept page stales its pillar copy and never the reverse. The worklist has one entry (§9's approver sentence restating `agents.md`). Tests citing a stale provision are collected by literal ID from `ir/test/conformance/`, which is empty until V5, and the report says so rather than dropping the column.
+
 **One computation, three edge types.** R2.4 (own text changed), R2.6 (a dependency changed), and R2.9 (a restatement diverged) are the same mechanism over different edges — which is why they cost one affordance rather than three. Nothing is ever marked *invalid*; the reviewer classifies the change as editorial, semantic, or split.
 
 **The migration worklist is a free deliverable.** `concepts/README.md:33` promises a migration away from inline pillar restatement. N18 already has to compare restated pairs, so enumerating the ones still awaiting replacement costs nothing extra and hands spec editors a to-do list they currently assemble by hand.
